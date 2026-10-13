@@ -323,6 +323,8 @@ TEST_CASE("a fixed seed makes Pocket speech reproducible" *
   const auto first = speak(7);
   REQUIRE_FALSE(first.empty());
   CHECK(speak(7) == first);
+  CHECK(speak(7) == first);
+  CHECK(speak(7) == first);
   CHECK(speak(8) != first);
 }
 

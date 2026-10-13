@@ -20,7 +20,6 @@
 
 namespace
 {
-constexpr std::size_t kMaxDecodeFrames = 8;
 constexpr std::chrono::milliseconds kQueuePoll{10};
 constexpr double kFadeSeconds = 0.005;
 constexpr double kMaxReferenceSeconds = 10.0;
@@ -456,9 +455,9 @@ struct PocketEngine::Impl
       return drainInput.halted.load() || (drainInput.input.stopRequested && drainInput.input.stopRequested());
     };
     std::vector<float> batch;
-    batch.reserve(latentDim * kMaxDecodeFrames);
+    batch.reserve(latentDim);
     bool first = true;
-    while (drainInput.queue.take({.batch = batch, .maxValues = latentDim * (first ? 1 : kMaxDecodeFrames), .stopped = stopped})) {
+    while (drainInput.queue.take({.batch = batch, .maxValues = latentDim, .stopped = stopped})) {
       if (stopped()) {
         drainInput.halted.store(true);
         return;

@@ -203,6 +203,20 @@ more than they gave. Every engine call runs under the service's
 callback is checked before each backbone step and each decode, so a
 disconnected or cancelled caller frees the engine within one frame (about 10 ms).
 
+**One frame per decode.** The decoder thread used to take whatever the queue
+held, up to eight latents, and run Mimi over that batch. The state bank
+advances once per call (`StateBank::advance` flips the in-place buffers), so a
+call carrying eight frames advanced the streaming state by one step while
+consuming eight frames of audio: the decoded PCM depended on how the producer
+and the consumer happened to interleave, which is machine timing. That is what
+the fixed-seed case caught - the same seed produced different audio - and it
+was a correctness bug, not only one of reproducibility, because the graph's
+state inputs describe the state after one frame. The queue now hands over
+exactly one latent per call, so one call is one frame is one state advance, and
+the audio no longer depends on the schedule. The cost is one Mimi call per
+frame instead of one per up to eight; the queue still decouples the two
+threads, and the fade-in still belongs to the first frame alone.
+
 **Voice cloning** (`tts.pocket_reference_*`) needs a bundle exported with
 `--cloning` from Kyutai's gated cloning weights (`kyutai/pocket-tts`, after
 accepting its terms). The public, ungated weights that provisioning installs
