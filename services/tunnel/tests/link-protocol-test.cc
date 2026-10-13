@@ -10,12 +10,15 @@
 
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <set>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include <openssl/evp.h>
@@ -453,5 +456,302 @@ TEST_SUITE("home link v2 vectors")
       CHECK(sha256OfFile(path) == pinned.at(name).get<std::string>());
     }
     CHECK(cloud.size() == pinned.size());
+  }
+}
+
+namespace
+{
+using tunnel::link::ClientHelloResult;
+using tunnel::link::ClientHelloStatus;
+
+constexpr uint32_t kRandomSeed = 20261013U;
+constexpr uint32_t kMutationSeed = 1013U;
+constexpr size_t kRandomCases = 4096;
+constexpr size_t kMutationCases = 4096;
+constexpr uint32_t kMaxRandomLength = 512;
+constexpr size_t kRecordHeader = 5;
+constexpr size_t kHandshakeHeader = 4;
+constexpr size_t kVersionLength = 2;
+constexpr size_t kRandomLength = 32;
+constexpr size_t kVersionAndRandom = kVersionLength + kRandomLength;
+constexpr size_t kExtensionHeader = 4;
+constexpr size_t kKeyShareEntryHeader = 4;
+constexpr uint32_t kServerNameType = 0;
+constexpr uint32_t kKeyShareType = 51;
+constexpr std::string_view kBehind = "bytes behind the record";
+
+struct LengthField
+{
+  size_t offset{0};
+  size_t width{0};
+};
+
+constexpr LengthField kRecordLength{.offset = 3, .width = 2};
+constexpr LengthField kHandshakeLength{.offset = 6, .width = 3};
+
+struct FieldWrite
+{
+  LengthField field;
+  uint32_t value{0};
+};
+
+struct LengthChange
+{
+  uint32_t before{0};
+  size_t width{0};
+};
+
+struct Extension
+{
+  uint32_t type{0};
+  size_t dataAt{0};
+  size_t size{0};
+};
+
+struct HelloLayout
+{
+  std::vector<LengthField> lengths;
+  std::vector<Extension> extensions;
+  size_t sessionIdAt{0};
+  size_t sessionIdSize{0};
+};
+
+struct ValidHello
+{
+  std::string bytes;
+  std::string serverName;
+};
+
+std::mt19937 seededEngine(uint32_t seed)
+{
+  std::seed_seq sequence{seed};
+  return std::mt19937{sequence};
+}
+
+uint32_t below(std::mt19937& engine, uint32_t bound)
+{
+  return static_cast<uint32_t>(engine() % bound);
+}
+
+std::string randomBytes(std::mt19937& engine, size_t count)
+{
+  std::string bytes(count, '\0');
+  std::ranges::generate(bytes, [&engine] { return static_cast<char>(engine() & 0xFFU); });
+  return bytes;
+}
+
+uint32_t readField(std::string_view bytes, const LengthField& field)
+{
+  uint32_t value = 0;
+  for (const char byte : bytes.substr(field.offset, field.width))
+    value = (value << 8U) | static_cast<uint8_t>(byte);
+  return value;
+}
+
+void writeField(std::string& bytes, const FieldWrite& write)
+{
+  for (size_t index = 0; index < write.field.width; ++index) {
+    const auto shift = static_cast<uint32_t>(8 * (write.field.width - 1 - index));
+    bytes.at(write.field.offset + index) =
+        static_cast<char>((write.value >> shift) & 0xFFU);
+  }
+}
+
+uint32_t changedLength(std::mt19937& engine, const LengthChange& change)
+{
+  const uint32_t mask = (1U << static_cast<uint32_t>(8 * change.width)) - 1U;
+  uint32_t after = 0;
+  switch (below(engine, 3)) {
+  case 0:
+    after = static_cast<uint32_t>(engine()) & mask;
+    break;
+  case 1: {
+    const uint32_t delta = 1 + below(engine, 16);
+    after = (below(engine, 2) == 0 ? change.before + delta : change.before - delta) & mask;
+    break;
+  }
+  default:
+    after = below(engine, 65);
+    break;
+  }
+  return after == change.before ? (after + 1) & mask : after;
+}
+
+std::string handshakeRecord(std::string_view body)
+{
+  std::string record(kRecordHeader + kHandshakeHeader, '\0');
+  record[0] = static_cast<char>(0x16);
+  record[1] = static_cast<char>(0x03);
+  record[2] = static_cast<char>(0x01);
+  record[kRecordHeader] = static_cast<char>(0x01);
+  writeField(record, {.field = kRecordLength,
+                      .value = static_cast<uint32_t>(kHandshakeHeader + body.size())});
+  writeField(record,
+             {.field = kHandshakeLength, .value = static_cast<uint32_t>(body.size())});
+  record.append(body);
+  return record;
+}
+
+HelloLayout layoutOf(std::string_view record)
+{
+  size_t cursor = kRecordHeader + kHandshakeHeader + kVersionAndRandom;
+  HelloLayout layout{.lengths = {kRecordLength, kHandshakeLength},
+                     .extensions = {},
+                     .sessionIdAt = cursor + 1,
+                     .sessionIdSize = readField(record, {.offset = cursor, .width = 1})};
+  for (const size_t width : {size_t{1}, size_t{2}, size_t{1}}) {
+    const LengthField field{.offset = cursor, .width = width};
+    layout.lengths.push_back(field);
+    cursor += width + readField(record, field);
+  }
+  if (cursor >= record.size())
+    return layout;
+  layout.lengths.push_back({.offset = cursor, .width = 2});
+  cursor += 2;
+  while (cursor + kExtensionHeader <= record.size()) {
+    const Extension extension{.type = readField(record, {.offset = cursor, .width = 2}),
+                              .dataAt = cursor + kExtensionHeader,
+                              .size = readField(record, {.offset = cursor + 2, .width = 2})};
+    layout.lengths.push_back({.offset = cursor + 2, .width = 2});
+    if (extension.type == kServerNameType) {
+      layout.lengths.push_back({.offset = extension.dataAt, .width = 2});
+      layout.lengths.push_back({.offset = extension.dataAt + 3, .width = 2});
+    }
+    layout.extensions.push_back(extension);
+    cursor = extension.dataAt + extension.size;
+  }
+  return layout;
+}
+
+std::string steadied(std::string hello)
+{
+  const HelloLayout layout = layoutOf(hello);
+  hello.replace(kRecordHeader + kHandshakeHeader + kVersionLength, kRandomLength,
+                kRandomLength, '\x11');
+  hello.replace(layout.sessionIdAt, layout.sessionIdSize, layout.sessionIdSize, '\x22');
+  for (const Extension& extension : layout.extensions) {
+    if (extension.type != kKeyShareType)
+      continue;
+    size_t cursor = extension.dataAt + 2;
+    while (cursor + kKeyShareEntryHeader <= extension.dataAt + extension.size) {
+      const uint32_t keySize = readField(hello, {.offset = cursor + 2, .width = 2});
+      hello.replace(cursor + kKeyShareEntryHeader, keySize, keySize, '\x33');
+      cursor += kKeyShareEntryHeader + keySize;
+    }
+  }
+  return hello;
+}
+
+std::vector<ValidHello> validHellos()
+{
+  std::vector<ValidHello> hellos;
+  for (const std::string& name :
+       {std::string{"sync--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page"},
+        std::string{"0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page"},
+        std::string{"notification--fedcba9876543210fedcba9876543210.argus-tunnel.lynk.page"},
+        std::string(200, 'x') + ".argus-tunnel.lynk.page", std::string{}}) {
+    std::string hello = steadied(tunnel::test::clientHelloFor(name));
+    REQUIRE(hello == steadied(tunnel::test::clientHelloFor(name)));
+    hellos.push_back({.bytes = std::move(hello), .serverName = name});
+  }
+  return hellos;
+}
+
+ClientHelloResult parseExact(std::string_view bytes)
+{
+  const std::vector<char> exact(bytes.begin(), bytes.end());
+  return tunnel::link::parseClientHello(std::string_view{exact.data(), exact.size()});
+}
+
+ClientHelloResult readChecked(std::string_view input)
+{
+  const ClientHelloResult result = parseExact(input);
+  if (result.status == ClientHelloStatus::Parsed)
+    CHECK((result.serverName.empty() ||
+           input.find(result.serverName) != std::string_view::npos));
+  else
+    CHECK(result.serverName.empty());
+  if (result.status != ClientHelloStatus::NeedMore) {
+    const ClientHelloResult followed = parseExact(std::string{input}.append(kBehind));
+    CHECK(followed.status == result.status);
+    CHECK(followed.serverName == result.serverName);
+  }
+  return result;
+}
+}
+
+TEST_SUITE("randomized client hello")
+{
+  TEST_CASE("random bytes are read or refused, never past their end")
+  {
+    std::mt19937 engine = seededEngine(kRandomSeed);
+    size_t headed = 0;
+    for (size_t round = 0; round < kRandomCases; ++round) {
+      std::string bytes = randomBytes(engine, below(engine, kMaxRandomLength + 1));
+      const bool withHeaders =
+          round % 2 == 1 && bytes.size() >= kRecordHeader + kHandshakeHeader;
+      if (withHeaders) {
+        bytes[0] = static_cast<char>(0x16);
+        bytes[kRecordHeader] = static_cast<char>(0x01);
+        writeField(bytes, {.field = kRecordLength,
+                           .value = static_cast<uint32_t>(bytes.size() - kRecordHeader)});
+        writeField(bytes, {.field = kHandshakeLength,
+                           .value = static_cast<uint32_t>(bytes.size() - kRecordHeader -
+                                                          kHandshakeHeader)});
+        ++headed;
+      }
+      const ClientHelloResult result = readChecked(bytes);
+      if (withHeaders)
+        CHECK(result.status != ClientHelloStatus::NeedMore);
+    }
+    MESSAGE(kRandomCases << " random inputs, " << headed
+                         << " of them behind whole record and handshake headers");
+  }
+
+  TEST_CASE("every truncation of a valid hello waits for the rest")
+  {
+    size_t truncations = 0;
+    for (const ValidHello& valid : validHellos()) {
+      for (size_t cut = 0; cut < valid.bytes.size(); ++cut, ++truncations)
+        CHECK(readChecked(std::string_view{valid.bytes}.substr(0, cut)).status ==
+              ClientHelloStatus::NeedMore);
+      const ClientHelloResult whole = readChecked(valid.bytes);
+      CHECK(whole.status == ClientHelloStatus::Parsed);
+      CHECK(whole.serverName == valid.serverName);
+    }
+    MESSAGE(truncations << " truncated hellos");
+  }
+
+  TEST_CASE("a valid hello whose body is cut short is refused or read without a name")
+  {
+    size_t cuts = 0;
+    for (const ValidHello& valid : validHellos()) {
+      const std::string_view body =
+          std::string_view{valid.bytes}.substr(kRecordHeader + kHandshakeHeader);
+      for (size_t cut = 0; cut < body.size(); ++cut, ++cuts) {
+        const ClientHelloResult result = readChecked(handshakeRecord(body.substr(0, cut)));
+        CHECK(result.status != ClientHelloStatus::NeedMore);
+        CHECK(result.serverName.empty());
+      }
+    }
+    MESSAGE(cuts << " hellos cut inside their body");
+  }
+
+  TEST_CASE("a valid hello with one length changed is read or refused, never past its end")
+  {
+    std::mt19937 engine = seededEngine(kMutationSeed);
+    const std::vector<ValidHello> hellos = validHellos();
+    for (size_t round = 0; round < kMutationCases; ++round) {
+      const ValidHello& valid = hellos[below(engine, static_cast<uint32_t>(hellos.size()))];
+      const std::vector<LengthField> fields = layoutOf(valid.bytes).lengths;
+      const LengthField field = fields[below(engine, static_cast<uint32_t>(fields.size()))];
+      std::string changed = valid.bytes;
+      writeField(changed,
+                 {.field = field,
+                  .value = changedLength(engine, {.before = readField(valid.bytes, field),
+                                                  .width = field.width})});
+      readChecked(changed);
+    }
+    MESSAGE(kMutationCases << " hellos with one length changed");
   }
 }
