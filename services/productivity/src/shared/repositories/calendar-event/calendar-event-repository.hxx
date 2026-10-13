@@ -27,6 +27,8 @@ public:
   findById(int64_t id, drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<std::vector<CalendarEventSchema>>
   findByOwnerRange(const CalendarEventRangeInput& input) const;
+  drogon::Task<std::vector<CalendarEventSchema>>
+  findVisibleRange(const CalendarEventRangeInput& input) const;
   drogon::Task<CalendarEventSchema>
   create(const CalendarEventCreateInput& input) const;
   drogon::Task<CalendarEventSchema>

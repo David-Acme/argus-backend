@@ -168,7 +168,7 @@ drogon::Task<argus::mcp::ToolOutcome> listEvents(argus::mcp::ToolInvocation invo
   const int64_t from = timeArgument(arguments, "from").value_or(now);
   const int64_t to = timeArgument(arguments, "to").value_or(from + 7 * kDay);
   const CalendarEventRepository repository;
-  auto events = co_await repository.findByOwnerRange({.ownerId = userId, .from = from, .to = to});
+  auto events = co_await repository.findVisibleRange({.ownerId = userId, .from = from, .to = to});
   const auto limit = static_cast<size_t>(limitOf(arguments));
   argus::mcp::ToolOutcome outcome;
   const std::string range = spokenWhen({.epoch = from, .allDay = true}, lang(invocation)) + " – " +
@@ -184,7 +184,9 @@ drogon::Task<argus::mcp::ToolOutcome> listEvents(argus::mcp::ToolInvocation invo
   Json::Value listed(Json::arrayValue);
   for (size_t index = 0; index < events.size() && index < limit; ++index) {
     spoken.push_back(describe(events[index], invocation));
-    listed.append(summary(events[index]));
+    Json::Value entry = summary(events[index]);
+    entry["shared"] = events[index].ownerId != userId;
+    listed.append(std::move(entry));
   }
   const size_t more = events.size() > limit ? events.size() - limit : 0;
   const std::string head = argus::mcp::speech::inEnglish(invocation) ? "You have " + std::to_string(events.size()) + (events.size() == 1 ? " event: " : " events: ")

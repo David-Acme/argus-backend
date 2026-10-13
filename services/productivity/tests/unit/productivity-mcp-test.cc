@@ -194,7 +194,8 @@ void reset(Env& env)
 {
   env.sink.clear();
   moduleGate().reset();
-  for (const char* table : {"calendar_event", "project_task", "project_member", "project", "idempotency_key"})
+  for (const char* table :
+       {"calendar_event_share", "calendar_event", "project_task", "project_member", "project", "idempotency_key"})
     DbService::productivityClient()->execSqlSync(std::string("DELETE FROM ") + table);
 }
 
@@ -264,7 +265,7 @@ void anEventNeedsAUnderstandableStart(Env& env)
   CHECK(env.sink.operations.empty());
 }
 
-void listingShowsOnlyTheCallersEvents(Env& env)
+void listingShowsTheCallersEventsAndThoseSharedWithThem(Env& env)
 {
   reset(env);
   env.ana("calendar.create_event", args({{"title", "Mía uno"}, {"starts_at", "2030-03-06T10:00:00+00:00"}}));
@@ -285,6 +286,29 @@ void listingShowsOnlyTheCallersEvents(Env& env)
 
   const auto none = env.ana("calendar.list_events", args({{"from", "2031-01-01T00:00:00+00:00"}, {"to", "2031-01-02T00:00:00+00:00"}}));
   CHECK(none.text.find("No tienes eventos entre") == 0);
+
+  DbService::productivityClient()->execSqlSync(
+      "INSERT INTO calendar_event_share (calendar_event_id, user_id, access) "
+      "SELECT id, ?, 'view' FROM calendar_event WHERE title = 'De Luis'",
+      kAna);
+  const auto shared = env.ana("calendar.list_events", args({{"from", "2030-03-06T00:00:00+00:00"}, {"to", "2030-03-08T00:00:00+00:00"}}));
+  CHECK(shared.text.find("Tienes 3 eventos") == 0);
+  CHECK(shared.text.find("De Luis") != std::string::npos);
+  REQUIRE(shared.structured["events"].size() == 3);
+  int sharedCount = 0;
+  for (const auto& event : shared.structured["events"]) {
+    CHECK(event["shared"].asBool() == (event["title"].asString() == "De Luis"));
+    sharedCount += event["shared"].asBool() ? 1 : 0;
+  }
+  CHECK(sharedCount == 1);
+
+  const auto luis = env.luis("calendar.list_events", args({{"from", "2030-03-06T00:00:00+00:00"}, {"to", "2030-03-08T00:00:00+00:00"}}));
+  CHECK(luis.structured["events"].size() == 1);
+
+  DbService::productivityClient()->execSqlSync(
+      "UPDATE calendar_event_share SET deleted_at = strftime('%s', 'now') WHERE user_id = ?", kAna);
+  const auto revoked = env.ana("calendar.list_events", args({{"from", "2030-03-06T00:00:00+00:00"}, {"to", "2030-03-08T00:00:00+00:00"}}));
+  CHECK(revoked.structured["events"].size() == 2);
 }
 
 struct CancelExpectation
@@ -494,7 +518,7 @@ TEST_CASE("the productivity tools act for the caller on the caller's own rows")
   creatingAnEventBelongsToTheCaller(env);
   theReadBackNamesTheDayAndTheTimeInWords(env);
   anEventNeedsAUnderstandableStart(env);
-  listingShowsOnlyTheCallersEvents(env);
+  listingShowsTheCallersEventsAndThoseSharedWithThem(env);
   cancellingNeedsTheConfirmationCodeAndTheOwner(env, kSpanishCancel);
   cancellingNeedsTheConfirmationCodeAndTheOwner(env, kEnglishCancel);
   anotherUsersEventCannotBeNamedOrCancelled(env);

@@ -114,6 +114,13 @@ inline constexpr std::string_view FIND_BY_OWNER_RANGE =
     "AND starts_at >= ? AND starts_at <= ? "
     "ORDER BY starts_at ASC";
 
+inline constexpr std::string_view FIND_VISIBLE_RANGE =
+    "SELECT * FROM calendar_event WHERE deleted_at IS NULL "
+    "AND starts_at >= ? AND starts_at <= ? AND (owner_id = ? OR id IN ("
+    "SELECT calendar_event_id FROM calendar_event_share "
+    "WHERE user_id = ? AND deleted_at IS NULL)) "
+    "ORDER BY starts_at ASC, id ASC";
+
 inline constexpr std::string_view INSERT =
     "INSERT INTO calendar_event (created_by, owner_id, project_id, title, description, location, color, starts_at, ends_at, is_all_day, recurrence_rule) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
