@@ -11,33 +11,53 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace
 {
-const std::string kHomeId = "0123456789abcdef0123456789abcdef";
-const std::string kDomain = "argus-tunnel.lynk.page";
+constexpr std::string_view kHomeId = "0123456789abcdef0123456789abcdef";
+constexpr std::string_view kDomain = "argus-tunnel.lynk.page";
 constexpr int64_t kT0 = 1'790'000'000'000;
+constexpr int64_t kSince = 1'790'000'000;
 
-std::string frame(std::string_view link, int64_t since = 1'790'000'000, const std::string& homeId = kHomeId,
-                  const std::string& domain = kDomain)
+struct FrameFields
+{
+  std::string_view link;
+  int64_t since;
+  std::string_view homeId;
+  std::string_view domain;
+};
+
+std::string frameOf(const FrameFields& fields)
 {
   Json::Value json(Json::objectValue);
-  json["homeId"] = homeId;
-  json["domain"] = domain;
-  json["link"] = std::string(link);
-  json["since"] = static_cast<Json::Int64>(since);
+  json["homeId"] = std::string(fields.homeId);
+  json["domain"] = std::string(fields.domain);
+  json["link"] = std::string(fields.link);
+  json["since"] = static_cast<Json::Int64>(fields.since);
   Json::StreamWriterBuilder builder;
   builder["indentation"] = "";
   return Json::writeString(builder, json);
 }
 
+std::string frame(std::string_view link, int64_t since = kSince)
+{
+  return frameOf({.link = link, .since = since, .homeId = kHomeId, .domain = kDomain});
+}
+
+std::optional<routes::RemoteLinkState> stateOf(routes::RemoteLink link, int64_t since)
+{
+  return routes::RemoteLinkState{
+      .homeId = std::string(kHomeId), .domain = std::string(kDomain), .link = link, .since = since};
+}
+
 std::string withField(const std::string& key, const Json::Value& value)
 {
   Json::Value json(Json::objectValue);
-  json["homeId"] = kHomeId;
-  json["domain"] = kDomain;
+  json["homeId"] = std::string(kHomeId);
+  json["domain"] = std::string(kDomain);
   json["link"] = "up";
-  json["since"] = static_cast<Json::Int64>(1'790'000'000);
+  json["since"] = static_cast<Json::Int64>(kSince);
   json[key] = value;
   Json::StreamWriterBuilder builder;
   builder["indentation"] = "";
@@ -64,11 +84,7 @@ TEST_CASE("a valid frame becomes the state, with the four fields as sent")
   auto subject = gate();
   CHECK_FALSE(subject.state().has_value());
   CHECK(subject.ingest(frame("up"), kT0) == routes::RemoteLinkRefusal::None);
-  REQUIRE(subject.state().has_value());
-  CHECK(subject.state()->homeId == kHomeId);
-  CHECK(subject.state()->domain == kDomain);
-  CHECK(subject.state()->link == routes::RemoteLink::Up);
-  CHECK(subject.state()->since == 1'790'000'000);
+  CHECK(subject.state() == stateOf(routes::RemoteLink::Up, kSince));
 }
 
 TEST_CASE("a frame whose home id is not 32 hex characters is dropped")
@@ -139,8 +155,7 @@ TEST_CASE("the trailing frame carries the latest state of the window")
   subject.ingest(frame("down", 1'790'000'001), kT0 + 1'000);
   subject.ingest(frame("connecting", 1'790'000'002), kT0 + 2'000);
   REQUIRE(subject.shouldSend(kT0 + 5'000));
-  CHECK(subject.state()->link == routes::RemoteLink::Connecting);
-  CHECK(subject.state()->since == 1'790'000'002);
+  CHECK(subject.state() == stateOf(routes::RemoteLink::Connecting, 1'790'000'002));
   subject.markSent(kT0 + 5'000);
   CHECK_FALSE(subject.shouldSend(kT0 + 20'000));
 }
@@ -163,10 +178,17 @@ TEST_CASE("a new home id or domain is a change, a since alone is not")
   subject.markSent(kT0);
   subject.ingest(frame("up", 1'790'000'500), kT0 + 30'000);
   CHECK_FALSE(subject.shouldSend(kT0 + 30'000));
-  subject.ingest(frame("up", 1'790'000'500, "fedcba9876543210fedcba9876543210"), kT0 + 31'000);
+  subject.ingest(frameOf({.link = "up",
+                          .since = 1'790'000'500,
+                          .homeId = "fedcba9876543210fedcba9876543210",
+                          .domain = kDomain}),
+                 kT0 + 31'000);
   CHECK(subject.shouldSend(kT0 + 31'000));
   subject.markSent(kT0 + 31'000);
-  subject.ingest(frame("up", 1'790'000'500, "fedcba9876543210fedcba9876543210", "relay.example.com"),
+  subject.ingest(frameOf({.link = "up",
+                          .since = 1'790'000'500,
+                          .homeId = "fedcba9876543210fedcba9876543210",
+                          .domain = "relay.example.com"}),
                  kT0 + 40'000);
   CHECK(subject.shouldSend(kT0 + 40'000));
 }
@@ -177,14 +199,10 @@ TEST_CASE("after 90 seconds with no frame the link reads down and the home id st
   subject.ingest(frame("up"), kT0);
   subject.markSent(kT0);
   CHECK_FALSE(subject.expire(kT0 + 90'000));
-  CHECK(subject.state()->link == routes::RemoteLink::Up);
+  CHECK(subject.state() == stateOf(routes::RemoteLink::Up, kSince));
   subject.ingest(withField("link", "nonsense"), kT0 + 60'000);
   CHECK(subject.expire(kT0 + 90'001));
-  REQUIRE(subject.state().has_value());
-  CHECK(subject.state()->link == routes::RemoteLink::Down);
-  CHECK(subject.state()->homeId == kHomeId);
-  CHECK(subject.state()->domain == kDomain);
-  CHECK(subject.state()->since == kT0 / 1000);
+  CHECK(subject.state() == stateOf(routes::RemoteLink::Down, kT0 / 1000));
   CHECK(subject.shouldSend(kT0 + 90'001));
   CHECK_FALSE(subject.expire(kT0 + 200'000));
   subject.markSent(kT0 + 90'001);
@@ -215,12 +233,10 @@ TEST_CASE("the feed puts each valid state into the context and keeps it through 
   userContext().setRemote(std::nullopt);
   auto subject = feed();
   subject.ingest(frame("up"), kT0);
-  REQUIRE(userContext().remote().has_value());
-  CHECK(userContext().remote()->link == routes::RemoteLink::Up);
+  CHECK(userContext().remote() == stateOf(routes::RemoteLink::Up, kSince));
   subject.ingest(withField("link", "sideways"), kT0 + 1'000);
-  CHECK(userContext().remote()->link == routes::RemoteLink::Up);
+  CHECK(userContext().remote() == stateOf(routes::RemoteLink::Up, kSince));
   subject.tick(kT0 + 90'001);
-  CHECK(userContext().remote()->link == routes::RemoteLink::Down);
-  CHECK(userContext().remote()->homeId == kHomeId);
+  CHECK(userContext().remote() == stateOf(routes::RemoteLink::Down, kT0 / 1000));
   userContext().setRemote(std::nullopt);
 }
