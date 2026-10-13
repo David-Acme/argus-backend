@@ -75,4 +75,64 @@ grep -qx argus-llm <<<"$unzoned" \
 grep -Eq '^  ensure_env_value "\$env_file" ARGUS_TZ "\$\(host_timezone\)"$' "$ROOT/scripts/provision-host.sh" \
   || fail "provision-host.sh does not write ARGUS_TZ from the host zone"
 
+zone_script() {
+  local etc="$1"
+  printf 'source %q\n' "$ROOT/scripts/lib/common.sh"
+  awk '
+    /^(zone_from_path|host_timezone)\(\) \{$/ { on = 1 }
+    on { print }
+    on && /^}$/ { on = 0 }
+  ' "$ROOT/scripts/provision-host.sh" | sed -e "s#/etc/localtime#$etc/localtime#g" -e "s#/etc/timezone#$etc/timezone#g"
+  printf 'host_timezone\n'
+}
+
+mkdir -p "$TEST_TMP/no-zone" "$TEST_TMP/linked-zone"
+zone_script "$TEST_TMP/no-zone" > "$TEST_TMP/no-zone.sh"
+env -u TZ bash "$TEST_TMP/no-zone.sh" > "$TEST_TMP/no-zone.out" 2> "$TEST_TMP/no-zone.err"
+[ "$(cat "$TEST_TMP/no-zone.out")" = "UTC" ] \
+  || fail "host_timezone without a zone source printed '$(cat "$TEST_TMP/no-zone.out")' instead of UTC"
+grep -q 'ARGUS_TZ falls back to UTC' "$TEST_TMP/no-zone.err" \
+  || fail "host_timezone without a zone source did not warn on stderr"
+
+ln -s /usr/share/zoneinfo/America/Lima "$TEST_TMP/linked-zone/localtime"
+zone_script "$TEST_TMP/linked-zone" > "$TEST_TMP/linked-zone.sh"
+env -u TZ bash "$TEST_TMP/linked-zone.sh" > "$TEST_TMP/linked-zone.out" 2> "$TEST_TMP/linked-zone.err"
+[ "$(cat "$TEST_TMP/linked-zone.out")" = "America/Lima" ] \
+  || fail "host_timezone did not read the zone /etc/localtime links to"
+[ ! -s "$TEST_TMP/linked-zone.err" ] || fail "host_timezone warned although the host zone was readable"
+
+runtime_packages() {
+  awk '
+    / AS runtime$/ { stage = 1; next }
+    !stage { next }
+    {
+      for (i = 1; i <= NF; i++) {
+        if ($i == "install" && i > 1 && $(i - 1) == "apt-get") { listing = 1; continue }
+        if ($i == "&&") listing = 0
+        if (listing && $i != "\\" && $i !~ /^-/) print $i
+      }
+    }
+  ' "$1"
+}
+
+images_without_tzdata() {
+  local dockerfile packages
+  for dockerfile in "$@"; do
+    packages="$(runtime_packages "$dockerfile")"
+    grep -qx tzdata <<<"$packages" || echo "$dockerfile"
+  done
+}
+
+dockerfiles=("$ROOT"/services/*/Dockerfile)
+[ "${#dockerfiles[@]}" -ge 14 ] || fail "the service Dockerfiles are too few to be the stack"
+[ -z "$(images_without_tzdata "${dockerfiles[@]}")" ] \
+  || fail "runtime images without tzdata: $(images_without_tzdata "${dockerfiles[@]}" | tr '\n' ' ')"
+
+sed -E -e 's/[[:space:]]tzdata([[:space:]])/\1/' -e 's/build-essential /build-essential tzdata /' \
+  "$ROOT/services/auth/Dockerfile" > "$TEST_TMP/Dockerfile"
+grep -q 'build-essential tzdata ' "$TEST_TMP/Dockerfile" \
+  || fail "the negative Dockerfile lost the build-stage tzdata it must ignore"
+[ "$(images_without_tzdata "$TEST_TMP/Dockerfile")" = "$TEST_TMP/Dockerfile" ] \
+  || fail "a runtime image without tzdata was not reported"
+
 printf 'deploy-mounts-test: ok\n'

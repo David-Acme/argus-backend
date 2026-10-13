@@ -47,7 +47,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates libgcc-s1 libgomp1 libstdc++6 libvulkan1 \
       mesa-vulkan-drivers curl ffmpeg \
-      libgrpc++1.51t64 libgrpc29t64 \
+      libgrpc++1.51t64 libgrpc29t64 tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt/argus

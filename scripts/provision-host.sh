@@ -180,7 +180,11 @@ host_timezone() {
   if [ -z "$zone" ] && [ -r /etc/timezone ]; then
     zone="$(head -n 1 /etc/timezone)"
   fi
-  printf '%s\n' "${zone:-UTC}"
+  if [ -z "$zone" ]; then
+    warn "The host zone could not be read; ARGUS_TZ falls back to UTC (run with TZ=<Area/City> to set it)." >&2
+    zone="UTC"
+  fi
+  printf '%s\n' "$zone"
 }
 
 write_env() {
