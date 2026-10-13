@@ -13,6 +13,7 @@
 #include <shared/services/face/face-check.hxx>
 #include <shared/services/face/face-db.hxx>
 #include <shared/services/face/member-match.hxx>
+#include <shared/services/person-feed/person-feed.hxx>
 #include <shared/services/storage/private-portrait-service.hxx>
 #include <string>
 #include <vector>
@@ -88,6 +89,7 @@ private:
   EnrollmentRepository enrollmentRepository_;
   UserRepository userRepository_;
   PersonRepository personRepository_;
+  PersonFeed personFeed_;
   UserInvitationRepository invitationRepository_;
   InvitationRedemption redemption_;
   PrivatePortraitService privatePortraitService_;

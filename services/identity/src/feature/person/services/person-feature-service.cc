@@ -18,12 +18,14 @@ bool trustedPerson(const PersonSchema& person)
 
 drogon::Task<bool> PersonFeatureService::touch(int64_t personId, int64_t at) const
 {
-  const auto person = co_await personRepository_.update(
-      personId, {.name = std::nullopt,
-                 .alias = std::nullopt,
-                 .observation = std::nullopt,
-                 .lastSeenAt = at});
-  co_return person.id > 0;
+  const auto person = co_await recordChange({.personId = personId,
+                                             .change = {.name = std::nullopt,
+                                                        .alias = std::nullopt,
+                                                        .observation = std::nullopt,
+                                                        .lastSeenAt = at,
+                                                        .client = nullptr},
+                                             .actorId = std::nullopt});
+  co_return person.has_value();
 }
 
 drogon::Task<int> PersonFeatureService::tag(const PersonTagRequest& request) const
@@ -31,12 +33,43 @@ drogon::Task<int> PersonFeatureService::tag(const PersonTagRequest& request) con
   const int added = co_await tagRepository_.addMany(
       {.personId = request.personId, .tags = request.tags, .source = request.source});
   if (!request.observation.empty())
-    co_await personRepository_.update(request.personId,
-                                      {.name = std::nullopt,
-                                       .alias = std::nullopt,
-                                       .observation = request.observation,
-                                       .lastSeenAt = std::nullopt});
+    co_await recordChange({.personId = request.personId,
+                           .change = {.name = std::nullopt,
+                                      .alias = std::nullopt,
+                                      .observation = request.observation,
+                                      .lastSeenAt = std::nullopt,
+                                      .client = nullptr},
+                           .actorId = std::nullopt});
   co_return added;
+}
+
+drogon::Task<std::optional<PersonSchema>>
+PersonFeatureService::recordChange(const PersonChangeRequest& request) const
+{
+  std::optional<PersonSchema> after;
+  auto transaction = co_await db_transaction::begin(DbService::identityClient());
+  try {
+    const auto before =
+        co_await personRepository_.findById(request.personId, transaction.get());
+    if (!before) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+    PersonUpdateInput change = request.change;
+    change.client = transaction.get();
+    after = co_await personRepository_.update(request.personId, change);
+    co_await personFeed_.changed({.before = *before,
+                                  .after = *after,
+                                  .actorId = request.actorId,
+                                  .client = transaction.get()});
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(IdentityErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_return after;
 }
 
 drogon::Task<std::vector<std::string>> PersonFeatureService::tags(int64_t personId) const
@@ -124,13 +157,11 @@ PersonFeatureService::promote(const PersonPromoteRequest& request) const
       const auto after =
           co_await personRepository_.findById(request.personId, transaction.get());
       const auto* sink = identity_change::getSink();
-      if (after && sink != nullptr && after->userId)
-        co_await sink->publishModuleAudit({.recordId = request.personId,
-                                           .tableName = TableName::Person,
-                                           .before = before->toJson(),
-                                           .after = after->toJson(),
-                                           .actorId = request.actorId,
-                                           .client = transaction.get()});
+      if (after && after->isHousehold())
+        co_await personFeed_.changed({.before = *before,
+                                      .after = *after,
+                                      .actorId = request.actorId,
+                                      .client = transaction.get()});
       else if (after && sink != nullptr) {
         Json::Value data(Json::objectValue);
         data["event"] = "visitor_promote";

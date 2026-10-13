@@ -10,6 +10,7 @@
 #include <optional>
 #include <shared/repositories/person/person-repository.hxx>
 #include <shared/repositories/user/user-repository.hxx>
+#include <shared/services/person-feed/person-feed.hxx>
 #include <shared/services/privacy/privacy-gate.hxx>
 #include <string>
 #include <vector>
@@ -26,6 +27,13 @@ struct PersonPromoteRequest
 {
   int64_t personId{0};
   int64_t actorId{0};
+};
+
+struct PersonChangeRequest
+{
+  int64_t personId{0};
+  PersonUpdateInput change;
+  std::optional<int64_t> actorId;
 };
 
 struct HouseholdMatchRequest
@@ -78,7 +86,11 @@ public:
   promote(const PersonPromoteRequest& request) const;
 
 private:
+  [[nodiscard]] drogon::Task<std::optional<PersonSchema>>
+  recordChange(const PersonChangeRequest& request) const;
+
   PersonRepository personRepository_;
+  PersonFeed personFeed_;
   PersonTagRepository tagRepository_;
   UserRepository userRepository_;
   VisitorRepository visitorRepository_;

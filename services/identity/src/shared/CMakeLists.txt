@@ -26,6 +26,7 @@ argus_module(NAME identity-shared
         services/face-crop/face-crop-store.cc
         repositories/visitor-setting/visitor-setting-repository.cc
         services/object-deletion/object-deletion-worker.cc
+        services/person-feed/person-feed.cc
         services/privacy/privacy-gate.cc
         services/schema/column-migration.cc
         services/schema/secure-delete.cc

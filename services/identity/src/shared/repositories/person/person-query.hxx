@@ -121,4 +121,5 @@ struct PersonUpdateInput
   std::optional<std::string> alias;
   std::optional<std::string> observation;
   std::optional<int64_t> lastSeenAt;
+  drogon::orm::DbClient* client{nullptr};
 };

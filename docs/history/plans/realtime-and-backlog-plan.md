@@ -135,8 +135,15 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   `reminder_detail` (no writer), `person` (no live emit; four fields dropped by the mapper; missing from
   the surveillance purge list `module.constant.ts:19`). Feed each one or remove it from
   `SYNC_TABLE_KEYS` and its projections.
+  - Ruled and landed 2026-10-12: `person` is fed (identity's `PersonFeed`: `Add` on enrolment,
+    module-audit diffs on touch, observation and promotion, household rows only, the eleven pull
+    fields); it stays core, so no purge-list entry. `camera_stream` and `reminder_detail` leave the
+    client (frontend `32c8f32`, schema v11), the server keeps serving them under D8. No path
+    soft-deletes a household person yet, so no `Delete` frame exists until one does.
 - R26 While a module is off its tables are skipped in audit pulls but the client cursor advances, so
   changes in that window are lost after re-enabling.
+  - Landed 2026-10-12 (frontend `32c8f32`): a module that goes from off to on drops its local
+    tables and cursors and re-pulls them from zero; the shared audit watermark carries on.
 
 ## 3. Laya and GLiNER in the product (not training)
 
@@ -234,12 +241,17 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 - D6 Stale docs: `AGENTS.md:1086` (steps 2b-2d are done), `services/sync/CONTEXT.md:437` (the outbox
   landed), `tool-calling-reduction-plan.md` (superseded by the decider + slots design),
   `frontend/CONTEXT.md:305` and `:541`.
-- D8 Named cleanup from the `event` retirement (2026-10-12): stop serving `event` in
-  `SynchronizedService` and drop it from the pull list, once no supported client asks for it. The new
-  client no longer pulls it and ignores a frame for it, but an installed app still does, so the server
-  keeps its empty answer (`emptyTableNode`, the `{"event", ...}` pull row, the DTO field) until the
-  supported client set has moved. The enumerator itself stays for ever: `TableName`'s values are on the
-  wire and `sync-contract-vocabulary-test` pins every one of them.
+- D8 Named cleanup from the retirement of three writerless tables (2026-10-12): `event`
+  (frontend `5ee5a8f`, schema v10), `camera_stream` and `reminder_detail` (frontend `32c8f32`,
+  schema v11). Stop serving them in `SynchronizedService` and drop them from the pull list, once no
+  supported client asks for them. The new client no longer pulls them and ignores a frame for them,
+  but an installed app still does, so the server keeps its answers (`emptyTableNode` and the
+  `{"event", ...}` pull row and DTO field for `event`; the `camera_stream` and `reminder_detail`
+  pull rows and DTO fields) until the supported client set has moved. The enumerators stay for
+  ever: `TableName`'s values are on the wire and `sync-contract-vocabulary-test` pins every one of
+  them. Two of them may get a real writer later rather than go: F1 (recording) could feed
+  `camera_stream` and F6 (reminder snooze and recurrence) `reminder_detail`; a feature that does so
+  brings the table back to the client as a new schema version, never by reviving the dropped one.
 - D7 Named cleanup from the encounter-outbox migration (2026-10-12): drop `guard_encounter_outbox`
   once every installation has booted a build that carries the copy into `change_outbox`. It is no
   longer created and no longer read or written, but deleting it is a data removal and needs an

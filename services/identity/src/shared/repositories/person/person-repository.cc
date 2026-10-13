@@ -100,7 +100,8 @@ drogon::Task<bool> PersonRepository::promote(int64_t id,
 drogon::Task<PersonSchema>
 PersonRepository::update(int64_t id, const PersonUpdateInput& input) const
 {
-  auto client = DbService::client();
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
   std::string sql = UPDATE_PREFIX.data();
   std::vector<std::string> args;
 
@@ -125,7 +126,7 @@ PersonRepository::update(int64_t id, const PersonUpdateInput& input) const
   }
 
   if (args.empty()) {
-    auto existing = co_await findById(id);
+    auto existing = co_await findById(id, input.client);
     if (!existing) {
       LOG_WARN << "Person not found for update";
       co_return {};
@@ -138,7 +139,7 @@ PersonRepository::update(int64_t id, const PersonUpdateInput& input) const
   const auto& argsRef = args;
   co_await client->execSqlCoro(sql, argsRef);
 
-  auto updated = co_await findById(id);
+  auto updated = co_await findById(id, input.client);
   if (!updated) {
     LOG_WARN << "Person not found after update";
     co_return {};

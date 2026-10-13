@@ -223,6 +223,10 @@ EnrollmentFeatureService::registerUser(const EnrollmentInput& input) const
            .client = transaction.get()});
     }
 
+    if (const auto person =
+            co_await personRepository_.findById(personId, transaction.get()))
+      co_await personFeed_.added({.person = *person, .client = transaction.get()});
+
     if (const auto* sink = identity_change::getSink()) {
       Json::Value personRow(Json::objectValue);
       personRow["id"] = static_cast<Json::Int64>(personId);

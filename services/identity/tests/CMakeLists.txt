@@ -255,6 +255,21 @@ target_compile_options(identity-visitor-policy-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-visitor-policy-test)
 add_test(NAME identity-visitor-policy-test COMMAND identity-visitor-policy-test)
 
+add_executable(identity-person-feed-test unit/identity-person-feed-test.cc)
+target_link_libraries(identity-person-feed-test PRIVATE argus::lib::test-support)
+target_compile_definitions(identity-person-feed-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+target_link_libraries(identity-person-feed-test PRIVATE
+    argus::identity-person
+    argus::identity-shared
+    argus::lib::sqlite
+    argus::contracts::sync
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-person-feed-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-person-feed-test)
+add_test(NAME identity-person-feed-test COMMAND identity-person-feed-test)
+
 add_executable(identity-visitor-test unit/identity-visitor-test.cc)
 target_link_libraries(identity-visitor-test PRIVATE argus::lib::test-support)
 target_compile_definitions(identity-visitor-test PRIVATE

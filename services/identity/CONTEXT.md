@@ -407,7 +407,22 @@ session on that device (`hasActiveSession`), promotes, and publishes the
 named person without a user) is journaled as a `visitor_promote` action
 instead, because a module audit reaches every Resident and Guard socket and
 visitors are Owner data (rule 7b, audit #8). `person.status` (`candidate`/`known`) defaults to
-`known` for legacy rows; `IdentifyPerson` reports
+`known` for legacy rows.
+
+**The household person stream is live** (R25, 2026-10-12). `person` is a core
+synced table, and `PersonFeed` (`shared/services/person-feed/`) is the one place
+its frames are built, always from `PersonSchema::toHouseholdJson()` - the eleven
+fields the `PullTable` leg already serves (`id`, `userId`, `name`, `alias`,
+`observation`, `status`, `firstSeenAt`, `lastSeenAt`, `createdAt`, `updatedAt`,
+`deletedAt`), never `category`, `note`, `visitorNumber` or `visitCount`.
+Enrolment emits an `Add` with the household row read back inside its own
+transaction; `TouchPerson`, a `TagPerson` observation and `PromotePerson`
+publish the module audit diff of that projection in the transaction of the
+write. Both are no-ops for a person without a user, so no visitor write reaches
+the stream (`identity-person-feed-test`, and `identity-visitor-test` counts zero
+person frames over a whole visitor lifecycle). No path soft-deletes a household
+person today (`PersonRepository::remove` has no caller), so no `Delete` frame is
+built until one does. `IdentifyPerson` reports
 `trusted = (status == known)` and attaches the linked user only for active
 users.
 

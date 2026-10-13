@@ -30,6 +30,7 @@ struct PersonSchema
   PersonSchema() = default;
   explicit PersonSchema(const drogon::orm::Row& row);
   [[nodiscard]] Json::Value toJson() const;
+  [[nodiscard]] Json::Value toHouseholdJson() const;
   [[nodiscard]] bool isHousehold() const { return userId.has_value(); }
   [[nodiscard]] bool isNamed() const { return !name.empty(); }
 };

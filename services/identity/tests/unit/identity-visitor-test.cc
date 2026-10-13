@@ -122,13 +122,17 @@ public:
     co_return;
   }
   [[nodiscard]] drogon::Task<void>
-  emitModule(const ModuleEmitInput&) const override
+  emitModule(const ModuleEmitInput& input) const override
   {
+    if (input.table == TableName::Person || input.body.option == TableName::Person)
+      ++personFrames_;
     co_return;
   }
   [[nodiscard]] drogon::Task<void>
-  publishModuleAudit(const ModuleAuditInput&) const override
+  publishModuleAudit(const ModuleAuditInput& input) const override
   {
+    if (input.tableName == TableName::Person)
+      ++personFrames_;
     co_return;
   }
   [[nodiscard]] drogon::Task<void>
@@ -157,8 +161,11 @@ public:
 
   void drain() const { resources_.clear(); }
 
+  [[nodiscard]] int personFrames() const { return personFrames_; }
+
 private:
   mutable std::vector<IdentityResourceInput> resources_;
+  mutable int personFrames_{0};
 };
 
 TEST_CASE("recurring unknown faces become numbered visitors, the household never "
@@ -368,6 +375,11 @@ TEST_CASE("recurring unknown faces become numbered visitors, the household never
               "deleted_at IS NULL") == 1);
   const auto ignored = observe(recognition, "barratt-b.jpg", t0 + 100100);
   CHECK(ignored.decision.outcome == SightingOutcome::Disabled);
+
+  {
+    INFO("no visitor write reaches the household person stream");
+    CHECK(sink.personFrames() == 0);
+  }
 
   identity_change::setSink(nullptr);
   for (const char* suffix : {"", "-wal", "-shm"})

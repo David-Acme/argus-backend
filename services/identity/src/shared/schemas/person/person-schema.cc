@@ -76,3 +76,20 @@ Json::Value PersonSchema::toJson() const
   json["deletedAt"] = deletedAt ? Json::Value(static_cast<Json::Int64>(*deletedAt)) : Json::Value();
   return json;
 }
+
+Json::Value PersonSchema::toHouseholdJson() const
+{
+  Json::Value json(Json::objectValue);
+  json["id"] = static_cast<Json::Int64>(id);
+  json["userId"] = userId ? Json::Value(static_cast<Json::Int64>(*userId)) : Json::Value();
+  json["name"] = name;
+  json["alias"] = alias;
+  json["observation"] = observation;
+  json["status"] = personStatusToString(status);
+  json["firstSeenAt"] = static_cast<Json::Int64>(firstSeenAt);
+  json["lastSeenAt"] = static_cast<Json::Int64>(lastSeenAt);
+  json["createdAt"] = static_cast<Json::Int64>(createdAt);
+  json["updatedAt"] = updatedAt ? Json::Value(static_cast<Json::Int64>(*updatedAt)) : Json::Value();
+  json["deletedAt"] = deletedAt ? Json::Value(static_cast<Json::Int64>(*deletedAt)) : Json::Value();
+  return json;
+}
