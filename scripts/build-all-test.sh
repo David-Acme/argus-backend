@@ -529,6 +529,7 @@ run_script_test internal-pki-test.sh
 run_script_test rpc-credentials-test.sh
 run_script_test install-model-bundle-test.sh
 run_script_test deploy-mounts-test.sh
+run_script_test port-map-test.sh
 
 echo "build-all tests passed"
 if [ "${#skipped[@]}" -gt 0 ]; then
