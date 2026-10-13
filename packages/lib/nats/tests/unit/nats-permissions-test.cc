@@ -1,6 +1,5 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <algorithm>
-#include <array>
 #include <doctest/doctest.h>
 #include <filesystem>
 #include <fstream>
@@ -15,13 +14,8 @@
 
 namespace
 {
-using nats_permissions::ConsumerKind;
 using nats_permissions::Grants;
 using nats_permissions::ServicePermissions;
-using nats_permissions::StreamUse;
-
-constexpr std::array<std::string_view, 1> kRuledWildcards{
-    "argus.recorder.v1.>"};
 
 std::filesystem::path deployDir()
 {
@@ -65,29 +59,10 @@ bool literalSubject(std::string_view subject)
   });
 }
 
-bool wildcardTree(std::string_view subject)
-{
-  const auto tokens = tokensOf(subject);
-  return tokens.size() > 1 && tokens.back() == ">" &&
-         std::all_of(tokens.begin(), tokens.end() - 1, [](std::string_view t) {
-           return printableToken(t) && t != "*" && t != ">";
-         });
-}
-
 bool validName(std::string_view name)
 {
   return printableToken(name) &&
          name.find_first_of(".*>/\\") == std::string_view::npos;
-}
-
-bool covers(std::string_view grant, std::string_view subject)
-{
-  if (grant == subject)
-    return true;
-  if (!wildcardTree(grant))
-    return false;
-  const std::string_view stem = grant.substr(0, grant.size() - 1);
-  return subject.size() > stem.size() && subject.starts_with(stem);
 }
 
 std::vector<std::string_view> namedSubjects(const ServicePermissions& row)
@@ -97,8 +72,7 @@ std::vector<std::string_view> namedSubjects(const ServicePermissions& row)
   subjects.insert(subjects.end(), row.stores.begin(), row.stores.end());
   subjects.insert(subjects.end(), row.subscribes.begin(), row.subscribes.end());
   for (const auto& consumer : row.consumers)
-    subjects.insert(subjects.end(), consumer.subjects.begin(),
-                    consumer.subjects.end());
+    subjects.push_back(consumer.subject);
   return subjects;
 }
 
@@ -287,41 +261,23 @@ TEST_CASE("a service has one row, and its inbox is its own")
   CHECK(nats_permissions::inboxPrefix("sync") == "_INBOX.sync");
 }
 
-TEST_CASE(
-    "a row names literal subjects, and only the ruled trees are wildcards")
+TEST_CASE("a row names literal subjects, streams and consumers")
 {
-  std::set<std::string, std::less<>> wildcards;
   for (const auto& row : nats_permissions::table()) {
-    for (const auto subject : namedSubjects(row)) {
-      if (wildcardTree(subject)) {
-        wildcards.emplace(subject);
-        continue;
-      }
+    for (const auto subject : namedSubjects(row))
       CHECK_MESSAGE(literalSubject(subject),
-                    row.service << " names a malformed subject: " << subject);
-    }
-    for (const auto& grant : row.streams)
-      CHECK_MESSAGE(validName(grant.stream),
-                    row.service << " names stream " << grant.stream);
+                    row.service << " names a wildcard or a malformed subject: "
+                                << subject);
+    for (const auto stream : row.streams)
+      CHECK_MESSAGE(validName(stream),
+                    row.service << " names stream " << stream);
     for (const auto& consumer : row.consumers) {
       CHECK_MESSAGE(validName(consumer.stream),
                     row.service << " names stream " << consumer.stream);
       CHECK_MESSAGE(validName(consumer.name),
                     row.service << " names consumer " << consumer.name);
-      CHECK_MESSAGE(!consumer.subjects.empty(),
-                    consumer.name << " names no subject");
     }
   }
-  const std::set<std::string, std::less<>> ruled(kRuledWildcards.begin(),
-                                                 kRuledWildcards.end());
-  CHECK(wildcards == ruled);
-  for (const auto& row : nats_permissions::table())
-    for (const auto subject : row.publishes)
-      if (wildcardTree(subject))
-        CHECK_MESSAGE(subject.starts_with("argus." + std::string(row.service) +
-                                          "."),
-                      row.service
-                          << " publishes a tree outside its own domain");
 }
 
 TEST_CASE("sync's row is an explicit list, one durable per feed it drains")
@@ -333,11 +289,8 @@ TEST_CASE("sync's row is an explicit list, one durable per feed it drains")
   CHECK(sync.stores.empty());
   CHECK(sync.streams.empty());
   std::set<std::string_view> drained;
-  for (const auto& consumer : sync.consumers) {
-    CHECK(consumer.kind == ConsumerKind::Push);
-    CHECK(consumer.subjects.size() == 1);
-    drained.insert(consumer.subjects.front());
-  }
+  for (const auto& consumer : sync.consumers)
+    drained.insert(consumer.subject);
   for (const auto& row : nats_permissions::table())
     for (const auto subject : row.stores)
       if (subject.ends_with(".change") || subject.ends_with(".user-action") ||
@@ -352,9 +305,7 @@ TEST_CASE("a consumer binds to a stream some row creates, under its own name")
 {
   std::set<std::string_view> created;
   for (const auto& row : nats_permissions::table())
-    for (const auto& grant : row.streams)
-      if (grant.use != StreamUse::Inspect)
-        created.insert(grant.stream);
+    created.insert(row.streams.begin(), row.streams.end());
   std::set<std::pair<std::string_view, std::string_view>> names;
   for (const auto& row : nats_permissions::table()) {
     for (const auto& consumer : row.consumers) {
@@ -380,10 +331,7 @@ TEST_CASE("a core subscription names a subject some row publishes")
     for (const auto subject : row.subscribes) {
       if (subject.starts_with("$JS.EVENT."))
         continue;
-      CHECK_MESSAGE(std::ranges::any_of(published,
-                                        [subject](std::string_view grant) {
-                                          return covers(grant, subject);
-                                        }),
+      CHECK_MESSAGE(std::ranges::find(published, subject) != published.end(),
                     row.service << " subscribes to " << subject
                                 << ", which no row publishes");
     }
@@ -401,54 +349,33 @@ TEST_CASE("no direction renders an empty allow list, which the broker reads as "
         std::vector<std::string>{nats_subject::kNotificationPushIntent});
 }
 
-TEST_CASE("the JetStream grants follow from the stream and consumer use")
+TEST_CASE("the JetStream grants follow from the streams and durables of a row")
 {
-  const ServicePermissions
-      row{.service = "probe",
-          .publishes = {},
-          .stores = {"argus.probe.v1.change"},
-          .subscribes = {},
-          .streams = {{.stream = "S_INSPECT", .use = StreamUse::Inspect},
-                      {.stream = "S_CREATE", .use = StreamUse::Create},
-                      {.stream = "S_ENSURE", .use = StreamUse::Ensure}},
-          .consumers = {{.stream = "S_ENSURE",
-                         .name = "pushed",
-                         .subjects = {"argus.probe.v1.change"},
-                         .kind = ConsumerKind::Push,
-                         .recreates = true},
-                        {.stream = "S_CREATE",
-                         .name = "pulled",
-                         .subjects = {"argus.probe.v1.change"},
-                         .kind = ConsumerKind::Pull,
-                         .recreates = false}}};
+  const ServicePermissions row{.service = "probe",
+                               .publishes = {},
+                               .stores = {"argus.probe.v1.change"},
+                               .subscribes = {},
+                               .streams = {"S_PROBE"},
+                               .consumers = {{.stream = "S_PROBE",
+                                              .name = "kept",
+                                              .subject =
+                                                  "argus.probe.v1.change",
+                                              .recreates = false},
+                                             {.stream = "S_PROBE",
+                                              .name = "recreated",
+                                              .subject =
+                                                  "argus.probe.v1.change",
+                                              .recreates = true}}};
   const Grants grants = nats_permissions::grantsFor(row);
-  CHECK(
-      grants.publish ==
-      sorted({"$JS.ACK.S_CREATE.pulled.>", "$JS.ACK.S_ENSURE.pushed.>",
-              "$JS.API.CONSUMER.CREATE.S_CREATE.pulled",
-              "$JS.API.CONSUMER.CREATE.S_CREATE.pulled.>",
-              "$JS.API.CONSUMER.DELETE.S_ENSURE.pushed",
-              "$JS.API.CONSUMER.DURABLE.CREATE.S_ENSURE.pushed",
-              "$JS.API.CONSUMER.INFO.S_CREATE.pulled",
-              "$JS.API.CONSUMER.INFO.S_ENSURE.pushed",
-              "$JS.API.CONSUMER.MSG.NEXT.S_CREATE.pulled",
-              "$JS.API.STREAM.CREATE.S_CREATE",
-              "$JS.API.STREAM.CREATE.S_ENSURE", "$JS.API.STREAM.INFO.S_CREATE",
-              "$JS.API.STREAM.INFO.S_ENSURE", "$JS.API.STREAM.INFO.S_INSPECT",
-              "$JS.API.STREAM.UPDATE.S_ENSURE", "argus.probe.v1.change"}));
+  CHECK(grants.publish ==
+        sorted({"$JS.ACK.S_PROBE.kept.>", "$JS.ACK.S_PROBE.recreated.>",
+                "$JS.API.CONSUMER.DELETE.S_PROBE.recreated",
+                "$JS.API.CONSUMER.DURABLE.CREATE.S_PROBE.kept",
+                "$JS.API.CONSUMER.DURABLE.CREATE.S_PROBE.recreated",
+                "$JS.API.CONSUMER.INFO.S_PROBE.kept",
+                "$JS.API.CONSUMER.INFO.S_PROBE.recreated",
+                "$JS.API.STREAM.CREATE.S_PROBE", "$JS.API.STREAM.INFO.S_PROBE",
+                "$JS.API.STREAM.UPDATE.S_PROBE", "argus.probe.v1.change"}));
   CHECK(grants.subscribe == std::vector<std::string>{"_INBOX.probe.>"});
   CHECK(nats_permissions::variableName("probe") == "ARGUS_NATS_PROBE");
-}
-
-TEST_CASE("the stream use and consumer kind spellings round-trip")
-{
-  for (const StreamUse use :
-       {StreamUse::Inspect, StreamUse::Create, StreamUse::Ensure})
-    CHECK(nats_permissions::streamUseFromString(
-              nats_permissions::streamUseToString(use)) == use);
-  for (const ConsumerKind kind : {ConsumerKind::Push, ConsumerKind::Pull})
-    CHECK(nats_permissions::consumerKindFromString(
-              nats_permissions::consumerKindToString(kind)) == kind);
-  CHECK_FALSE(nats_permissions::streamUseFromString("update").has_value());
-  CHECK_FALSE(nats_permissions::consumerKindFromString("ordered").has_value());
 }

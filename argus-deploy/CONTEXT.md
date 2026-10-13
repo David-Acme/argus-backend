@@ -708,8 +708,7 @@ its own key; removing it is the last step.
   `scripts/deploy-mounts-test.sh`.
 - **Every row gets a user.** nats-server refuses a config variable nothing
   uses ("unknown field"), so the rendering iterates the variables of
-  `nats-permissions.conf`; the `recorder` row therefore has a user and a seed on
-  the host before its service exists, and nothing mounts that seed.
+  `nats-permissions.conf` and issues a seed and a user for each of them.
 - **Deploying this change.** The broker now includes `nats-permissions.conf`
   and every NATS client mounts its seed with `create_host_path: false`, so
   re-run `scripts/provision-host.sh` before `docker compose up -d`: without the

@@ -34,8 +34,8 @@ argus-guard binds its own feed with, not a spelling anything publishes on.
   install, over the bus and `push_intent::toJson`.
 - `src/nats/nats-permissions.{cc,hxx}` — the permission table: one row per
   NATS user (one per service), naming what it publishes, what it stores
-  through JetStream, what it subscribes to, the streams it inspects, creates
-  or ensures, and its consumers. `grantsFor` expands a row into the broker's
+  through JetStream, what it subscribes to, the streams it ensures, and its
+  durables. `grantsFor` expands a row into the broker's
   publish and subscribe allow-lists and `render()` writes them as one config
   variable per service, `ARGUS_NATS_<SERVICE>`, which is the checked-in
   `argus-deploy/nats-permissions.conf`.
@@ -58,11 +58,9 @@ argus-guard binds its own feed with, not a spelling anything publishes on.
   row. The durable names in the rows repeat the literals of the services that
   bind them, so renaming a durable in a service is a row change too, or the
   broker refuses the bind.
-- A row names literal subjects. A wildcard is granted only where a ruling put
-  it (`argus.recorder.v1.>` today), and the test lists those rulings; sync's
-  row is an explicit list. The grants the expansion adds are the only other
-  `>` tails: `$JS.ACK.<stream>.<durable>.>`, a pull consumer's
-  `$JS.API.CONSUMER.CREATE.<stream>.<name>.>` and the service's own inbox,
+- A row names literal subjects: no row is granted a wildcard, and sync's row
+  is an explicit list. The grants the expansion adds are the only `>` tails:
+  `$JS.ACK.<stream>.<durable>.>` and the service's own inbox,
   `_INBOX.<service>.>`.
 - A direction with nothing to grant renders `deny: [">"]`, never an empty
   `allow` list: nats-server reads an empty `allow` as no restriction at all.
@@ -182,9 +180,8 @@ a broker. `.github/workflows/ci.yml` starts `nats:2 -js` for that reason.
 `tests/unit/nats-permissions-test.cc` — the checked-in permission config is the
 table's rendering, byte for byte, and every grant in it is one the table names;
 every `argus-deploy/config.*.toml.example` with a `[nats]` section has its row;
-a service subscribes inside no inbox but its own; the only wildcards are the
-ruled ones and sync names none; every change and action feed has a sync
-durable; a consumer binds to a stream some row creates, under a name no other
+a service subscribes inside no inbox but its own; no row names a wildcard;
+every change and action feed has a sync durable; a consumer binds to a stream some row creates, under a name no other
 row claims; a core subscription names a subject some row publishes; and no
 direction renders an empty `allow` list. It needs no broker.
 

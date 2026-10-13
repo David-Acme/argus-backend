@@ -18,7 +18,7 @@ touch the stored state that the durables resume from.
 `src/nats/nats-permissions.cc` holds one row per service. A row says what the
 service does, not which broker subjects that needs: the subjects it publishes
 with a core publish, the subjects it stores with a JetStream publish, its core
-subscriptions, the streams it inspects, creates or ensures, and its consumers.
+subscriptions, the streams it ensures, and its durables.
 `grantsFor` turns that into broker subjects with the same rules for every row,
 so a reviewer reads intent and the expansion is tested once.
 
@@ -27,14 +27,11 @@ The expansion follows what cnats 3.13 sends for each call of `NatsBus`:
 | Use in a row | Broker subjects granted (publish) |
 |---|---|
 | a subject published or stored | the subject itself |
-| stream inspected | `$JS.API.STREAM.INFO.<stream>` |
-| stream created | the above plus `$JS.API.STREAM.CREATE.<stream>` |
-| stream ensured (`NatsBus::ensureStream`, which reconciles an existing stream's retention) | the above plus `$JS.API.STREAM.UPDATE.<stream>` |
+| stream ensured (`NatsBus::ensureStream`, which creates the stream or reconciles an existing one's retention) | `$JS.API.STREAM.CREATE.<stream>`, `$JS.API.STREAM.INFO.<stream>`, `$JS.API.STREAM.UPDATE.<stream>` |
 | push durable (`NatsBus::subscribeDurable`: `js_AddConsumer` with `Durable` set, then a bound `js_Subscribe`) | `$JS.API.CONSUMER.DURABLE.CREATE.<stream>.<name>`, `$JS.API.CONSUMER.INFO.<stream>.<name>`, `$JS.ACK.<stream>.<name>.>` (ack, nak, term and in-progress all answer the delivery's reply subject) |
 | a durable that is recreated on a policy change (the module feeds) | the above plus `$JS.API.CONSUMER.DELETE.<stream>.<name>` |
-| pull consumer | `$JS.API.CONSUMER.CREATE.<stream>.<name>` and its `.>` form (the filter is the subject's tail), `$JS.API.CONSUMER.INFO.<stream>.<name>`, `$JS.API.CONSUMER.MSG.NEXT.<stream>.<name>`, `$JS.ACK.<stream>.<name>.>` |
 
-A service that stores, owns a stream or reads a consumer also subscribes to
+A service that stores, ensures a stream or reads a durable also subscribes to
 its own inbox: JetStream API answers and publish acknowledgements arrive on
 it, and so do push deliveries. The inbox is `_INBOX.<service>`, never the
 shared `_INBOX.>`, because a service allowed `_INBOX.>` reads every other
@@ -61,18 +58,7 @@ re-create its own named durable with another filter inside a stream it may
 read. Neither reaches another service's stream or durable name, which is what
 the table bounds.
 
-## Rows ahead of their service
-
-The `recorder` row is data before code: its subjects, durables and streams come
-from section 5 of `docs/history/plans/argus-recorder-design.md`, with the
-reviewer's rulings (the publish tree `argus.recorder.v1.>`, and its replies on
-its own inbox instead of the note's `_INBOX.>`). Its two pull consumers are
-`argus-recorder-guard` on `ARGUS_GUARD` and the module feed on
-`ARGUS_SETTINGS_MODULE`, named `argus-recorder-modules` after the module gate's
-convention; the note lists pull-consumer subjects for both. If the recorder
-reads its module feed through `module_gate::install`, that consumer is a push
-durable recreated on a policy change, and its row says so then. Its guard
-subjects are literals until guard declares them in `nats-subject.hxx`.
+## The guard advisory grant
 
 The guard row grants the max-deliveries advisory on its `argus-guard` durable
 (`$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ARGUS_CAMERA.argus-guard`), which

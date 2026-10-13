@@ -20,8 +20,7 @@ Consumer modulesOf(std::string_view name)
 {
   return {.stream = kModuleFeed,
           .name = name,
-          .subjects = {kSettingsModule},
-          .kind = ConsumerKind::Push,
+          .subject = kSettingsModule,
           .recreates = true};
 }
 
@@ -32,27 +31,23 @@ std::vector<ServicePermissions> rows()
        .publishes = {kAuthPresenceSignal},
        .stores = {kAuthUserAction, kAuthSession},
        .subscribes = {},
-       .streams = {{.stream = kAuthChangeStream, .use = StreamUse::Ensure},
-                   {.stream = kAuthSessionStream, .use = StreamUse::Ensure}},
+       .streams = {kAuthChangeStream, kAuthSessionStream},
        .consumers = {{.stream = kIdentityChangeStream,
                       .name = "argus-auth-identity",
-                      .subjects = {kIdentityChange},
-                      .kind = ConsumerKind::Push,
+                      .subject = kIdentityChange,
                       .recreates = false}}},
       {.service = "camera",
        .publishes = {kCameraHealth},
        .stores = {kCameraChange, kCameraObjectDetected},
        .subscribes = {},
-       .streams = {{.stream = kCameraStream, .use = StreamUse::Ensure}},
+       .streams = {kCameraStream},
        .consumers = {{.stream = kAuthSessionStream,
                       .name = "argus-camera-auth-session",
-                      .subjects = {kAuthSession},
-                      .kind = ConsumerKind::Push,
+                      .subject = kAuthSession,
                       .recreates = false},
                      {.stream = kIdentityChangeStream,
                       .name = "argus-camera-identity-user",
-                      .subjects = {kIdentityChange},
-                      .kind = ConsumerKind::Push,
+                      .subject = kIdentityChange,
                       .recreates = false},
                      modulesOf("argus-camera-modules")}},
       {.service = "guard",
@@ -60,25 +55,21 @@ std::vector<ServicePermissions> rows()
        .stores = {kGuardChange, kGuardEncounterClosed},
        .subscribes = {kAuthPresenceSignal, kCameraHealth, kGuardKnownSeen,
                       kIdentityChange, kGuardDeliveryAdvisory},
-       .streams = {{.stream = kGuardStream, .use = StreamUse::Ensure},
-                   {.stream = kNotificationVerdictStream,
-                    .use = StreamUse::Ensure}},
+       .streams = {kGuardStream, kNotificationVerdictStream},
        .consumers = {{.stream = kCameraStream,
                       .name = "argus-guard",
-                      .subjects = {kCameraObjectDetected},
-                      .kind = ConsumerKind::Push,
+                      .subject = kCameraObjectDetected,
                       .recreates = false},
                      {.stream = kNotificationVerdictStream,
                       .name = "argus-guard-verdicts",
-                      .subjects = {kNotificationResponseVerdict},
-                      .kind = ConsumerKind::Push,
+                      .subject = kNotificationResponseVerdict,
                       .recreates = false},
                      modulesOf("argus-guard-modules")}},
       {.service = "identity",
        .publishes = {},
        .stores = {kIdentityChange, kIdentityUserAction},
        .subscribes = {},
-       .streams = {{.stream = kIdentityChangeStream, .use = StreamUse::Ensure}},
+       .streams = {kIdentityChangeStream},
        .consumers = {modulesOf("argus-identity-modules")}},
       {.service = "llm",
        .publishes = {},
@@ -87,23 +78,19 @@ std::vector<ServicePermissions> rows()
        .streams = {},
        .consumers = {{.stream = kGuardStream,
                       .name = "argus-llm-encounters",
-                      .subjects = {kGuardEncounterClosed},
-                      .kind = ConsumerKind::Push,
+                      .subject = kGuardEncounterClosed,
                       .recreates = false},
                      {.stream = kCameraStream,
                       .name = "argus-llm-catalog-camera",
-                      .subjects = {kCameraChange},
-                      .kind = ConsumerKind::Push,
+                      .subject = kCameraChange,
                       .recreates = false},
                      {.stream = kIdentityChangeStream,
                       .name = "argus-llm-catalog-identity",
-                      .subjects = {kIdentityChange},
-                      .kind = ConsumerKind::Push,
+                      .subject = kIdentityChange,
                       .recreates = false},
                      {.stream = kSettingsModuleStream,
                       .name = "argus-llm-intents",
-                      .subjects = {kSettingsModule},
-                      .kind = ConsumerKind::Push,
+                      .subject = kSettingsModule,
                       .recreates = false},
                      modulesOf("argus-llm-modules")}},
       {.service = "notification",
@@ -111,53 +98,27 @@ std::vector<ServicePermissions> rows()
        .stores = {kNotificationChange, kNotificationDelivery,
                   kNotificationResponseVerdict},
        .subscribes = {kCameraObjectDetected, kGuardHeartbeat},
-       .streams =
-           {{.stream = kNotificationChangeStream, .use = StreamUse::Ensure},
-            {.stream = kNotificationDeliveryStream, .use = StreamUse::Ensure},
-            {.stream = kNotificationVerdictStream, .use = StreamUse::Ensure}},
+       .streams = {kNotificationChangeStream, kNotificationDeliveryStream,
+                   kNotificationVerdictStream},
        .consumers = {{.stream = kGuardStream,
                       .name = "notification-known-seen",
-                      .subjects = {kGuardKnownSeen},
-                      .kind = ConsumerKind::Push,
+                      .subject = kGuardKnownSeen,
                       .recreates = false},
                      {.stream = kAuthSessionStream,
                       .name = "notification-auth-session",
-                      .subjects = {kAuthSession},
-                      .kind = ConsumerKind::Push,
+                      .subject = kAuthSession,
                       .recreates = false},
                      {.stream = kIdentityChangeStream,
                       .name = "notification-identity-user",
-                      .subjects = {kIdentityChange},
-                      .kind = ConsumerKind::Push,
+                      .subject = kIdentityChange,
                       .recreates = false},
                      modulesOf("argus-notification-modules")}},
       {.service = "productivity",
        .publishes = {},
        .stores = {kProductivityChange, kProductivityUserAction},
        .subscribes = {},
-       .streams = {{.stream = kProductivityChangeStream,
-                    .use = StreamUse::Ensure},
-                   {.stream = kProductivityActionStream,
-                    .use = StreamUse::Ensure}},
+       .streams = {kProductivityChangeStream, kProductivityActionStream},
        .consumers = {modulesOf("argus-productivity-modules")}},
-      {.service = "recorder",
-       .publishes = {"argus.recorder.v1.>"},
-       .stores = {},
-       .subscribes = {kCameraChange, kSettingsModule},
-       .streams = {{.stream = kGuardStream, .use = StreamUse::Inspect},
-                   {.stream = "ARGUS_RECORDER_CHANGE",
-                    .use = StreamUse::Create}},
-       .consumers = {{.stream = kGuardStream,
-                      .name = "argus-recorder-guard",
-                      .subjects = {"argus.guard.v1.episode",
-                                   "argus.guard.v1.safety_alert"},
-                      .kind = ConsumerKind::Pull,
-                      .recreates = false},
-                     {.stream = kSettingsModuleStream,
-                      .name = "argus-recorder-modules",
-                      .subjects = {kSettingsModule},
-                      .kind = ConsumerKind::Pull,
-                      .recreates = false}}},
       {.service = "relay",
        .publishes = {},
        .stores = {},
@@ -168,9 +129,8 @@ std::vector<ServicePermissions> rows()
        .publishes = {},
        .stores = {kSettingsModule, kSettingsUserAction, kSettingsChange},
        .subscribes = {},
-       .streams = {{.stream = kSettingsModuleStream, .use = StreamUse::Ensure},
-                   {.stream = kSettingsActionStream, .use = StreamUse::Ensure},
-                   {.stream = kSettingsChangeStream, .use = StreamUse::Ensure}},
+       .streams = {kSettingsModuleStream, kSettingsActionStream,
+                   kSettingsChangeStream},
        .consumers = {}},
       {.service = "sync",
        .publishes = {kNotificationPushIntent},
@@ -179,68 +139,55 @@ std::vector<ServicePermissions> rows()
        .streams = {},
        .consumers = {{.stream = kCameraStream,
                       .name = "argus-sync-camera",
-                      .subjects = {kCameraChange},
-                      .kind = ConsumerKind::Push,
+                      .subject = kCameraChange,
                       .recreates = false},
                      {.stream = kNotificationChangeStream,
                       .name = "argus-sync-notification",
-                      .subjects = {kNotificationChange},
-                      .kind = ConsumerKind::Push,
+                      .subject = kNotificationChange,
                       .recreates = false},
                      {.stream = kProductivityChangeStream,
                       .name = "argus-sync-productivity",
-                      .subjects = {kProductivityChange},
-                      .kind = ConsumerKind::Push,
+                      .subject = kProductivityChange,
                       .recreates = false},
                      {.stream = kProductivityActionStream,
                       .name = "argus-sync-productivity-action",
-                      .subjects = {kProductivityUserAction},
-                      .kind = ConsumerKind::Push,
+                      .subject = kProductivityUserAction,
                       .recreates = false},
                      {.stream = kIdentityChangeStream,
                       .name = "argus-sync-identity",
-                      .subjects = {kIdentityChange},
-                      .kind = ConsumerKind::Push,
+                      .subject = kIdentityChange,
                       .recreates = false},
                      {.stream = kIdentityChangeStream,
                       .name = "argus-sync-identity-action",
-                      .subjects = {kIdentityUserAction},
-                      .kind = ConsumerKind::Push,
+                      .subject = kIdentityUserAction,
                       .recreates = false},
                      {.stream = kAuthChangeStream,
                       .name = "argus-sync-auth-action",
-                      .subjects = {kAuthUserAction},
-                      .kind = ConsumerKind::Push,
+                      .subject = kAuthUserAction,
                       .recreates = false},
                      {.stream = kAuthSessionStream,
                       .name = "argus-sync-auth-session",
-                      .subjects = {kAuthSession},
-                      .kind = ConsumerKind::Push,
+                      .subject = kAuthSession,
                       .recreates = false},
                      {.stream = kSettingsModuleStream,
                       .name = "argus-sync-settings-module",
-                      .subjects = {kSettingsModule},
-                      .kind = ConsumerKind::Push,
+                      .subject = kSettingsModule,
                       .recreates = false},
                      {.stream = kSettingsActionStream,
                       .name = "argus-sync-settings-action",
-                      .subjects = {kSettingsUserAction},
-                      .kind = ConsumerKind::Push,
+                      .subject = kSettingsUserAction,
                       .recreates = false},
                      {.stream = kSettingsChangeStream,
                       .name = "argus-sync-settings",
-                      .subjects = {kSettingsChange},
-                      .kind = ConsumerKind::Push,
+                      .subject = kSettingsChange,
                       .recreates = false},
                      {.stream = kGuardStream,
                       .name = "argus-sync-guard",
-                      .subjects = {kGuardChange},
-                      .kind = ConsumerKind::Push,
+                      .subject = kGuardChange,
                       .recreates = false},
                      {.stream = kNotificationDeliveryStream,
                       .name = "argus-sync-delivery",
-                      .subjects = {kNotificationDelivery},
-                      .kind = ConsumerKind::Push,
+                      .subject = kNotificationDelivery,
                       .recreates = false},
                      modulesOf("argus-sync-modules")}},
   };
@@ -257,35 +204,21 @@ std::string dotted(std::initializer_list<std::string_view> tokens)
   return subject;
 }
 
-void addStreamGrants(const StreamGrant& grant,
-                     std::vector<std::string>& publish)
+void addStreamGrants(std::string_view stream, std::vector<std::string>& publish)
 {
-  publish.push_back(dotted({"$JS.API.STREAM.INFO", grant.stream}));
-  if (grant.use == StreamUse::Inspect)
-    return;
-  publish.push_back(dotted({"$JS.API.STREAM.CREATE", grant.stream}));
-  if (grant.use == StreamUse::Ensure)
-    publish.push_back(dotted({"$JS.API.STREAM.UPDATE", grant.stream}));
+  publish.push_back(dotted({"$JS.API.STREAM.CREATE", stream}));
+  publish.push_back(dotted({"$JS.API.STREAM.INFO", stream}));
+  publish.push_back(dotted({"$JS.API.STREAM.UPDATE", stream}));
 }
 
 void addConsumerGrants(const Consumer& consumer,
                        std::vector<std::string>& publish)
 {
+  publish.push_back(dotted(
+      {"$JS.API.CONSUMER.DURABLE.CREATE", consumer.stream, consumer.name}));
   publish.push_back(
       dotted({"$JS.API.CONSUMER.INFO", consumer.stream, consumer.name}));
   publish.push_back(dotted({"$JS.ACK", consumer.stream, consumer.name, ">"}));
-  if (consumer.kind == ConsumerKind::Push) {
-    publish.push_back(dotted(
-        {"$JS.API.CONSUMER.DURABLE.CREATE", consumer.stream, consumer.name}));
-  }
-  else {
-    publish.push_back(
-        dotted({"$JS.API.CONSUMER.CREATE", consumer.stream, consumer.name}));
-    publish.push_back(dotted(
-        {"$JS.API.CONSUMER.CREATE", consumer.stream, consumer.name, ">"}));
-    publish.push_back(
-        dotted({"$JS.API.CONSUMER.MSG.NEXT", consumer.stream, consumer.name}));
-  }
   if (consumer.recreates)
     publish.push_back(
         dotted({"$JS.API.CONSUMER.DELETE", consumer.stream, consumer.name}));
@@ -322,43 +255,6 @@ std::string renderDirection(const Direction& direction)
 }
 }
 
-std::string_view streamUseToString(StreamUse use)
-{
-  switch (use) {
-    case StreamUse::Inspect:
-      return "inspect";
-    case StreamUse::Create:
-      return "create";
-    case StreamUse::Ensure:
-      return "ensure";
-  }
-  return "ensure";
-}
-
-std::optional<StreamUse> streamUseFromString(std::string_view text)
-{
-  for (const StreamUse use :
-       {StreamUse::Inspect, StreamUse::Create, StreamUse::Ensure}) {
-    if (streamUseToString(use) == text)
-      return use;
-  }
-  return std::nullopt;
-}
-
-std::string_view consumerKindToString(ConsumerKind kind)
-{
-  return kind == ConsumerKind::Pull ? "pull" : "push";
-}
-
-std::optional<ConsumerKind> consumerKindFromString(std::string_view text)
-{
-  for (const ConsumerKind kind : {ConsumerKind::Push, ConsumerKind::Pull}) {
-    if (consumerKindToString(kind) == text)
-      return kind;
-  }
-  return std::nullopt;
-}
-
 const std::vector<ServicePermissions>& table()
 {
   static const std::vector<ServicePermissions> permissions = rows();
@@ -392,8 +288,8 @@ Grants grantsFor(const ServicePermissions& row)
   grants.publish.assign(row.publishes.begin(), row.publishes.end());
   grants.publish.insert(grants.publish.end(), row.stores.begin(),
                         row.stores.end());
-  for (const StreamGrant& grant : row.streams)
-    addStreamGrants(grant, grants.publish);
+  for (const std::string_view stream : row.streams)
+    addStreamGrants(stream, grants.publish);
   for (const Consumer& consumer : row.consumers)
     addConsumerGrants(consumer, grants.publish);
   grants.subscribe.assign(row.subscribes.begin(), row.subscribes.end());

@@ -1,7 +1,5 @@
 #pragma once
 
-#include <cstdint>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -9,37 +7,11 @@
 namespace nats_permissions
 {
 
-enum class StreamUse : std::uint8_t
-{
-  Inspect,
-  Create,
-  Ensure
-};
-
-std::string_view streamUseToString(StreamUse use);
-std::optional<StreamUse> streamUseFromString(std::string_view text);
-
-enum class ConsumerKind : std::uint8_t
-{
-  Push,
-  Pull
-};
-
-std::string_view consumerKindToString(ConsumerKind kind);
-std::optional<ConsumerKind> consumerKindFromString(std::string_view text);
-
-struct StreamGrant
-{
-  std::string_view stream;
-  StreamUse use{StreamUse::Ensure};
-};
-
 struct Consumer
 {
   std::string_view stream;
   std::string_view name;
-  std::vector<std::string_view> subjects;
-  ConsumerKind kind{ConsumerKind::Push};
+  std::string_view subject;
   bool recreates{false};
 };
 
@@ -49,7 +21,7 @@ struct ServicePermissions
   std::vector<std::string_view> publishes;
   std::vector<std::string_view> stores;
   std::vector<std::string_view> subscribes;
-  std::vector<StreamGrant> streams;
+  std::vector<std::string_view> streams;
   std::vector<Consumer> consumers;
 };
 
