@@ -62,4 +62,7 @@ public:
 
   drogon::Task<std::optional<NotificationChange>>
   remove(const NotificationOwnedInput& input) const;
+
+  drogon::Task<std::vector<NotificationChange>>
+  removeThread(const NotificationThreadInput& input) const;
 };

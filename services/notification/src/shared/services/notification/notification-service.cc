@@ -44,6 +44,42 @@ SocketEmitDto tombstoneOf(const NotificationSchema& row)
   return tombstone;
 }
 
+struct RemovalPublishInput
+{
+  std::vector<NotificationChange> changes;
+  int64_t userId{0};
+  drogon::orm::DbClient* client{nullptr};
+};
+
+drogon::Task<void> publishRemovals(const RemovalPublishInput& input)
+{
+  const UserEmitSink* sink = user_change::getNotificationSink();
+  if (sink == nullptr) {
+    LOG_WARN << "user change sink not installed; drop notification delete";
+    co_return;
+  }
+  for (const auto& change : input.changes) {
+    co_await sink->publishAudit({.recordId = change.after.id,
+                                 .tableName = TableName::Notification,
+                                 .before = change.before.toJson(),
+                                 .after = change.after.toJson(),
+                                 .userIds = {input.userId},
+                                 .client = input.client});
+    co_await sink->emitUsers({.userIds = {input.userId},
+                              .body = tombstoneOf(change.after),
+                              .client = input.client});
+  }
+}
+
+std::string trimmed(std::string_view text)
+{
+  const auto first = text.find_first_not_of(" \t\r\n");
+  if (first == std::string_view::npos)
+    return {};
+  const auto last = text.find_last_not_of(" \t\r\n");
+  return std::string(text.substr(first, last - first + 1));
+}
+
 constexpr int64_t kProbeRetentionS = 7LL * 24 * 3600;
 constexpr int64_t kCommandRetentionS = 30LL * 24 * 3600;
 constexpr int64_t kDeletedRetentionS = 7LL * 24 * 3600;
@@ -197,21 +233,40 @@ drogon::Task<bool> NotificationService::remove(const NotificationRef& ref) const
       db_transaction::rollback(transaction);
       co_return false;
     }
-    const UserEmitSink* sink = user_change::getNotificationSink();
-    if (sink == nullptr) {
-      LOG_WARN << "user change sink not installed; drop notification delete";
+    const RemovalPublishInput publish{.changes = {*change},
+                                      .userId = ref.userId,
+                                      .client = transaction.get()};
+    co_await publishRemovals(publish);
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(NotificationErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_return true;
+}
+
+drogon::Task<bool>
+NotificationService::removeThread(const NotificationThreadRef& ref) const
+{
+  std::string threadKey = trimmed(ref.threadKey);
+  if (threadKey.empty())
+    co_return false;
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    const NotificationThreadInput thread{.userId = ref.userId,
+                                         .threadKey = std::move(threadKey),
+                                         .client = transaction.get()};
+    auto changes = co_await repository_.removeThread(thread);
+    if (changes.empty()) {
+      db_transaction::rollback(transaction);
+      co_return false;
     }
-    else {
-      co_await sink->publishAudit({.recordId = change->after.id,
-                                   .tableName = TableName::Notification,
-                                   .before = change->before.toJson(),
-                                   .after = change->after.toJson(),
-                                   .userIds = {ref.userId},
-                                   .client = transaction.get()});
-      co_await sink->emitUsers({.userIds = {ref.userId},
-                                .body = tombstoneOf(change->after),
-                                .client = transaction.get()});
-    }
+    const RemovalPublishInput publish{.changes = std::move(changes),
+                                      .userId = ref.userId,
+                                      .client = transaction.get()};
+    co_await publishRemovals(publish);
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(NotificationErrors::ChangeNotRecorded);
   }

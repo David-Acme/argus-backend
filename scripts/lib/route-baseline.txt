@@ -105,6 +105,7 @@ notification	PATCH	/notification/read	DeviceFilter,ValidJsonFilter,JwtFilter,Rol
 notification	GET	/notification/responses	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/call/controllers/call-response-controller.hxx
 notification	GET	/notification/responses/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/call/controllers/call-response-controller.hxx
 notification	PATCH	/notification/responses/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/call/controllers/call-response-controller.hxx
+notification	DELETE	/notification/thread/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/notification/controllers/notification-controller.hxx
 notification	DELETE	/notification/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/notification/controllers/notification-controller.hxx
 productivity	POST	/calendar-event	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/calendar-event/controllers/calendar-event-controller.hxx
 productivity	POST	/calendar-event-share	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/calendar-event-share/controllers/calendar-event-share-controller.hxx

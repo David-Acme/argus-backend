@@ -153,10 +153,26 @@ int64_t seedNotification(const std::string& title)
   return inserted.insertId();
 }
 
+struct SeededRow
+{
+  int64_t userId{7};
+  std::string title;
+  std::string data;
+};
+
+int64_t seedRow(const SeededRow& row)
+{
+  const auto inserted = DbService::client()->execSqlSync(
+      "INSERT INTO notification (user_id, type, title, body, data) "
+      "VALUES (?, 'event', ?, 'motion in the yard', ?)",
+      row.userId, row.title, row.data);
+  return inserted.insertId();
+}
+
 int64_t unreadNotifications()
 {
   return scalar("SELECT COUNT(*) AS total FROM notification "
-                "WHERE user_id = 7 AND is_read = 0");
+                "WHERE user_id = 7 AND is_read = 0 AND deleted_at IS NULL");
 }
 
 int64_t settledReadAt(int64_t id)
@@ -167,7 +183,7 @@ int64_t settledReadAt(int64_t id)
 }
 }
 
-TEST_CASE("a notification read or delete and its changes are one unit of work")
+TEST_CASE("a notification read, delete or thread delete and its changes are one unit of work")
 {
   std::remove(kTransactionDb);
   std::remove((std::string(kTransactionDb) + "-wal").c_str());
@@ -283,6 +299,62 @@ TEST_CASE("a notification read or delete and its changes are one unit of work")
   CHECK_FALSE(
       drogon::sync_wait(notifications.remove({.id = second, .userId = 7})));
   CHECK(outbox.pendingBatch(10).size() == 3);
+
+  const std::string episode = R"({"threadKey":"guard:episode:41"})";
+  const int64_t ownFirst =
+      seedRow({.userId = 7, .title = "Patio 1", .data = episode});
+  const int64_t ownSecond =
+      seedRow({.userId = 7, .title = "Patio 2", .data = episode});
+  const int64_t theirs =
+      seedRow({.userId = 8, .title = "Patio 1", .data = episode});
+  REQUIRE(theirs > ownSecond);
+  const std::size_t queued = outbox.pendingBatch(50).size();
+  const NotificationThreadRef ownThread{.threadKey = "guard:episode:41",
+                                        .userId = 7};
+  const NotificationThreadRef strangerThread{.threadKey = "guard:episode:41",
+                                             .userId = 9};
+
+  user_change::setNotificationSink(&halfway);
+  CHECK_THROWS_AS(drogon::sync_wait(notifications.removeThread(ownThread)),
+                  std::runtime_error);
+  CHECK(deletedAt(ownFirst) == 0);
+  CHECK(deletedAt(ownSecond) == 0);
+  CHECK(outbox.pendingBatch(50).size() == queued);
+
+  user_change::setNotificationSink(&durableSink);
+  CHECK_FALSE(drogon::sync_wait(notifications.removeThread(strangerThread)));
+  CHECK(deletedAt(ownFirst) == 0);
+  CHECK(deletedAt(theirs) == 0);
+  CHECK(outbox.pendingBatch(50).size() == queued);
+
+  REQUIRE(drogon::sync_wait(notifications.removeThread(ownThread)));
+  CHECK(deletedAt(ownFirst) > 0);
+  CHECK(deletedAt(ownSecond) > 0);
+  CHECK(deletedAt(theirs) == 0);
+  const auto threadRows = outbox.pendingBatch(50);
+  REQUIRE(threadRows.size() == queued + 4);
+  for (std::size_t i = 0; i < 2; ++i) {
+    const int64_t id = i == 0 ? ownFirst : ownSecond;
+    const Json::Value threadAudit =
+        json_util::fromString(threadRows[queued + 2 * i].payload);
+    const Json::Value threadTombstone =
+        json_util::fromString(threadRows[queued + 2 * i + 1].payload);
+    CHECK(threadAudit["kind"].asString() == "audit");
+    CHECK(threadAudit["record_id"].asInt64() == id);
+    CHECK(threadAudit["changes"].getMemberNames() ==
+          std::vector<std::string>{"deletedAt"});
+    CHECK(threadAudit["changes"]["deletedAt"]["current"].asInt64() ==
+          deletedAt(id));
+    CHECK(threadTombstone["operation"].asInt() ==
+          static_cast<int>(SyncOperation::Delete));
+    CHECK(threadTombstone["info"]["id"].asInt64() == id);
+    CHECK(threadTombstone["info"]["deletedAt"].asInt64() == deletedAt(id));
+    REQUIRE(threadTombstone["users"].size() == 1U);
+    CHECK(threadTombstone["users"][0].asInt64() == 7);
+  }
+
+  CHECK_FALSE(drogon::sync_wait(notifications.removeThread(ownThread)));
+  CHECK(outbox.pendingBatch(50).size() == queued + 4);
 
   DbService::client()->execSqlSync("DROP TABLE change_outbox");
 

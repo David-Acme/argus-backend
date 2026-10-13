@@ -65,6 +65,19 @@ inline constexpr std::string_view SOFT_DELETE =
     "UPDATE notification SET deleted_at = strftime('%s', 'now') "
     "WHERE id = ? AND user_id = ? AND deleted_at IS NULL RETURNING *";
 
+inline constexpr std::string_view FIND_OWNED_THREAD =
+    "SELECT * FROM notification WHERE user_id = ? AND deleted_at IS NULL "
+    "AND CASE WHEN json_valid(data) THEN CASE WHEN json_type(data, "
+    "'$.threadKey') = 'text' THEN trim(json_extract(data, '$.threadKey'), "
+    "' ' || char(9, 10, 13)) END END = ? ORDER BY id ASC";
+
+inline constexpr std::string_view SOFT_DELETE_THREAD =
+    "UPDATE notification SET deleted_at = strftime('%s', 'now') "
+    "WHERE user_id = ? AND deleted_at IS NULL "
+    "AND CASE WHEN json_valid(data) THEN CASE WHEN json_type(data, "
+    "'$.threadKey') = 'text' THEN trim(json_extract(data, '$.threadKey'), "
+    "' ' || char(9, 10, 13)) END END = ? RETURNING *";
+
 inline constexpr std::string_view PURGE_DELETED_DELIVERIES =
     "DELETE FROM notification_delivery WHERE notification_id IN (SELECT id "
     "FROM notification WHERE deleted_at IS NOT NULL AND deleted_at < ?)";
@@ -283,6 +296,13 @@ struct NotificationOwnedInput
 {
   int64_t id{0};
   int64_t userId{0};
+  drogon::orm::DbClient* client{nullptr};
+};
+
+struct NotificationThreadInput
+{
+  int64_t userId{0};
+  std::string threadKey;
   drogon::orm::DbClient* client{nullptr};
 };
 

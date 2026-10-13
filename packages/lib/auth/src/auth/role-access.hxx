@@ -258,8 +258,10 @@ inline constexpr std::array<ModuleRoute, 12> kModuleRoutes = {{
     {.segment = "calendar-event-share", .module = kProductivityModule},
 }};
 
-inline constexpr std::array<AuthRouteAccess, 1> kRouteOverrides = {{
+inline constexpr std::array<AuthRouteAccess, 3> kRouteOverrides = {{
     {.path = "/notification/delivery-summary", .method = drogon::Get, .roles = kOwnerOnly},
+    {.path = "/notification/responses", .method = drogon::Delete, .roles = kOwnerOnly},
+    {.path = "/notification/responses/{id}", .method = drogon::Delete, .roles = kOwnerOnly},
 }};
 
 inline constexpr std::string_view kRouteSegment = "{id}";

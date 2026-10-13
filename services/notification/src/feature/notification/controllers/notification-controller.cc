@@ -53,3 +53,17 @@ NotificationController::remove(drogon::HttpRequestPtr req, int64_t id)
     throw ResponseException(NotificationErrors::NotificationNotFound);
   co_return ApiResponse::noContent();
 }
+
+drogon::Task<drogon::HttpResponsePtr>
+NotificationController::removeThread(drogon::HttpRequestPtr req,
+                                     std::string threadKey)
+{
+  const auto& ctx =
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const NotificationThreadRef thread{.threadKey = std::move(threadKey),
+                                     .userId = ctx.sub};
+
+  if (!co_await service_.removeThread(thread))
+    throw ResponseException(NotificationErrors::NotificationNotFound);
+  co_return ApiResponse::noContent();
+}

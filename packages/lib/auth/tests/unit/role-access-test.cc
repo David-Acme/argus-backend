@@ -6,6 +6,7 @@
 #include <auth/role-access.hxx>
 #include <sync/table-name.hxx>
 #include <auth/user-role.hxx>
+#include <string_view>
 #include <vector>
 
 TEST_CASE("Owner has every permission on every table")
@@ -329,22 +330,30 @@ TEST_CASE("the delivery summary is the owner's alone")
         {.role = UserRole::Owner, .path = "/notification/delivery-summary", .method = drogon::Get}));
 }
 
-TEST_CASE("every role deletes a notification by id, an inactive role included")
+TEST_CASE("every role deletes a notification by id or a whole thread, an inactive role included")
 {
     for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
         CAPTURE(userRoleToString(role));
         for (const bool roleActive : {true, false}) {
             CAPTURE(roleActive);
-            CHECK(role_access::hasHttpAccess({.role = role,
-                                              .path = "/notification/5",
-                                              .method = drogon::Delete,
-                                              .roleActive = roleActive}));
+            for (const std::string_view path : {"/notification/5", "/notification/thread/guard:episode:41"}) {
+                CAPTURE(path);
+                CHECK(role_access::hasHttpAccess({.role = role,
+                                                  .path = path,
+                                                  .method = drogon::Delete,
+                                                  .roleActive = roleActive}));
+            }
         }
     }
-    CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Unknown,
-                                            .path = "/notification/5",
-                                            .method = drogon::Delete,
-                                            .roleActive = true}));
+    for (const std::string_view path : {"/notification/5", "/notification/thread/guard:episode:41"}) {
+        CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Unknown,
+                                                .path = path,
+                                                .method = drogon::Delete,
+                                                .roleActive = true}));
+    }
+    for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+        CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/notification/responses", .method = drogon::Delete}));
+    }
 }
 
 TEST_CASE("an app action answers the same as the route it stands for")

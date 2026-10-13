@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <trantor/utils/Logger.h>
+#include <unordered_map>
 #include <vector>
 #include <notification/notification-delivery-status.hxx>
 
@@ -709,4 +710,34 @@ NotificationRepository::remove(const NotificationOwnedInput& input) const
     co_return std::nullopt;
   co_return NotificationChange{.before = NotificationSchema(existing.front()),
                                .after = NotificationSchema(removed.front())};
+}
+
+drogon::Task<std::vector<NotificationChange>>
+NotificationRepository::removeThread(const NotificationThreadInput& input) const
+{
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
+  const auto existing = co_await client->execSqlCoro(
+      std::string(FIND_OWNED_THREAD), input.userId, input.threadKey);
+  if (existing.empty())
+    co_return {};
+  const auto removed = co_await client->execSqlCoro(
+      std::string(SOFT_DELETE_THREAD), input.userId, input.threadKey);
+  std::unordered_map<int64_t, NotificationSchema> removedById;
+  removedById.reserve(removed.size());
+  for (const auto& row : removed) {
+    NotificationSchema after(row);
+    const int64_t id = after.id;
+    removedById.emplace(id, std::move(after));
+  }
+  std::vector<NotificationChange> changes;
+  changes.reserve(existing.size());
+  for (const auto& row : existing) {
+    NotificationSchema before(row);
+    const auto after = removedById.find(before.id);
+    if (after == removedById.end())
+      continue;
+    changes.push_back({.before = std::move(before), .after = std::move(after->second)});
+  }
+  co_return changes;
 }

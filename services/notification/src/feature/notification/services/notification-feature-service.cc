@@ -22,6 +22,12 @@ NotificationFeatureService::remove(const NotificationRef& ref) const
   co_return co_await notificationService_.remove(ref);
 }
 
+drogon::Task<bool>
+NotificationFeatureService::removeThread(const NotificationThreadRef& ref) const
+{
+  co_return co_await notificationService_.removeThread(ref);
+}
+
 drogon::Task<int64_t> NotificationFeatureService::ackDeliveries(
     int64_t userId, const std::vector<int64_t>& notificationIds) const
 {

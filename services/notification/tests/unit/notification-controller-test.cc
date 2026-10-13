@@ -522,6 +522,88 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
                "WHERE notification_id = 3") == 0);
   CHECK(scalar("SELECT COUNT(*) AS total FROM notification_delivery") == 2);
 
+  DbService::client()->execSqlSync(
+      "INSERT INTO notification (id, user_id, type, title, body, data) VALUES "
+      "(20, 7, 'event', 'Patio 1', 'motion', '{\"threadKey\":\"guard:episode:41\"}'), "
+      "(21, 7, 'event', 'Patio 2', 'motion', '{\"threadKey\":\" guard:episode:41 \"}'), "
+      "(22, 7, 'event', 'Garage', 'motion', '{\"threadKey\":\"guard:episode:42\"}'), "
+      "(23, 8, 'event', 'Patio 1', 'motion', '{\"threadKey\":\"guard:episode:41\"}'), "
+      "(24, 8, 'event', 'Fallback', 'camera off', '{\"threadKey\":\"camera:fallback:5\"}'), "
+      "(25, 7, 'event', 'Numbered', 'number', '{\"threadKey\":41}'), "
+      "(26, 7, 'event', 'Broken', 'broken', 'not json')");
+  const std::string liveThreadRows =
+      "SELECT COUNT(*) AS total FROM notification WHERE deleted_at IS NULL "
+      "AND id >= 20";
+  CHECK(scalar(liveThreadRows) == 7);
+
+  auto removeThreadAs = [&notificationController](int64_t userId,
+                                                  const std::string& threadKey) {
+    auto req = drogon::HttpRequest::newHttpRequest();
+    req->setMethod(drogon::Delete);
+    req->getAttributes()->insert(
+        AuthContext::kJwtKey,
+        JwtContext{.sub = userId, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}});
+    return drogon::sync_wait(notificationController.removeThread(req, threadKey));
+  };
+  const std::size_t auditsBeforeThread = sink.audits.size();
+  const std::size_t emitsBeforeThread = sink.emits.size();
+
+  const Refusal foreignThread = refusalOf(
+      [&removeThreadAs] { static_cast<void>(removeThreadAs(7, "camera:fallback:5")); });
+  CHECK(foreignThread.status == 404);
+  CHECK(foreignThread.code == notFound);
+  const Refusal numberedThread =
+      refusalOf([&removeThreadAs] { static_cast<void>(removeThreadAs(7, "41")); });
+  CHECK(numberedThread.status == 404);
+  CHECK(numberedThread.code == notFound);
+  const Refusal blankThread =
+      refusalOf([&removeThreadAs] { static_cast<void>(removeThreadAs(7, "  ")); });
+  CHECK(blankThread.status == 404);
+  CHECK(scalar(liveThreadRows) == 7);
+  CHECK(sink.audits.size() == auditsBeforeThread);
+  CHECK(sink.emits.size() == emitsBeforeThread);
+
+  const auto threadRemoved = removeThreadAs(7, "guard:episode:41");
+  REQUIRE(threadRemoved);
+  CHECK(threadRemoved->statusCode() == drogon::k204NoContent);
+  CHECK(scalar("SELECT COUNT(*) AS total FROM notification WHERE "
+               "deleted_at IS NOT NULL AND id IN (20, 21)") == 2);
+  CHECK(scalar("SELECT COUNT(*) AS total FROM notification WHERE "
+               "deleted_at IS NULL AND id IN (22, 23, 24, 25, 26)") == 5);
+
+  REQUIRE(sink.audits.size() == auditsBeforeThread + 2);
+  REQUIRE(sink.emits.size() == emitsBeforeThread + 2);
+  for (std::size_t i = 0; i < 2; ++i) {
+    const int64_t id = 20 + static_cast<int64_t>(i);
+    const RecordedAudit& audit = sink.audits[auditsBeforeThread + i];
+    const RecordedEmit& frame = sink.emits[emitsBeforeThread + i];
+    CHECK(audit.recordId == id);
+    CHECK(audit.tableName == "notification");
+    CHECK(audit.users == std::vector<int64_t>{7});
+    const Json::Value before = json_util::fromString(audit.before);
+    const Json::Value after = json_util::fromString(audit.after);
+    CHECK(before["deletedAt"].isNull());
+    CHECK(after["deletedAt"].asInt64() > 0);
+    CHECK(frame.users == std::vector<int64_t>{7});
+    CHECK(frame.frame["operation"].asInt() ==
+          static_cast<int>(SyncOperation::Delete));
+    CHECK(frame.frame["option"].asString() == "notification");
+    CHECK(frame.frame["info"].getMemberNames() ==
+          std::vector<std::string>{"deletedAt", "id"});
+    CHECK(frame.frame["info"]["id"].asInt64() == id);
+    CHECK(frame.frame["info"]["deletedAt"].asInt64() ==
+          after["deletedAt"].asInt64());
+  }
+
+  const Refusal threadTwice = refusalOf(
+      [&removeThreadAs] { static_cast<void>(removeThreadAs(7, "guard:episode:41")); });
+  CHECK(threadTwice.status == 404);
+  CHECK(threadTwice.code == notFound);
+  CHECK(sink.audits.size() == auditsBeforeThread + 2);
+  CHECK(sink.emits.size() == emitsBeforeThread + 2);
+  CHECK(scalar("SELECT COUNT(*) AS total FROM notification WHERE id = 23 "
+               "AND deleted_at IS NULL") == 1);
+
   NotificationTokenController tokenController;
 
   auto tokenReq = [&](const char* token, const std::string& deviceHash,

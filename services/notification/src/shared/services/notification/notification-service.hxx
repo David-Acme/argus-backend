@@ -29,6 +29,12 @@ struct NotificationRef
   int64_t userId{0};
 };
 
+struct NotificationThreadRef
+{
+  std::string threadKey;
+  int64_t userId{0};
+};
+
 enum class DeliverPendingOutcome
 {
   Settled,
@@ -82,6 +88,9 @@ public:
                                 const std::vector<int64_t>& ids) const;
 
   [[nodiscard]] drogon::Task<bool> remove(const NotificationRef& ref) const;
+
+  [[nodiscard]] drogon::Task<bool> removeThread(
+      const NotificationThreadRef& ref) const;
 
   drogon::Task<int64_t> ackDeliveries(
       int64_t userId, const std::vector<int64_t>& notificationIds) const;

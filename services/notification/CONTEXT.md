@@ -1197,8 +1197,39 @@ offline at the time learns of the deletion on its next user-audit page. The app 
 treat a diff whose only field is `deletedAt` as that removal, in either order with the
 frame.
 
-Tests: `notification-controller-test` (migration of an old-shaped database, the route's
-answers, the deleted row out of the pull, the unread rows, mark-as-read and the summary,
-the purge), `notification-change-transaction-test` (one unit of work, the outbox
-payloads), `notification-change-outbox-sink-test`, `notification-delivery-test`,
-`notification-rpc-test` and lib/auth's `role-access-test`.
+**Deleting a thread.** `DELETE /notification/thread/{threadKey}` removes every
+notification of the caller whose `data.threadKey` is that key. The key is a string,
+compared trimmed, because that is how the app groups its Novedades threads (`threadKeyOf`
+in the app); a row without a thread key is its own thread there, and goes through the
+single route.
+- It is one transaction: one `UPDATE … RETURNING` soft-deletes the rows, then each row,
+  in id order, gets the two outbox rows the single delete writes (the audit diff, then
+  the `Delete` frame). A refused row rolls the whole thread back.
+- It is scoped to the caller. Other users' rows with the same key are untouched. When none
+  of the caller's live rows carries the key, the answer is 404 `NotificationNotFound` and
+  nothing changes: another user's thread, an unknown key, a thread already deleted, a
+  numeric key and a blank key all get that answer.
+- The key expression is guarded by `json_valid`, so a malformed `data` never fails the
+  statement.
+- The key travels URL-encoded, and Drogon decodes the path before routing and keeps its
+  case.
+
+**The offline path for a delete is the user audit log.** The `Delete` frame is live only.
+`PullNotifications` answers `created` and `last_created` and has no deleted leg, so a
+device that was offline never receives a tombstone. It learns of the deletion from the
+audit diff, which argus-sync stores in the recipient's `user_audit_log`.
+- argus-sync folds rows older than its 90-day window (D15) into newer rows of the same
+  record, so the last diff of a record is never lost.
+- This is why the deleted row itself can be purged after seven days
+  (`kDeletedRetentionS`, unchanged): by then its deletion has already travelled.
+
+Tests:
+- `notification-controller-test`: the migration of an old-shaped database, the route's
+  answers, the deleted row out of the pull, the unread rows, mark-as-read and the
+  summary, the purge. For the thread route, the caller's rows go, another user's thread,
+  a numeric key and a blank key are refused with 404, and a malformed row is harmless.
+- `notification-change-transaction-test`: one unit of work, the outbox payloads, and the
+  thread delete's four outbox rows in order, with nothing written when one of them is
+  refused.
+- Also `notification-change-outbox-sink-test`, `notification-delivery-test`,
+  `notification-rpc-test` and lib/auth's `role-access-test`.
