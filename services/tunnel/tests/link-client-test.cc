@@ -96,6 +96,26 @@ struct DrainInput
   int timeoutMs{0};
 };
 
+struct FrameWanted
+{
+  link::FrameType type{link::FrameType::Data};
+  uint32_t streamId{0};
+  int timeoutMs{0};
+};
+
+link::Frame awaitFrameOf(FakeNode& node, const FrameWanted& wanted)
+{
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds{wanted.timeoutMs};
+  while (std::chrono::steady_clock::now() < deadline) {
+    const auto frame = node.nextFrame(50);
+    if (frame && frame->type == wanted.type &&
+        frame->streamId == wanted.streamId)
+      return *frame;
+  }
+  return link::Frame{.type = link::FrameType::Hello, .streamId = 0, .payload = {}};
+}
+
 bool drainFrames(const DrainInput& input)
 {
   const auto deadline = std::chrono::steady_clock::now() +
@@ -196,6 +216,55 @@ TEST_SUITE("home link v2 client")
     CHECK(waitFor([&fixture] { return fixture.client().streamCount() == 0; },
                   5000));
     CHECK(fixture.node().state().violations.empty());
+  }
+
+  TEST_CASE("a home service that hangs up is told to the node behind its last "
+            "byte")
+  {
+    const TestPki pki = makePki();
+    LinkFixture fixture{fixtureOptions(pki.home, pki.node)};
+    REQUIRE(fixture.waitConnected(5000));
+    REQUIRE(fixture.node().sendFrame(link::encodeOpen(17)));
+    CHECK(waitFor([&fixture] { return fixture.echo().accepted() == 1; }, 5000));
+
+    const std::string lastWords = "hasta luego";
+    REQUIRE(fixture.node().sendFrame(link::encodeData(17, lastWords)));
+    const link::Frame echoed = awaitFrameOf(
+        fixture.node(),
+        {.type = link::FrameType::Data, .streamId = 17, .timeoutMs = 5000});
+    REQUIRE(echoed.type == link::FrameType::Data);
+    CHECK(echoed.payload == lastWords);
+
+    fixture.echo().hangUp();
+
+    const link::Frame closed = awaitFrameOf(
+        fixture.node(),
+        {.type = link::FrameType::Close, .streamId = 17, .timeoutMs = 5000});
+    REQUIRE(closed.type == link::FrameType::Close);
+    CHECK(link::decodeCloseReason(closed) == link::CloseReason::Normal);
+    CHECK(waitFor([&fixture] { return fixture.client().streamCount() == 0; },
+                  5000));
+    CHECK(fixture.client().connected());
+    CHECK(fixture.node().state().violations.empty());
+  }
+
+  TEST_CASE("a close the node sends is not answered with another")
+  {
+    const TestPki pki = makePki();
+    LinkFixture fixture{fixtureOptions(pki.home, pki.node)};
+    REQUIRE(fixture.waitConnected(5000));
+    REQUIRE(fixture.node().sendFrame(link::encodeOpen(19)));
+    CHECK(waitFor([&fixture] { return fixture.echo().accepted() == 1; }, 5000));
+
+    REQUIRE(fixture.node().sendFrame(
+        link::encodeClose(19, link::CloseReason::Normal)));
+    CHECK(waitFor([&fixture] { return fixture.client().streamCount() == 0; },
+                  5000));
+    const link::Frame answer = awaitFrameOf(
+        fixture.node(),
+        {.type = link::FrameType::Close, .streamId = 19, .timeoutMs = 500});
+    CHECK(answer.type != link::FrameType::Close);
+    CHECK(fixture.client().connected());
   }
 
   TEST_CASE("a stream opened for a listener that is not there is closed busy")

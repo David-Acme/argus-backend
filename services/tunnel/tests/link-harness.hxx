@@ -35,6 +35,7 @@ public:
   [[nodiscard]] uint16_t port() const { return port_; }
   [[nodiscard]] size_t accepted() const { return accepted_.load(); }
   [[nodiscard]] size_t received() const { return received_.load(); }
+  void hangUp() { hangUpRequested_.store(true); }
   void stop();
 
 private:
@@ -44,6 +45,7 @@ private:
   uint16_t port_{0};
   std::jthread worker_;
   std::atomic<bool> stopped_{false};
+  std::atomic<bool> hangUpRequested_{false};
   std::atomic<size_t> accepted_{0};
   std::atomic<size_t> received_{0};
 };

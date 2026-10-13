@@ -161,6 +161,8 @@ void EchoServer::serve()
     timeout.tv_usec = 200 * 1000;
     ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     while (!stopped_.load()) {
+      if (hangUpRequested_.exchange(false))
+        break;
       const ssize_t count = ::recv(fd, chunk.data(), chunk.size(), 0);
       if (count > 0) {
         received_.fetch_add(static_cast<size_t>(count));

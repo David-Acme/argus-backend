@@ -128,6 +128,7 @@ private:
     bool localAttached{false};
     bool localReadPaused{false};
     bool localEof{false};
+    bool closedByNode{false};
   };
 
   struct DrainingPeer

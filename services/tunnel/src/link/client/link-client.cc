@@ -380,6 +380,7 @@ void LinkClient::handleClose(const Frame& frame)
   Stream* stream = findStream(frame.streamId);
   if (stream == nullptr)
     return;
+  stream->closedByNode = true;
   closeLocal(*stream, decodeCloseReason(frame));
 }
 
@@ -568,7 +569,7 @@ void LinkClient::closeLocal(Stream& stream, CloseReason reason)
   globalPendingToHome_ -= moved.pendingToHome.size();
   globalPendingToLocal_ -= moved.pendingToLocal.size();
   updatePending();
-  if (helloReceived_ && !moved.localEof)
+  if (helloReceived_ && !moved.closedByNode)
     sendFrameToNode({.frame = encodeClose(id, reason)});
   if (moved.local)
     releaseLocal(moved, reason);

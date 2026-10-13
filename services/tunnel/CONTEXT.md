@@ -35,6 +35,13 @@ this repository holds its second implementation, under `src/link/`.
   is listening or its own `max_streams` table is full. Normal-close semantics,
   the back-pressure valves and the idle sweep are the ones the v1 client
   already had.
+- **Closes are told, never answered** (spec §4.1): every close the client
+  decides reaches the node as CLOSE — a home service that hangs up gets
+  `normal` once the bytes it sent are framed, a failed one `error` — and a
+  CLOSE the node sent is not answered with another (`Stream::closedByNode`).
+  Until 2026-10 the guard was `!localEof`, so a home service's EOF was never
+  told: the device kept its connection until the node's five-minute idle
+  sweep, and every CLOSE from the node was echoed back.
 - **Flow control**: with `stream_credit` negotiated every stream starts with
   256 KiB. The client counts what it sends against the window the node granted
   (`CREDIT` raises it) and grants the node credit as the bytes reach the local
