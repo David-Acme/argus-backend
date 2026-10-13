@@ -158,7 +158,7 @@ ReminderFeatureService::update(const ReminderUpdateCommand& command) const
       const auto next = firstOccurrenceAfter(
           {.rule = *rule, .anchor = anchor, .moment = std::max(effectiveScheduled, now)});
       if (next) {
-        input.scheduledAt = *next;
+        input.scheduledAt = next;
         input.isCompleted = false;
         input.clearCompletedAt = existing->isCompleted;
         rolled = true;
@@ -231,9 +231,11 @@ ReminderFeatureService::snooze(const ReminderSnoozeCommand& command) const
     before = existing->toJson();
 
     const auto now = static_cast<int64_t>(std::time(nullptr));
-    const auto target = command.body.tomorrow
-                            ? sameTimeTomorrow(std::max(existing->scheduledAt, now))
-                            : std::optional<int64_t>{now + *command.body.minutes * 60};
+    std::optional<int64_t> target;
+    if (command.body.tomorrow)
+      target = sameTimeTomorrow(std::max(existing->scheduledAt, now));
+    else if (command.body.minutes)
+      target = now + *command.body.minutes * 60;
     if (!target) {
       db_transaction::rollback(transaction);
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
@@ -243,7 +245,7 @@ ReminderFeatureService::snooze(const ReminderSnoozeCommand& command) const
                                        .targetUserId = command.userId,
                                        .title = std::nullopt,
                                        .description = std::nullopt,
-                                       .scheduledAt = *target,
+                                       .scheduledAt = target,
                                        .isCompleted = std::nullopt,
                                        .completedAt = std::nullopt,
                                        .clearCompletedAt = false,

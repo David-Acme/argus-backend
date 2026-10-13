@@ -25,6 +25,7 @@
 namespace
 {
 constexpr int64_t kNow = 1800000000;
+constexpr int64_t kDaySeconds = 86400;
 
 using test_support::AppRunner;
 
@@ -299,7 +300,7 @@ TEST_CASE("a recurring reminder is announced once, then rolls to its next occurr
   REQUIRE(moved.size() == 1);
   const auto next = moved.front()["scheduled_at"].as<long long>();
   CHECK(next > kNow);
-  CHECK(next <= kNow + 2 * 86400);
+  CHECK(next <= kNow + 2 * kDaySeconds);
   CHECK(drogon::sync_wait(announcer.sweep()).reminders == 0);
   CHECK(notifier->all().size() == 1);
 }
@@ -315,7 +316,7 @@ TEST_CASE("a recurring reminder overdue beyond the grace window is skipped, not 
   client->execSqlSync(
       "INSERT INTO reminder (target_user_id, title, scheduled_at, recurrence_rule, recurrence_anchor) "
       "VALUES (5, 'Vacunas', ?, 'FREQ=DAILY', ?)",
-      kNow - 3 * 86400, kNow - 3 * 86400);
+      kNow - 3 * kDaySeconds, kNow - 3 * kDaySeconds);
   CHECK(drogon::sync_wait(announcer.sweep()).reminders == 0);
   CHECK(notifier->all().empty());
   const auto moved = client->execSqlSync("SELECT scheduled_at FROM reminder WHERE title = 'Vacunas'");

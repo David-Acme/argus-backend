@@ -26,7 +26,7 @@ drogon::Task<std::optional<int64_t>> ReminderSeries::advance(const SeriesAdvance
                                                 .targetUserId = input.targetUserId,
                                                 .title = std::nullopt,
                                                 .description = std::nullopt,
-                                                .scheduledAt = *next,
+                                                .scheduledAt = next,
                                                 .isCompleted = std::nullopt,
                                                 .completedAt = std::nullopt,
                                                 .clearCompletedAt = false,
@@ -47,5 +47,5 @@ drogon::Task<std::optional<int64_t>> ReminderSeries::advance(const SeriesAdvance
                                  .after = row.toJson(),
                                  .userIds = {row.targetUserId},
                                  .client = input.client});
-  co_return *next;
+  co_return next;
 }

@@ -91,8 +91,9 @@ TEST_CASE("the refusal names the field and says what a rule may be")
 {
   const auto refusal = refusalOf(createBody("FREQ=WEEKLY;BYDAY=MO,WE"));
   REQUIRE(refusal.has_value());
-  REQUIRE(refusal->contains("recurrenceRule"));
-  const auto& messages = refusal->at("recurrenceRule");
+  const ValidationErrors errors = refusal.value_or(ValidationErrors{});
+  REQUIRE(errors.contains("recurrenceRule"));
+  const auto& messages = errors.at("recurrenceRule");
   REQUIRE(messages.size() == 1);
   CHECK(messages.front() == kRecurrenceRuleProblem);
 }

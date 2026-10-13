@@ -81,12 +81,14 @@ TEST_CASE("the shared fixtures hold in the zone each case names")
         epochs.push_back(*occurrence);
       }
       std::vector<std::string> walls;
+      walls.reserve(epochs.size());
       for (const int64_t epoch : epochs)
         walls.push_back(wallOfEpoch(epoch));
       CHECK(walls == stringsOf(item["expect"]));
       if (item.isMember("displayZone")) {
         useZone(item["displayZone"].asString());
         std::vector<std::string> displayed;
+        displayed.reserve(epochs.size());
         for (const int64_t epoch : epochs)
           displayed.push_back(wallOfEpoch(epoch));
         CHECK(displayed == stringsOf(item["expectDisplay"]));
@@ -115,8 +117,9 @@ TEST_CASE("a valid rule keeps its frequency and interval")
 {
   const auto rule = parseRecurrenceRule("FREQ=WEEKLY;INTERVAL=2");
   REQUIRE(rule.has_value());
-  CHECK(rule->frequency == RecurrenceFrequency::Weekly);
-  CHECK(rule->interval == 2);
+  const RecurrenceRule parsed = rule.value_or(RecurrenceRule{});
+  CHECK(parsed.frequency == RecurrenceFrequency::Weekly);
+  CHECK(parsed.interval == 2);
 }
 
 TEST_CASE("tomorrow keeps the wall time across a change of day length")
@@ -124,5 +127,5 @@ TEST_CASE("tomorrow keeps the wall time across a change of day length")
   useZone("America/New_York");
   const auto tomorrow = sameTimeTomorrow(epochOfWall("2026-03-07T08:00:00"));
   REQUIRE(tomorrow.has_value());
-  CHECK(wallOfEpoch(*tomorrow) == "2026-03-08T08:00:00");
+  CHECK(wallOfEpoch(tomorrow.value_or(0)) == "2026-03-08T08:00:00");
 }
