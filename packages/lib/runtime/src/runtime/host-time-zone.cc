@@ -3,6 +3,7 @@
 #include <array>
 #include <cstdlib>
 #include <fstream>
+#include <utility>
 #include <unistd.h>
 
 namespace
@@ -31,7 +32,7 @@ std::string fromLocaltimeLink(std::string_view localtimePath)
   const std::string path(localtimePath);
   std::array<char, kLinkCapacity> target{};
   const ssize_t written = readlink(path.c_str(), target.data(), target.size());
-  if (written <= 0 || static_cast<std::size_t>(written) >= kLinkCapacity)
+  if (written <= 0 || std::cmp_greater_equal(written, kLinkCapacity))
     return {};
   return zoneNameFromPath(std::string_view(target.data(), static_cast<std::size_t>(written)));
 }
