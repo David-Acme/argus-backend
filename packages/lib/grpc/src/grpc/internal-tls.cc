@@ -16,6 +16,7 @@ struct InstalledTls
 {
   std::mutex mutex;
   std::optional<InternalTlsMaterial> material;
+  bool channelOpened{false};
 };
 
 InstalledTls& installed()
@@ -79,10 +80,19 @@ internalChannelCredentials(const InternalTlsMaterial& material)
                                .pem_cert_chain = material.certificatePem});
 }
 
-void installInternalTls(std::optional<InternalTlsMaterial> material)
+void installInternalTls(InternalTlsMaterial material)
 {
+  if (material.certificatePem.empty() || material.privateKeyPem.empty() ||
+      material.trustBundlePem.empty())
+    throw std::invalid_argument("internal TLS material needs a certificate, "
+                                "a private key and a trust bundle");
   auto& state = installed();
   const std::scoped_lock lock(state.mutex);
+  if (state.material)
+    throw std::logic_error("internal TLS is installed once per process");
+  if (state.channelOpened)
+    throw std::logic_error("internal TLS must be installed before the "
+                           "process opens its first gRPC channel");
   state.material = std::move(material);
 }
 
@@ -91,17 +101,19 @@ bool isInternalTlsTarget(std::string_view target)
   return target.starts_with(kInternalTlsScheme);
 }
 
-ChannelPlan planChannel(const std::string& target)
+ChannelPlan openChannel(const std::string& target)
 {
-  if (!isInternalTlsTarget(target))
-    return {.address = target,
-            .credentials = grpc::InsecureChannelCredentials()};
   std::optional<InternalTlsMaterial> material;
   {
     auto& state = installed();
     const std::scoped_lock lock(state.mutex);
-    material = state.material;
+    state.channelOpened = true;
+    if (isInternalTlsTarget(target))
+      material = state.material;
   }
+  if (!isInternalTlsTarget(target))
+    return {.address = target,
+            .credentials = grpc::InsecureChannelCredentials()};
   if (!material)
     throw std::runtime_error("the gRPC target " + target +
                              " asks for internal TLS, but this process "

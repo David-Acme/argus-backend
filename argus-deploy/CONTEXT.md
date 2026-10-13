@@ -825,7 +825,12 @@ instance CA the apps pin (ruling of 2026-10-12): a key that leaks from one signs
 nothing the other trusts. Step 1 issues the CA and the certificates; step 2
 gives `packages/lib/grpc` the credentials that load them (a client target
 written `tls:<host>:<port>` gets mutual TLS, every other target stays
-plaintext); no service loads them yet.
+plaintext); no service loads them yet. Deploy-time check: build the images
+(`docker compose build`) before any config names a `tls:` target. The images
+link Debian trixie's gRPC 1.51, and the internal TLS code has so far been
+built only against the development host's 1.84; it uses only the
+`Ssl*Credentials` API both versions share, so a failed image build is the
+one place a difference would show.
 
 - `scripts/lib/internal-pki.sh` (`ensure_internal_pki`) keeps, under
   `${ARGUS_DATA_DIR}/certs/internal` (0700):
@@ -848,22 +853,25 @@ plaintext); no service loads them yet.
   is kept.
 - A CA with fewer than 60 days left is rotated in two provisioning passes, and
   each pass is followed by a rolling restart, one service at a time, never a
-  fleet-wide stop. The first pass adds a next CA to `trust.pem` and keeps every
-  certificate: restarting a service gives it the two-CA bundle, and while the
-  others wait their turn every certificate in use is still from the current
-  CA, which they all trust. A pass a day or more later makes the next CA
-  current and issues every certificate again; the day is counted from the
+  fleet-wide stop. The first pass adds a next CA to `trust.pem` and keeps
+  every certificate: restarting a service gives it the two-CA bundle, and
+  while the others wait their turn every certificate in use is still from the
+  current CA, which they all trust. A pass a day or more later makes the next
+  CA current and issues every certificate again; the day is counted from the
   next CA's `notBefore`, which is written into the certificate and travels
   with it, never from the file's time, which a copy, a restore or an rsync
-  moves. `trust.pem` keeps the old CA
-  until it expires: by then every service holds the old and the new CA, so an
-  old-CA certificate and a new-CA certificate verify against each other
-  through the shared bundle in both directions (`internal-pki-test` pins both),
-  and services restart one at a time with no outage. The restart is what loads
-  the new files (until the services reload them on their own) and is one per
-  service. Only a CA that cannot be used (missing, a key that does not match,
-  an older profile, expired) or one that expires within a day is replaced in
-  a single pass; provisioning then asks for a restart of every service.
+  moves. `trust.pem` keeps the old CA until it expires: by then every service
+  holds the old and the new CA, so an old-CA certificate and a new-CA
+  certificate verify against each other through the shared bundle in both
+  directions (`internal-pki-test` pins both), and services restart one at a
+  time with no outage. Rotation never swaps material in a running process: a
+  service loads its certificate, its key and its trust bundle once, at start,
+  before it opens its first gRPC channel (`installInternalTls` refuses a
+  second install and one after the first channel), so both passes rely on the
+  restart, one per service, and nothing needs a hot reload. Only a CA that
+  cannot be used (missing, a key that does not match, an older profile,
+  expired) or one that expires within a day is replaced in a single pass;
+  provisioning then asks for a restart of every service.
 - The per-caller secret stays the authorisation on top of mutual TLS: the
   certificate says which service is calling, the secret still decides what it
   may call. Plaintext listeners stay until the owner's deploy check; removing

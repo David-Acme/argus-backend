@@ -42,10 +42,10 @@ internalServerCredentials(const InternalTlsMaterial& material);
 [[nodiscard]] std::shared_ptr<grpc::ChannelCredentials>
 internalChannelCredentials(const InternalTlsMaterial& material);
 
-void installInternalTls(std::optional<InternalTlsMaterial> material);
+void installInternalTls(InternalTlsMaterial material);
 
 [[nodiscard]] bool isInternalTlsTarget(std::string_view target);
 
-[[nodiscard]] ChannelPlan planChannel(const std::string& target);
+[[nodiscard]] ChannelPlan openChannel(const std::string& target);
 
 }

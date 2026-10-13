@@ -16,7 +16,7 @@ constexpr int kMaxPingsWithoutData = 0;
 
 std::shared_ptr<grpc::Channel> makeChannel(const std::string& target)
 {
-  const auto plan = planChannel(target);
+  const auto plan = openChannel(target);
   return grpc::CreateChannel(plan.address, plan.credentials);
 }
 
@@ -26,7 +26,7 @@ std::shared_ptr<grpc::Channel> makeStreamingChannel(const std::string& target)
   args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, kKeepaliveTimeMs);
   args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, kKeepaliveTimeoutMs);
   args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, kMaxPingsWithoutData);
-  const auto plan = planChannel(target);
+  const auto plan = openChannel(target);
   return grpc::CreateCustomChannel(plan.address, plan.credentials, args);
 }
 

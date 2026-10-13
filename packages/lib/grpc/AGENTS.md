@@ -32,11 +32,15 @@ per client.
   bundle each hold what they should; `internalServerCredentials` requires and
   verifies the client's certificate against the trust bundle;
   `internalChannelCredentials` presents the service's own certificate and
-  verifies the server's, its name included; `installInternalTls` keeps (or,
-  with nothing, drops) the process's material for `planChannel`, which
-  `makeChannel` and `makeStreamingChannel` go through: a `tls:` target with no
-  installed certificate throws, so a misconfigured service fails at start
-  instead of falling back to plaintext. Only the stable `Ssl*Credentials`
+  verifies the server's, its name included. `installInternalTls` hands the
+  process its material exactly once, before its first channel: a second
+  install throws, an install after any channel throws, and empty material is
+  refused (it throws, and does not count as the install), never dropped
+  silently. `makeChannel` and `makeStreamingChannel` go through
+  `openChannel`, which records under the same lock that the process opened a
+  channel, plain or not, and serves a `tls:` target with the installed
+  material: with none installed it throws, so a misconfigured service fails
+  at start instead of falling back to plaintext. Only the stable `Ssl*Credentials`
   API is used, so the same code builds against the host's gRPC 1.84 and the
   images' 1.51. Compiled into `argus_client_grpc_base`.
 - `src/grpc/grpc-server-identity.hxx` — the receiving side: `metadata`,
@@ -122,11 +126,13 @@ once however often the stop is asked, and a drain without a server is
 drained as soon as it is asked to stop.
 `tests/unit/internal-tls-test.cc`, run by `scripts/internal-tls-test.sh`,
 which issues a scratch internal CA with `scripts/lib/internal-pki.sh` and a
-foreign client certificate (exit 77 without openssl) — a loopback
+foreign client certificate (exit 77 without openssl) and runs every test case
+in a process of its own, since a process installs once — a loopback
 `grpc.health.v1` server with mutual TLS answers camera's certificate through
 `makeChannel` and `makeStreamingChannel` (`tls:` with `127.0.0.1` and
 `localhost`), the client refuses a server whose certificate names another
 service, the server refuses a client certificate the internal CA did not
-issue, a client without one and a plaintext client, a `tls:` target with no
-installed certificate throws, and a plain target stays plaintext while one
-is installed.
+issue, a client without one and a plaintext client, a `tls:` target with
+nothing installed throws, a plain target stays plaintext while a certificate
+is installed, and the install refuses a second call, a call after
+`makeChannel` or `makeStreamingChannel`, and empty material.

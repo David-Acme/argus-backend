@@ -117,8 +117,8 @@ channelNamed(const ServingOn& server,
 
 }
 
-TEST_CASE("a service directory holds its certificate, its key and the trust "
-          "bundle")
+TEST_CASE("a service directory holds its certificate and its key and the "
+          "trust bundle")
 {
   const auto files = argus::client::internalTlsFilesIn("/run/secrets/tls");
   CHECK(files.certificate == "/run/secrets/tls/cert.pem");
@@ -162,36 +162,24 @@ TEST_CASE("material is read only when every file holds what it should")
   std::filesystem::remove_all(swapped);
 }
 
-TEST_CASE("a tls: target needs an installed certificate, a plain target does "
-          "not")
+TEST_CASE("a tls target with nothing installed throws while a plain target "
+          "needs nothing")
 {
-  argus::client::installInternalTls(std::nullopt);
   CHECK_FALSE(argus::client::isInternalTlsTarget("argus-identity:7040"));
   CHECK(argus::client::isInternalTlsTarget("tls:argus-identity:7240"));
-  const auto plain = argus::client::planChannel("argus-identity:7040");
-  CHECK(plain.address == "argus-identity:7040");
-  CHECK(plain.credentials != nullptr);
-  CHECK_THROWS_AS(static_cast<void>(
-                      argus::client::planChannel("tls:argus-identity:7240")),
-                  std::runtime_error);
+  CHECK(argus::client::makeChannel("argus-identity:7040") != nullptr);
   CHECK_THROWS_AS(argus::client::makeChannel("tls:argus-identity:7240"),
                   std::runtime_error);
   CHECK_THROWS_AS(argus::client::makeStreamingChannel(
                       "tls:argus-identity:7240"),
                   std::runtime_error);
-
-  argus::client::installInternalTls(materialOf(serviceDirectory("camera")));
-  const auto secured = argus::client::planChannel("tls:argus-identity:7240");
-  CHECK(secured.address == "argus-identity:7240");
-  CHECK(secured.credentials != nullptr);
-  argus::client::installInternalTls(std::nullopt);
 }
 
 TEST_CASE("two services speak mutual TLS through makeChannel")
 {
+  argus::client::installInternalTls(materialOf(serviceDirectory("camera")));
   const ServingOn auth(argus::client::internalServerCredentials(
       materialOf(serviceDirectory("auth"))));
-  argus::client::installInternalTls(materialOf(serviceDirectory("camera")));
 
   CHECK(healthOver(argus::client::makeChannel(
             "tls:" + auth.address("127.0.0.1"))) == grpc::StatusCode::OK);
@@ -199,11 +187,9 @@ TEST_CASE("two services speak mutual TLS through makeChannel")
             "tls:" + auth.address("localhost"))) == grpc::StatusCode::OK);
   CHECK(healthOver(argus::client::makeStreamingChannel(
             "tls:" + auth.address("127.0.0.1"))) == grpc::StatusCode::OK);
-
-  argus::client::installInternalTls(std::nullopt);
 }
 
-TEST_CASE("the client checks the name the server's certificate carries")
+TEST_CASE("the client checks the name the server certificate carries")
 {
   const ServingOn auth(argus::client::internalServerCredentials(
       materialOf(serviceDirectory("auth"))));
@@ -216,8 +202,8 @@ TEST_CASE("the client checks the name the server's certificate carries")
         grpc::StatusCode::UNAVAILABLE);
 }
 
-TEST_CASE("the server refuses a client the internal CA did not issue, or one "
-          "without a certificate")
+TEST_CASE("the server refuses a foreign client and one without a certificate "
+          "and a plaintext one")
 {
   const auto authMaterial = materialOf(serviceDirectory("auth"));
   const ServingOn auth(argus::client::internalServerCredentials(authMaterial));
@@ -241,12 +227,47 @@ TEST_CASE("the server refuses a client the internal CA did not issue, or one "
 
 TEST_CASE("a plain target stays plaintext while a certificate is installed")
 {
-  const ServingOn plain(grpc::InsecureServerCredentials());
   argus::client::installInternalTls(materialOf(serviceDirectory("camera")));
+  const ServingOn plain(grpc::InsecureServerCredentials());
   CHECK(healthOver(argus::client::makeChannel(plain.address("127.0.0.1"))) ==
         grpc::StatusCode::OK);
   CHECK(healthOver(
             argus::client::makeChannel("tls:" + plain.address("127.0.0.1"))) ==
         grpc::StatusCode::UNAVAILABLE);
-  argus::client::installInternalTls(std::nullopt);
+}
+
+TEST_CASE("a second install throws")
+{
+  argus::client::installInternalTls(materialOf(serviceDirectory("camera")));
+  CHECK_THROWS_AS(argus::client::installInternalTls(
+                      materialOf(serviceDirectory("auth"))),
+                  std::logic_error);
+}
+
+TEST_CASE("an install after makeChannel throws")
+{
+  CHECK(argus::client::makeChannel("127.0.0.1:1") != nullptr);
+  CHECK_THROWS_AS(argus::client::installInternalTls(
+                      materialOf(serviceDirectory("camera"))),
+                  std::logic_error);
+}
+
+TEST_CASE("an install after makeStreamingChannel throws")
+{
+  CHECK(argus::client::makeStreamingChannel("127.0.0.1:1") != nullptr);
+  CHECK_THROWS_AS(argus::client::installInternalTls(
+                      materialOf(serviceDirectory("camera"))),
+                  std::logic_error);
+}
+
+TEST_CASE("an empty install is refused and does not count as the install")
+{
+  CHECK_THROWS_AS(argus::client::installInternalTls(InternalTlsMaterial{}),
+                  std::invalid_argument);
+  auto keyless = materialOf(serviceDirectory("camera"));
+  keyless.privateKeyPem.clear();
+  CHECK_THROWS_AS(argus::client::installInternalTls(keyless),
+                  std::invalid_argument);
+  CHECK_NOTHROW(argus::client::installInternalTls(
+      materialOf(serviceDirectory("camera"))));
 }
