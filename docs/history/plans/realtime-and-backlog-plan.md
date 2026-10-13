@@ -298,6 +298,11 @@ otherwise. Order S3 → S4 → S1; every migration is additive and removes the o
   caller. The engine still serialises on its mutex, so nothing breaks, but the waiting is unbounded;
   argus-tts listens internally, which is what keeps the risk low. The fix is the unary path taking the
   same admission as the stream, answering 429 when full, with a test.
+- D13 `tts-wire-test` and `tts-rpc-test` hard-fail when no TTS model is present (`REQUIRE` on
+  `isLoaded()` in both), while the rest of the suite skips on a missing artifact, as the pocket case
+  and the `eval` label do (exit 77, with a reason). The two must skip with a reason too, so a worktree
+  without the models is reported as skipped, not red. Until then the gate procedure links the models
+  (`docs/operations/build-and-test.md`). No fix now.
 
 ## 8. Decisions awaiting the owner
 
