@@ -122,6 +122,7 @@ struct PhraseRig
   PhraseRig()
   {
     scalar("DELETE FROM guard_user_pin");
+    scalar("DELETE FROM guard_pin_attempt");
     scalar("DELETE FROM guard_safety_setting");
     scalar("DELETE FROM guard_safety_alert");
     scalar("DELETE FROM change_outbox");

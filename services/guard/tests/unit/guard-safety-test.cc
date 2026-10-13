@@ -143,6 +143,7 @@ struct SafetyRig
       : identity(std::move(langs)), directory(std::move(directory))
   {
     scalar("DELETE FROM guard_user_pin");
+    scalar("DELETE FROM guard_pin_attempt");
     scalar("DELETE FROM guard_safety_setting");
     scalar("DELETE FROM guard_safety_alert");
     scalar("DELETE FROM guard_response_contact");
@@ -286,36 +287,93 @@ TEST_CASE("trivial PINs are recognised")
 
 TEST_CASE("wrong PINs lock the user for the window, then let go")
 {
+  boot();
+  scalar("DELETE FROM guard_pin_attempt");
   PinAttempts attempts({.maxFailures = 2, .windowSeconds = 100});
-  REQUIRE(attempts.reserve({.userId = 7, .now = 10}).admitted);
-  attempts.settle({.userId = 7, .success = false});
-  CHECK_FALSE(attempts.locked({.userId = 7, .now = 11}));
-  REQUIRE(attempts.reserve({.userId = 7, .now = 20}).admitted);
-  attempts.settle({.userId = 7, .success = false});
-  CHECK(attempts.locked({.userId = 7, .now = 21}));
-  CHECK_FALSE(attempts.locked({.userId = 8, .now = 21}));
-  CHECK_FALSE(attempts.locked({.userId = 7, .now = 111}));
-  REQUIRE(attempts.reserve({.userId = 7, .now = 112}).admitted);
-  attempts.settle({.userId = 7, .success = true});
-  CHECK_FALSE(attempts.locked({.userId = 7, .now = 113}));
+  REQUIRE(drogon::sync_wait(attempts.reserve({.userId = 7, .now = 10})).admitted);
+  drogon::sync_wait(attempts.settle({.userId = 7, .success = false}));
+  CHECK_FALSE(drogon::sync_wait(attempts.locked({.userId = 7, .now = 11})));
+  REQUIRE(drogon::sync_wait(attempts.reserve({.userId = 7, .now = 20})).admitted);
+  drogon::sync_wait(attempts.settle({.userId = 7, .success = false}));
+  CHECK(drogon::sync_wait(attempts.locked({.userId = 7, .now = 21})));
+  CHECK_FALSE(drogon::sync_wait(attempts.locked({.userId = 8, .now = 21})));
+  CHECK_FALSE(drogon::sync_wait(attempts.locked({.userId = 7, .now = 111})));
+  REQUIRE(drogon::sync_wait(attempts.reserve({.userId = 7, .now = 112})).admitted);
+  drogon::sync_wait(attempts.settle({.userId = 7, .success = true}));
+  CHECK_FALSE(drogon::sync_wait(attempts.locked({.userId = 7, .now = 113})));
+  CHECK(scalar("SELECT COUNT(*) FROM guard_pin_attempt WHERE user_id = 7") == "0");
 }
 
 TEST_CASE("an attempt is counted before hashing and one runs per user")
 {
+  boot();
+  scalar("DELETE FROM guard_pin_attempt");
   PinAttempts attempts({.maxFailures = 2, .windowSeconds = 100});
-  const PinReservation first = attempts.reserve({.userId = 7, .now = 10});
+  const PinReservation first = drogon::sync_wait(attempts.reserve({.userId = 7, .now = 10}));
   CHECK(first.admitted);
   CHECK_FALSE(first.locked);
-  CHECK_FALSE(attempts.reserve({.userId = 7, .now = 10}).admitted);
-  CHECK(attempts.reserve({.userId = 8, .now = 10}).admitted);
-  attempts.settle({.userId = 7, .success = false});
-  REQUIRE(attempts.reserve({.userId = 7, .now = 11}).admitted);
-  CHECK(attempts.locked({.userId = 7, .now = 11}));
-  attempts.settle({.userId = 7, .success = false});
-  const PinReservation locked = attempts.reserve({.userId = 7, .now = 12});
+  CHECK(scalar("SELECT COUNT(*) FROM guard_pin_attempt WHERE user_id = 7") == "1");
+  CHECK_FALSE(drogon::sync_wait(attempts.reserve({.userId = 7, .now = 10})).admitted);
+  CHECK(drogon::sync_wait(attempts.reserve({.userId = 8, .now = 10})).admitted);
+  drogon::sync_wait(attempts.settle({.userId = 7, .success = false}));
+  REQUIRE(drogon::sync_wait(attempts.reserve({.userId = 7, .now = 11})).admitted);
+  CHECK(drogon::sync_wait(attempts.locked({.userId = 7, .now = 11})));
+  drogon::sync_wait(attempts.settle({.userId = 7, .success = false}));
+  const PinReservation locked = drogon::sync_wait(attempts.reserve({.userId = 7, .now = 12}));
   CHECK(locked.admitted);
   CHECK(locked.locked);
-  attempts.settle({.userId = 7, .success = false});
+  drogon::sync_wait(attempts.settle({.userId = 7, .success = false}));
+  CHECK(scalar("SELECT COUNT(*) FROM guard_pin_attempt WHERE user_id = 7") == "2");
+  drogon::sync_wait(attempts.settle({.userId = 8, .success = false}));
+}
+
+TEST_CASE("a lockout outlives a restart and expires with its window")
+{
+  boot();
+  SafetyRig rig;
+  rig.armPins();
+  for (int attempt = 0; attempt < 3; ++attempt)
+    CHECK_THROWS_AS(rig.setMode("home", std::string("9999"), 2), ResponseException);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_pin_attempt WHERE user_id = 2") == "3");
+
+  SafetyService restarted(SafetyService::Dependencies{.sink = &rig.sink,
+                                                      .actor = &rig.actor,
+                                                      .changes = &rig.changes,
+                                                      .clock = [&rig] { return rig.clock; }},
+                          SafetyService::Config{.pinIterations = 1000,
+                                                .panicRepeatWindowS = 60,
+                                                .panicLimit = 3,
+                                                .panicLimitWindowS = 3600,
+                                                .retryBaseS = 2,
+                                                .retryMaxS = 8,
+                                                .resumeWindowS = 86400,
+                                                .sweepIntervalS = 5.0,
+                                                .retentionS = 30LL * 86400,
+                                                .attempts = {.maxFailures = 3, .windowSeconds = 900},
+                                                .phraseIterations = 1024,
+                                                .spokenRepeatWindowS = 60});
+  const DisarmRequest correct{.userId = 2, .userName = "Laura", .pin = std::string("1111"), .environmentId = std::nullopt};
+  CHECK(refusalOf([&restarted, &correct] { static_cast<void>(drogon::sync_wait(restarted.authorize(correct))); }) ==
+        429);
+  rig.clock += 899;
+  CHECK(refusalOf([&restarted, &correct] { static_cast<void>(drogon::sync_wait(restarted.authorize(correct))); }) ==
+        429);
+  rig.clock += 2;
+  CHECK(drogon::sync_wait(restarted.authorize(correct)) == DisarmVerdict::Allowed);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_pin_attempt WHERE user_id = 2") == "0");
+}
+
+TEST_CASE("the hourly sweep drops failures past their window and keeps a live lockout")
+{
+  boot();
+  SafetyRig rig;
+  rig.armPins();
+  scalar("INSERT INTO guard_pin_attempt (user_id, failed_at) VALUES (5, " + std::to_string(rig.clock - 2000) + ")");
+  for (int attempt = 0; attempt < 3; ++attempt)
+    CHECK_THROWS_AS(rig.setMode("home", std::string("9999"), 2), ResponseException);
+  static_cast<void>(drogon::sync_wait(rig.safety.purgeExpired()));
+  CHECK(scalar("SELECT COUNT(*) FROM guard_pin_attempt WHERE user_id = 5") == "0");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_pin_attempt WHERE user_id = 2") == "3");
 }
 
 TEST_CASE("the two PINs must be digits and different")

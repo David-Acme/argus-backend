@@ -1,9 +1,10 @@
 #pragma once
 
+#include <feature/safety/repositories/pin-attempt/pin-attempt-repository.hxx>
+
 #include <cstdint>
-#include <deque>
+#include <drogon/utils/coroutine.h>
 #include <mutex>
-#include <unordered_map>
 #include <unordered_set>
 
 struct PinAttemptAt
@@ -35,17 +36,16 @@ public:
 
   explicit PinAttempts(Limits limits);
 
-  [[nodiscard]] bool locked(const PinAttemptAt& at) const;
-  [[nodiscard]] PinReservation reserve(const PinAttemptAt& at);
-  void settle(const PinSettlement& settlement);
-  void clear(int64_t userId);
+  [[nodiscard]] drogon::Task<bool> locked(PinAttemptAt at) const;
+  [[nodiscard]] drogon::Task<PinReservation> reserve(PinAttemptAt at);
+  drogon::Task<void> settle(PinSettlement settlement);
+  drogon::Task<void> clear(int64_t userId);
+  [[nodiscard]] drogon::Task<int64_t> purgeExpired(int64_t now) const;
+  void release(int64_t userId);
 
 private:
-  void prune(std::deque<int64_t>& failures, int64_t now) const;
-  [[nodiscard]] bool lockedLocked(int64_t userId, int64_t now) const;
-
   Limits limits_;
-  mutable std::mutex mutex_;
-  mutable std::unordered_map<int64_t, std::deque<int64_t>> failures_;
+  PinAttemptRepository repository_;
+  std::mutex mutex_;
   std::unordered_set<int64_t> inFlight_;
 };

@@ -79,24 +79,6 @@ private:
   std::shared_ptr<SafetyRuntime> runtime_;
 };
 
-class PinAttemptScope
-{
-public:
-  PinAttemptScope(std::shared_ptr<PinAttempts> attempts, int64_t userId)
-      : attempts_(std::move(attempts)), userId_(userId)
-  {
-  }
-  ~PinAttemptScope() { attempts_->settle({.userId = userId_, .success = success_}); }
-  PinAttemptScope(const PinAttemptScope&) = delete;
-  PinAttemptScope& operator=(const PinAttemptScope&) = delete;
-
-  void succeed() { success_ = true; }
-
-private:
-  std::shared_ptr<PinAttempts> attempts_;
-  int64_t userId_{0};
-  bool success_{false};
-};
 }
 
 SafetyService::SafetyService(Dependencies dependencies, Config config)
@@ -172,30 +154,35 @@ drogon::Task<DisarmVerdict> SafetyService::verifyPin(const PinCheck& check) cons
   const DisarmRequest& request = check.request;
   if (!request.pin || request.pin->empty())
     throw ResponseException(SafetyErrors::PinRequired);
-  const PinReservation reservation = attempts_->reserve({.userId = request.userId, .now = now()});
+  const PinReservation reservation =
+      co_await attempts_->reserve({.userId = request.userId, .now = now()});
   if (!reservation.admitted)
     throw ResponseException(SafetyErrors::PinLocked);
-  PinAttemptScope attempt(attempts_, request.userId);
-  const PinMatch match = co_await BlockingTask<PinMatch>{
-      [entered = *request.pin, disarm = check.pin.disarmHash, duress = check.pin.duressHash]() {
-        const bool disarmMatch = pin_hash::verify({.pin = entered, .stored = disarm});
-        const bool duressMatch = pin_hash::verify({.pin = entered, .stored = duress});
-        return PinMatch{.disarm = disarmMatch, .duress = duressMatch};
-      },
-      BlockingLane::Heavy};
+  PinMatch match;
+  try {
+    match = co_await BlockingTask<PinMatch>{
+        [entered = *request.pin, disarm = check.pin.disarmHash, duress = check.pin.duressHash]() {
+          const bool disarmMatch = pin_hash::verify({.pin = entered, .stored = disarm});
+          const bool duressMatch = pin_hash::verify({.pin = entered, .stored = duress});
+          return PinMatch{.disarm = disarmMatch, .duress = duressMatch};
+        },
+        BlockingLane::Heavy};
+  }
+  catch (...) {
+    attempts_->release(request.userId);
+    throw;
+  }
+  const bool accepted = !reservation.locked && (match.duress || match.disarm);
+  co_await attempts_->settle({.userId = request.userId, .success = accepted});
   if (reservation.locked) {
     if (match.duress)
       duress(request);
     throw ResponseException(SafetyErrors::PinLocked);
   }
-  if (match.duress) {
-    attempt.succeed();
+  if (match.duress)
     co_return DisarmVerdict::Duress;
-  }
-  if (match.disarm) {
-    attempt.succeed();
+  if (match.disarm)
     co_return DisarmVerdict::Allowed;
-  }
   throw ResponseException(SafetyErrors::PinInvalid);
 }
 
@@ -248,7 +235,7 @@ drogon::Task<SafetyStatus> SafetyService::setPin(const PinSetInput& input) const
     db_transaction::rollback(transaction);
     throw;
   }
-  attempts_->clear(input.userId);
+  co_await attempts_->clear(input.userId);
   co_return SafetyStatus{.duressEnabled = true, .hasPin = true, .hasPhrase = !setting.phraseKey.empty()};
 }
 
@@ -276,7 +263,7 @@ drogon::Task<SafetyStatus> SafetyService::removePin(const PinRemoveInput& input)
     db_transaction::rollback(transaction);
     throw;
   }
-  attempts_->clear(input.userId);
+  co_await attempts_->clear(input.userId);
   const SafetySetting setting = co_await settingRepository_.find();
   co_return SafetyStatus{.duressEnabled = setting.duressEnabled,
                          .hasPin = false,
@@ -301,7 +288,7 @@ drogon::Task<void> SafetyService::forgetUser(int64_t userId) const
     db_transaction::rollback(transaction);
     throw;
   }
-  attempts_->clear(userId);
+  co_await attempts_->clear(userId);
 }
 
 drogon::Task<SafetySetting> SafetyService::setting() const
@@ -645,5 +632,6 @@ drogon::Task<int64_t> SafetyService::purgeExpired() const
   if (removed > 0)
     LOG_INFO << "Guard safety: purged " << removed
              << " delivered alert row(s) past the retention window";
+  static_cast<void>(co_await attempts_->purgeExpired(at));
   co_return removed;
 }

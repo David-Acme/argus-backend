@@ -405,6 +405,15 @@ CREATE TABLE IF NOT EXISTS guard_user_pin (
     updated_at   INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS guard_pin_attempt (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id    INTEGER NOT NULL,
+    failed_at  INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_guard_pin_attempt_user
+    ON guard_pin_attempt (user_id, failed_at);
+
 CREATE TABLE IF NOT EXISTS guard_safety_setting (
     id                 INTEGER PRIMARY KEY CHECK (id = 1),
     duress_enabled     INTEGER NOT NULL DEFAULT 0 CHECK (duress_enabled IN (0, 1)),

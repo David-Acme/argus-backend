@@ -1114,8 +1114,8 @@ people see are those of an ordinary disarm. Raising the mode never asks. Switchi
   `guard_user_pin`; neither code is logged, journaled, synced or returned.
   Short PINs are brute-forceable offline from a stolen `guard.db`, so the
   hash slows that down rather than prevents it; online guessing is capped by
-  the lockout. A lockout is per user and in memory, so a restart resets it;
-  that is an accepted gap.
+  the lockout. A lockout is per user and lives in `guard.db` (below), so a
+  restart does not reset it.
 - *Not covered:* a household with a single member has nobody else to alert;
   a panic there falls back to the environment's emergency contacts or, with
   none configured, ends terminal (below). The voice tool cannot disarm a user
@@ -1131,6 +1131,20 @@ people see are those of an ordinary disarm. Raising the mode never asks. Switchi
   count (`settle`). While locked the attempt still runs: the disarm code is
   refused with 429, and the duress code raises the silent alert and answers
   the very same 429, so exhausting the attempts first cannot silence it.
+- *The count survives a restart (2026-10-13, F4).* Each counted failure is a
+  `guard_pin_attempt` row `(user_id, failed_at)`, written before the PBKDF2
+  runs, exactly where the in-memory deque used to grow. Restarting
+  argus-guard used to forget the deque, so killing the service, or waiting
+  for a crash, reset a lockout and bought five more guesses; now the window
+  is read back from the table. `reserve` first drops the user's failures that
+  left the window and then counts the rest. A success, a new code, removed
+  codes and a disabled account delete the user's rows. The safety sweep's
+  hourly purge drops every row past the window, so the table holds at most a
+  window of failures. Only the one-attempt-per-user guard stays in memory: it
+  is about requests in flight in this process, and after a restart there are
+  none. The table is new (`CREATE TABLE IF NOT EXISTS` in `schema.sql`, which
+  every boot applies), additive and untouched by the surveillance purge, like
+  the codes it protects.
 - *Cost.* Both derivations run on `BlockingLane::Heavy`, never on the light
   lane that notifications and camera commands share. A stored hash below
   100 000 iterations no longer verifies, and `PUT` refuses trivial codes
@@ -1265,7 +1279,7 @@ Code: `src/feature/safety/` (controller, DTOs, `SafetyService` as the
 `pin-attempts`, three repositories, `GuardAlertSink`,
 `NotificationActorNotifier`, `IdentityActorDirectory`,
 `vocabulary/phrase-change.hxx`), `src/feature/guard/services/disarm-gate.hxx`,
-`src/app/rpc/duress-rpc-service`, tables `guard_user_pin`,
+`src/app/rpc/duress-rpc-service`, tables `guard_user_pin`, `guard_pin_attempt`,
 `guard_safety_setting` (with `duress_phrase_key`), `guard_safety_alert` (with
 `spoken`); `tests/unit/guard-safety-test.cc` and
 `tests/unit/guard-duress-phrase-test.cc` (the DTO's rules, the key at rest,

@@ -9,6 +9,7 @@ argus_module(NAME guard-safety
         infra/guard-alert-sink.cc
         infra/identity-actor-directory.cc
         infra/notification-actor-notifier.cc
+        repositories/pin-attempt/pin-attempt-repository.cc
         repositories/safety-alert/safety-alert-repository.cc
         repositories/safety-setting/safety-setting-repository.cc
         repositories/user-pin/user-pin-repository.cc
