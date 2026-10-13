@@ -254,6 +254,11 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   2026-10-12 at `6408cec6`), silently around its second mocked `build-all.sh dev --only camera` call,
   after the check-vendored step that sees no git tree. Find the change that broke it and restore it
   green; a gate's own test that fails unnoticed is no gate.
+- D11 About twenty test files across camera, guard, identity and productivity hold `AppRunner runner;`
+  as a member constructed before their constructor body; where that body calls `addDbClient`, the app
+  thread can start Drogon first and the fixture aborts (`!running_`), intermittently. Two productivity
+  fixtures were fixed with R21 (`797b70c8`); the rest follow the same shape: client setup in a member
+  declared first, or the main-owned runner pattern.
 
 ## 8. Decisions awaiting the owner
 
