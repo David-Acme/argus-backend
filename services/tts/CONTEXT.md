@@ -491,8 +491,22 @@ short sentences have 15-16 words, the paragraphs 66-67.
 | Supertonic 3 (M1) | en | 1028 / 3613 ms | 0.230 / 0.215 |
 | Supertonic 3 (M1) | es | 1172 / 3993 ms | 0.235 / 0.210 |
 | Pocket fast (alba) | en | 26 / 32 ms | 0.093 / 0.102 |
-| Pocket fast (lola) | es | 30 / 35 ms | 0.097 / 0.103 |
+| Pocket fast (lola) | es | 38 / 21 ms | 0.099 / 0.102 |
 | Pocket quality, 24 layers (lola) | es | 78 / 113 ms | 0.297 / 0.320 |
+
+The Pocket fast Spanish row was re-measured after the decoding batch became
+one frame per call (see "The Pocket runtime"), with the same client and texts
+before and after, because the change trades decoder amortisation for
+determinism: RTF moved 0.109 -> 0.099 on the short text and 0.106 -> 0.102 on
+the long one, and the first PCM byte 38.8 -> 38.1 ms and 22.1 -> 21.1 ms, so the
+one-frame contract costs nothing measurable - the batched path was the slower
+one, decoding frames against a state it advanced once. Every other row is the
+original measurement and was not re-taken. The client used for the comparison
+speaks HTTP/1.1 with the connection kept alive and reads the chunked framing:
+a client that asks for `Connection: close` is answered with an empty body
+(`curl -H 'Connection: close'` reproduces it against `/tts/v1/synthesize-stream`
+in one command), a defect of the streaming path that this measurement surfaced
+and that is reported rather than fixed here.
 
 Reference points: upstream PyTorch on the same machine reaches RTF 0.33 (es 6
 layers), 0.83 (es 24 layers) and 0.31 (en). The standalone PocketTTS.cpp
