@@ -14,6 +14,8 @@ inline constexpr const char* SELECT_ID_OF_USER = "SELECT id FROM duress_raise_ou
 inline constexpr const char* SELECT_ALL =
     "SELECT id, user_id, role, key_digest, said_at FROM duress_raise_outbox ORDER BY id";
 inline constexpr const char* DELETE_BY_ID = "DELETE FROM duress_raise_outbox WHERE id = ?";
+inline constexpr const char* SYNCHRONOUS_FULL = "PRAGMA synchronous = FULL";
+inline constexpr const char* SYNCHRONOUS = "PRAGMA synchronous";
 }
 
 struct DuressRaiseCreateInput

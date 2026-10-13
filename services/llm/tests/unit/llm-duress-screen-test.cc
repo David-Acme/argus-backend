@@ -312,6 +312,16 @@ void backdate(const std::string& db, int64_t saidAt)
   sqlite3_close(handle);
 }
 
+int pragmaOf(sqlite3* db, const char* pragma)
+{
+  sqlite3_stmt* statement = nullptr;
+  if (sqlite3_prepare_v2(db, pragma, -1, &statement, nullptr) != SQLITE_OK)
+    return -1;
+  const int value = sqlite3_step(statement) == SQLITE_ROW ? sqlite3_column_int(statement, 0) : -1;
+  sqlite3_finalize(statement);
+  return value;
+}
+
 struct ManualClock
 {
   std::atomic<int64_t> seconds{1'790'000'000};
@@ -660,6 +670,41 @@ TEST_CASE("raises written down before a restart are read once the memory store o
   CHECK(guard->attempts().front().userId == 3);
   CHECK(guard->attempts().front().key == key);
   after.requestStop();
+}
+
+TEST_CASE("the raise row commits through its own fully synced connection, waiting for the shared writer")
+{
+  const std::string db = scratchDb("outbox-durable.db");
+  SqliteGraph graph;
+  REQUIRE(graph.open(db));
+  const auto outbox = std::make_shared<SqliteDuressOutbox>(
+      SqliteDuressOutboxInput{.mutex = &graph.mutex(), .db = [&graph] { return graph.handle(); }});
+  CHECK(pragmaOf(graph.handle(), "PRAGMA synchronous") == 1);
+  CHECK(outbox->synchronous() == 2);
+  CHECK(pragmaOf(graph.handle(), "PRAGMA synchronous") == 1);
+
+  const int sharedChanges = sqlite3_total_changes(graph.handle());
+  REQUIRE(sqlite3_exec(graph.handle(), "BEGIN IMMEDIATE", nullptr, nullptr, nullptr) == SQLITE_OK);
+  std::atomic<bool> written{false};
+  std::optional<int64_t> row;
+  std::thread raise([&outbox, &row, &written] {
+    row = outbox->add({.userId = 5, .role = UserRole::Resident, .keyDigest = "digest", .saidAt = 1'790'000'000});
+    written = true;
+  });
+  std::this_thread::sleep_for(std::chrono::milliseconds(150));
+  CHECK_FALSE(written.load());
+  REQUIRE(sqlite3_exec(graph.handle(), "COMMIT", nullptr, nullptr, nullptr) == SQLITE_OK);
+  raise.join();
+  REQUIRE(row.has_value());
+  CHECK(sqlite3_total_changes(graph.handle()) == sharedChanges);
+  const std::vector<OutboxRow> rows = outboxRows(db);
+  REQUIRE(rows.size() == 1);
+  CHECK(rows.front().userId == 5);
+  CHECK(rows.front().saidAt == 1'790'000'000);
+
+  outbox->remove(row.value_or(0));
+  CHECK(outboxRows(db).empty());
+  CHECK(sqlite3_total_changes(graph.handle()) == sharedChanges + 1);
 }
 
 TEST_CASE("a raise whose phrase changed while argus-llm was down is crossed out without asking guard")

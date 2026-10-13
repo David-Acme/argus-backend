@@ -962,10 +962,18 @@ withheld turn and an unintelligible one cannot be told apart.
     counts as idle. A row whose digest no longer matches (the phrase changed or was
     removed while argus-llm was down) is crossed out without asking guard,
     since guard would answer `STALE`.
-  - **Durability.** The write shares the memory graph's connection and lock.
-    WAL with `synchronous = NORMAL` keeps it through a process restart, not
-    necessarily through a power cut. A write that fails leaves the raise in
-    memory only, as before, and says so in the log.
+  - **Durability (reviewer ruling, 2026-10-13).** The insert goes through
+    the outbox's own connection to the same `memory.db`
+    (`SqliteDuressOutbox`, opened on first use from the shared connection's
+    file name). That connection runs `synchronous = FULL` with a 5 s busy
+    timeout (`kWriterBusyTimeoutMs`), so the insert waits for the shared
+    writer, and a committed raise row survives a power cut as well as a
+    restart. The conversation path keeps `NORMAL` (`SqliteGraph`).
+  - **What stays on the shared path.** The read-back and the delete that
+    crosses a row out stay on the shared connection and its lock. A lost
+    delete only repeats a raise, and guard folds that.
+  - **A write that fails** leaves the raise in memory only, as before, and
+    says so in the log.
   - **Never written down.** Words matched late (the boot window above) are
     written only once they match. The late queue itself is never written,
     since it holds words, so a restart inside the boot window forgets what
@@ -1000,6 +1008,9 @@ withheld turn and an unintelligible one cannot be told apart.
   guard's acknowledgement, and reaches guard with the key it matched;
 - raises written down before a restart are read once the memory store opens,
   even when the worker started first, as `main.cc` starts it;
+- the raise row commits through its own connection (`synchronous` 2) while
+  the conversation connection stays at 1, waits for the shared writer, and
+  the delete goes through the shared connection;
 - a raise whose phrase changed while argus-llm was down is crossed out without
   asking guard;
 - the raise carries the instant the words reached the screen, every retry

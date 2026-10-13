@@ -51,3 +51,20 @@ bool DuressRaiseRepository::remove(sqlite3* db, int64_t id) const
   erase.bindInt64(1, id);
   return erase.step() == SQLITE_DONE;
 }
+
+bool DuressRaiseRepository::syncFully(sqlite3* db) const
+{
+  SqliteStmt pragma;
+  if (!pragma.prepare(db, SYNCHRONOUS_FULL))
+    return false;
+  const int step = pragma.step();
+  return step == SQLITE_DONE || step == SQLITE_ROW;
+}
+
+int DuressRaiseRepository::synchronous(sqlite3* db) const
+{
+  SqliteStmt pragma;
+  if (!pragma.prepare(db, SYNCHRONOUS) || pragma.step() != SQLITE_ROW)
+    return -1;
+  return pragma.columnInt(0);
+}
