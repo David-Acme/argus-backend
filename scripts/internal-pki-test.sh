@@ -147,36 +147,6 @@ ensure_internal_pki "$pki" > /dev/null 2>&1 || fail "the run after a profile cha
 [ "$(internal_pki_subject "$pki/sync/cert.pem")" = "CN=argus-sync,OU=internal-v1,O=Argus" ] \
   || fail "a certificate of an older profile was not re-issued"
 
-old_ca="$(fingerprint "$pki/ca.pem")"
-internal_pki_issue_ca "$pki" 30
-short_ca="$(fingerprint "$pki/ca.pem")"
-rm -f "$pki/ca-previous.pem"
-for service in $INTERNAL_PKI_SERVICES; do
-  internal_pki_issue_leaf "$pki" "$service"
-done
-ensure_internal_pki "$pki" > "$TEST_TMP/rotate.out" 2>&1 || fail "the CA rotation run failed"
-[ "$(fingerprint "$pki/ca.pem")" != "$short_ca" ] || fail "a CA with 30 days left was not renewed"
-[ "$(fingerprint "$pki/ca.pem")" != "$old_ca" ] || fail "the CA rotation brought back the first CA"
-[ "$(fingerprint "$pki/ca-previous.pem")" = "$short_ca" ] || fail "the rotated CA was not kept as the previous one"
-[ "$(grep -c 'BEGIN CERTIFICATE' "$pki/trust.pem")" = 2 ] || fail "the trust bundle does not carry both CAs during the rotation"
-[ "$(days_valid "$pki/ca.pem")" = 3650 ] || fail "the renewed CA is not valid for 10 years"
-grep -q 'a new internal CA was issued' "$TEST_TMP/rotate.out" || fail "the rotation did not ask for a restart"
-for service in $INTERNAL_PKI_SERVICES; do
-  openssl verify -CAfile "$pki/ca.pem" "$pki/$service/cert.pem" >/dev/null 2>&1 \
-    || fail "the certificate of $service was not re-issued by the new CA"
-  cmp -s "$pki/$service/ca.pem" "$pki/trust.pem" || fail "$service does not carry the rotated trust bundle"
-done
-
-if openssl x509 -help 2>&1 | grep -q -- '-not_after'; then
-  openssl req -x509 -new -key "$pki/ca.key" -subj "/CN=expired" -not_before 20200101000000Z -not_after 20200102000000Z \
-    -out "$pki/ca-previous.pem" 2>/dev/null
-  ensure_internal_pki "$pki" > /dev/null 2>&1 || fail "the run after the previous CA expired failed"
-  [ ! -e "$pki/ca-previous.pem" ] || fail "an expired previous CA was kept"
-  cmp -s "$pki/ca.pem" "$pki/trust.pem" || fail "an expired previous CA stayed in the trust bundle"
-else
-  printf 'internal-pki-test: openssl has no -not_after, so the expired previous CA case is skipped\n'
-fi
-
 port_free() {
   ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
 }
@@ -192,9 +162,9 @@ for _ in $(seq 1 50); do
 done
 [ -n "$port" ] || fail "no free loopback port"
 
-serve_once() {
+serve_from() {
   openssl s_server -accept "127.0.0.1:$port" -naccept 2 -quiet \
-    -cert "$pki/auth/cert.pem" -key "$pki/auth/key.pem" -CAfile "$pki/auth/ca.pem" \
+    -cert "$1/cert.pem" -key "$1/key.pem" -CAfile "$2" \
     -Verify 1 -verify_return_error > "$TEST_TMP/server.out" 2>&1 &
   server_pid=$!
   for _ in $(seq 1 100); do
@@ -204,11 +174,104 @@ serve_once() {
   fail "openssl s_server did not listen"
 }
 
+serve_once() {
+  serve_from "$pki/auth" "$pki/auth/ca.pem"
+}
+
 finish_server() {
   kill "$server_pid" 2>/dev/null || true
   wait "$server_pid" 2>/dev/null || true
   server_pid=""
 }
+
+talks_to_auth() {
+  local client="$1" trust="$2"
+  openssl s_client -connect "127.0.0.1:$port" -cert "$client/cert.pem" -key "$client/key.pem" \
+    -CAfile "$trust" -verify_return_error -verify_hostname argus-auth \
+    < /dev/null > "$TEST_TMP/client.out" 2>&1 && grep -q 'Verify return code: 0 (ok)' "$TEST_TMP/client.out"
+}
+
+internal_pki_issue_ca "$pki" 30
+rm -f "$pki/ca-previous.pem"
+current="$(fingerprint "$pki/ca.pem")"
+ensure_internal_pki "$pki" > "$TEST_TMP/rotate-first.out" 2>&1 || fail "the first pass of the CA rotation failed"
+[ "$(fingerprint "$pki/ca.pem")" = "$current" ] || fail "the first pass of the CA rotation replaced the current CA"
+[ -s "$pki/ca-next.pem" ] && [ "$(mode_of "$pki/ca-next.key")" = 600 ] \
+  || fail "a CA with 30 days left did not get a 0600 next CA"
+[ "$(days_valid "$pki/ca-next.pem")" = 3650 ] || fail "the next CA is not valid for 10 years"
+[ "$(grep -c 'BEGIN CERTIFICATE' "$pki/trust.pem")" = 2 ] || fail "the first pass did not put the next CA beside the current one"
+grep -q 'restart each service once, one at a time' "$TEST_TMP/rotate-first.out" \
+  || fail "the first pass did not ask for a restart of each service, one at a time"
+for service in $INTERNAL_PKI_SERVICES; do
+  openssl verify -CAfile "$pki/ca.pem" "$pki/$service/cert.pem" >/dev/null 2>&1 \
+    || fail "during the first pass the certificate of $service does not come from the current CA"
+  cmp -s "$pki/$service/ca.pem" "$pki/trust.pem" || fail "$service does not carry the two-CA bundle"
+done
+next="$(fingerprint "$pki/ca-next.pem")"
+cp -R "$pki/auth" "$TEST_TMP/old-auth"
+cp -R "$pki/camera" "$TEST_TMP/old-camera"
+
+waiting_state="$(state_of)"
+ensure_internal_pki "$pki" > "$TEST_TMP/rotate-wait.out" 2>&1 || fail "a pass before the next CA was a day old failed"
+[ "$(state_of)" = "$waiting_state" ] || fail "the next CA took over before it was a day old"
+grep -q 'a day or more after it joined the trust bundles' "$TEST_TMP/rotate-wait.out" \
+  || fail "a pass before the next CA was a day old did not say when it takes over"
+
+touch -d '2 days ago' "$pki/ca-next.pem"
+ensure_internal_pki "$pki" > "$TEST_TMP/rotate-second.out" 2>&1 || fail "the second pass of the CA rotation failed"
+[ "$(fingerprint "$pki/ca.pem")" = "$next" ] || fail "the next CA did not take over on the second pass"
+[ "$(fingerprint "$pki/ca-previous.pem")" = "$current" ] || fail "the second pass did not keep the old CA as the previous one"
+[ ! -e "$pki/ca-next.pem" ] && [ ! -e "$pki/ca-next.key" ] || fail "the next CA files outlived the takeover"
+[ "$(grep -c 'BEGIN CERTIFICATE' "$pki/trust.pem")" = 2 ] || fail "the trust bundle does not carry both CAs after the takeover"
+grep -q 'restart each service once, one at a time' "$TEST_TMP/rotate-second.out" \
+  || fail "the takeover did not ask for a restart of each service, one at a time"
+for service in $INTERNAL_PKI_SERVICES; do
+  openssl verify -CAfile "$pki/ca.pem" "$pki/$service/cert.pem" >/dev/null 2>&1 \
+    || fail "the certificate of $service was not re-issued by the new CA"
+  cmp -s "$pki/$service/ca.pem" "$pki/trust.pem" || fail "$service does not carry the rotated trust bundle"
+done
+
+serve_from "$TEST_TMP/old-auth" "$TEST_TMP/old-auth/ca.pem"
+talks_to_auth "$pki/camera" "$pki/camera/ca.pem" \
+  || fail "a new-CA client was refused by an old-CA server: $(tail -n 3 "$TEST_TMP/client.out")"
+finish_server
+serve_from "$pki/auth" "$pki/auth/ca.pem"
+talks_to_auth "$TEST_TMP/old-camera" "$TEST_TMP/old-camera/ca.pem" \
+  || fail "an old-CA client was refused by a new-CA server: $(tail -n 3 "$TEST_TMP/client.out")"
+finish_server
+
+internal_pki_issue_ca "$pki" 1
+rm -f "$pki/ca-previous.pem"
+short="$(fingerprint "$pki/ca.pem")"
+ensure_internal_pki "$pki" > "$TEST_TMP/rotate-late.out" 2>&1 || fail "the pass with a CA expiring within a day failed"
+[ "$(fingerprint "$pki/ca.pem")" != "$short" ] || fail "a CA expiring within a day was kept"
+[ "$(fingerprint "$pki/ca-previous.pem")" = "$short" ] || fail "a CA expiring within a day was not kept as the previous one"
+[ "$(days_valid "$pki/ca.pem")" = 3650 ] || fail "the CA that replaced one expiring within a day is not valid for 10 years"
+grep -q 'expires within a day' "$TEST_TMP/rotate-late.out" || fail "a takeover at once did not say why"
+for service in $INTERNAL_PKI_SERVICES; do
+  openssl verify -CAfile "$pki/ca.pem" "$pki/$service/cert.pem" >/dev/null 2>&1 \
+    || fail "after a takeover at once the certificate of $service is not from the new CA"
+done
+
+internal_pki_issue_ca "$pki" 1
+rm -f "$pki/ca-previous.pem"
+internal_pki_make_ca "$pki" ca-next
+young="$(fingerprint "$pki/ca-next.pem")"
+ensure_internal_pki "$pki" > "$TEST_TMP/rotate-late-next.out" 2>&1 \
+  || fail "the pass with a CA expiring within a day and a young next CA failed"
+[ "$(fingerprint "$pki/ca.pem")" = "$young" ] \
+  || fail "a young next CA did not take over from a CA expiring within a day"
+grep -q 'expires within a day' "$TEST_TMP/rotate-late-next.out" || fail "the early takeover did not say why"
+
+if openssl x509 -help 2>&1 | grep -q -- '-not_after'; then
+  openssl req -x509 -new -key "$pki/ca.key" -subj "/CN=expired" -not_before 20200101000000Z -not_after 20200102000000Z \
+    -out "$pki/ca-previous.pem" 2>/dev/null
+  ensure_internal_pki "$pki" > /dev/null 2>&1 || fail "the run after the previous CA expired failed"
+  [ ! -e "$pki/ca-previous.pem" ] || fail "an expired previous CA was kept"
+  cmp -s "$pki/ca.pem" "$pki/trust.pem" || fail "an expired previous CA stayed in the trust bundle"
+else
+  printf 'internal-pki-test: openssl has no -not_after, so the expired previous CA case is skipped\n'
+fi
 
 serve_once
 openssl s_client -connect "127.0.0.1:$port" -cert "$pki/camera/cert.pem" -key "$pki/camera/key.pem" \

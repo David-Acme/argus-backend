@@ -843,9 +843,22 @@ loads them yet.
   `${ARGUS_DATA_DIR:-argus-deploy/data}`). A certificate is issued again, with
   a new key, when it is missing, no longer matches its key, was issued by
   another CA, carries an older profile or has fewer than 60 days left; the rest
-  is kept. A CA with fewer than 60 days left is replaced: every certificate is
-  issued again, the old CA stays in `trust.pem` until it expires, and
-  provisioning asks for one restart of every service.
+  is kept.
+- A CA with fewer than 60 days left is rotated in two provisioning passes, and
+  each pass is followed by a rolling restart, one service at a time, never a
+  fleet-wide stop. The first pass adds a next CA to `trust.pem` and keeps every
+  certificate: restarting a service gives it the two-CA bundle, and while the
+  others wait their turn every certificate in use is still from the current
+  CA, which they all trust. A pass a day or more later makes the next CA
+  current and issues every certificate again, and `trust.pem` keeps the old CA
+  until it expires: by then every service holds the old and the new CA, so an
+  old-CA certificate and a new-CA certificate verify against each other
+  through the shared bundle in both directions (`internal-pki-test` pins both),
+  and services restart one at a time with no outage. The restart is what loads
+  the new files (until the services reload them on their own) and is one per
+  service. Only a CA that cannot be used (missing, a key that does not match,
+  an older profile, expired) or one that expires within a day is replaced in
+  a single pass; provisioning then asks for a restart of every service.
 - The per-caller secret stays the authorisation on top of mutual TLS: the
   certificate says which service is calling, the secret still decides what it
   may call. Plaintext listeners stay until the owner's deploy check; removing
@@ -853,8 +866,11 @@ loads them yet.
 - `scripts/internal-pki-test.sh` checks the CA and every certificate
   (validity, use, names, permissions, what each directory holds), that the
   list of services is the set whose deploy templates speak internal gRPC,
-  renewal at 59 days and not at 61, a changed key, an older profile, a CA
-  rotation and the drop of an expired previous CA, mutual TLS between two
+  renewal at 59 days and not at 61, a changed key, an older profile, both
+  passes of a CA rotation (the next CA waits a day, then takes over; old-CA
+  and new-CA certificates talk to each other in both directions under the
+  two-CA bundle), a takeover at once for a CA expiring within a day, and the
+  drop of an expired previous CA, mutual TLS between two
   services with `openssl s_server`/`s_client` (a client that expects another
   name, a client certificate from another CA and a client without one are
   refused, each for that reason), and a `set -x` trace that carries no line
