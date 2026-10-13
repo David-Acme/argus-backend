@@ -426,3 +426,15 @@ target_link_libraries(productivity-recurrence-test PRIVATE
     doctest::doctest)
 target_compile_options(productivity-recurrence-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-recurrence-test COMMAND productivity-recurrence-test)
+
+add_executable(productivity-calendar-event-dto-test tests/unit/productivity-calendar-event-dto-test.cc)
+target_compile_definitions(productivity-calendar-event-dto-test PRIVATE
+    ARGUS_RECURRENCE_CASES="${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/fixtures/recurrence/cases.json")
+target_link_libraries(productivity-calendar-event-dto-test PRIVATE
+    argus::productivity-calendar-event
+    argus::productivity-recurrence
+    argus::lib::errors
+    argus::lib::validation
+    doctest::doctest)
+target_compile_options(productivity-calendar-event-dto-test PRIVATE -Wall -Wextra)
+add_test(NAME productivity-calendar-event-dto-test COMMAND productivity-calendar-event-dto-test)

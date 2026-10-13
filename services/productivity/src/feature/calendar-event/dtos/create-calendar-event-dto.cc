@@ -1,5 +1,7 @@
 #include "create-calendar-event-dto.hxx"
 
+#include <shared/services/recurrence/recurrence.hxx>
+
 CreateCalendarEventDto CreateCalendarEventDto::fromJson(const Json::Value& json)
 {
   CreateCalendarEventDto dto;
@@ -24,6 +26,14 @@ CreateCalendarEventDto CreateCalendarEventDto::fromJson(const Json::Value& json)
   MAX_LENGTH(location, 200)
   MAX_LENGTH(color, 32)
   MAX_LENGTH_OPTIONAL(recurrenceRule, 512)
+  CUSTOM_LAMBDA(recurrenceRule,
+                [](const CreateCalendarEventDto& d)
+                    -> std::optional<std::string> {
+                  if (d.recurrenceRule && !d.recurrenceRule->empty() &&
+                      !parseRecurrenceRule(*d.recurrenceRule))
+                    return std::string(kRecurrenceRuleProblem);
+                  return std::nullopt;
+                })
   IS_POSITIVE_TIMESTAMP(startsAt)
   IS_POSITIVE_TIMESTAMP_OPTIONAL(endsAt)
   IS_BOOLEAN(isAllDay)

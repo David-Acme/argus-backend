@@ -13,7 +13,7 @@ CreateReminderDto CreateReminderDto::validated(CreateReminderDto dto)
   CUSTOM_LAMBDA(recurrenceRule, [](const CreateReminderDto& value)
                 -> std::optional<std::string> {
     if (value.recurrenceRule && !parseRecurrenceRule(*value.recurrenceRule))
-      return "recurrenceRule must be FREQ=DAILY, WEEKLY, MONTHLY or YEARLY, with an optional INTERVAL from 1 to 999";
+      return std::string(kRecurrenceRuleProblem);
     return std::nullopt;
   })
   IS_POSITIVE_TIMESTAMP(scheduledAt)

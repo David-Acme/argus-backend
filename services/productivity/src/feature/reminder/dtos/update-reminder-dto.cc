@@ -15,7 +15,7 @@ UpdateReminderDto UpdateReminderDto::validated(UpdateReminderDto dto)
                 -> std::optional<std::string> {
     if (value.recurrenceRule && !value.recurrenceRule->empty() &&
         !parseRecurrenceRule(*value.recurrenceRule))
-      return "recurrenceRule must be FREQ=DAILY, WEEKLY, MONTHLY or YEARLY, with an optional INTERVAL from 1 to 999";
+      return std::string(kRecurrenceRuleProblem);
     return std::nullopt;
   })
   END_VALIDATION()

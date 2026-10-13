@@ -32,6 +32,9 @@ struct FirstOccurrenceInput
   int64_t moment{0};
 };
 
+inline constexpr std::string_view kRecurrenceRuleProblem =
+    "recurrenceRule must be FREQ=DAILY, WEEKLY, MONTHLY or YEARLY, with an optional INTERVAL from 1 to 999";
+
 [[nodiscard]] std::optional<RecurrenceRule> parseRecurrenceRule(std::string_view text);
 [[nodiscard]] std::optional<int64_t> occurrenceAt(const OccurrenceInput& input);
 [[nodiscard]] std::optional<int64_t> firstOccurrenceAfter(const FirstOccurrenceInput& input);

@@ -640,3 +640,16 @@ another user's token refused), both languages and the gate for each role.
 - Shared logic: `src/shared/services/reminder-series` (the roll, used by the announcer), `src/shared/services/recurrence`
   (rules and occurrences). The fixture `scripts/fixtures/recurrence/cases.json` is read by the C++ test and, for
   events, by the app's expansion, so the two cannot disagree.
+
+## Event repeat rules (F6, 2026-10-13)
+
+- `POST /calendar-event` and `PATCH /calendar-event/{id}` check `recurrenceRule` with the reminders' parser
+  (`parseRecurrenceRule`). A rule it cannot read is a 422 on `recurrenceRule`, with the reminders' message
+  (`kRecurrenceRuleProblem`, beside the parser). Before, the DTOs only capped its length, so an event could store a
+  rule the app cannot expand. The app shows such a rule as one plain entry, and still does for the rows stored before
+  this check.
+- An empty string is still accepted and stored as it is. It is how a client says "no rule" for an event, because the
+  event update reads no `null` for the rule.
+- The calendar MCP tools set no rule, so the two DTOs are the only way a rule reaches `calendar_event`.
+- `productivity-calendar-event-dto-test` runs the fixture through both DTOs: every case rule is kept, and every invalid
+  rule but the empty string is refused.

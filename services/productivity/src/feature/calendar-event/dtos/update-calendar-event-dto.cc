@@ -1,5 +1,7 @@
 #include "update-calendar-event-dto.hxx"
 
+#include <shared/services/recurrence/recurrence.hxx>
+
 UpdateCalendarEventDto UpdateCalendarEventDto::fromJson(const Json::Value& json)
 {
   UpdateCalendarEventDto dto;
@@ -37,6 +39,14 @@ UpdateCalendarEventDto UpdateCalendarEventDto::fromJson(const Json::Value& json)
   MAX_LENGTH_OPTIONAL(location, 200)
   MAX_LENGTH_OPTIONAL(color, 32)
   MAX_LENGTH_OPTIONAL(recurrenceRule, 512)
+  CUSTOM_LAMBDA(recurrenceRule,
+                [](const UpdateCalendarEventDto& d)
+                    -> std::optional<std::string> {
+                  if (d.recurrenceRule && !d.recurrenceRule->empty() &&
+                      !parseRecurrenceRule(*d.recurrenceRule))
+                    return std::string(kRecurrenceRuleProblem);
+                  return std::nullopt;
+                })
   IS_POSITIVE_TIMESTAMP_OPTIONAL(startsAt)
   IS_POSITIVE_TIMESTAMP_OPTIONAL(endsAt)
   END_VALIDATION()

@@ -10,6 +10,7 @@ argus_module(NAME productivity-calendar-event
         argus::productivity-dtos
         argus::productivity-action-journal
         argus::productivity-repositories
+        argus::productivity-recurrence
         argus::contracts::productivity
         argus::contracts::sync
         argus::lib::auth
