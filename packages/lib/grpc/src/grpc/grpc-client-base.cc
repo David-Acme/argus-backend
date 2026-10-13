@@ -1,5 +1,7 @@
 #include "grpc-client-base.hxx"
 
+#include "internal-tls.hxx"
+
 #include <chrono>
 
 namespace argus::client
@@ -14,7 +16,8 @@ constexpr int kMaxPingsWithoutData = 0;
 
 std::shared_ptr<grpc::Channel> makeChannel(const std::string& target)
 {
-  return grpc::CreateChannel(target, grpc::InsecureChannelCredentials());
+  const auto plan = planChannel(target);
+  return grpc::CreateChannel(plan.address, plan.credentials);
 }
 
 std::shared_ptr<grpc::Channel> makeStreamingChannel(const std::string& target)
@@ -23,8 +26,8 @@ std::shared_ptr<grpc::Channel> makeStreamingChannel(const std::string& target)
   args.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, kKeepaliveTimeMs);
   args.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, kKeepaliveTimeoutMs);
   args.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, kMaxPingsWithoutData);
-  return grpc::CreateCustomChannel(target, grpc::InsecureChannelCredentials(),
-                                   args);
+  const auto plan = planChannel(target);
+  return grpc::CreateCustomChannel(plan.address, plan.credentials, args);
 }
 
 void setDeadline(grpc::ClientContext& context, int timeoutMs)

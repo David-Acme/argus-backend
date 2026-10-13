@@ -277,12 +277,15 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   `notBefore` rather than its file's time, the old one trusted until it expires), so each pass is
   followed by a rolling restart, one service at a time with no outage, and
   `scripts/internal-pki-test.sh` proves it, mutual TLS with openssl included
-  (`argus-deploy/CONTEXT.md`, "The internal CA"). Step 2: `packages/lib/grpc` loads those files
-  (server credentials that require and verify the client's certificate, channel credentials that
-  present the service's own). Step 3, the health warning, needs services that read their trust
-  bundle, so it follows step 2, and its scope is three items: each service's health response reports
-  how many CAs its loaded trust bundle holds; a CA's own expiry gets the same 30-day health warning
-  as the service certificates; and before a pass that would move the certificates to the next CA,
+  (`argus-deploy/CONTEXT.md`, "The internal CA"). Step 2, 2026-10-13: `packages/lib/grpc` loads
+  those files (`internal-tls.{hxx,cc}`: server credentials that require and verify the client's
+  certificate, channel credentials that present the service's own and check the server's name, and a
+  client target written `tls:<host>:<port>` that `makeChannel` serves with the certificate the
+  process installed, every other target staying plaintext), proven against a live loopback server by
+  `internal-tls-test`. Step 3, the health warning, needs services that read their trust bundle, so
+  it follows step 2, and its scope is three items: each service's health response reports how many
+  CAs its loaded trust bundle holds; a CA's own expiry gets the same 30-day health warning as the
+  service certificates; and before a pass that would move the certificates to the next CA,
   provisioning prints a check that the two-CA bundle is live on every service, which it prints and
   never gates on. Then the services, one commit each, and after the owner's deploy check the cleanup
   that removes the plaintext listeners.

@@ -822,8 +822,10 @@ leaf until a restart, so calls failed about 90 days after boot.
 
 The internal gRPC legs get mutual TLS from a CA of their own, separate from the
 instance CA the apps pin (ruling of 2026-10-12): a key that leaks from one signs
-nothing the other trusts. Step 1 issues the CA and the certificates; no service
-loads them yet.
+nothing the other trusts. Step 1 issues the CA and the certificates; step 2
+gives `packages/lib/grpc` the credentials that load them (a client target
+written `tls:<host>:<port>` gets mutual TLS, every other target stays
+plaintext); no service loads them yet.
 
 - `scripts/lib/internal-pki.sh` (`ensure_internal_pki`) keeps, under
   `${ARGUS_DATA_DIR}/certs/internal` (0700):

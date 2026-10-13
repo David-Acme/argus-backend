@@ -22,7 +22,23 @@ per client.
   `makeStreamingChannel`, `setDeadline`, `addCallerIdentity`: the one place
   channel credentials are chosen for every SDK client.
 - `src/grpc/grpc-client-base.cc` — that choice, plus the metadata the base
-  attaches to each call.
+  attaches to each call. A target written `tls:<host>:<port>` gets mutual TLS
+  with the certificate the process installed; every other target stays
+  plaintext.
+- `src/grpc/internal-tls.{hxx,cc}` — the internal CA's side of S1 (the files
+  `scripts/lib/internal-pki.sh` issues): `internalTlsFilesIn(directory)` names
+  a service directory's `cert.pem`, `key.pem` and `ca.pem`; `readInternalTls`
+  reads them, answering nothing unless the certificate, the key and the trust
+  bundle each hold what they should; `internalServerCredentials` requires and
+  verifies the client's certificate against the trust bundle;
+  `internalChannelCredentials` presents the service's own certificate and
+  verifies the server's, its name included; `installInternalTls` keeps (or,
+  with nothing, drops) the process's material for `planChannel`, which
+  `makeChannel` and `makeStreamingChannel` go through: a `tls:` target with no
+  installed certificate throws, so a misconfigured service fails at start
+  instead of falling back to plaintext. Only the stable `Ssl*Credentials`
+  API is used, so the same code builds against the host's gRPC 1.84 and the
+  images' 1.51. Compiled into `argus_client_grpc_base`.
 - `src/grpc/grpc-server-identity.hxx` — the receiving side: `metadata`,
   `constantTimeEquals`, `CallerCredential`, `callerCredentialsFromPairs`,
   `authorizeCaller`, `callerUserId`.
@@ -104,3 +120,13 @@ twice read as no credential at all.
 `tests/unit/grpc-server-drain-test.cc` — a live loopback server is shut down
 once however often the stop is asked, and a drain without a server is
 drained as soon as it is asked to stop.
+`tests/unit/internal-tls-test.cc`, run by `scripts/internal-tls-test.sh`,
+which issues a scratch internal CA with `scripts/lib/internal-pki.sh` and a
+foreign client certificate (exit 77 without openssl) — a loopback
+`grpc.health.v1` server with mutual TLS answers camera's certificate through
+`makeChannel` and `makeStreamingChannel` (`tls:` with `127.0.0.1` and
+`localhost`), the client refuses a server whose certificate names another
+service, the server refuses a client certificate the internal CA did not
+issue, a client without one and a plaintext client, a `tls:` target with no
+installed certificate throws, and a plain target stays plaintext while one
+is installed.

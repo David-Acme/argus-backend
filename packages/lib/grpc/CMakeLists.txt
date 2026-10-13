@@ -64,6 +64,22 @@ target_link_libraries(grpc-server-drain-test PRIVATE
 target_compile_options(grpc-server-drain-test PRIVATE -Wall -Wextra)
 add_test(NAME grpc-server-drain-test COMMAND grpc-server-drain-test)
 
+get_filename_component(ARGUS_GRPC_REPO_ROOT
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+add_executable(internal-tls-test tests/unit/internal-tls-test.cc)
+
+set_target_properties(internal-tls-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(internal-tls-test PRIVATE
+    argus::lib::grpc-health
+    doctest::doctest)
+target_compile_options(internal-tls-test PRIVATE -Wall -Wextra)
+add_test(NAME internal-tls-test
+         COMMAND bash ${ARGUS_GRPC_REPO_ROOT}/scripts/internal-tls-test.sh
+                 $<TARGET_FILE:internal-tls-test>)
+set_tests_properties(internal-tls-test PROPERTIES SKIP_RETURN_CODE 77)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)
