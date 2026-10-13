@@ -11,7 +11,9 @@ Provisions a throwaway broker the way provision-host.sh provisions the stack's
 (one nkey per row of argus-deploy/nats-permissions.conf plus the shared user),
 starts it on a free loopback port that is never 4222, with JetStream in a
 temporary directory, runs the given test binary against it and removes it all.
-Exits 77 (skipped) when ARGUS_NATS_SERVER_BIN is not set.
+Exits 77 (skipped) when ARGUS_NATS_SERVER_BIN is not set, is empty or names no
+executable file, and 2 when the test binary is not executable. It never falls
+back to a running broker, to ARGUS_NATS_URL or to a nats-server on PATH.
 USAGE
 }
 
@@ -22,7 +24,10 @@ if [ -z "$server" ]; then
   printf 'nats-permissions-live-test: skipped, ARGUS_NATS_SERVER_BIN is not set\n'
   exit 77
 fi
-[ -x "$server" ] || { printf 'nats-permissions-live-test: %s is not executable\n' "$server" >&2; exit 2; }
+if [ ! -f "$server" ] || [ ! -x "$server" ]; then
+  printf 'nats-permissions-live-test: skipped, ARGUS_NATS_SERVER_BIN (%s) names no executable file\n' "$server"
+  exit 77
+fi
 [ -x "$test_bin" ] || { printf 'nats-permissions-live-test: %s is not executable\n' "$test_bin" >&2; exit 2; }
 
 source "$ROOT/scripts/lib/nats-users.sh"
@@ -52,6 +57,7 @@ for _ in $(seq 1 50); do
   fi
 done
 [ -n "$port" ] || { printf 'nats-permissions-live-test: no free port\n' >&2; exit 1; }
+[ "$port" -ne 4222 ] || { printf 'nats-permissions-live-test: port 4222 belongs to the stack broker, refusing it\n' >&2; exit 1; }
 
 mkdir -p "$work/seeds" "$work/js"
 chmod 700 "$work/seeds"

@@ -68,7 +68,10 @@ set_tests_properties(nats-seed-round-trip-test PROPERTIES SKIP_RETURN_CODE 77)
 add_executable(nats-permissions-live-test tests/unit/nats-permissions-live-test.cc)
 target_link_libraries(nats-permissions-live-test PRIVATE argus::lib::nats doctest::doctest)
 target_compile_options(nats-permissions-live-test PRIVATE -Wall -Wextra)
-add_test(NAME nats-permissions-live-test COMMAND nats-permissions-live-test)
+add_test(NAME nats-permissions-live-test
+         COMMAND bash ${ARGUS_NATS_REPO_ROOT}/scripts/nats-permissions-live-test.sh
+                 $<TARGET_FILE:nats-permissions-live-test>)
+set_tests_properties(nats-permissions-live-test PROPERTIES SKIP_RETURN_CODE 77)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
