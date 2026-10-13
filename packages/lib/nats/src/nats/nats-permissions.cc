@@ -74,7 +74,7 @@ std::vector<ServicePermissions> rows()
       {.service = "llm",
        .publishes = {},
        .stores = {},
-       .subscribes = {},
+       .subscribes = {kGuardChange},
        .streams = {},
        .consumers = {{.stream = kGuardStream,
                       .name = "argus-llm-encounters",

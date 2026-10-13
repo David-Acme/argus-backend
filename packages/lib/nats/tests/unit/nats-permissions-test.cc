@@ -378,6 +378,22 @@ TEST_CASE("a row may create exactly its own durables, each bound to its filter")
   }
 }
 
+TEST_CASE("llm reads guard's change subject and publishes nothing")
+{
+  const ServicePermissions& llm = rowOf("llm");
+  CHECK(llm.subscribes ==
+        std::vector<std::string_view>{nats_subject::kGuardChange});
+  CHECK(llm.publishes.empty());
+  CHECK(llm.stores.empty());
+  CHECK(llm.streams.empty());
+  const Grants grants = nats_permissions::grantsFor(llm);
+  CHECK(grants.subscribe ==
+        sorted({"_INBOX.llm.>", nats_subject::kGuardChange}));
+  CHECK(std::ranges::none_of(grants.publish, [](const std::string& subject) {
+    return subject.starts_with("argus.");
+  }));
+}
+
 TEST_CASE("a core subscription names a subject some row publishes")
 {
   std::vector<std::string_view> published;
