@@ -14,6 +14,7 @@
 #include <feature/camera/dtos/update-camera-dto.hxx>
 #include <feature/camera/services/camera-probe-service.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
+#include <shared/repositories/zone/zone-repository.hxx>
 #include <shared/services/camera-driver/stream-only-driver.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
@@ -24,6 +25,10 @@
 #include <text/json-util.hxx>
 #include <validation/validator.hxx>
 
+#include <opencv2/imgcodecs.hpp>
+
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
@@ -57,18 +62,24 @@ public:
         "/api/frame.jpeg",
         [this](const drogon::HttpRequestPtr& request,
                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+          auto response = drogon::HttpResponse::newHttpResponse();
+          response->setContentTypeCode(drogon::CT_IMAGE_JPG);
           {
             const std::scoped_lock lock(mutex_);
             seen_.source = request->getParameter("src");
             seen_.cached = !request->getParameter("cache").empty();
             ++seen_.count;
+            response->setBody(body_);
           }
-          auto response = drogon::HttpResponse::newHttpResponse();
-          response->setContentTypeCode(drogon::CT_IMAGE_JPG);
-          response->setBody(kMainStill);
           callback(response);
         },
         {drogon::Get});
+  }
+
+  void serve(std::string body)
+  {
+    const std::scoped_lock lock(mutex_);
+    body_ = std::move(body);
   }
 
   [[nodiscard]] FrameRequestSeen seen() const
@@ -80,7 +91,35 @@ public:
 private:
   mutable std::mutex mutex_;
   FrameRequestSeen seen_;
+  std::string body_{kMainStill};
 };
+
+std::string whiteJpeg()
+{
+  const cv::Mat white(40, 80, CV_8UC3, cv::Scalar(255, 255, 255));
+  std::vector<uchar> bytes;
+  REQUIRE(cv::imencode(".jpg", white, bytes));
+  return {bytes.begin(), bytes.end()};
+}
+
+cv::Mat pictureOf(const Json::Value& info)
+{
+  const std::string prefix = "data:image/jpeg;base64,";
+  const std::string image = info["image"].asString();
+  REQUIRE(image.starts_with(prefix));
+  const std::string jpeg = drogon::utils::base64Decode(image.substr(prefix.size()));
+  return cv::imdecode(std::vector<uchar>(jpeg.begin(), jpeg.end()), cv::IMREAD_COLOR);
+}
+
+bool blackLeftWhiteRight(const cv::Mat& picture)
+{
+  if (picture.cols != 80 || picture.rows != 40)
+    return false;
+  const auto& left = picture.at<cv::Vec3b>(20, 10);
+  const auto& right = picture.at<cv::Vec3b>(20, 70);
+  return std::ranges::all_of(std::array{0, 1, 2},
+                             [&](int channel) { return left[channel] < 16 && right[channel] > 239; });
+}
 
 FakeGo2rtcFrames& fakeGo2rtc()
 {
@@ -193,7 +232,7 @@ void seedCameraDb(const char* path)
       "camera_id INTEGER NOT NULL REFERENCES camera(id) ON DELETE CASCADE, "
       "name TEXT NOT NULL, points TEXT NOT NULL, "
       "zone_type TEXT NOT NULL DEFAULT 'monitor' "
-      "CHECK (zone_type IN ('monitor', 'alert', 'exclude')), "
+      "CHECK (zone_type IN ('monitor', 'alert', 'exclude', 'privacy')), "
       "color TEXT NOT NULL DEFAULT '#FF0000', "
       "is_enabled INTEGER NOT NULL DEFAULT 1, "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
@@ -631,6 +670,41 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   unknownQuality->setParameter("quality", "ultra");
   CHECK_THROWS_AS(drogon::sync_wait(controlController.snapshot(unknownQuality, cameraId2)), ValidationException);
   CHECK(fakeGo2rtc().seen().count == 1);
+
+  const std::string white = whiteJpeg();
+  fakeGo2rtc().serve(white);
+  const ZoneRepository zones;
+  drogon::sync_wait(zones.create({.cameraId = cameraId2,
+                                  .name = "Patio",
+                                  .points = R"([{"x":0,"y":0},{"x":1,"y":0},{"x":1,"y":1}])",
+                                  .zoneType = ZoneType::Monitor,
+                                  .color = "#00FF00",
+                                  .isEnabled = true,
+                                  .client = nullptr}));
+  const Json::Value unmasked = body(drogon::sync_wait(controlController.snapshot(mainRequest, cameraId2)))["info"];
+  CHECK(unmasked["image"].asString() == "data:image/jpeg;base64," + drogon::utils::base64Encode(white));
+  drogon::sync_wait(zones.create({.cameraId = cameraId2,
+                                  .name = "Vereda",
+                                  .points = R"([{"x":0,"y":0},{"x":0.5,"y":0},{"x":0.5,"y":1},{"x":0,"y":1}])",
+                                  .zoneType = ZoneType::Privacy,
+                                  .color = "#000000",
+                                  .isEnabled = true,
+                                  .client = nullptr}));
+  const Json::Value maskedMain = body(drogon::sync_wait(controlController.snapshot(mainRequest, cameraId2)))["info"];
+  CHECK(blackLeftWhiteRight(pictureOf(maskedMain)));
+  SnapshotStore::instance().forget(cameraId2);
+  const Json::Value maskedSub = body(drogon::sync_wait(controlController.snapshot(subRequest, cameraId2)))["info"];
+  CHECK(blackLeftWhiteRight(pictureOf(maskedSub)));
+  CHECK(fakeGo2rtc().seen().source == Go2rtcManager::sourceName(cameraId2, CameraStream::Sub));
+  fakeGo2rtc().serve(kMainStill);
+  const auto unmaskable = refusalOf(controlController.snapshot(mainRequest, cameraId2));
+  if (!unmaskable) {
+    FAIL("expected a refusal for a picture that cannot be masked");
+    return;
+  }
+  CHECK(unmaskable->status == 502);
+  CHECK(unmaskable->message == "The picture could not be masked");
+  CHECK(fakeGo2rtc().seen().count == 5);
   const auto missingSnapshot =
       refusalOf(controlController.snapshot(drogon::HttpRequest::newHttpRequest(), 999));
   if (!missingSnapshot) {

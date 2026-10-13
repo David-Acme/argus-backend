@@ -5,6 +5,7 @@
 #include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <sync/camera-change-sink.hxx>
 #include <shared/services/camera-driver/stream-only-driver.hxx>
+#include <shared/services/privacy/privacy-mask.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 
 #include <chrono>
@@ -31,7 +32,7 @@ drogon::Task<CameraControlResult> CameraControlFeatureService::onDevice(
     int64_t cameraId,
     const std::function<DriverResult(ICameraDriver&)>& work) const
 {
-  const auto camera = co_await repository_.findById(cameraId);
+  const auto camera = co_await cameraRepository_.findById(cameraId);
   if (!camera)
     co_return std::nullopt;
 
@@ -164,10 +165,31 @@ CameraControlFeatureService::speak(int64_t cameraId, const CameraTalkDto& body) 
   });
 }
 
+drogon::Task<std::optional<std::vector<uint8_t>>>
+CameraControlFeatureService::masked(int64_t cameraId, std::vector<uint8_t> jpeg) const
+{
+  const auto rows = co_await zoneRepository_.findByCamera(cameraId);
+  std::vector<OperatorZone> zones;
+  for (const auto& row : rows) {
+    if (row.isEnabled && row.zoneType == ZoneType::Privacy)
+      zones.push_back({.cameraId = row.cameraId,
+                       .name = row.name,
+                       .kind = row.zoneType,
+                       .points = parseZonePoints(row.points)});
+  }
+  if (!privacy_mask::covers(zones))
+    co_return std::make_optional(std::move(jpeg));
+  co_return co_await BlockingTask<std::optional<std::vector<uint8_t>>>(
+      [jpeg = std::move(jpeg), zones = std::move(zones)]() {
+        return privacy_mask::maskedJpeg(jpeg, zones);
+      },
+      BlockingLane::Heavy);
+}
+
 drogon::Task<CameraControlResult>
 CameraControlFeatureService::snapshot(int64_t cameraId, CameraStream stream) const
 {
-  const auto camera = co_await repository_.findById(cameraId);
+  const auto camera = co_await cameraRepository_.findById(cameraId);
   if (!camera)
     co_return std::nullopt;
   if (!camera->isEnabled)
@@ -179,12 +201,14 @@ CameraControlFeatureService::snapshot(int64_t cameraId, CameraStream stream) con
     picture = std::move(*stored);
   }
   else {
-    const auto frame = co_await frames_.grab(
+    auto frame = co_await frames_.grab(
         {.cameraId = cameraId, .cameraName = camera->name, .maxAgeMs = 0, .stream = stream});
     if (!frame || frame->jpeg.empty())
       co_return DriverResult::failed("The camera sent no picture");
-    picture = {.jpeg = std::string(frame->jpeg.begin(), frame->jpeg.end()),
-               .atMs = frame->capturedAtMs};
+    const auto jpeg = co_await masked(cameraId, std::move(frame->jpeg));
+    if (!jpeg)
+      co_return DriverResult::failed("The picture could not be masked");
+    picture = {.jpeg = std::string(jpeg->begin(), jpeg->end()), .atMs = frame->capturedAtMs};
   }
 
   Json::Value out;

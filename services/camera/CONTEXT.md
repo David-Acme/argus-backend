@@ -1022,7 +1022,10 @@ read as offline at 28 s, the camera back at 30.0 s and the picture again at
 `GET /camera/{id}/snapshot` answers `{ image: "data:image/jpeg;base64,…",
 capturedAt }`: the operator's latest frame from `SnapshotStore` when it is
 under 10 s old, otherwise one frame grabbed from go2rtc's sub stream, the same
-source the operator and the health monitor read. A disabled camera, or one that
+source the operator and the health monitor read. That grabbed frame goes
+through the camera's privacy masks before it leaves (see "A still to save"
+below); until 2026-10-13 it did not, so with the operator off the grid still
+showed what a mask hides. A disabled camera, or one that
 sends no picture, is a 502 with its reason. Camera read permission covers it,
 exactly as it covers the live view. The app's camera grid refreshes the
 thumbnails of online cameras every 30 s while the grid is on screen and keeps
@@ -1044,9 +1047,16 @@ same `{ image, capturedAt }` with one frame decoded from the **main** stream
   own (`frame:<id>:main`).
 - **A longer timeout.** It waits 8 s instead of 5 s, because go2rtc may have
   to open the main stream and wait for its next keyframe.
-- **Unmasked, like the live view.** The privacy masks do not cover it: a
-  person who may watch the live view already sees this picture. The
-  permission is the snapshot's own, camera read.
+- **Masked, unlike the live view** (reviewer ruling, 2026-10-13). A saved
+  still is a persisted copy that leaves the home, and every persisted frame
+  is masked; the live view is exempt only because it is go2rtc's
+  passthrough. When `privacy_mask::covers` holds for the camera's enabled
+  zones (camera.db, read per request), the frame is decoded, its privacy
+  polygons are filled black and it is re-encoded once (JPEG quality 90, on
+  the heavy blocking lane). With no privacy zone the JPEG passes through
+  byte for byte. A frame that cannot be decoded or re-encoded while a mask
+  applies is never sent unmasked: the answer is a 502, "The picture could
+  not be masked". The permission is the snapshot's own, camera read.
 - **The default is unchanged.** `quality=sub`, or no `quality`, is the grid
   still exactly as before. Any other value is a 422 (`CameraSnapshotDto`).
 - **The file is the app's.** Saving or sharing the JPEG, and naming it, are
@@ -1316,7 +1326,7 @@ source name, and no consumer spells `-sub` or `cam<N>` any more:
 | `/media` viewer with no `quality` (the default view) | LiveView | main |
 | detector, guard frames, health monitor (`Go2rtcFrameSource`) | Analysis | sub |
 | `GET /camera/{id}/snapshot`, thumbnails, the guard's VLM crops (they come from `SnapshotStore`, filled by the operator's frames) | Analysis | sub |
-| `GET /camera/{id}/snapshot?quality=main`, a still to save (one fresh frame, never cached, outside the analysis backoff) | — | main |
+| `GET /camera/{id}/snapshot?quality=main`, a still to save (one fresh frame, never cached, outside the analysis backoff, masked by the camera's privacy zones) | — | main |
 | `GET /camera/overview` stream stats | Analysis | sub |
 | the voice loop's microphone capture (`audio_capture`, guard listen) | Listening | sub |
 | recording (not built yet: `record_mode` is stored, nothing records) | — | main, by the owner's decision; it adds `Recording → Main` to the table when it lands |
@@ -1488,18 +1498,26 @@ The owner asked for areas a camera must not look at for Argus: the street,
 the pavement, a neighbour's window. A zone of type `privacy` (fourth value of
 `ZoneType`, `packages/contracts/camera`, and of the `zone.zone_type` CHECK) is
 a polygon drawn in the same zone editor as the others. The operator fills it
-black on every analysis frame (`feature/operator/privacy-mask`, before the
-motion gate and the detector), so nothing inside it is detected, tracked,
+black on every analysis frame (`shared/services/privacy/privacy-mask`, before
+the motion gate and the detector), so nothing inside it is detected, tracked,
 identified or cropped. The masked frame is also what goes into
 `SnapshotStore` (re-encoded once per frame only when a mask exists), and
 therefore into the grid stills, the guard's VLM crops, the identity crops and
 the detection evidence the uploader stores. The existing `exclude` zone keeps
 its meaning (detections whose centre falls inside are dropped, pixels kept).
 
-What a mask does not cover, by design: the live view the owner watches (the
-main stream is passed through from go2rtc, unmodified — masking it would mean
-transcoding every viewer) and the health monitor, which only computes
-brightness/sharpness/scene statistics and stores no picture.
+The mask lives in the shared `camera-privacy` module since 2026-10-13: the
+operator and camera-control both read it, and camera-control masks every
+still it grabs itself, the main-stream still to save and the grid still's
+fallback grab alike (`privacy_mask::maskedJpeg`). The zone row's points
+parser, `parseZonePoints`, moved to the zone schema for the same reason.
+
+What a mask does not cover, by design: the live view the owner watches, and
+nothing else. The main stream is passed through from go2rtc, unmodified;
+masking it would mean transcoding every viewer. A main-stream snapshot
+(`?quality=main`) is masked like every other still. The health monitor reads
+unmasked frames, but only to compute brightness, sharpness and scene
+statistics, and it stores no picture.
 
 A database created before this change has the old CHECK. SQLite cannot alter
 a CHECK, so `ZoneRepository::acceptPrivacyZones()` rebuilds `zone` once at

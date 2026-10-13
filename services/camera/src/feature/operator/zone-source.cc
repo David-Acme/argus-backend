@@ -1,8 +1,5 @@
 #include <feature/operator/zone-source.hxx>
 
-#include <text/json-util.hxx>
-
-#include <json/value.h>
 #include <utility>
 
 StaticZoneSource::StaticZoneSource(std::vector<OperatorZone> zones)
@@ -18,17 +15,4 @@ std::vector<OperatorZone> StaticZoneSource::forCamera(int64_t cameraId)
       zones.push_back(zone);
   }
   return zones;
-}
-
-std::vector<std::pair<double, double>> parseZonePoints(const std::string& text)
-{
-  std::vector<std::pair<double, double>> points;
-  const Json::Value json = json_util::fromString(text);
-  if (!json.isArray())
-    return points;
-  for (const auto& point : json) {
-    if (point.isObject() && point.isMember("x") && point.isMember("y"))
-      points.emplace_back(point["x"].asDouble(), point["y"].asDouble());
-  }
-  return points;
 }

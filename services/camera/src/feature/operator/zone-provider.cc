@@ -1,5 +1,6 @@
 #include <feature/operator/zone-provider.hxx>
 
+#include <shared/schemas/zone/zone-schema.hxx>
 #include <sqlite/db-service.hxx>
 #include <trantor/utils/Logger.h>
 

@@ -7,9 +7,9 @@
 #include <feature/operator/known-person-matcher.hxx>
 #include <feature/operator/object-event-sink.hxx>
 #include <feature/operator/object-event.hxx>
-#include <feature/operator/privacy-mask.hxx>
 #include <config/operator-config.hxx>
 #include <feature/operator/zone-source.hxx>
+#include <shared/schemas/zone/zone-schema.hxx>
 
 #include <atomic>
 #include <chrono>
@@ -1133,31 +1133,4 @@ TEST_CASE("a crop with no face is unobservable, an unmatched face is unrecognize
   CHECK(stateFor(false) == IdentityState::Unobservable);
   CHECK(stateFor(true) == IdentityState::Unrecognized);
   CHECK(stateFor(std::nullopt) == IdentityState::Unrecognized);
-}
-
-TEST_CASE("a privacy mask blanks its polygon and leaves the rest of the frame")
-{
-  cv::Mat rgb(100, 200, CV_8UC3, cv::Scalar(120, 130, 140));
-  const std::vector<OperatorZone> zones{
-      {.cameraId = 6,
-       .name = "Vereda",
-       .kind = ZoneType::Privacy,
-       .points = {{0.0, 0.0}, {0.5, 0.0}, {0.5, 1.0}, {0.0, 1.0}}},
-      {.cameraId = 6,
-       .name = "Puerta",
-       .kind = ZoneType::Alert,
-       .points = {{0.6, 0.0}, {1.0, 0.0}, {1.0, 1.0}}}};
-  REQUIRE(privacy_mask::covers(zones));
-  REQUIRE(privacy_mask::apply(rgb, zones));
-  CHECK(rgb.at<cv::Vec3b>(50, 40) == cv::Vec3b(0, 0, 0));
-  CHECK(rgb.at<cv::Vec3b>(50, 160) == cv::Vec3b(120, 130, 140));
-  CHECK(rgb.at<cv::Vec3b>(10, 190) == cv::Vec3b(120, 130, 140));
-
-  const std::vector<OperatorZone> none{{.cameraId = 6,
-                                        .name = "Patio",
-                                        .kind = ZoneType::Monitor,
-                                        .points = {{0.0, 0.0}, {1.0, 0.0}, {1.0, 1.0}}}};
-  CHECK_FALSE(privacy_mask::covers(none));
-  cv::Mat untouched(10, 10, CV_8UC3, cv::Scalar(1, 2, 3));
-  CHECK_FALSE(privacy_mask::apply(untouched, none));
 }

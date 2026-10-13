@@ -9,6 +9,8 @@
 #include <string>
 #include <sync/socket-emit-dto.hxx>
 #include <camera/zone-type.hxx>
+#include <utility>
+#include <vector>
 
 struct ZoneSchema
 {
@@ -27,6 +29,8 @@ struct ZoneSchema
   explicit ZoneSchema(const drogon::orm::Row& row);
   Json::Value toJson() const;
 };
+
+std::vector<std::pair<double, double>> parseZonePoints(const std::string& text);
 
 inline SocketEmitDto zoneBody(SyncOperation operation, const ZoneSchema& row)
 {

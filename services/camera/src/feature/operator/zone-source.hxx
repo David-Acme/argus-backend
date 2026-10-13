@@ -3,8 +3,6 @@
 #include <feature/operator/event-intelligence.hxx>
 
 #include <cstdint>
-#include <string>
-#include <utility>
 #include <vector>
 
 class IZoneSource
@@ -24,5 +22,3 @@ public:
 private:
   std::vector<OperatorZone> zones_;
 };
-
-std::vector<std::pair<double, double>> parseZonePoints(const std::string& text);

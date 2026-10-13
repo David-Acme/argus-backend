@@ -1,5 +1,5 @@
 #include <feature/operator/camera-operator-service.hxx>
-#include <feature/operator/privacy-mask.hxx>
+#include <shared/services/privacy/privacy-mask.hxx>
 #include <drogon/HttpAppFramework.h>
 #include <drogon/utils/coroutine.h>
 

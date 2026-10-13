@@ -9,6 +9,7 @@ argus_module(NAME camera-repositories
         argus::contracts::camera
         argus::contracts::sync
         argus::lib::sqlite
+        argus::lib::text
     INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}/../..)
 

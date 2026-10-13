@@ -11,9 +11,11 @@
 #include <json/value.h>
 #include <optional>
 #include <shared/repositories/camera/camera-repository.hxx>
+#include <shared/repositories/zone/zone-repository.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/stream/go2rtc-frame-source.hxx>
 #include <tts/tts-remote.hxx>
+#include <vector>
 
 using CameraControlResult = std::optional<DriverResult>;
 
@@ -42,7 +44,11 @@ private:
 
   drogon::Task<void> announceStatus(int64_t cameraId) const;
 
-  CameraRepository repository_;
+  drogon::Task<std::optional<std::vector<uint8_t>>> masked(int64_t cameraId,
+                                                           std::vector<uint8_t> jpeg) const;
+
+  CameraRepository cameraRepository_;
+  ZoneRepository zoneRepository_;
   TtsClient tts_;
   mutable Go2rtcFrameSource frames_;
 };

@@ -12,6 +12,7 @@ argus_module(NAME camera-control
         ../..
     DEPENDS
         argus::camera-driver
+        argus::camera-privacy
         argus::camera-repositories
         argus::camera-stream
         argus::clients::tts

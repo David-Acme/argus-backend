@@ -1,5 +1,7 @@
 #include "zone-schema.hxx"
 
+#include <text/json-util.hxx>
+
 ZoneSchema::ZoneSchema(const drogon::orm::Row& row)
 {
   id = static_cast<int64_t>(row["id"].as<long long>());
@@ -30,4 +32,17 @@ Json::Value ZoneSchema::toJson() const
   json["updatedAt"] = updatedAt ? Json::Value(Json::Int64(*updatedAt)) : Json::Value();
   json["deletedAt"] = deletedAt ? Json::Value(Json::Int64(*deletedAt)) : Json::Value();
   return json;
+}
+
+std::vector<std::pair<double, double>> parseZonePoints(const std::string& text)
+{
+  std::vector<std::pair<double, double>> points;
+  const Json::Value json = json_util::fromString(text);
+  if (!json.isArray())
+    return points;
+  for (const auto& point : json) {
+    if (point.isObject() && point.isMember("x") && point.isMember("y"))
+      points.emplace_back(point["x"].asDouble(), point["y"].asDouble());
+  }
+  return points;
 }
