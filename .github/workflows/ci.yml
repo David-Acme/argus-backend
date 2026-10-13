@@ -23,14 +23,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y ninja-build libssl-dev pkg-config
 
-      - name: Install clang-tidy
-        run: |
-          curl -fsSL https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/llvm.asc >/dev/null
-          echo "deb [signed-by=/etc/apt/trusted.gpg.d/llvm.asc] https://apt.llvm.org/noble/ llvm-toolchain-noble-22 main" | sudo tee /etc/apt/sources.list.d/llvm.list >/dev/null
-          sudo apt-get update
-          sudo apt-get install -y clang-tidy-22
-          clang-tidy-22 --version
-
       - name: Install Conan
         run: pip install conan==2.21.0
 
