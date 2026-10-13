@@ -9,7 +9,6 @@
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/llm/services/tools/tool-access.hxx>
 #include <feature/llm/services/turn-engines.hxx>
-#include <text/sha256.hxx>
 
 #include <json/reader.h>
 #include <json/writer.h>
@@ -70,15 +69,6 @@ struct Options
   bool force = false;
   bool noEngines = false;
 };
-
-std::string bundlePin(const std::filesystem::path& dir)
-{
-  std::ifstream in(dir / "sha256", std::ios::binary);
-  if (!in.is_open())
-    return {};
-  const std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-  return argus::hash::sha256Hex(bytes);
-}
 
 Options parseOptions(int argc, char** argv)
 {
@@ -437,8 +427,8 @@ int main(int argc, char** argv)
   TurnEngines engines;
   if (!options.noEngines) {
     engines = installTurnEngines({.adapter = controller.adapter(),
-                                  .decide = {.dir = options.decideBundle, .pin = bundlePin(options.decideBundle), .options = {}},
-                                  .extract = {.dir = options.extractBundle, .pin = bundlePin(options.extractBundle), .options = {}}});
+                                  .decide = {.dir = options.decideBundle, .options = {}},
+                                  .extract = {.dir = options.extractBundle, .options = {}}});
     if (engines.laya == nullptr || engines.gliner == nullptr) {
       std::printf("[REFUSED] the shipped pipeline is not up (%s%s); no gate is reported\n", engines.decideError.c_str(),
                   engines.extractError.c_str());

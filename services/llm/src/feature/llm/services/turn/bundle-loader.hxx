@@ -44,7 +44,6 @@ struct BundleThresholds
 struct BundleLocation
 {
   std::filesystem::path dir;
-  std::string pin;
   BundleKind kind{BundleKind::Decider};
 };
 
@@ -83,11 +82,12 @@ public:
 
   [[nodiscard]] const std::string& fitSplit() const { return fitSplit_; }
 
+  [[nodiscard]] const std::string& modelSha256() const { return modelSha256_; }
+
 private:
   void load();
 
   std::filesystem::path dir_;
-  std::string pin_;
   BundleKind kind_{BundleKind::Decider};
   bool valid_{false};
   std::string error_;
@@ -100,6 +100,7 @@ private:
   CalibrationModel confidenceCalibration_;
   CalibrationModel nowCalibration_;
   std::string fitSplit_;
+  std::string modelSha256_;
 };
 
 }

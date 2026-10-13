@@ -37,16 +37,15 @@ namespace fs = std::filesystem;
 struct Pilot
 {
   fs::path dir;
-  std::string pin;
 };
 
 std::optional<Pilot> pilotBundle()
 {
-  const char* dir = std::getenv("ARGUS_GLINER_BUNDLE");
-  const char* pin = std::getenv("ARGUS_GLINER_PIN");
-  if (dir == nullptr || pin == nullptr || !fs::exists(fs::path(dir) / "model.onnx"))
+  const char* chosen = std::getenv("ARGUS_GLINER_BUNDLE");
+  const fs::path dir = chosen != nullptr ? fs::path(chosen) : fs::path(ARGUS_TEST_GLINER_BUNDLE);
+  if (!fs::exists(dir / "model.onnx"))
     return std::nullopt;
-  return Pilot{.dir = fs::path(dir), .pin = pin};
+  return Pilot{.dir = dir};
 }
 
 Json::Value readJson(const std::filesystem::path& path)
@@ -198,7 +197,7 @@ TEST_CASE("the GLiNER prompt reproduces the reference token ids and the three ro
 {
   const std::optional<Pilot> pilot = pilotBundle();
   if (!pilot) {
-    MESSAGE("no GLiNER pilot bundle at ARGUS_GLINER_BUNDLE and ARGUS_GLINER_PIN; the prompt parity did not run");
+    MESSAGE("no GLiNER bundle installed (or at ARGUS_GLINER_BUNDLE); the prompt parity did not run");
     return;
   }
   turn::SpTokenizer tokenizer;
@@ -232,10 +231,10 @@ TEST_CASE("the real GLiNER bundle decodes the spans the reference holds")
 {
   const std::optional<Pilot> pilot = pilotBundle();
   if (!pilot) {
-    MESSAGE("no GLiNER pilot bundle at ARGUS_GLINER_BUNDLE and ARGUS_GLINER_PIN; the span parity did not run");
+    MESSAGE("no GLiNER bundle installed (or at ARGUS_GLINER_BUNDLE); the span parity did not run");
     return;
   }
-  const turn::BundleLoader bundle({.dir = pilot->dir, .pin = pilot->pin, .kind = turn::BundleKind::Extractor});
+  const turn::BundleLoader bundle({.dir = pilot->dir, .kind = turn::BundleKind::Extractor});
   REQUIRE(bundle.valid());
   REQUIRE(bundle.thresholds().present);
   CHECK(bundle.thresholds().threshold == doctest::Approx(0.1));
@@ -245,7 +244,7 @@ TEST_CASE("the real GLiNER bundle decodes the spans the reference holds")
   const Json::Value fixture = readJson(ARGUS_TEST_GLINER_PARITY);
   const Json::Value reference = readJson(onnxReferencePath());
   REQUIRE(reference["cases"].size() == fixture["cases"].size());
-  CHECK(reference["provenance"]["bundlePin"].asString() == pilot->pin);
+  CHECK(reference["provenance"]["modelSha256"].asString() == bundle.modelSha256());
   std::size_t rows = 0;
   std::size_t mismatches = 0;
   double worst = 0.0;
@@ -283,10 +282,10 @@ TEST_CASE("the GLiNER extractor fills a tool call whose date the resolver reads"
 {
   const std::optional<Pilot> pilot = pilotBundle();
   if (!pilot) {
-    MESSAGE("no GLiNER pilot bundle at ARGUS_GLINER_BUNDLE and ARGUS_GLINER_PIN; the end-to-end turn did not run");
+    MESSAGE("no GLiNER bundle installed (or at ARGUS_GLINER_BUNDLE); the end-to-end turn did not run");
     return;
   }
-  const turn::BundleLoader bundle({.dir = pilot->dir, .pin = pilot->pin, .kind = turn::BundleKind::Extractor});
+  const turn::BundleLoader bundle({.dir = pilot->dir, .kind = turn::BundleKind::Extractor});
   REQUIRE(bundle.valid());
   World world;
   const int64_t now = fixedNow();
@@ -323,10 +322,10 @@ TEST_CASE("the warm resident set the GLiNER model adds is measured in service")
 {
   const std::optional<Pilot> pilot = pilotBundle();
   if (!pilot) {
-    MESSAGE("no GLiNER pilot bundle at ARGUS_GLINER_BUNDLE and ARGUS_GLINER_PIN; the warm resident reading did not run");
+    MESSAGE("no GLiNER bundle installed (or at ARGUS_GLINER_BUNDLE); the warm resident reading did not run");
     return;
   }
-  const turn::BundleLoader bundle({.dir = pilot->dir, .pin = pilot->pin, .kind = turn::BundleKind::Extractor});
+  const turn::BundleLoader bundle({.dir = pilot->dir, .kind = turn::BundleKind::Extractor});
   REQUIRE(bundle.valid());
   const char* arena = std::getenv("ARGUS_GLINER_RSS_CPU_ARENA");
   const char* pattern = std::getenv("ARGUS_GLINER_RSS_MEM_PATTERN");

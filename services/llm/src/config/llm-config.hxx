@@ -40,7 +40,6 @@ struct LlmDecisionConfig
 struct LlmBundleConfig
 {
   std::filesystem::path dir;
-  std::string pin;
 };
 
 struct LlmOnnxConfig

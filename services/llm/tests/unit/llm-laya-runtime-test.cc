@@ -35,16 +35,15 @@ namespace fs = std::filesystem;
 struct Pilot
 {
   fs::path dir;
-  std::string pin;
 };
 
 std::optional<Pilot> pilotBundle()
 {
-  const char* dir = std::getenv("ARGUS_LAYA_BUNDLE");
-  const char* pin = std::getenv("ARGUS_LAYA_PIN");
-  if (dir == nullptr || pin == nullptr || !fs::exists(fs::path(dir) / "model.onnx"))
+  const char* chosen = std::getenv("ARGUS_LAYA_BUNDLE");
+  const fs::path dir = chosen != nullptr ? fs::path(chosen) : fs::path(ARGUS_TEST_LAYA_BUNDLE);
+  if (!fs::exists(dir / "model.onnx"))
     return std::nullopt;
-  return Pilot{.dir = fs::path(dir), .pin = pin};
+  return Pilot{.dir = dir};
 }
 
 Json::Value readJson(const fs::path& path)
@@ -149,15 +148,15 @@ TEST_CASE("the real Laya bundle decides, and the turn runs the tool it chose")
 {
   const std::optional<Pilot> pilot = pilotBundle();
   if (!pilot) {
-    MESSAGE("no Laya pilot bundle at ARGUS_LAYA_BUNDLE and ARGUS_LAYA_PIN; the Laya runtime did not run");
+    MESSAGE("no Laya bundle installed (or at ARGUS_LAYA_BUNDLE); the Laya runtime did not run");
     return;
   }
   const Json::Value fixture = readJson(ARGUS_TEST_LAYA_PILOT);
   const Json::Value reference = readJson(onnxReferencePath());
   REQUIRE(reference["cases"].size() == fixture["cases"].size());
-  CHECK(reference["bundlePin"].asString() == pilot->pin);
-  const turn::BundleLoader bundle({.dir = pilot->dir, .pin = pilot->pin});
+  const turn::BundleLoader bundle({.dir = pilot->dir});
   REQUIRE(bundle.valid());
+  CHECK(reference["modelSha256"].asString() == bundle.modelSha256());
   World world;
   turn::LayaDecider laya({.model =
                               turn::openLayaModel({.bundle = bundle, .options = optionsOf(), .decode = decodeOf(fixture["parameters"])}),
@@ -218,17 +217,17 @@ TEST_CASE("the Laya scores the bundle produces match the Python reference")
 {
   const std::optional<Pilot> pilot = pilotBundle();
   if (!pilot) {
-    MESSAGE("no Laya pilot bundle at ARGUS_LAYA_BUNDLE and ARGUS_LAYA_PIN; the Laya parity did not run");
+    MESSAGE("no Laya bundle installed (or at ARGUS_LAYA_BUNDLE); the Laya parity did not run");
     return;
   }
   const Json::Value fixture = readJson(ARGUS_TEST_LAYA_PILOT);
   const Json::Value reference = readJson(onnxReferencePath());
   REQUIRE(reference["cases"].size() == fixture["cases"].size());
-  CHECK(reference["bundlePin"].asString() == pilot->pin);
   CHECK(reference["modelSha256"].isString());
   CHECK(reference["onnxruntime"].isString());
-  const turn::BundleLoader bundle({.dir = pilot->dir, .pin = pilot->pin});
+  const turn::BundleLoader bundle({.dir = pilot->dir});
   REQUIRE(bundle.valid());
+  CHECK(reference["modelSha256"].asString() == bundle.modelSha256());
   turn::LayaDecider laya({.model = turn::openLayaModel({.bundle = bundle, .options = {}, .decode = decodeOf(fixture["parameters"])}),
                           .fallback = nullptr,
                           .policy = bundle.policy(),
@@ -277,7 +276,7 @@ TEST_CASE("the Laya decode reproduces the reference token ids and sequences")
 {
   const std::optional<Pilot> pilot = pilotBundle();
   if (!pilot) {
-    MESSAGE("no Laya pilot bundle at ARGUS_LAYA_BUNDLE and ARGUS_LAYA_PIN; the Laya sequence parity did not run");
+    MESSAGE("no Laya bundle installed (or at ARGUS_LAYA_BUNDLE); the Laya sequence parity did not run");
     return;
   }
   const Json::Value fixture = readJson(ARGUS_TEST_LAYA_PILOT);
@@ -311,10 +310,10 @@ TEST_CASE("the warm resident set the Laya model adds is measured in service")
 {
   const std::optional<Pilot> pilot = pilotBundle();
   if (!pilot) {
-    MESSAGE("no Laya pilot bundle at ARGUS_LAYA_BUNDLE and ARGUS_LAYA_PIN; the warm resident reading did not run");
+    MESSAGE("no Laya bundle installed (or at ARGUS_LAYA_BUNDLE); the warm resident reading did not run");
     return;
   }
-  const turn::BundleLoader bundle({.dir = pilot->dir, .pin = pilot->pin});
+  const turn::BundleLoader bundle({.dir = pilot->dir});
   REQUIRE(bundle.valid());
   const turn::OnnxOptions options = optionsOf();
   const std::int64_t before = turn::residentBytes();

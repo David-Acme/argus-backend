@@ -29,6 +29,12 @@ constexpr std::array<std::string_view, 8> kLayout{
 
 constexpr std::string_view kQuestionsFile = "questions.json";
 
+constexpr std::string_view kModelFile = "model.onnx";
+
+constexpr std::string_view kDeciderModel = "laya";
+
+constexpr std::string_view kExtractorModel = "gliner";
+
 std::string lowered(std::string text)
 {
   for (char& c : text)
@@ -169,8 +175,7 @@ std::optional<std::map<std::string, std::vector<std::string>>> readExtractorFiel
 }
 }
 
-BundleLoader::BundleLoader(BundleLocation location)
-    : dir_(std::move(location.dir)), pin_(lowered(trimmed(location.pin))), kind_(location.kind)
+BundleLoader::BundleLoader(BundleLocation location) : dir_(std::move(location.dir)), kind_(location.kind)
 {
   load();
 }
@@ -185,10 +190,6 @@ void BundleLoader::load()
   const std::optional<std::string> listed = readFile(dir_ / "sha256");
   if (!listed) {
     error_ = dir_.string() + ": the bundle has no sha256 file";
-    return;
-  }
-  if (argus::hash::sha256Hex(*listed) != pin_) {
-    error_ = dir_.string() + ": the sha256 file does not hash to the configured pin " + pin_;
     return;
   }
   const Digests digests = parseDigests(*listed);
@@ -231,6 +232,18 @@ void BundleLoader::load()
     error_ = dir_.string() + ": manifest.json cannot be read";
     return;
   }
+  const std::string_view model = kind_ == BundleKind::Decider ? kDeciderModel : kExtractorModel;
+  if ((*manifest)["model"].asString() != model) {
+    error_ = dir_.string() + ": manifest.json names the model '" + (*manifest)["model"].asString() + "', and this slot serves '" +
+             std::string(model) + "'";
+    return;
+  }
+  const auto listedModel = digests.byName.find(std::string(kModelFile));
+  if (listedModel == digests.byName.end() || lowered((*manifest)["modelOnnx"].get("sha256", "").asString()) != listedModel->second) {
+    error_ = dir_.string() + ": manifest.json does not record the hash of the model.onnx this bundle carries";
+    return;
+  }
+  modelSha256_ = listedModel->second;
   if (kind_ == BundleKind::Decider) {
     const auto listedQuestions = digests.byName.find(std::string(kQuestionsFile));
     if (listedQuestions == digests.byName.end()) {

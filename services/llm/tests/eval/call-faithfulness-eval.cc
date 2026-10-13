@@ -1062,17 +1062,11 @@ bool runTtft(const TtftInput& input)
   return static_cast<bool>(out);
 }
 
-std::string bundlePin(const std::filesystem::path& dir)
-{
-  const FileBytes bytes = readFile((dir / "sha256").string());
-  return bytes.error.empty() ? argus::hash::sha256Hex(bytes.bytes) : std::string{};
-}
-
 TurnEngines setupEngines(LlmController& controller, const Options& options)
 {
   TurnEngines engines = installTurnEngines({.adapter = controller.adapter(),
-                                            .decide = {.dir = options.decideBundle, .pin = bundlePin(options.decideBundle), .options = {}},
-                                            .extract = {.dir = options.extractBundle, .pin = bundlePin(options.extractBundle), .options = {}}});
+                                            .decide = {.dir = options.decideBundle, .options = {}},
+                                            .extract = {.dir = options.extractBundle, .options = {}}});
   if (engines.laya != nullptr) {
     turn::PolicySet policies;
     policies.set(std::string(turn::kDeciderIds[2]),

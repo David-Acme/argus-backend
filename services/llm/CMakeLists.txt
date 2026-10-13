@@ -380,7 +380,8 @@ add_test(NAME llm-sp-tokenizer-test COMMAND llm-sp-tokenizer-test)
 add_executable(llm-laya-runtime-test tests/unit/llm-laya-runtime-test.cc)
 
 target_compile_definitions(llm-laya-runtime-test PRIVATE
-    ARGUS_TEST_LAYA_PILOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/laya/parity-pilot.json")
+    ARGUS_TEST_LAYA_PILOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/laya/parity-pilot.json"
+    ARGUS_TEST_LAYA_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-pilot")
 
 target_link_libraries(llm-laya-runtime-test PRIVATE argus::llm doctest::doctest)
 
@@ -407,7 +408,8 @@ add_test(NAME llm-gliner-decoder-test COMMAND llm-gliner-decoder-test)
 add_executable(llm-gliner-runtime-test tests/unit/llm-gliner-runtime-test.cc)
 
 target_compile_definitions(llm-gliner-runtime-test PRIVATE
-    ARGUS_TEST_GLINER_PARITY="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/gliner/parity-pilot.json")
+    ARGUS_TEST_GLINER_PARITY="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/gliner/parity-pilot.json"
+    ARGUS_TEST_GLINER_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/pilot-bundle")
 
 target_link_libraries(llm-gliner-runtime-test PRIVATE argus::llm doctest::doctest)
 
@@ -418,6 +420,10 @@ set_target_properties(llm-gliner-runtime-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME llm-gliner-runtime-test COMMAND llm-gliner-runtime-test)
 
 add_executable(llm-e2e-turn-test tests/unit/llm-e2e-turn-test.cc)
+
+target_compile_definitions(llm-e2e-turn-test PRIVATE
+    ARGUS_TEST_LAYA_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-pilot"
+    ARGUS_TEST_GLINER_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/pilot-bundle")
 
 target_link_libraries(llm-e2e-turn-test PRIVATE argus::llm doctest::doctest)
 

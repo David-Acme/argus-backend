@@ -526,7 +526,7 @@ run_script_test build-pool-test.sh
 run_script_test privacy-consent-test.sh
 run_script_test pki-test.sh
 run_script_test rpc-credentials-test.sh
-run_script_test install-model-bundle-test.sh
+run_script_test ../services/llm/scripts/install-bundle-test.sh
 run_script_test deploy-mounts-test.sh
 
 echo "build-all tests passed"

@@ -14,6 +14,7 @@
 #include <iterator>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <optional>
 #include <stdexcept>
@@ -27,7 +28,6 @@ namespace fs = std::filesystem;
 struct Built
 {
   fs::path dir;
-  std::string pin;
 };
 
 void write(const fs::path& path, const std::string& bytes)
@@ -85,7 +85,7 @@ Json::Value parseJson(const std::string& text)
   return root;
 }
 
-Built built(const std::string& name)
+Built built(const std::string& name, std::string_view model = "laya")
 {
   const fs::path root = scratch(name);
   write(root / "model.onnx", "weights");
@@ -99,17 +99,18 @@ Built built(const std::string& name)
   write(root / "max_len", "512\n");
   write(root / "model-card.md", "# card\n");
   write(root / "questions.json", R"({"tool": {"type": "choice", "instructions": "which", "criteria": ["memory_save", "camera"]}})");
-  write(root / "manifest.json", R"({"calibration": {"fitOn": "calibration"}, "labels": 2, "questions": {"file": "questions.json", "sha256": ")" +
+  write(root / "manifest.json", R"({"model": ")" + std::string(model) + R"(", "calibration": {"fitOn": "calibration"}, "labels": 2, "modelOnnx": {"sha256": ")" +
+                                    argus::hash::sha256Hex(readText(root / "model.onnx")) + R"("}, "questions": {"file": "questions.json", "sha256": ")" +
                                     argus::hash::sha256Hex(readText(root / "questions.json")) + R"("}})");
   seal(root);
-  return {.dir = root, .pin = argus::hash::sha256Hex(readText(root / "sha256"))};
+  return {.dir = root};
 }
 }
 
-TEST_CASE("a complete bundle loads its pin, its labels and its policy")
+TEST_CASE("a complete bundle loads its labels and its policy")
 {
   const Built bundle = built("valid");
-  const turn::BundleLoader loader({.dir = bundle.dir, .pin = bundle.pin});
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK(loader.valid());
   CHECK(loader.error().empty());
   CHECK(loader.maxLen() == 512);
@@ -129,7 +130,7 @@ TEST_CASE("a complete bundle loads its pin, its labels and its policy")
 TEST_CASE("a decider bundle reads the head_max_len and temperature it declares")
 {
   const Built bundle = built("decode-ok");
-  const turn::BundleLoader loader({.dir = bundle.dir, .pin = bundle.pin});
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK(loader.valid());
   CHECK(loader.error().empty());
   CHECK(loader.decode().headMaxLen == 256);
@@ -146,8 +147,7 @@ TEST_CASE("a decider bundle that declares neither head_max_len nor temperature i
             "calibration": {"confidence": {"type": "platt", "scale": 2.0, "shift": -0.5}},
             "source": {"fitOn": "calibration"}})");
   seal(bundle.dir);
-  const turn::BundleLoader loader({.dir = bundle.dir,
-                                    .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("declares neither head_max_len nor temperature") != std::string::npos);
 }
@@ -161,25 +161,54 @@ TEST_CASE("a decider bundle that declares only one of head_max_len and temperatu
             "calibration": {"confidence": {"type": "platt", "scale": 2.0, "shift": -0.5}},
             "source": {"fitOn": "calibration"}})");
   seal(bundle.dir);
-  const turn::BundleLoader loader({.dir = bundle.dir,
-                                    .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("declares only one of them") != std::string::npos);
 }
 
-TEST_CASE("the pin is the hash of the sha256 file, and nothing else")
+TEST_CASE("the bundle's own listing is its pin: nothing configured is compared")
 {
-  const Built bundle = built("pin");
-  const turn::BundleLoader loader({.dir = bundle.dir, .pin = std::string(64, 'a')});
+  const Built bundle = built("unpinned");
+  const turn::BundleLoader loader({.dir = bundle.dir});
+  CHECK(loader.valid());
+  CHECK(loader.modelSha256() == argus::hash::sha256Hex("weights"));
+}
+
+TEST_CASE("a manifest that names another model is refused in this slot")
+{
+  const Built bundle = built("other-model", "gliner");
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK_FALSE(loader.valid());
-  CHECK(loader.error().find("pin") != std::string::npos);
+  CHECK(loader.error().find("names the model 'gliner'") != std::string::npos);
+}
+
+TEST_CASE("a manifest that records another model hash is refused")
+{
+  const Built bundle = built("other-weights");
+  write(bundle.dir / "manifest.json", R"({"model": "laya", "calibration": {"fitOn": "calibration"}, "modelOnnx": {"sha256": ")" +
+                                          std::string(64, '0') + R"("}, "questions": {"file": "questions.json", "sha256": ")" +
+                                          argus::hash::sha256Hex(readText(bundle.dir / "questions.json")) + R"("}})");
+  seal(bundle.dir);
+  const turn::BundleLoader loader({.dir = bundle.dir});
+  CHECK_FALSE(loader.valid());
+  CHECK(loader.error().find("does not record the hash of the model.onnx") != std::string::npos);
+}
+
+TEST_CASE("replacing the model and resealing the listing without the manifest is refused")
+{
+  const Built bundle = built("swapped-weights");
+  write(bundle.dir / "model.onnx", "other weights");
+  seal(bundle.dir);
+  const turn::BundleLoader loader({.dir = bundle.dir});
+  CHECK_FALSE(loader.valid());
+  CHECK(loader.error().find("does not record the hash of the model.onnx") != std::string::npos);
 }
 
 TEST_CASE("a name the sha256 file lists but the bundle lacks is refused")
 {
   const Built bundle = built("absent");
   write(bundle.dir / "sha256", listing(bundle.dir) + argus::hash::sha256Hex("ghost") + "  tokenizer/ghost.json\n");
-  const turn::BundleLoader loader({.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("not in the bundle") != std::string::npos);
 }
@@ -188,7 +217,7 @@ TEST_CASE("a file the bundle holds but the sha256 file does not name is refused"
 {
   const Built bundle = built("extra");
   write(bundle.dir / "extra.txt", "smuggled");
-  const turn::BundleLoader loader({.dir = bundle.dir, .pin = bundle.pin});
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("does not list") != std::string::npos);
 }
@@ -197,7 +226,7 @@ TEST_CASE("a file that does not match its line is refused")
 {
   const Built bundle = built("changed");
   write(bundle.dir / "labels.json", R"({"labels": ["camera"]})");
-  const turn::BundleLoader loader({.dir = bundle.dir, .pin = bundle.pin});
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("does not match") != std::string::npos);
 }
@@ -212,7 +241,7 @@ TEST_CASE("a bundle missing a layout file is refused")
   write(root / "model-card.md", "# card\n");
   write(root / "manifest.json", "{}");
   seal(root);
-  const turn::BundleLoader loader({.dir = root, .pin = argus::hash::sha256Hex(readText(root / "sha256"))});
+  const turn::BundleLoader loader({.dir = root});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("missing max_len") != std::string::npos);
 }
@@ -221,14 +250,14 @@ TEST_CASE("a listing that names a file the bundle lacks is refused before the la
 {
   const Built bundle = built("vanished");
   fs::remove(bundle.dir / "max_len");
-  const turn::BundleLoader loader({.dir = bundle.dir, .pin = bundle.pin});
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("not in the bundle") != std::string::npos);
 }
 
 TEST_CASE("a bundle that is not there is refused by name")
 {
-  const turn::BundleLoader loader({.dir = scratch("gone") / "nope", .pin = std::string(64, 'b')});
+  const turn::BundleLoader loader({.dir = scratch("gone") / "nope"});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("nope") != std::string::npos);
 }
@@ -256,21 +285,21 @@ TEST_CASE("a decider bundle's label array keeps its declaration order")
   const Built bundle = built("labels");
   write(bundle.dir / "labels.json", R"({"labels": ["zebra", "alpha", "middle"]})");
   seal(bundle.dir);
-  const turn::BundleLoader loader({.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK(loader.valid());
   CHECK(loader.labels() == std::vector<std::string>{"zebra", "alpha", "middle"});
 }
 
 TEST_CASE("an extractor bundle's logit order is the type-keyed map, each type a field array")
 {
-  const Built bundle = built("extractor");
+  const Built bundle = built("extractor", "gliner");
   write(bundle.dir / "labels.json",
         R"({"model": "gliner", "logitOrder": "perType",
             "types": {"event": ["title", "people"], "project": ["name"]}})");
   write(bundle.dir / "decision.json", R"({"pairThreshold": 0.3, "maxSpanWords": 11, "source": {"fitOn": "calibration"}})");
   seal(bundle.dir);
   const turn::BundleLoader loader(
-      {.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256")), .kind = turn::BundleKind::Extractor});
+      {.dir = bundle.dir, .kind = turn::BundleKind::Extractor});
   CHECK(loader.valid());
   REQUIRE(loader.typeFields().size() == 2);
   CHECK(loader.typeFields().at("event") == std::vector<std::string>{"title", "people"});
@@ -283,9 +312,9 @@ TEST_CASE("an extractor bundle's logit order is the type-keyed map, each type a 
 
 TEST_CASE("an extractor bundle that carries a label array instead of the type map is refused")
 {
-  const Built bundle = built("extractor-array");
+  const Built bundle = built("extractor-array", "gliner");
   const turn::BundleLoader loader(
-      {.dir = bundle.dir, .pin = bundle.pin, .kind = turn::BundleKind::Extractor});
+      {.dir = bundle.dir, .kind = turn::BundleKind::Extractor});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("type-keyed object form") != std::string::npos);
 }
@@ -295,7 +324,7 @@ TEST_CASE("a decider bundle that carries the type-keyed map instead of a label a
   const Built bundle = built("decider-object");
   write(bundle.dir / "labels.json", R"({"model": "gliner", "types": {"event": ["title"]}})");
   seal(bundle.dir);
-  const turn::BundleLoader loader({.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("label array form") != std::string::npos);
 }
@@ -305,7 +334,7 @@ TEST_CASE("a decider bundle that carries an object of labels instead of an array
   const Built bundle = built("decider-descriptions");
   write(bundle.dir / "labels.json", R"({"labels": {"memory_save": "a fact", "camera": "a camera"}})");
   seal(bundle.dir);
-  const turn::BundleLoader loader({.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("label array form") != std::string::npos);
 }
@@ -315,7 +344,7 @@ TEST_CASE("a decider bundle without its question set is refused")
   const Built bundle = built("no-questions");
   fs::remove(bundle.dir / "questions.json");
   seal(bundle.dir);
-  const turn::BundleLoader loader({.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("questions.json") != std::string::npos);
 }
@@ -325,7 +354,7 @@ TEST_CASE("a decider bundle whose manifest records another question set is refus
   const Built bundle = built("other-questions");
   write(bundle.dir / "questions.json", R"({"tool": {"type": "choice", "instructions": "which", "criteria": ["camera", "memory_save"]}})");
   seal(bundle.dir);
-  const turn::BundleLoader loader({.dir = bundle.dir, .pin = argus::hash::sha256Hex(readText(bundle.dir / "sha256"))});
+  const turn::BundleLoader loader({.dir = bundle.dir});
   CHECK_FALSE(loader.valid());
   CHECK(loader.error().find("does not record the hash of the questions.json") != std::string::npos);
 }
