@@ -5,6 +5,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <json/json.h>
 #include <llm/llm-service.hxx>
 
 #include <atomic>
@@ -12,6 +13,8 @@
 #include <cstring>
 #include <map>
 #include <mutex>
+#include <optional>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <utility>
@@ -28,6 +31,7 @@ struct FakeLlmOptions
   bool truncated{false};
   int tokenDelayMs{0};
   std::string speech{};
+  std::optional<std::string> screened{};
 };
 
 class FakeLlmServer
@@ -148,6 +152,30 @@ private:
     return frame;
   }
 
+  static std::string spokenIn(const std::string& body)
+  {
+    Json::Value json;
+    Json::CharReaderBuilder builder;
+    std::string errors;
+    std::istringstream in(body);
+    if (!Json::parseFromStream(builder, in, &json, &errors) || !json["text"].isString())
+      return {};
+    return json["text"].asString();
+  }
+
+  static std::string unaryResponse(const std::string& text)
+  {
+    Json::Value body(Json::objectValue);
+    body["status"] = 200;
+    body["info"]["text"] = text;
+    body["errors"] = Json::Value();
+    Json::StreamWriterBuilder builder;
+    builder["indentation"] = "";
+    const std::string json = Json::writeString(builder, body);
+    return "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: " + std::to_string(json.size()) +
+           "\r\nConnection: close\r\n\r\n" + json;
+  }
+
   static std::string sentinelLine(const std::string& speech)
   {
     std::string line = "{\"done\":true,\"prompt_tokens\":7,\"reused_tokens\":0,"
@@ -230,6 +258,14 @@ private:
           sendAll(fd, chunk(sentinel));
         }
         sendAll(fd, "0\r\n\r\n");
+        ::close(fd);
+        continue;
+      }
+
+      if (path == "/llm/v1/screen") {
+        const auto split = request.find("\r\n\r\n");
+        const std::string body = split == std::string::npos ? std::string() : request.substr(split + 4);
+        sendAll(fd, unaryResponse(options_.screened.value_or(spokenIn(body))));
         ::close(fd);
         continue;
       }
