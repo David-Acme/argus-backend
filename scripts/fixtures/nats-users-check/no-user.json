@@ -1,0 +1,48 @@
+{
+  "server_id": "NDGXUEFZGAJWIDSJGOHQH3XXZPTNIIAZMP23DAFNZDHDMXRLQ4Y463H3",
+  "now": "2026-10-13T15:52:35.718230127Z",
+  "num_connections": 2,
+  "total": 2,
+  "offset": 0,
+  "limit": 4096,
+  "connections": [
+    {
+      "cid": 5,
+      "kind": "Client",
+      "type": "nats",
+      "ip": "172.17.0.1",
+      "port": 39096,
+      "start": "2026-10-13T15:52:35.208142418Z",
+      "last_activity": "2026-10-13T15:52:35.208634777Z",
+      "rtt": "492µs",
+      "uptime": "0s",
+      "idle": "0s",
+      "pending_bytes": 0,
+      "in_msgs": 0,
+      "out_msgs": 0,
+      "in_bytes": 0,
+      "out_bytes": 0,
+      "subscriptions": 0,
+      "name_tag": "$G"
+    },
+    {
+      "cid": 6,
+      "kind": "Client",
+      "type": "nats",
+      "ip": "172.17.0.1",
+      "port": 39112,
+      "start": "2026-10-13T15:52:35.208886598Z",
+      "last_activity": "2026-10-13T15:52:35.209252912Z",
+      "rtt": "366µs",
+      "uptime": "0s",
+      "idle": "0s",
+      "pending_bytes": 0,
+      "in_msgs": 0,
+      "out_msgs": 0,
+      "in_bytes": 0,
+      "out_bytes": 0,
+      "subscriptions": 0,
+      "name_tag": "$G"
+    }
+  ]
+}
