@@ -8,6 +8,7 @@ argus_module(NAME camera-control
         dtos/camera-snapshot-dto.cc
         dtos/camera-talk-dto.cc
         services/camera-control-feature-service.cc
+        services/still-flights.cc
     INCLUDES
         ../..
     DEPENDS

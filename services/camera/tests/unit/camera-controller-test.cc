@@ -66,14 +66,21 @@ public:
                std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
           auto response = drogon::HttpResponse::newHttpResponse();
           response->setContentTypeCode(drogon::CT_IMAGE_JPG);
+          double holdSeconds = 0.0;
           {
             const std::scoped_lock lock(mutex_);
             seen_.source = request->getParameter("src");
             seen_.cached = !request->getParameter("cache").empty();
             ++seen_.count;
             response->setBody(body_);
+            holdSeconds = holdSeconds_;
           }
-          callback(response);
+          if (holdSeconds <= 0.0) {
+            callback(response);
+            return;
+          }
+          trantor::EventLoop::getEventLoopOfCurrentThread()->runAfter(
+              holdSeconds, [callback = std::move(callback), response]() { callback(response); });
         },
         {drogon::Get});
   }
@@ -82,6 +89,12 @@ public:
   {
     const std::scoped_lock lock(mutex_);
     body_ = std::move(body);
+  }
+
+  void hold(double seconds)
+  {
+    const std::scoped_lock lock(mutex_);
+    holdSeconds_ = seconds;
   }
 
   [[nodiscard]] FrameRequestSeen seen() const
@@ -94,6 +107,7 @@ private:
   mutable std::mutex mutex_;
   FrameRequestSeen seen_;
   std::string body_{kMainStill};
+  double holdSeconds_{0.0};
 };
 
 std::string whiteJpeg()
@@ -707,6 +721,35 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK(unmaskable->status == 502);
   CHECK(unmaskable->message == "The picture could not be masked");
   CHECK(fakeGo2rtc().seen().count == 5);
+
+  fakeGo2rtc().serve(white);
+  fakeGo2rtc().hold(0.5);
+  std::array<drogon::HttpResponsePtr, 2> together;
+  {
+    std::array<std::jthread, 2> callers;
+    for (std::size_t index = 0; index < together.size(); ++index)
+      callers.at(index) = std::jthread([&controlController, &together, index, cameraId2] {
+        const auto request = drogon::HttpRequest::newHttpRequest();
+        request->setParameter("quality", "main");
+        try {
+          together.at(index) = drogon::sync_wait(controlController.snapshot(request, cameraId2));
+        }
+        catch (const std::exception&) {
+          together.at(index) = nullptr;
+        }
+      });
+  }
+  fakeGo2rtc().hold(0.0);
+  CHECK(fakeGo2rtc().seen().count == 6);
+  REQUIRE(together.at(0) != nullptr);
+  REQUIRE(together.at(1) != nullptr);
+  const Json::Value first = body(together.at(0))["info"];
+  const Json::Value second = body(together.at(1))["info"];
+  CHECK(first == second);
+  CHECK(blackLeftWhiteRight(pictureOf(first)));
+  const Json::Value after = body(drogon::sync_wait(controlController.snapshot(mainRequest, cameraId2)))["info"];
+  CHECK(blackLeftWhiteRight(pictureOf(after)));
+  CHECK(fakeGo2rtc().seen().count == 7);
   const auto missingSnapshot =
       refusalOf(controlController.snapshot(drogon::HttpRequest::newHttpRequest(), 999));
   if (!missingSnapshot) {

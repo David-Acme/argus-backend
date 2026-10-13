@@ -8,6 +8,7 @@
 #include <feature/camera-control/dtos/camera-settings-dto.hxx>
 #include <feature/camera-control/dtos/camera-snapshot-dto.hxx>
 #include <feature/camera-control/dtos/camera-talk-dto.hxx>
+#include <feature/camera-control/services/still-flights.hxx>
 #include <json/value.h>
 #include <optional>
 #include <shared/repositories/camera/camera-repository.hxx>
@@ -46,9 +47,12 @@ private:
 
   drogon::Task<std::optional<std::vector<uint8_t>>> masked(int64_t cameraId,
                                                            std::vector<uint8_t> jpeg) const;
+  drogon::Task<DriverResult> freshStill(FrameGrabRequest request) const;
+  drogon::Task<DriverResult> sharedStill(FrameGrabRequest request) const;
 
   CameraRepository cameraRepository_;
   ZoneRepository zoneRepository_;
   TtsClient tts_;
   mutable Go2rtcFrameSource frames_;
+  mutable StillFlights mainStills_;
 };

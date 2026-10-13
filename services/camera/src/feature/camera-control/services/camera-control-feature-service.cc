@@ -26,6 +26,14 @@ bool succeeded(const CameraControlResult& result)
 {
   return result && result->ok;
 }
+
+DriverResult stillOf(const CameraSnapshot& picture)
+{
+  Json::Value out;
+  out["image"] = "data:image/jpeg;base64," + drogon::utils::base64Encode(picture.jpeg);
+  out["capturedAt"] = static_cast<Json::Int64>(picture.atMs);
+  return {.ok = true, .error = {}, .data = out};
+}
 }
 
 drogon::Task<CameraControlResult> CameraControlFeatureService::onDevice(
@@ -186,6 +194,27 @@ CameraControlFeatureService::masked(int64_t cameraId, std::vector<uint8_t> jpeg)
       BlockingLane::Heavy);
 }
 
+drogon::Task<DriverResult> CameraControlFeatureService::freshStill(FrameGrabRequest request) const
+{
+  auto frame = co_await frames_.grab(request);
+  if (!frame || frame->jpeg.empty())
+    co_return DriverResult::failed("The camera sent no picture");
+  const auto jpeg = co_await masked(request.cameraId, std::move(frame->jpeg));
+  if (!jpeg)
+    co_return DriverResult::failed("The picture could not be masked");
+  co_return stillOf({.jpeg = std::string(jpeg->begin(), jpeg->end()), .atMs = frame->capturedAtMs});
+}
+
+drogon::Task<DriverResult> CameraControlFeatureService::sharedStill(FrameGrabRequest request) const
+{
+  auto ticket = mainStills_.join(request.cameraId);
+  if (!ticket.leads())
+    co_return co_await ticket.result();
+  const DriverResult result = co_await freshStill(std::move(request));
+  ticket.land(result);
+  co_return result;
+}
+
 drogon::Task<CameraControlResult>
 CameraControlFeatureService::snapshot(int64_t cameraId, CameraStream stream) const
 {
@@ -195,26 +224,13 @@ CameraControlFeatureService::snapshot(int64_t cameraId, CameraStream stream) con
   if (!camera->isEnabled)
     co_return DriverResult::failed("This camera is disabled");
 
-  CameraSnapshot picture;
-  auto stored = camera_stream_role::isWarm(stream) ? SnapshotStore::instance().frame(cameraId) : std::nullopt;
-  if (stored && nowMs() - stored->atMs <= kFreshSnapshotMs) {
-    picture = std::move(*stored);
-  }
-  else {
-    auto frame = co_await frames_.grab(
-        {.cameraId = cameraId, .cameraName = camera->name, .maxAgeMs = 0, .stream = stream});
-    if (!frame || frame->jpeg.empty())
-      co_return DriverResult::failed("The camera sent no picture");
-    const auto jpeg = co_await masked(cameraId, std::move(frame->jpeg));
-    if (!jpeg)
-      co_return DriverResult::failed("The picture could not be masked");
-    picture = {.jpeg = std::string(jpeg->begin(), jpeg->end()), .atMs = frame->capturedAtMs};
-  }
-
-  Json::Value out;
-  out["image"] = "data:image/jpeg;base64," + drogon::utils::base64Encode(picture.jpeg);
-  out["capturedAt"] = static_cast<Json::Int64>(picture.atMs);
-  co_return DriverResult{.ok = true, .error = {}, .data = out};
+  FrameGrabRequest request{.cameraId = cameraId, .cameraName = camera->name, .maxAgeMs = 0, .stream = stream};
+  if (!camera_stream_role::isWarm(stream))
+    co_return co_await sharedStill(std::move(request));
+  if (const auto stored = SnapshotStore::instance().frame(cameraId);
+      stored && nowMs() - stored->atMs <= kFreshSnapshotMs)
+    co_return stillOf(*stored);
+  co_return co_await freshStill(std::move(request));
 }
 
 drogon::Task<CameraControlResult>

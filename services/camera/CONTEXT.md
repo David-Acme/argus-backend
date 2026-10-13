@@ -1047,6 +1047,18 @@ same `{ image, capturedAt }` with one frame decoded from the **main** stream
   own (`frame:<id>:main`).
 - **A longer timeout.** It waits 8 s instead of 5 s, because go2rtc may have
   to open the main stream and wait for its next keyframe.
+- **One grab per camera at a time** (reviewer ruling, 2026-10-13). Being
+  outside the backoff, N clients, or an app retrying, each opened an 8 s
+  request that woke the main stream. Concurrent requests for one camera now
+  share the one in-flight still and its answer, a 502 included:
+  `StillFlights` (`feature/camera-control/services/still-flights`) maps a
+  camera id to the pending still, the first request takes it (grab, mask,
+  encode) and the others wait for that answer on their own event loop.
+  Nothing is cached: a request that arrives after the still landed takes a
+  new one. The lock guards only the map and each flight's waiter list, never
+  the grab, so cameras never wait on each other. If the request taking the
+  still ends without an answer, the waiters get "The camera sent no
+  picture".
 - **Masked, unlike the live view** (reviewer ruling, 2026-10-13). A saved
   still is a persisted copy that leaves the home, and every persisted frame
   is masked; the live view is exempt only because it is go2rtc's
