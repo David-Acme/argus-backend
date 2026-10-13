@@ -1,0 +1,136 @@
+{
+  "domainSuffix": ".argus-tunnel.lynk.page",
+  "vectors": [
+    {
+      "name": "service-and-home",
+      "serverName": "sync--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "service": "sync",
+      "homeId": "0123456789abcdef0123456789abcdef"
+    },
+    {
+      "name": "longest-service",
+      "serverName": "productivity--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "service": "productivity",
+      "homeId": "0123456789abcdef0123456789abcdef"
+    },
+    {
+      "name": "one-letter-service",
+      "serverName": "a--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "service": "a",
+      "homeId": "0123456789abcdef0123456789abcdef"
+    },
+    {
+      "name": "service-with-digits",
+      "serverName": "camera2--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "service": "camera2",
+      "homeId": "0123456789abcdef0123456789abcdef"
+    },
+    {
+      "name": "bare-home",
+      "serverName": "0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "service": "",
+      "homeId": "0123456789abcdef0123456789abcdef"
+    },
+    {
+      "name": "letter-case",
+      "serverName": "Sync--0123456789ABCDEF0123456789abcdef.Argus-Tunnel.LYNK.page",
+      "service": "sync",
+      "homeId": "0123456789abcdef0123456789abcdef"
+    },
+    {
+      "name": "service-too-long",
+      "serverName": "productivity1--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "empty-service",
+      "serverName": "--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "service-with-hyphen",
+      "serverName": "visitor-crop--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "service-ending-in-hyphen",
+      "serverName": "sync---0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "two-separators",
+      "serverName": "sync--camera--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "service-with-underscore",
+      "serverName": "sync_2--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "home-id-too-short",
+      "serverName": "sync--0123456789abcdef0123456789abcde.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "home-id-too-long",
+      "serverName": "sync--0123456789abcdef0123456789abcdef0.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "home-id-not-hex",
+      "serverName": "sync--0123456789abcdef0123456789abcdeg.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "label-of-63",
+      "serverName": "abcdefghijklmnopqrstuvwxyzabc--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "label-of-64",
+      "serverName": "abcdefghijklmnopqrstuvwxyzabcd--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "two-labels",
+      "serverName": "sync.0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "other-domain",
+      "serverName": "sync--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.org",
+      "expect": "refused"
+    },
+    {
+      "name": "domain-inside-another",
+      "serverName": "sync--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page.example.com",
+      "expect": "refused"
+    },
+    {
+      "name": "trailing-dot",
+      "serverName": "sync--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page.",
+      "expect": "refused"
+    },
+    {
+      "name": "domain-alone",
+      "serverName": "argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "empty-label",
+      "serverName": ".argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "node-name",
+      "serverName": "home.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "no-name",
+      "serverName": "",
+      "expect": "refused"
+    }
+  ]
+}

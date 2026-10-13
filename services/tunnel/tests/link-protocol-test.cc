@@ -358,7 +358,8 @@ TEST_SUITE("home link v2 vectors")
     }
     for (const auto& file : vectorFiles())
       CHECK(listed.contains(file.filename().string()));
-    CHECK(listed.size() >= 12);
+    CHECK(listed.contains("device-names.json"));
+    CHECK(listed.size() >= 13);
   }
 
   TEST_CASE("the cloud's vectors are the ones this test pinned"

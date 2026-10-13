@@ -78,7 +78,15 @@ present, so a wire change on one side fails the other side's test until the
 vectors move in both), `tests/link-client-test.cc` drives the client against a
 fake node, and `tests/cloud-interop-test.cc` runs it against the real
 argus-relay binary named by `ARGUS_CLOUD_RELAY_BIN`, with a device TLS session
-crossing the relay into a home listener.
+crossing the relay into a home listener. `scripts/sync-vectors.sh --cloud <dir>`
+copies the cloud's vectors and rewrites the pins in one step.
+
+`device-names.json` is pinned with the frame vectors (2026-10-13): the device
+names of the spec's section 2.4, `<service>--<home-id>.argus-tunnel.lynk.page`,
+with the home id and service each one gives and the names that must be refused.
+The node routes on the home id; the home picks its listener by the service. The
+client does not read a device name yet. The SNI dispatch that does is the next
+step, and it runs these vectors.
 
 ## Wire protocol
 
