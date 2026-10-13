@@ -318,8 +318,15 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   guard's first incident evidence); only then the cleanup that removes the shared
   account (from RustFS and from `rustfs-init`, which would create it again) and the
   `access_key`/`secret_key` keys (from those three configs and from the provisioning that writes
-  them). Native runs still take the shared keys from `scripts/setup.sh`; the cleanup gives them
-  their account's file first. Both credentials stay valid until that check passes.
+  them). Native runs still take the shared keys from `scripts/setup.sh`, so the cleanup's
+  checklist starts there: `setup.sh` gives native identity, and any other native writer (every
+  native config that carries `[storage.s3]`, the native stack's copies under
+  `argus-deploy/data/native/` included, and camera's or guard's once their native templates gain
+  object storage), its own account file, `credentials_file` naming
+  `${ARGUS_DATA_DIR}/rustfs/accounts/<service>/credentials.json`, the file `rustfs-init` writes
+  for that writer; only after that do the shared keys leave the native configs and
+  `sync_storage_credentials` stop writing them. Both credentials stay valid until that check
+  passes.
   Trace follow-up, 2026-10-13: no provisioning secret is a shell value any more, in
   `provision-host.sh` or in `setup.sh`'s config steps (NATS seeds and password, JWT, refresh and
   fingerprint secrets, every RPC credential, LiveKit and tunnel secrets, pairing code, S3 keys).
