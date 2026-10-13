@@ -262,6 +262,7 @@ services:
     ports:
       - "${PRODUCTIVITY_PORT:-7027}:7027"
       - "127.0.0.1:${PRODUCTIVITY_GRPC_PORT:-7037}:7037"
+      - "127.0.0.1:${PRODUCTIVITY_GRPC_TLS_PORT:-7237}:7237"
     entrypoint: ["/opt/argus/argus-productivity"]
     volumes:
       - type: bind
@@ -273,6 +274,12 @@ services:
       - type: bind
         source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/productivity.seed
         target: /run/secrets/nats.seed
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/certs/internal/productivity
+        target: /run/secrets/internal-tls
         read_only: true
         bind:
           create_host_path: false

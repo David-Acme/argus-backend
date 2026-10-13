@@ -437,3 +437,15 @@ target_link_libraries(productivity-calendar-event-dto-test PRIVATE
     doctest::doctest)
 target_compile_options(productivity-calendar-event-dto-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-calendar-event-dto-test COMMAND productivity-calendar-event-dto-test)
+
+add_executable(productivity-rpc-server-test tests/unit/productivity-rpc-server-test.cc)
+set_target_properties(productivity-rpc-server-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(productivity-rpc-server-test PRIVATE
+    argus::productivity-rpc-server
+    argus::lib::grpc-health
+    doctest::doctest)
+target_compile_options(productivity-rpc-server-test PRIVATE -Wall -Wextra)
+add_test(NAME productivity-rpc-server-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:productivity-rpc-server-test> 8)
+set_tests_properties(productivity-rpc-server-test PROPERTIES SKIP_RETURN_CODE 77)

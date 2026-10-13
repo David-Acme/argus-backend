@@ -29,6 +29,8 @@
 #include <http/certificate-reload.hxx>
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
+#include <http/tls-health.hxx>
+#include <grpc/internal-tls.hxx>
 #include <mdns/mdns-service.hxx>
 #include <config/productivity-config.hxx>
 #include <shared/services/change-sink/nats-productivity-change-sink.hxx>
@@ -42,6 +44,7 @@
 #include <unistd.h>
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -91,6 +94,16 @@ int main()
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
+  const InternalTlsConfig internalTlsConfig = InternalTlsConfig::resolve();
+  std::optional<argus::client::InternalTlsMaterial> internalTls;
+  try {
+    internalTls = argus::client::installInternalTlsFrom(internalTlsConfig.directory);
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  const auto loadedTls = internalTls.value_or(argus::client::InternalTlsMaterial{});
 
   try {
     DeviceFilter::requireFingerprintSecret();
@@ -138,11 +151,16 @@ int main()
     LOG_INFO << "Productivity tools RPC not served: [grpc] caller_llm is empty";
   }
 
-  ProductivityRpcServer rpc({.services = std::move(rpcServices)});
+  ProductivityRpcServer rpc(
+      {.services = std::move(rpcServices), .tlsAddress = internalTlsConfig.address, .tls = internalTls});
   if (!rpc.listening()) {
-    LOG_FATAL << "gRPC server failed to listen on " << rpc.address();
+    LOG_FATAL << "gRPC server failed to listen on " << rpc.address()
+              << (internalTls && !internalTlsConfig.address.empty() ? " and " + internalTlsConfig.address
+                                                                     : std::string{});
     return 1;
   }
+  if (rpc.tlsPort() > 0)
+    LOG_INFO << "gRPC with mutual TLS on " << internalTlsConfig.address;
 
   drogon::app().registerController(std::make_shared<CalendarEventController>());
   drogon::app().registerController(
@@ -152,7 +170,10 @@ int main()
   drogon::app().registerController(std::make_shared<ProjectTaskController>());
   drogon::app().registerController(std::make_shared<ReminderController>());
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-productivity", .extras = {}}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{
+      .serviceName = "argus-productivity",
+      .extras = {tls_health::healthExtra(
+          {.certificatePem = loadedTls.certificatePem, .trustBundlePem = loadedTls.trustBundlePem})}}));
 
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());

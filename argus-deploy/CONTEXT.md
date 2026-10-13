@@ -982,14 +982,22 @@ the only way in. The wiring is the same for every service (ruling of 2026-10-13)
 | guard | 7139 | 7339 |
 
 The relay and the tunnel client speak no internal gRPC and get no listener.
-Wired so far: tts and settings. Neither publishes its gRPC port, so 7329 and
-7247 are not published either. settings opens its mutual TLS port on the
-modules RPC server, beside 7047. Its main calls startModulesRpc
-(services/settings/src/app/rpc/modules-rpc-server), so that rule is tested
-on its own. A service whose main used to build its server inline gets the
-same kind of function. The clients move to `tls:` targets in step 5, and the plaintext
-listeners go only after the owner's check. For every deploy template that
-declares `[internal_tls]`, `deploy-mounts-test` checks:
+Wired so far: tts, settings and productivity.
+- tts and settings publish no gRPC port, so 7329 and 7247 are not published
+  either.
+- settings opens its mutual TLS port on the modules RPC server, beside
+  7047. Its main calls startModulesRpc
+  (services/settings/src/app/rpc/modules-rpc-server), so that rule is
+  tested on its own. A service whose main used to build its server inline
+  gets the same kind of function.
+- productivity publishes its plaintext 7037 on 127.0.0.1, so 7237 is
+  published there too (`PRODUCTIVITY_GRPC_TLS_PORT`). Its
+  ProductivityRpcServer opens both ports through startProductivityRpc,
+  which is tested the same way.
+
+The clients move to `tls:` targets in step 5, and the plaintext listeners
+go only after the owner's check. For every deploy template that declares
+`[internal_tls]`, `deploy-mounts-test` checks:
 - its own read-only certificate mount;
 - the port plus 200 in both templates;
 - both `dir` values;
