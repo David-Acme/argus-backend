@@ -17,6 +17,8 @@ constexpr size_t kClientNonceChars = 16;
 constexpr const char* kNoPtz = "This camera has no pan and tilt over ONVIF";
 constexpr double kHalfStep = 0.00005;
 constexpr const char* kHoldTimeout = "PT2S";
+constexpr int kAttempts = 2;
+constexpr const char* kRefusedAccount = "The camera refused the ONVIF user name or password";
 
 void appendText(pugi::xml_node& parent, const char* name, const std::string& value)
 {
@@ -143,49 +145,63 @@ std::string OnvifClient::authorizationFor(const std::string& path)
                                          .nonceCount = ++nonceCount_});
 }
 
-OnvifOutcome<OnvifReply> OnvifClient::call(const Call& request)
+OnvifOutcome<OnvifHttpRequest> OnvifClient::prepared(const Call& request)
 {
   const std::string path = pathFor(request.service);
   if (path.empty())
-    return OnvifOutcome<OnvifReply>::failed(
+    return OnvifOutcome<OnvifHttpRequest>::failed(
         OnvifFailure::Unsupported,
         "The camera offers no ONVIF " + onvifServiceToString(request.service) + " service");
-  for (int attempt = 0; attempt < 2; ++attempt) {
-    const OnvifHttpRequest http{
-        .path = path,
-        .action = onvif_soap::actionOf(request.service, request.operation),
-        .body = onvif_soap::envelope({.service = request.service,
-                                      .operation = request.operation,
-                                      .body = request.body,
-                                      .security = securityFor(request)}),
-        .authorization = challenge_ ? authorizationFor(path) : std::string()};
-    const OnvifHttpResponse response = config_.transport->post(http);
-    if (!response.error.empty())
-      return OnvifOutcome<OnvifReply>::failed(OnvifFailure::Transport, response.error);
-    if (response.status == 401) {
-      if (attempt == 0 && wantsDigest(response.challenge) && !config_.endpoint.username.empty()) {
-        challenge_ = tapo_crypto::parseDigestChallenge(response.challenge);
-        nonceCount_ = 0;
-        continue;
-      }
-      challenge_.reset();
-      return OnvifOutcome<OnvifReply>::failed(OnvifFailure::Unauthorized,
-                                              "The camera refused the ONVIF user name or password");
+  return {.value = OnvifHttpRequest{.path = path,
+                                    .action = onvif_soap::actionOf(request.service, request.operation),
+                                    .body = onvif_soap::envelope({.service = request.service,
+                                                                  .operation = request.operation,
+                                                                  .body = request.body,
+                                                                  .security = securityFor(request)}),
+                                    .authorization = challenge_ ? authorizationFor(path) : std::string()}};
+}
+
+OnvifClient::Settled OnvifClient::settled(const OnvifHttpResponse& response, int attempt)
+{
+  if (!response.error.empty())
+    return {.retry = false, .outcome = OnvifOutcome<OnvifReply>::failed(OnvifFailure::Transport, response.error)};
+  if (response.status == 401) {
+    if (attempt == 0 && wantsDigest(response.challenge) && !config_.endpoint.username.empty()) {
+      challenge_ = tapo_crypto::parseDigestChallenge(response.challenge);
+      nonceCount_ = 0;
+      return {.retry = true, .outcome = {}};
     }
-    auto answer = onvif_soap::reply(response.body);
-    if (!answer)
-      return OnvifOutcome<OnvifReply>::failed(
-          OnvifFailure::Malformed,
-          "The camera's ONVIF answer (HTTP " + std::to_string(response.status) + ") is not SOAP");
-    if (answer->fault)
-      return OnvifOutcome<OnvifReply>::failed(onvif_soap::faultKind(*answer), faultMessage(*answer));
-    if (response.status < 200 || response.status >= 300)
-      return OnvifOutcome<OnvifReply>::failed(
-          OnvifFailure::Fault, "The camera answered the ONVIF request with HTTP " + std::to_string(response.status));
-    return {.value = std::move(*answer)};
+    challenge_.reset();
+    return {.retry = false, .outcome = OnvifOutcome<OnvifReply>::failed(OnvifFailure::Unauthorized, kRefusedAccount)};
   }
-  return OnvifOutcome<OnvifReply>::failed(OnvifFailure::Unauthorized,
-                                          "The camera refused the ONVIF user name or password");
+  auto answer = onvif_soap::reply(response.body);
+  if (!answer)
+    return {.retry = false,
+            .outcome = OnvifOutcome<OnvifReply>::failed(
+                OnvifFailure::Malformed,
+                "The camera's ONVIF answer (HTTP " + std::to_string(response.status) + ") is not SOAP")};
+  if (answer->fault)
+    return {.retry = false,
+            .outcome = OnvifOutcome<OnvifReply>::failed(onvif_soap::faultKind(*answer), faultMessage(*answer))};
+  if (response.status < 200 || response.status >= 300)
+    return {.retry = false,
+            .outcome = OnvifOutcome<OnvifReply>::failed(
+                OnvifFailure::Fault,
+                "The camera answered the ONVIF request with HTTP " + std::to_string(response.status))};
+  return {.retry = false, .outcome = {.value = std::move(*answer)}};
+}
+
+OnvifOutcome<OnvifReply> OnvifClient::call(const Call& request)
+{
+  for (int attempt = 0; attempt < kAttempts; ++attempt) {
+    auto http = prepared(request);
+    if (!http.ok())
+      return carried<OnvifReply>(http);
+    auto verdict = settled(config_.transport->post(http.value), attempt);
+    if (!verdict.retry)
+      return std::move(verdict.outcome);
+  }
+  return OnvifOutcome<OnvifReply>::failed(OnvifFailure::Unauthorized, kRefusedAccount);
 }
 
 void OnvifClient::forget()

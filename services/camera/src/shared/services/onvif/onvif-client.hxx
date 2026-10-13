@@ -44,7 +44,15 @@ private:
     bool secured{true};
   };
 
+  struct Settled
+  {
+    bool retry{false};
+    OnvifOutcome<OnvifReply> outcome;
+  };
+
   static Call presetsCall(const std::string& profile);
+  OnvifOutcome<OnvifHttpRequest> prepared(const Call& request);
+  Settled settled(const OnvifHttpResponse& response, int attempt);
   OnvifOutcome<OnvifReply> call(const Call& request);
   OnvifOutcome<OnvifReply> ptzCall(const Call& request);
   void forget();
