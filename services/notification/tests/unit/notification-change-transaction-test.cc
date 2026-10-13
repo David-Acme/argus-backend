@@ -150,7 +150,7 @@ int64_t seedNotification(const std::string& title)
       "INSERT INTO notification (user_id, type, title, body) "
       "VALUES (7, 'event', ?, 'someone rang the bell')",
       title);
-  return inserted.insertId();
+  return static_cast<int64_t>(inserted.insertId());
 }
 
 struct SeededRow
@@ -166,7 +166,7 @@ int64_t seedRow(const SeededRow& row)
       "INSERT INTO notification (user_id, type, title, body, data) "
       "VALUES (?, 'event', ?, 'motion in the yard', ?)",
       row.userId, row.title, row.data);
-  return inserted.insertId();
+  return static_cast<int64_t>(inserted.insertId());
 }
 
 int64_t unreadNotifications()
