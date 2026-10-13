@@ -1,0 +1,17 @@
+{
+  "frame": "goaway",
+  "vectors": [
+    {
+      "name": "goaway-node-drain-thirty",
+      "streamId": 0,
+      "payloadHex": "00001e00",
+      "bytesHex": "55a70208000000000400000000001e00"
+    },
+    {
+      "name": "goaway-protocol-error",
+      "streamId": 0,
+      "payloadHex": "02000000",
+      "bytesHex": "55a70208000000000400000002000000"
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "frame": "close",
+  "vectors": [
+    {
+      "name": "close-three-normal",
+      "streamId": 3,
+      "payloadHex": "00",
+      "bytesHex": "55a70204030000000100000000"
+    },
+    {
+      "name": "close-nine-error",
+      "streamId": 9,
+      "payloadHex": "04",
+      "bytesHex": "55a70204090000000100000004"
+    },
+    {
+      "name": "close-eleven-idle",
+      "streamId": 11,
+      "payloadHex": "02",
+      "bytesHex": "55a702040b0000000100000002"
+    }
+  ]
+}

@@ -23,6 +23,27 @@ gateway_port = 7142
 health_host = "127.0.0.1"
 health_port = 7103
 
+[link]
+enabled = false
+home_id = ""
+host = "argus-tunnel.lynk.page"
+port = 7001
+certificate_path = "certs/link.crt"
+key_path = "certs/link.key"
+node_certificate_path = "certs/cloud.crt"
+
+keepalive_active_seconds = 20
+keepalive_idle_seconds = 90
+keepalive_pong_timeout_seconds = 15
+dead_link_seconds = 240
+hello_timeout_seconds = 10
+
+reconnect_base_ms = 1000
+reconnect_cap_ms = 60000
+
+stream_idle_seconds = 300
+max_streams = 256
+
 [push]
 enabled = false
 queue_capacity = 256

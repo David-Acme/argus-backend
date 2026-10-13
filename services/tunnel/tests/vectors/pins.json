@@ -1,0 +1,17 @@
+{
+  "algorithm": "sha256",
+  "files": {
+    "close.json": "498fcb313e70b01c772547c4d7fa1d8c6bf89b07b25c875cf08bff9a1353ea20",
+    "credit.json": "8e244ef7f613ba0c5fddf7bad7c1550732fc8738295654df2a1de9325695dc8b",
+    "data.json": "76cf5418a8b6344759b3c942a1d20b39411582d58df7eb4038fb597ece57e49a",
+    "flow.json": "3c2cf31a3205db109513d167ce844cf7521cd296b9ce6c6a3220bac31b01bd6c",
+    "goaway.json": "c7ab0cd34e39799dd04a2bca929f83874adc06d8fbd922c3d30d7c4a18bfd55a",
+    "handshake.json": "e66353b8568603bd5aa8abb4816c99818a1f0e36b434ee2acc1a91cdaf6fdcca",
+    "hello.json": "2f98f7e0d9663cb27e9ba999e44159518e19ee495012050293550b837c3dccf9",
+    "open.json": "c6ffcf691421f66a3f3ca796016c08db6b71618b5ecb7339230d46fb65d7d233",
+    "ping.json": "c2633718ca4c42a527815e395d11ad98c550035d9880703d352691ca2492757d",
+    "pong.json": "d5d69af75fee02f322df1cf8b5d39e8cc8dbc32c7dd75288515889f6a0f2f598",
+    "push.json": "f2b05b35472b9357936cf422bf3c8af2c492fc1595ebaacebe6d0abe44dbe317",
+    "refusals.json": "38cb9dcf300e3c6dfdb56f4d9811a37318f7233f3d801c0be645d221705118f0"
+  }
+}

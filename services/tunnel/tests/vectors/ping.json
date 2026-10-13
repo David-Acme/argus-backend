@@ -1,0 +1,11 @@
+{
+  "frame": "ping",
+  "vectors": [
+    {
+      "name": "ping-nonce",
+      "streamId": 0,
+      "payloadHex": "0807060504030201",
+      "bytesHex": "55a7020500000000080000000807060504030201"
+    }
+  ]
+}

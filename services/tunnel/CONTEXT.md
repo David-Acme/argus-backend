@@ -11,6 +11,68 @@ payload is the mobile app's TLS: end-to-end between the app and the home
 service terminating it, unterminated by the tunnel (Ruling CF — byte
 transparency, not gRPC).
 
+## Home link v2 (argus-cloud, 2026-10)
+
+`main-client` speaks one of two links, never both (a home has one link): the
+legacy v1 relay link described below, or link v2 to an argus-cloud node when
+`[link] enabled = true`. v2 is the wire of argus-cloud's `docs/protocol.md`;
+this repository holds its second implementation, under `src/link/`.
+
+- **Transport** (`src/link/tls/`): TLS 1.3, mutual, ALPN `argus-link/2`. The
+  home presents the certificate provisioning generated — Ed25519, subject CN
+  the home id, 32 lowercase hex characters — and pins the node's
+  SubjectPublicKeyInfo, read from `link.node_certificate_path` (a PEM public
+  key or a certificate); no CA is consulted. A node that selects another ALPN
+  or presents another key is refused before a byte of the wire is read.
+- **HELLO**: first frame of each direction, capabilities `push_intents` and
+  `stream_credit` as the build implements them; the negotiated set is the AND,
+  unknown bits are ignored and never echoed. A frame before HELLO, a second
+  HELLO, a PUSH the far end did not negotiate, or a frame the parser refuses
+  (the spellings of spec §2: `bad_magic` … `over_credit`) closes the link with
+  GOAWAY `protocol_error` and never resynchronizes.
+- **Streams**: only the node opens them. The client dials the home remote
+  listener (`gateway_port`) per OPEN and closes the stream `busy` when nothing
+  is listening or its own `max_streams` table is full. Normal-close semantics,
+  the back-pressure valves and the idle sweep are the ones the v1 client
+  already had.
+- **Flow control**: with `stream_credit` negotiated every stream starts with
+  256 KiB. The client counts what it sends against the window the node granted
+  (`CREDIT` raises it) and grants the node credit as the bytes reach the local
+  socket, at most once per 64 KiB. Bytes beyond its own window are a
+  violation: none of them is delivered, that stream closes `backpressure`, and
+  the link survives.
+- **Keepalive, adaptive by presence**: `keepalive_active_seconds` (20) while
+  at least one device is connected through the home, `keepalive_idle_seconds`
+  (90) while everyone is home. A ping not answered within
+  `keepalive_pong_timeout_seconds` (15) and a link that carried no frame for
+  `dead_link_seconds` (240) both declare the link dead.
+- **Reconnect**: full jitter inside `[0, min(cap, base * 2^(n-1))]`, base
+  1000 ms, cap 60000 ms, never giving up; a HELLO exchange resets n. A GOAWAY
+  (`node_drain`/`node_shutdown`) is not a failure: the link drains with its
+  streams and the next attempt starts at once, without backoff.
+- **Names**: the node host is resolved off the poll loop (`resolveHost` on a
+  worker thread, the result posted back), so the loop never blocks on DNS.
+
+`link.home_id`, the certificate and key paths, the pinned node certificate,
+the node host and port and the keepalive/reconnect knobs are the `[link]`
+section of `config.toml`; `scripts/setup.sh` and
+`scripts/provision-host.sh --with-tunnel` call `ensure_link_identity`, which
+generates the Ed25519 pair when it is missing and enables the link only when
+the cloud node's certificate is already where `link.node_certificate_path`
+points. Everything else in `[tunnel]` (the v1 secret, the relay host and
+ports) is untouched and unused in v2 mode. The containerized client needs the
+identity and the node certificate mounted beside `config.toml`; the deploy
+compose mounts only the config file today.
+
+Tests: `tests/link-protocol-test.cc` runs the cloud's vectors (copied to
+`tests/vectors/` and pinned by SHA-256 in `tests/vectors/pins.json`; the same
+hashes are checked against the cloud's copy whenever the sibling repository is
+present, so a wire change on one side fails the other side's test until the
+vectors move in both), `tests/link-client-test.cc` drives the client against a
+fake node, and `tests/cloud-interop-test.cc` runs it against the real
+argus-relay binary named by `ARGUS_CLOUD_RELAY_BIN`, with a device TLS session
+crossing the relay into a home listener.
+
 ## Wire protocol
 
 12-byte header, little-endian, then the payload:
@@ -258,12 +320,14 @@ level-triggered socket it cannot accept from.
 - The mobile app contracts are untouched: the app keeps talking TLS to the
   host it addresses through the tunnel's device port.
 
-## Not done here: TLS on the home link
+## Not done here: TLS on the legacy home link
 
-The home link still authenticates without encrypting, and frames after AUTH
-carry no MAC. The plan (TLS 1.3 on the home port with the relay pinned by
-the client, the HMAC challenge kept as the second factor) is in
-argus-deploy/CONTEXT.md, "Deferred hardening".
+The v1 home link still authenticates without encrypting, and frames after AUTH
+carry no MAC. Link v2 above is the encrypted, mutually authenticated link and
+is the one to deploy; the v1 pair stays for the current US-relay deployment
+until the cloud cutover. The plan (TLS 1.3 on the v1 relay's home port with the
+relay pinned by the client, the HMAC challenge kept as the second factor) is
+in argus-deploy/CONTEXT.md, "Deferred hardening".
 
 ## A live home link is not replaceable by a stranger (2026-10)
 

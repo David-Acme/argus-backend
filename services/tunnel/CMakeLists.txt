@@ -17,6 +17,7 @@ if(NOT TARGET Drogon::Drogon)
     find_package(tomlplusplus REQUIRED)
     find_package(nlohmann_json REQUIRED)
     find_package(cnats CONFIG REQUIRED)
+    find_package(OpenSSL REQUIRED)
     if(NOT TARGET argus::lib::config)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/config
                          ${CMAKE_BINARY_DIR}/config)
@@ -42,6 +43,13 @@ add_library(tunnel-core STATIC
     ${TUNNEL_SRC_ROOT}/net/tcp-listener.cc
     ${TUNNEL_SRC_ROOT}/net/tcp-peer.cc
     ${TUNNEL_SRC_ROOT}/protocol/frames.cc
+    ${TUNNEL_SRC_ROOT}/link/protocol/frames.cc
+    ${TUNNEL_SRC_ROOT}/link/protocol/credit-window.cc
+    ${TUNNEL_SRC_ROOT}/link/tls/pinned-key.cc
+    ${TUNNEL_SRC_ROOT}/link/tls/client-tls-context.cc
+    ${TUNNEL_SRC_ROOT}/link/tls/tls-channel.cc
+    ${TUNNEL_SRC_ROOT}/link/tls/host-resolver.cc
+    ${TUNNEL_SRC_ROOT}/link/client/link-client.cc
     ${TUNNEL_SRC_ROOT}/core/tunnel-mux.cc
     ${TUNNEL_SRC_ROOT}/client/tunnel-client.cc
     ${TUNNEL_SRC_ROOT}/relay/tunnel-relay.cc
@@ -52,7 +60,7 @@ add_library(tunnel-core STATIC
 target_include_directories(tunnel-core PUBLIC ${TUNNEL_SRC_ROOT})
 
 target_link_libraries(tunnel-core PUBLIC argus::lib::config argus::lib::http
-    argus::lib::runtime)
+    argus::lib::runtime OpenSSL::SSL OpenSSL::Crypto)
 
 target_compile_options(tunnel-core PRIVATE -Wall -Wextra)
 
@@ -127,6 +135,34 @@ target_include_directories(tunnel-health-test PRIVATE
 target_link_libraries(tunnel-health-test PRIVATE tunnel-core doctest::doctest)
 target_compile_options(tunnel-health-test PRIVATE -Wall -Wextra)
 
+add_executable(link-protocol-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-protocol-test.cc)
+target_link_libraries(link-protocol-test PRIVATE tunnel-core doctest::doctest
+                                            nlohmann_json::nlohmann_json)
+target_compile_options(link-protocol-test PRIVATE -Wall -Wextra)
+target_compile_definitions(link-protocol-test PRIVATE
+    ARGUS_LINK_VECTOR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/vectors"
+    ARGUS_CLOUD_LINK_VECTOR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../../argus-cloud/tests/protocol/vectors")
+
+add_executable(link-client-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-client-test.cc
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-harness.cc
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-test-cert.cc)
+target_include_directories(link-client-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+target_link_libraries(link-client-test PRIVATE tunnel-core doctest::doctest)
+target_compile_options(link-client-test PRIVATE -Wall -Wextra)
+
+add_executable(cloud-interop-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/cloud-interop-test.cc
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/interop-support.cc
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-harness.cc
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-test-cert.cc)
+target_include_directories(cloud-interop-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+target_link_libraries(cloud-interop-test PRIVATE tunnel-core doctest::doctest)
+target_compile_options(cloud-interop-test PRIVATE -Wall -Wextra)
+
 set_target_properties(framing-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-integration-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-reconnect-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
@@ -135,6 +171,9 @@ set_target_properties(tunnel-hardening-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(service-config-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-push-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-health-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(link-protocol-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(link-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(cloud-interop-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME framing-test COMMAND framing-test)
 add_test(NAME tunnel-integration-test COMMAND tunnel-integration-test)
@@ -144,3 +183,6 @@ add_test(NAME tunnel-hardening-test COMMAND tunnel-hardening-test)
 add_test(NAME service-config-test COMMAND service-config-test)
 add_test(NAME tunnel-push-test COMMAND tunnel-push-test)
 add_test(NAME tunnel-health-test COMMAND tunnel-health-test)
+add_test(NAME link-protocol-test COMMAND link-protocol-test)
+add_test(NAME link-client-test COMMAND link-client-test)
+add_test(NAME cloud-interop-test COMMAND cloud-interop-test)

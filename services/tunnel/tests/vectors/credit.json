@@ -1,0 +1,17 @@
+{
+  "frame": "credit",
+  "vectors": [
+    {
+      "name": "credit-eleven-65536",
+      "streamId": 11,
+      "payloadHex": "00000100",
+      "bytesHex": "55a702090b0000000400000000000100"
+    },
+    {
+      "name": "credit-one-262144",
+      "streamId": 1,
+      "payloadHex": "00000400",
+      "bytesHex": "55a70209010000000400000000000400"
+    }
+  ]
+}

@@ -49,15 +49,19 @@ that apply to tunnel code; when in doubt, the root file wins.
 argus-tunnel/
   CMakeLists.txt        add_subdirectory-compatible AND standalone buildable
   src/net/              epoll engine (PollLoop, TcpPeer, TcpListener, UniqueFd)
-  src/protocol/         frame codec + HMAC auth (frames.hxx/.cc)
+  src/protocol/         v1 frame codec + HMAC auth (frames.hxx/.cc)
   src/core/             home-link stream multiplexer (TunnelMux)
-  src/client/           home-side client with reconnect (TunnelClient)
+  src/client/           v1 home-side client with reconnect (TunnelClient)
   src/relay/            US-side relay (TunnelRelay)
+  src/link/             link v2: protocol/ (frames + credit), tls/ (TLS 1.3
+                        channel, pin, resolver), client/ (the home agent)
   src/server/           per-binary config resolution + the /health extras
   src/main-client.cc    argus-tunnel-client entrypoint
   src/main-relay.cc     argus-relay entrypoint
-  tests/                framing units + loopback harness + integration tests
-  config.toml.example   [tunnel] + [server] only; secret stays empty
+  scripts/              vector sync (sync-vectors.sh)
+  tests/                framing units + loopback harness + integration tests,
+                        vectors/ (the cloud's wire vectors, pinned by hash)
+  config.toml.example   [tunnel] + [link] + [server] only; secret stays empty
   CONTEXT.md            protocol spec, back-pressure, reconnect semantics
 ```
 

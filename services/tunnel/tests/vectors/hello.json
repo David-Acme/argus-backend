@@ -1,0 +1,17 @@
+{
+  "frame": "hello",
+  "vectors": [
+    {
+      "name": "hello-no-capabilities",
+      "streamId": 0,
+      "payloadHex": "0200000000000000",
+      "bytesHex": "55a7020100000000080000000200000000000000"
+    },
+    {
+      "name": "hello-push-and-credit",
+      "streamId": 0,
+      "payloadHex": "0200000003000000",
+      "bytesHex": "55a7020100000000080000000200000003000000"
+    }
+  ]
+}

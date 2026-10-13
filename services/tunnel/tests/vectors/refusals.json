@@ -1,0 +1,179 @@
+{
+  "vectors": [
+    {
+      "name": "bad-magic",
+      "error": "bad_magic",
+      "bytesHex": "54a702020700000000000000"
+    },
+    {
+      "name": "bad-magic-zero",
+      "error": "bad_magic",
+      "bytesHex": "000002020700000000000000"
+    },
+    {
+      "name": "bad-version-one",
+      "error": "bad_version",
+      "bytesHex": "55a701020700000000000000"
+    },
+    {
+      "name": "unknown-frame-type-zero",
+      "error": "unknown_frame_type",
+      "bytesHex": "55a702000700000000000000"
+    },
+    {
+      "name": "unknown-frame-type-ten",
+      "error": "unknown_frame_type",
+      "bytesHex": "55a7020a0000000000000000"
+    },
+    {
+      "name": "unknown-frame-type-255",
+      "error": "unknown_frame_type",
+      "bytesHex": "55a702ff0000000000000000"
+    },
+    {
+      "name": "payload-too-large",
+      "error": "payload_too_large",
+      "bytesHex": "55a702030700000001000400"
+    },
+    {
+      "name": "data-frame-too-large",
+      "error": "data_frame_too_large",
+      "bytesHex": "55a702030700000001000100"
+    },
+    {
+      "name": "stream-id-required-open",
+      "error": "stream_id_required",
+      "bytesHex": "55a702020000000000000000"
+    },
+    {
+      "name": "stream-id-required-credit",
+      "error": "stream_id_required",
+      "bytesHex": "55a70209000000000400000000000100"
+    },
+    {
+      "name": "stream-id-forbidden-ping",
+      "error": "stream_id_forbidden",
+      "bytesHex": "55a7020505000000080000000807060504030201"
+    },
+    {
+      "name": "stream-id-forbidden-push",
+      "error": "stream_id_forbidden",
+      "bytesHex": "55a702070900000000000000"
+    },
+    {
+      "name": "malformed-hello-empty",
+      "error": "malformed_hello",
+      "bytesHex": "55a702010000000000000000"
+    },
+    {
+      "name": "malformed-hello-seven-bytes",
+      "error": "malformed_hello",
+      "bytesHex": "55a70201000000000700000002000000000000"
+    },
+    {
+      "name": "hello-version-one",
+      "error": "unsupported_version",
+      "bytesHex": "55a7020100000000080000000100000000000000"
+    },
+    {
+      "name": "hello-version-three",
+      "error": "unsupported_version",
+      "bytesHex": "55a7020100000000080000000300000000000000"
+    },
+    {
+      "name": "hello-reserved-not-zero",
+      "error": "malformed_hello",
+      "bytesHex": "55a7020100000000080000000200010000000000"
+    },
+    {
+      "name": "malformed-open-with-payload",
+      "error": "malformed_open",
+      "bytesHex": "55a70202070000000100000000"
+    },
+    {
+      "name": "close-reason-required-empty",
+      "error": "close_reason_required",
+      "bytesHex": "55a702040300000000000000"
+    },
+    {
+      "name": "close-reason-required-two-bytes",
+      "error": "close_reason_required",
+      "bytesHex": "55a7020403000000020000000001"
+    },
+    {
+      "name": "unknown-close-reason",
+      "error": "unknown_close_reason",
+      "bytesHex": "55a7020403000000010000007f"
+    },
+    {
+      "name": "malformed-ping-four-bytes",
+      "error": "malformed_ping",
+      "bytesHex": "55a70205000000000400000008070605"
+    },
+    {
+      "name": "malformed-pong-empty",
+      "error": "malformed_pong",
+      "bytesHex": "55a702060000000000000000"
+    },
+    {
+      "name": "malformed-goaway-three-bytes",
+      "error": "malformed_goaway",
+      "bytesHex": "55a70208000000000300000000001e"
+    },
+    {
+      "name": "malformed-goaway-unknown-reason",
+      "error": "malformed_goaway",
+      "bytesHex": "55a70208000000000400000009001e00"
+    },
+    {
+      "name": "malformed-credit-eight-bytes",
+      "error": "malformed_credit",
+      "bytesHex": "55a702090b000000080000000000010000000200"
+    },
+    {
+      "name": "malformed-credit-zero-grant",
+      "error": "malformed_credit",
+      "bytesHex": "55a702090b0000000400000000000000"
+    },
+    {
+      "name": "incomplete-data-16-bytes",
+      "expect": "incomplete",
+      "type": "data",
+      "streamId": 7,
+      "payloadHex": "00112233445566778899aabbccddeeff",
+      "bytesHex": "55a7020307000000100000"
+    },
+    {
+      "name": "incomplete-header-eleven-bytes",
+      "expect": "incomplete",
+      "type": "data",
+      "streamId": 7,
+      "payloadHex": "00000000000000000000000000000000",
+      "bytesHex": "55a7020307000000100000"
+    },
+    {
+      "name": "incomplete-credit",
+      "expect": "incomplete",
+      "type": "credit",
+      "streamId": 11,
+      "payloadHex": "00000100",
+      "bytesHex": "55a702090b0000000400"
+    },
+    {
+      "name": "incomplete-hello",
+      "expect": "incomplete",
+      "type": "hello",
+      "streamId": 0,
+      "payloadHex": "0200000003000000",
+      "bytesHex": "55a70201000000000800"
+    },
+    {
+      "name": "incomplete-ping",
+      "expect": "incomplete",
+      "type": "ping",
+      "streamId": 0,
+      "payloadHex": "0807060504030201",
+      "bytesHex": "55a702050000000008000000"
+    }
+  ]
+}

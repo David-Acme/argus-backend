@@ -1,0 +1,17 @@
+{
+  "frame": "open",
+  "vectors": [
+    {
+      "name": "open-stream-7",
+      "streamId": 7,
+      "payloadHex": "",
+      "bytesHex": "55a702020700000000000000"
+    },
+    {
+      "name": "open-highest-stream-id",
+      "streamId": 4294967295,
+      "payloadHex": "",
+      "bytesHex": "55a70202ffffffff00000000"
+    }
+  ]
+}

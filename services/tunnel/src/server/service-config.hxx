@@ -1,6 +1,7 @@
 #pragma once
 
 #include <client/tunnel-client.hxx>
+#include <link/client/link-client.hxx>
 #include <relay/tunnel-relay.hxx>
 
 #include <json/value.h>
@@ -17,10 +18,15 @@ struct ClientConfig
 {
   std::string healthHost{"127.0.0.1"};
   uint16_t healthPort{7104};
+  bool linkEnabled{false};
+  std::string homeId;
   tunnel::ClientOptions tunnel;
+  tunnel::link::LinkOptions link;
 
   static ClientConfig resolve();
 };
+
+std::optional<std::string> linkConfigProblem(const ClientConfig& config);
 
 struct RelayConfig
 {

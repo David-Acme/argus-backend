@@ -208,6 +208,47 @@ ensure_tunnel_secret() {
   done
 }
 
+ensure_link_identity() {
+  local config="$1"
+  local certs_dir="$2"
+  local node_cert="$3"
+  local host="${4:-argus-tunnel.lynk.page}"
+  local port="${5:-7001}"
+  local home_id certificate key
+
+  [ -f "$config" ] || return 0
+  mkdir -p "$certs_dir"
+  chmod 700 "$certs_dir"
+  home_id="$(toml_value "$config" link home_id)"
+  case "$home_id" in
+    ""|*[!0-9a-f]*) home_id="" ;;
+  esac
+  [ "${#home_id}" -eq 32 ] || home_id="$(openssl rand -hex 16)"
+
+  certificate="$certs_dir/link.crt"
+  key="$certs_dir/link.key"
+  if [ ! -s "$certificate" ] || [ ! -s "$key" ]; then
+    rm -f "$certificate" "$key"
+    openssl req -x509 -newkey ed25519 -nodes -days 3650 \
+      -keyout "$key" -out "$certificate" -subj "/CN=$home_id" >/dev/null 2>&1
+    chmod 600 "$key"
+    chmod 644 "$certificate"
+  fi
+
+  replace_toml_value link home_id "$home_id" "$config"
+  replace_toml_value link certificate_path "$certificate" "$config"
+  replace_toml_value link key_path "$key" "$config"
+  replace_toml_value link host "$host" "$config"
+  replace_toml_value link port "$port" "$config" literal
+  if [ -n "$node_cert" ] && [ -s "$node_cert" ]; then
+    replace_toml_value link node_certificate_path "$node_cert" "$config"
+    replace_toml_value link enabled true "$config" literal
+    log "Home link v2 on: home $home_id pins the cloud node certificate at $node_cert"
+  else
+    log "Home link v2 identity is at $certificate (home $home_id); place the cloud node certificate and set link.enabled to dial it"
+  fi
+}
+
 ipv4_network_of() {
   local cidr="$1"
   local address="${cidr%/*}"

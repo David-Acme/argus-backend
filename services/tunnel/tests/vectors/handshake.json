@@ -1,0 +1,56 @@
+{
+  "vectors": [
+    {
+      "name": "open-before-hello",
+      "error": "hello_required",
+      "framesHex": [
+        "55a702020100000000000000"
+      ]
+    },
+    {
+      "name": "data-before-hello",
+      "error": "hello_required",
+      "framesHex": [
+        "55a7020301000000020000006869"
+      ]
+    },
+    {
+      "name": "ping-before-hello",
+      "error": "hello_required",
+      "framesHex": [
+        "55a7020500000000080000000807060504030201"
+      ]
+    },
+    {
+      "name": "credit-before-hello",
+      "error": "hello_required",
+      "framesHex": [
+        "55a70209010000000400000000040000"
+      ]
+    },
+    {
+      "name": "goaway-before-hello",
+      "error": "hello_required",
+      "framesHex": [
+        "55a70208000000000400000000000500"
+      ]
+    },
+    {
+      "name": "duplicate-hello",
+      "error": "duplicate_hello",
+      "framesHex": [
+        "55a7020100000000080000000200000003000000",
+        "55a7020100000000080000000200000003000000"
+      ]
+    },
+    {
+      "name": "duplicate-hello-after-a-ping",
+      "error": "duplicate_hello",
+      "framesHex": [
+        "55a7020100000000080000000200000003000000",
+        "55a7020500000000080000000807060504030201",
+        "55a7020100000000080000000200000003000000"
+      ]
+    }
+  ]
+}

@@ -226,6 +226,10 @@ configure_tunnel() {
   fi
   remove_toml_key tunnel max_reconnects "$relay"
   ensure_tunnel_secret "$client" "$relay"
+  if [ -f "$client" ]; then
+    ensure_link_identity "$client" "$DATA_DIR/certs/link" \
+      "$DEPLOY_DIR/certs/cloud.crt"
+  fi
   log "Tunnel profile on: argus-auth's remote listener on 127.0.0.1:$AUTH_TUNNEL_PORT, identity's on 127.0.0.1:$IDENTITY_TUNNEL_PORT"
 }
 
