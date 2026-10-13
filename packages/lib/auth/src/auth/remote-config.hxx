@@ -4,6 +4,7 @@
 #include <drogon/HttpRequest.h>
 #include <http/listener-config.hxx>
 #include <json/value.h>
+#include <string>
 
 struct RemoteConfig
 {
@@ -11,9 +12,17 @@ struct RemoteConfig
   bool enabled{false};
   bool allowQrLogin{false};
   bool tunnelProfile{false};
+  std::string tunnelCert;
+  std::string tunnelKey;
 
   static RemoteConfig resolve();
 };
+
+ListenerConfig remoteListenerConfig(const RemoteConfig& remote,
+                                    const ListenerConfig& base);
+
+void watchRemoteCertificate(const RemoteConfig& remote,
+                            const ListenerConfig& base);
 
 bool requestIsRemote(const drogon::HttpRequestPtr& req,
                      const RemoteConfig& config);

@@ -1,6 +1,8 @@
 #include "remote-config.hxx"
 
 #include <config/config-service.hxx>
+#include <drogon/drogon.h>
+#include <http/certificate-reload.hxx>
 #include <http/listener-config.hxx>
 #include <stdexcept>
 #include <string>
@@ -14,7 +16,33 @@ RemoteConfig RemoteConfig::resolve()
   config.enabled = ConfigService::getBool("remote.enabled");
   config.allowQrLogin = ConfigService::getBool("remote.allow_qr_login");
   config.tunnelProfile = ConfigService::getBool("remote.tunnel_profile");
+  config.tunnelCert = ConfigService::getString("remote.tunnel_cert");
+  config.tunnelKey = ConfigService::getString("remote.tunnel_key");
   return config;
+}
+
+ListenerConfig remoteListenerConfig(const RemoteConfig& remote,
+                                    const ListenerConfig& base)
+{
+  ListenerConfig listener = base;
+  listener.port = remote.tunnelPort;
+  if (base.tls &&
+      certificate_reload::usablePair(
+          {.certPath = remote.tunnelCert, .keyPath = remote.tunnelKey})) {
+    listener.certPath = remote.tunnelCert;
+    listener.keyPath = remote.tunnelKey;
+  }
+  return listener;
+}
+
+void watchRemoteCertificate(const RemoteConfig& remote,
+                            const ListenerConfig& base)
+{
+  if (remote.tunnelPort == 0 || remote.tunnelCert.empty())
+    return;
+  const ListenerConfig tunnel = remoteListenerConfig(remote, base);
+  if (tunnel.certPath == remote.tunnelCert)
+    certificate_reload::watch(tunnel);
 }
 
 bool requestIsRemote(const drogon::HttpRequestPtr& req,
@@ -26,14 +54,17 @@ bool requestIsRemote(const drogon::HttpRequestPtr& req,
 
 void appendRemoteListener(const AppendRemoteListenerInput& input)
 {
-  Json::Value& listeners = input.listeners;
   const RemoteConfig& remote = input.remote;
-  const ListenerConfig& base = input.base;
-
   if (remote.tunnelPort == 0)
     return;
-  listeners.append(
-      singleListenerJson(base, static_cast<int>(remote.tunnelPort)));
+  const ListenerConfig tunnel = remoteListenerConfig(remote, input.base);
+  const bool pairConfigured = !remote.tunnelCert.empty() || !remote.tunnelKey.empty();
+  if (pairConfigured && input.base.tls && tunnel.certPath != remote.tunnelCert)
+    LOG_WARN << "[remote] tunnel_cert and tunnel_key are not a usable pair, so the "
+                "tunnel listener on port "
+             << remote.tunnelPort << " presents the service certificate";
+  input.listeners.append(
+      singleListenerJson(tunnel, static_cast<int>(remote.tunnelPort)));
 }
 
 void requireDistinctTunnelPort(const ListenerConfig& listener,

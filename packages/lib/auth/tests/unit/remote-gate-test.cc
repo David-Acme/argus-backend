@@ -7,11 +7,82 @@
 #include <http/api-response.hxx>
 #include <http/listener-config.hxx>
 #include <json/json.h>
+#include <filesystem>
+#include <memory>
+#include <openssl/bio.h>
+#include <openssl/evp.h>
+#include <openssl/pem.h>
+#include <openssl/x509.h>
 #include <stdexcept>
 #include <string>
+#include <unistd.h>
+#include <vector>
 
 namespace
 {
+
+struct KeyDeleter
+{
+  void operator()(EVP_PKEY* key) const { EVP_PKEY_free(key); }
+};
+
+struct X509Deleter
+{
+  void operator()(X509* certificate) const { X509_free(certificate); }
+};
+
+struct BioDeleter
+{
+  void operator()(BIO* bio) const { BIO_free(bio); }
+};
+
+using Key = std::unique_ptr<EVP_PKEY, KeyDeleter>;
+
+struct CertificateFile
+{
+  std::string path;
+  long lifetimeSeconds{0};
+};
+
+Key newKey()
+{
+  return Key(EVP_PKEY_Q_keygen(nullptr, nullptr, "EC", "P-256"));
+}
+
+std::string tempPath(const std::string& stem)
+{
+  return (std::filesystem::temp_directory_path() /
+          (stem + "-" + std::to_string(::getpid()) + ".pem"))
+      .string();
+}
+
+void writeKey(const std::string& path, EVP_PKEY* key)
+{
+  const std::unique_ptr<BIO, BioDeleter> file(BIO_new_file(path.c_str(), "wb"));
+  REQUIRE(file);
+  REQUIRE(PEM_write_bio_PrivateKey(file.get(), key, nullptr, nullptr, 0, nullptr,
+                                   nullptr) == 1);
+}
+
+void writeCertificate(const CertificateFile& file, EVP_PKEY* key)
+{
+  const std::unique_ptr<X509, X509Deleter> certificate(X509_new());
+  REQUIRE(certificate);
+  ASN1_INTEGER_set(X509_get_serialNumber(certificate.get()), 1);
+  X509_gmtime_adj(X509_getm_notBefore(certificate.get()), -7200);
+  X509_gmtime_adj(X509_getm_notAfter(certificate.get()), file.lifetimeSeconds);
+  X509_set_pubkey(certificate.get(), key);
+  const std::string commonName = "sync--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page";
+  const std::vector<unsigned char> nameBytes(commonName.begin(), commonName.end());
+  X509_NAME* name = X509_get_subject_name(certificate.get());
+  X509_NAME_add_entry_by_txt(name, "CN", MBSTRING_ASC, nameBytes.data(),
+                             static_cast<int>(nameBytes.size()), -1, 0);
+  X509_set_issuer_name(certificate.get(), name);
+  REQUIRE(X509_sign(certificate.get(), key, EVP_sha256()) > 0);
+  const std::unique_ptr<BIO, BioDeleter> out(BIO_new_file(file.path.c_str(), "wb"));
+  REQUIRE(out);
+  REQUIRE(PEM_write_bio_X509(out.get(), certificate.get()) == 1);
+}
 
 drogon::HttpRequestPtr testRequest(drogon::HttpMethod method,
                                    const std::string& path)
@@ -217,4 +288,128 @@ TEST_CASE("remote gate rejects pairing and register for remote requests")
   CHECK_FALSE(openGate.check(testRequest(drogon::Post, "/pairing"), true));
   CHECK_FALSE(
       openGate.check(testRequest(drogon::Post, "/auth/register"), true));
+}
+
+TEST_CASE("remote config reads the tunnel certificate pair")
+{
+  CHECK(RemoteConfig::resolve().tunnelCert.empty());
+  CHECK(RemoteConfig::resolve().tunnelKey.empty());
+  ConfigService::setRuntimeString("remote.tunnel_cert", "certs/tunnel/sync.pem");
+  ConfigService::setRuntimeString("remote.tunnel_key", "certs/tunnel/sync.key");
+  const RemoteConfig paired = RemoteConfig::resolve();
+  CHECK(paired.tunnelCert == "certs/tunnel/sync.pem");
+  CHECK(paired.tunnelKey == "certs/tunnel/sync.key");
+  ConfigService::setRuntimeString("remote.tunnel_cert", "");
+  ConfigService::setRuntimeString("remote.tunnel_key", "");
+}
+
+TEST_CASE("the tunnel listener presents its own pair only while the pair is usable")
+{
+  const std::string certPath = tempPath("remote-gate-tunnel-cert");
+  const std::string keyPath = tempPath("remote-gate-tunnel-key");
+  const std::string otherKeyPath = tempPath("remote-gate-other-key");
+  const std::string expiredPath = tempPath("remote-gate-expired-cert");
+  const Key key = newKey();
+  const Key otherKey = newKey();
+  REQUIRE(key);
+  REQUIRE(otherKey);
+  writeKey(keyPath, key.get());
+  writeKey(otherKeyPath, otherKey.get());
+  writeCertificate({.path = certPath, .lifetimeSeconds = 3600}, key.get());
+  writeCertificate({.path = expiredPath, .lifetimeSeconds = -3600}, key.get());
+
+  const ListenerConfig base = tlsListener();
+  const auto tunnelListener = [&base](const RemoteConfig& remote) {
+    Json::Value listeners = listenerJson(base);
+    appendRemoteListener({.listeners = listeners, .remote = remote, .base = base});
+    REQUIRE(listeners.size() == 2);
+    CHECK(listeners[0]["cert"] == base.certPath);
+    CHECK(listeners[0]["key"] == base.keyPath);
+    return listeners[1];
+  };
+
+  RemoteConfig paired;
+  paired.tunnelPort = 17443;
+  paired.tunnelCert = certPath;
+  paired.tunnelKey = keyPath;
+  const Json::Value own = tunnelListener(paired);
+  CHECK(own["port"].asInt() == 17443);
+  CHECK(own["cert"] == certPath);
+  CHECK(own["key"] == keyPath);
+  CHECK(own["address"] == base.host);
+  CHECK(own["ssl_conf"][0][1] == base.minTlsProtocol);
+  const ListenerConfig watched = remoteListenerConfig(paired, base);
+  CHECK(watched.port == 17443);
+  CHECK(watched.certPath == certPath);
+  CHECK(watched.keyPath == keyPath);
+
+  RemoteConfig mismatched = paired;
+  mismatched.tunnelKey = otherKeyPath;
+  CHECK(tunnelListener(mismatched)["cert"] == base.certPath);
+
+  RemoteConfig expired = paired;
+  expired.tunnelCert = expiredPath;
+  CHECK(tunnelListener(expired)["cert"] == base.certPath);
+
+  RemoteConfig halfPaired = paired;
+  halfPaired.tunnelKey.clear();
+  const Json::Value half = tunnelListener(halfPaired);
+  CHECK(half["cert"] == base.certPath);
+  CHECK(half["key"] == base.keyPath);
+
+  RemoteConfig missing = paired;
+  missing.tunnelCert = "/nonexistent/tunnel.pem";
+  CHECK(tunnelListener(missing)["cert"] == base.certPath);
+
+  const ListenerConfig plain = plainListener();
+  Json::Value plainListeners = listenerJson(plain);
+  appendRemoteListener({.listeners = plainListeners, .remote = paired, .base = plain});
+  REQUIRE(plainListeners.size() == 2);
+  CHECK_FALSE(plainListeners[1].isMember("cert"));
+
+  for (const std::string& path : {certPath, keyPath, otherKeyPath, expiredPath})
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("a sealed gate refuses every tunnelled request that carries no session")
+{
+  RemoteConfig config;
+  config.tunnelPort = 17443;
+  RemoteGate sealed(config, RemoteSurface::Sealed);
+
+  const auto refusal = sealed.check(testRequest(drogon::Get, "/health"), true);
+  REQUIRE(refusal);
+  const Json::Value body = parseBody(refusal);
+  CHECK(body["status"].asInt() == 403);
+  CHECK(body["errors"]["code"] == "REMOTE_NOT_ALLOWED");
+
+  auto bearer = testRequest(drogon::Get, "/camera");
+  bearer->addHeader("Authorization", "Bearer an-access-token");
+  CHECK_FALSE(sealed.check(bearer, true));
+
+  auto basic = testRequest(drogon::Get, "/camera");
+  basic->addHeader("Authorization", "Basic dXNlcjpwYXNz");
+  CHECK(sealed.check(basic, true));
+
+  auto upgrade = testRequest(drogon::Get, "/sync");
+  upgrade->addHeader("Upgrade", "websocket");
+  upgrade->setParameter("token", "an-access-token");
+  CHECK_FALSE(sealed.check(upgrade, true));
+
+  auto queryOnly = testRequest(drogon::Get, "/camera");
+  queryOnly->setParameter("token", "an-access-token");
+  CHECK(sealed.check(queryOnly, true));
+
+  CHECK(sealed.check(testRequest(drogon::Options, "/camera"), true));
+  CHECK_FALSE(sealed.check(testRequest(drogon::Get, "/health"), false));
+  CHECK_FALSE(sealed.checkRequest(testRequest(drogon::Get, "/health")));
+
+  config.enabled = true;
+  config.allowQrLogin = true;
+  RemoteGate stillSealed(config, RemoteSurface::Sealed);
+  CHECK(stillSealed.check(testRequest(drogon::Post, "/pairing"), true));
+  CHECK(stillSealed.check(testRequest(drogon::Get, "/health"), true));
+
+  RemoteGate publicGate(config, RemoteSurface::Public);
+  CHECK_FALSE(publicGate.check(testRequest(drogon::Get, "/health"), true));
 }

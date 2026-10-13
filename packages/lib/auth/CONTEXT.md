@@ -178,6 +178,32 @@ widening changes visible rows instead of slipping through.
   that expects the tunnel (`tunnel_profile`, `enabled` or `allow_qr_login`)
   while `tunnel_port` is 0, because then every tunnelled request is taken
   for a LAN one.
+- The tunnel listener can present a certificate of its own (2026-10-13):
+  `[remote] tunnel_cert` and `[remote] tunnel_key` name the pair whose one
+  SAN is the service's device name, `<service>--<home-id>.argus-tunnel.lynk.page`.
+  The relay routes on that name and the home client dispatches on it (the
+  tunnel's CONTEXT, "Dispatch by device name"), so the app checks the name it
+  dialled against the certificate it receives. `remoteListenerConfig` answers the
+  tunnel listener's config: the base listener on the tunnel port, with the
+  tunnel pair only while `certificate_reload::usablePair` accepts it (both
+  files read, the key matches, not expired). Anything else, one file missing
+  included, falls back to the service certificate with a WARN at boot. Then the
+  LAN listener keeps working, and a tunnelled client that checks the name fails
+  closed. A plain listener ignores the pair.
+- `RemoteGate` has two surfaces. `RemoteSurface::Public` is auth's and
+  identity's: `/pairing` and `/auth/register` are refused through the tunnel
+  unless `[remote] enabled` opens them. `RemoteSurface::Sealed` is every other
+  service's remote listener. Each one is classified Tunnel by port
+  (`requestIsRemote`, so presence and the origin network see `tunnel`), gated
+  like auth's (the same pre-routing advice and boot checks), and never open: a
+  tunnelled request that carries no session credential
+  (`JwtFilter::extractToken`: a Bearer header, or `?token=` on a WebSocket
+  upgrade) is refused `REMOTE_NOT_ALLOWED` before routing. A CORS preflight
+  and the health route are refused too, and no `[remote]` key relaxes the
+  gate. Every route these services serve already sits behind `JwtFilter`, so
+  the gate changes nothing for the app. What it does guarantee is that a route
+  added later without the filter is still never served through the tunnel by
+  omission.
 
 ## The two targets
 
