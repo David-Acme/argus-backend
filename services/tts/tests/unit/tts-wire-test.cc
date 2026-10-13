@@ -410,7 +410,7 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
                                  .body = "",
                                  .closeConnection = true});
   CHECK(notFound.status == 404);
-  CHECK(envelope(notFound)["errors"]["code"] == "NOT_FOUND");
+  CHECK(envelope(notFound)["errors"]["code"] == "ROUTE_NOT_FOUND");
 
   const auto notAllowed = request({.port = port,
                                    .method = "POST",

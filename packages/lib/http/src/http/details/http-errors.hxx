@@ -5,8 +5,8 @@
 
 namespace HttpErrors
 {
-inline constexpr ErrorDefinition PathNotFound{
-    .code = ErrorCode::NotFound,
+inline constexpr ErrorDefinition RouteNotFound{
+    .code = ErrorCode::RouteNotFound,
     .status = 404,
     .message = "Path not found"};
 inline constexpr ErrorDefinition MethodNotAllowed{

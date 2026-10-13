@@ -274,7 +274,7 @@ private:
       }
       else {
         const std::string bodyJson =
-            "{\"status\":404,\"info\":null,\"errors\":{\"code\":\"NOT_FOUND\","
+            "{\"status\":404,\"info\":null,\"errors\":{\"code\":\"ROUTE_NOT_FOUND\","
             "\"message\":\"Path not found\"}}";
         response =
             "HTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n"

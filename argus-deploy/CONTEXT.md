@@ -909,6 +909,19 @@ reading another owner's directory, never while the stack is up. `sync-rollback`
 is the one job that writes another owner's file (`identity.db`), because
 undoing the split is exactly that; it stays behind its own opt-in profile.
 
+## Upgrading a host
+
+Upgrade the server before the app: a new app against a server that predates ROUTE_NOT_FOUND reads a missing route as NOT_FOUND.
+
+The other upgrade steps stay where they are written: the rolling restart after
+each pass of a CA rotation ("The internal CA"), re-running
+`scripts/provision-host.sh` before `docker compose up -d` ("One NATS user per
+service", and item 4 of "Deferred hardening"), the RustFS prefix proof before
+any RustFS upgrade (the `rustfs` row of "Services"), building the images before
+any config names a `tls:` target ("The internal CA"), and the owner cleanup
+checks of S3 ("One NATS user per service", removing the shared user) and of S4
+(the S4 line of `docs/history/plans/realtime-and-backlog-plan.md`).
+
 ## Deferred hardening (plan, not done in this branch)
 
 The owner decided to keep this pass bounded. These four are the next steps,

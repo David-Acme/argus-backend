@@ -536,7 +536,7 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
                                  .body = "",
                                  .contentType = ""});
   CHECK(notFound.status == 404);
-  CHECK(envelope(notFound)["errors"]["code"] == "NOT_FOUND");
+  CHECK(envelope(notFound)["errors"]["code"] == "ROUTE_NOT_FOUND");
 
   const auto notAllowed = request({.port = port,
                                    .method = "GET",

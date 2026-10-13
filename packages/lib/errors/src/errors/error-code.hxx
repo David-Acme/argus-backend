@@ -48,7 +48,8 @@ enum class ErrorCode
   InvitationModuleDisabled,
   ModuleRolesHeld,
   CameraControlLocked,
-  CameraControlRefused
+  CameraControlRefused,
+  RouteNotFound
 };
 
 constexpr std::string_view toString(ErrorCode code)
@@ -98,6 +99,7 @@ constexpr std::string_view toString(ErrorCode code)
   case ErrorCode::ModuleRolesHeld: return "MODULE_ROLES_HELD";
   case ErrorCode::CameraControlLocked: return "CAMERA_CONTROL_LOCKED";
   case ErrorCode::CameraControlRefused: return "CAMERA_CONTROL_REFUSED";
+  case ErrorCode::RouteNotFound: return "ROUTE_NOT_FOUND";
   }
   throw std::invalid_argument("Unknown response error code");
 }

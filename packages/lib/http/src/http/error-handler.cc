@@ -49,5 +49,5 @@ drogon::HttpResponsePtr ErrorHandler::unmatchedRoute(drogon::HttpStatusCode stat
 {
   return ApiResponse::error(status == drogon::k405MethodNotAllowed
                                 ? HttpErrors::MethodNotAllowed
-                                : HttpErrors::PathNotFound);
+                                : HttpErrors::RouteNotFound);
 }

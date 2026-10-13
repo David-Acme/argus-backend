@@ -109,14 +109,14 @@ TEST_CASE("ApiResponse::error carries the status, code and message")
 {
   const auto response =
       ApiResponse::error({.statusCode = 404,
-                          .errorCode = "NOT_FOUND",
+                          .errorCode = "ROUTE_NOT_FOUND",
                           .message = "Path not found"});
   CHECK(response->getStatusCode() == drogon::k404NotFound);
 
   const auto body = bodyOf(response);
   CHECK(body["status"] == 404);
   CHECK(body["info"].isNull());
-  CHECK(body["errors"]["code"] == "NOT_FOUND");
+  CHECK(body["errors"]["code"] == "ROUTE_NOT_FOUND");
   CHECK(body["errors"]["message"] == "Path not found");
 }
 
@@ -207,9 +207,15 @@ TEST_CASE("the advice turns a validation failure into 422 field errors")
 
 TEST_CASE("the unmatched-route answers are the substrate's own")
 {
-  const auto missing = bodyOf(ErrorHandler::unmatchedRoute(drogon::k404NotFound));
+  const auto unmatched = ErrorHandler::unmatchedRoute(drogon::k404NotFound);
+  CHECK(unmatched->getStatusCode() == drogon::k404NotFound);
+  const auto missing = bodyOf(unmatched);
+  CHECK(missing.getMemberNames() == std::vector<std::string>{"errors", "info", "status"});
   CHECK(missing["status"] == 404);
-  CHECK(missing["errors"]["code"] == "NOT_FOUND");
+  CHECK(missing["info"].isNull());
+  CHECK(missing["errors"].isObject());
+  CHECK(missing["errors"]["code"] == "ROUTE_NOT_FOUND");
+  CHECK(missing["errors"]["message"] == "Path not found");
 
   const auto wrongMethod =
       bodyOf(ErrorHandler::unmatchedRoute(drogon::k405MethodNotAllowed));

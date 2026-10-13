@@ -122,3 +122,23 @@ loopback HTTP/1.1 server in the test with `Range` support, a mid-body
 connection drop, a `Range`-ignoring mode, redirects and a silent route, through
 the real `DrogonChunkTransport`. They run in every service build that adds
 this package.
+
+## An unmatched route answers ROUTE_NOT_FOUND (2026-10-13)
+
+`ErrorHandler::unmatchedRoute` is what every service's Drogon answers for a
+path it has no route for: 404 with the envelope `{status, info, errors}`,
+`errors` carrying `ROUTE_NOT_FOUND` and "Path not found"
+(`HttpErrors::RouteNotFound`). Until 2026-10-13 it carried `NOT_FOUND`, the
+code a handler throws for a row that does not exist, so a client could not
+tell "this server has no such route" from "this server has no such row". The
+app's thread delete reads `NOT_FOUND` as "already gone" and forgets the thread;
+on a server older than that route, the unmatched answer looked the same and the
+thread was forgotten on one device only. The app now reads `ROUTE_NOT_FOUND` as
+`UNREACHABLE_ROUTE`, an error and never a done. A path that has a route but not
+for the method keeps 405 `METHOD_NOT_ALLOWED`. The order of an upgrade follows
+from it: `argus-deploy/CONTEXT.md`, "Upgrading a host".
+
+Tests: `api-response-test` checks the answer itself (status, the three envelope
+keys, the code and the text), and the stt, tts, llm and vlm wire tests ask a
+running Drogon application for a path it does not serve and read
+`ROUTE_NOT_FOUND`.

@@ -64,10 +64,13 @@ TEST_CASE("every error code has exactly one wire string")
       {.code = ErrorCode::ModuleCore, .name = "MODULE_CORE"},
       {.code = ErrorCode::RoleInactive, .name = "ROLE_INACTIVE"},
       {.code = ErrorCode::InvitationModuleDisabled, .name = "INVITATION_MODULE_DISABLED"},
-      {.code = ErrorCode::ModuleRolesHeld, .name = "MODULE_ROLES_HELD"}};
+      {.code = ErrorCode::ModuleRolesHeld, .name = "MODULE_ROLES_HELD"},
+      {.code = ErrorCode::CameraControlLocked, .name = "CAMERA_CONTROL_LOCKED"},
+      {.code = ErrorCode::CameraControlRefused, .name = "CAMERA_CONTROL_REFUSED"},
+      {.code = ErrorCode::RouteNotFound, .name = "ROUTE_NOT_FOUND"}};
 
   CHECK(table.size() ==
-        static_cast<std::size_t>(ErrorCode::ModuleRolesHeld) + 1);
+        static_cast<std::size_t>(ErrorCode::RouteNotFound) + 1);
 
   for (const auto& row : table)
     CHECK(std::string(toString(row.code)) == row.name);

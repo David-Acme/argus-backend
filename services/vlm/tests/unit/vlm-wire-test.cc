@@ -416,7 +416,7 @@ TEST_CASE("the argus-vlm internal wire serves the vision capacity")
            .body = "",
            .contentType = ""});
   CHECK(notFound.status == 404);
-  CHECK(envelope(notFound)["errors"]["code"] == "NOT_FOUND");
+  CHECK(envelope(notFound)["errors"]["code"] == "ROUTE_NOT_FOUND");
 
   const auto notAllowed = request({.port = port,
            .method = "POST",
