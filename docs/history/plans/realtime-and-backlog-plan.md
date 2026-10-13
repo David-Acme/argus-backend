@@ -173,6 +173,9 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 - F1 Camera: Argus-side recording (`record_mode` is stored, nothing records), snapshot to file, SD
   recordings with a timeline, patrol and preset rename/delete, mute live audio on the native player,
   ONVIF control for generic cameras, TURN relay for remote WebRTC.
+  **Argus-side recording is ON HOLD (owner, 2026-10-13)**: the owner will clarify some points before
+  it is built; the spec below and `argus-recorder-design.md` are the record, nothing is implemented.
+  The rest of F1 (snapshot, SD timeline, presets, mute, ONVIF note) continues.
   **Argus-side recording, owner-approved spec and rulings (2026-10-13)**, after web research into
   Frigate, Milestone, Synology, Blue Iris, ZoneMinder, Shinobi and Scrypted:
   - Event recording with pre-roll: a continuous per-camera ring of the last N minutes (default 5) as

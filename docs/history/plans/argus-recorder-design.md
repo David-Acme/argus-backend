@@ -1,7 +1,9 @@
 # The Argus-side recorder: design note (F1)
 
-Status: approved by the reviewer on 2026-10-13, with the rulings recorded in place (marked RULED).
-Nothing here is implemented yet; the recorder implementation starts from this note. The requirements
+Status: **ON HOLD by the owner (2026-10-13)**: he wants to clarify some points before anything is
+built, because the feature is new. The design was approved by the reviewer the same day, with the
+rulings recorded in place (marked RULED). Nothing here is implemented; nothing starts until the owner
+has given his clarifications and the note is updated with them. The requirements
 are the owner-approved spec in `realtime-and-backlog-plan.md`, F1, "Argus-side recording,
 owner-approved spec and rulings (2026-10-13)" (master `30e8e131`); this note answers how, not what.
 Every item gives the options, a recommendation and its reasons. **DESIGN FORK** marks a decision that
