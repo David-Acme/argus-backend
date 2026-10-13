@@ -1,3 +1,4 @@
+#include <app/rpc/modules-rpc-server.hxx>
 #include <app/rpc/modules-rpc-service.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
@@ -28,8 +29,10 @@
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
+#include <http/tls-health.hxx>
 #include <grpc/fleet-caller-gate.hxx>
 #include <grpc/grpc-server-drain.hxx>
+#include <grpc/internal-tls.hxx>
 #include <mcp/mcp-rpc.hxx>
 #include <mdns/mdns-service.hxx>
 #include <nats/nats-bus.hxx>
@@ -44,6 +47,7 @@
 #include <algorithm>
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -117,6 +121,16 @@ int main()
 {
   log_output::flushEachLine();
   ConfigService::load("config.toml");
+  const InternalTlsConfig internalTlsConfig = InternalTlsConfig::resolve();
+  std::optional<argus::client::InternalTlsMaterial> internalTls;
+  try {
+    internalTls = argus::client::installInternalTlsFrom(internalTlsConfig.directory);
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  const auto loadedTls = internalTls.value_or(argus::client::InternalTlsMaterial{});
 
   try {
     DeviceFilter::requireFingerprintSecret();
@@ -176,8 +190,10 @@ int main()
           ModuleJournalInput{.db = std::move(journalDb), .sink = &moduleActions, .pollInterval = modules.pollInterval});
   }
 
-  drogon::app().registerController(
-      std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-settings", .extras = {}}));
+  drogon::app().registerController(std::make_shared<HealthController>(
+      HealthStatus{.serviceName = "argus-settings",
+                   .extras = {tls_health::healthExtra(
+                       {.certificatePem = loadedTls.certificatePem, .trustBundlePem = loadedTls.trustBundlePem})}}));
   drogon::app().registerController(std::make_shared<SettingsController>(
       SettingsControllerInput{.gateway = gateway,
                               .profiles = profiles,
@@ -208,21 +224,26 @@ int main()
         .callers = {std::string(argus::mcp::kToolCaller)}});
   std::unique_ptr<argus::client::GrpcServerDrain> rpcDrain;
   if (!rpc.address.empty()) {
-    grpc::ServerBuilder rpcBuilder;
-    rpcBuilder.AddListeningPort(rpc.address, grpc::InsecureServerCredentials());
-    rpcBuilder.RegisterService(&modulesRpc);
+    std::vector<grpc::Service*> rpcServices{&modulesRpc};
     if (moduleTools)
-      rpcBuilder.RegisterService(moduleTools.get());
-    std::unique_ptr<grpc::Server> rpcServer(rpcBuilder.BuildAndStart());
-    if (!rpcServer) {
-      LOG_FATAL << "Modules RPC failed to listen on " << rpc.address;
+      rpcServices.push_back(moduleTools.get());
+    auto rpcListener = startModulesRpc({.address = rpc.address,
+                                        .tlsAddress = internalTlsConfig.address,
+                                        .tls = internalTls,
+                                        .services = std::move(rpcServices)});
+    if (!rpcListener.server) {
+      LOG_FATAL << "Modules RPC failed to listen on " << rpc.address
+                << (internalTls && !internalTlsConfig.address.empty() ? " and " + internalTlsConfig.address
+                                                                       : std::string{});
       return 1;
     }
     LOG_INFO << "Modules RPC listening on " << rpc.address << " ("
              << (rpcGate->open() ? std::string("no caller paired")
                                  : std::to_string(rpcGate->pairedCount()) + " paired callers")
              << ")";
-    rpcDrain = std::make_unique<argus::client::GrpcServerDrain>(std::move(rpcServer), kGrpcDrainDeadline);
+    if (rpcListener.tlsPort > 0)
+      LOG_INFO << "Modules RPC with mutual TLS on " << internalTlsConfig.address;
+    rpcDrain = std::make_unique<argus::client::GrpcServerDrain>(std::move(rpcListener.server), kGrpcDrainDeadline);
     shutdown_signal::onStop(shutdown_signal::drainOf(*rpcDrain, "settings-modules-rpc"));
   }
   if (moduleEngine)

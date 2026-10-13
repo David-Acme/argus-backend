@@ -1,6 +1,7 @@
 argus_module(NAME settings-rpc
     SOURCES
         modules-rpc-service.cc
+        modules-rpc-server.cc
     INCLUDES ../..
     DEPENDS
         argus::contracts::settings

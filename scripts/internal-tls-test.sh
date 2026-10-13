@@ -5,11 +5,15 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
   cat <<'USAGE'
-usage: scripts/internal-tls-test.sh <internal-tls-test>
+usage: scripts/internal-tls-test.sh <test binary> [<minimum test cases>]
 
 Issues a scratch internal CA and its service certificates with
 scripts/lib/internal-pki.sh, adds a foreign client certificate the internal CA
-did not issue, and runs the given test binary against them: two services speak
+did not issue, and runs the given test binary against them, with the PKI in
+ARGUS_INTERNAL_TLS_PKI and the foreign certificate in ARGUS_INTERNAL_TLS_FOREIGN.
+It fails when the binary lists fewer test cases than the minimum, 14 by
+default, which is lib/grpc's internal-tls-test; a service's test of its own
+mutual TLS listener names its own count. In lib/grpc's test two services speak
 mutual TLS through argus::client::makeChannel, the client checks the server's
 name, the server refuses a foreign client, a client without a certificate and a
 plaintext client, installInternalTls refuses a second install, an install
@@ -21,8 +25,10 @@ so every test case runs in a process of its own. Without openssl the test exits
 USAGE
 }
 
-[ "$#" -eq 1 ] || { usage >&2; exit 2; }
+[ "$#" -eq 1 ] || [ "$#" -eq 2 ] || { usage >&2; exit 2; }
 test_bin="$1"
+minimum="${2:-14}"
+case "$minimum" in ""|*[!0-9]*) usage >&2; exit 2 ;; esac
 if ! command -v openssl >/dev/null 2>&1; then
   printf 'internal-tls-test: skipped, no openssl\n'
   exit 77
@@ -72,6 +78,6 @@ while IFS= read -r name; do
   ran=$((ran + 1))
 done < "$work/cases"
 
-[ "$ran" -ge 14 ] || { printf 'internal-tls-test: only %s test cases were found\n' "$ran" >&2; exit 1; }
+[ "$ran" -ge "$minimum" ] || { printf 'internal-tls-test: only %s test cases were found\n' "$ran" >&2; exit 1; }
 [ "$failed" -eq 0 ] || { printf 'internal-tls-test: %s of %s test cases failed\n' "$failed" "$ran" >&2; exit 1; }
 printf 'internal-tls-test: %s test cases passed, each in a process of its own\n' "$ran"

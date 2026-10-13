@@ -150,3 +150,12 @@ target_compile_options(settings-engine-desk-test PRIVATE -Wall -Wextra)
 target_compile_definitions(settings-engine-desk-test PRIVATE
     ARGUS_SETTINGS_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 add_test(NAME settings-engine-desk-test COMMAND settings-engine-desk-test)
+
+add_executable(settings-modules-rpc-test tests/unit/settings-modules-rpc-test.cc)
+set_target_properties(settings-modules-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(settings-modules-rpc-test PRIVATE argus::settings-rpc argus::lib::grpc-health doctest::doctest)
+target_compile_options(settings-modules-rpc-test PRIVATE -Wall -Wextra)
+add_test(NAME settings-modules-rpc-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:settings-modules-rpc-test> 7)
+set_tests_properties(settings-modules-rpc-test PROPERTIES SKIP_RETURN_CODE 77)

@@ -33,6 +33,10 @@ sync = ""
 voice = ""
 llm = ""
 
+[internal_tls]
+dir = "/run/secrets/internal-tls"
+address = "0.0.0.0:7247"
+
 [nats]
 url = "nats://nats:4222"
 user = "argus"

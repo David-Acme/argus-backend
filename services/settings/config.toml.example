@@ -33,6 +33,10 @@ sync = ""
 voice = ""
 llm = ""
 
+[internal_tls]
+dir = ""
+address = "127.0.0.1:7247"
+
 [nats]
 url = "nats://127.0.0.1:4222"
 
