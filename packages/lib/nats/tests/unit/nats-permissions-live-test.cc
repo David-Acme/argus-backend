@@ -234,8 +234,6 @@ void publishAll(const ServicePermissions& row, NatsBus& bus)
 void subscribeAll(const ServicePermissions& row, NatsBus& bus)
 {
   for (const auto subject : row.subscribes) {
-    if (subject.starts_with('$'))
-      continue;
     CHECK_MESSAGE(bus.subscribe(std::string(subject),
                                 [](std::string_view, std::string_view) {})
                       .has_value(),

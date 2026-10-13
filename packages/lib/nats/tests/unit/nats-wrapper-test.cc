@@ -137,6 +137,63 @@ TEST_CASE("subscribe subjects allow NATS wildcards with > tail-only")
   CHECK_FALSE(isValidSubject("argus.v1.*.change", SubjectKind::Publish));
 }
 
+TEST_CASE("a subscription admits the JetStream advisory prefix and no other $ subject")
+{
+  using nats_subject::isAdvisorySubject;
+  CHECK(isAdvisorySubject(
+      "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ARGUS_CAMERA.argus-guard"));
+  CHECK(isAdvisorySubject("$JS.EVENT.ADVISORY.STREAM.CREATED.ARGUS_GUARD"));
+  CHECK(isAdvisorySubject("$JS.EVENT.ADVISORY.>"));
+
+  const std::vector<std::string> refused{
+      "$JS.EVENT.ADVISORY",
+      "$JS.EVENT.ADVISORY.",
+      "$JS.EVENT.ADVISORY..CONSUMER",
+      "$JS.EVENT.ADVISORY.$JS.API.INFO",
+      "$JS.EVENT.ADVISORY.>.CONSUMER",
+      "$js.event.advisory.CONSUMER.MAX_DELIVERIES.S.D",
+      "$JS.EVENT.METRIC.CONSUMER.ACK.ARGUS_CAMERA.argus-guard",
+      "$JS.EVENT.>",
+      "$JS.API.INFO",
+      "$JS.API.STREAM.INFO.ARGUS_CAMERA",
+      "$JS.API.CONSUMER.MSG.NEXT.ARGUS_CAMERA.argus-guard",
+      "$JS.API.>",
+      "$JS.ACK.ARGUS_CAMERA.argus-guard.>",
+      "$JS.FC.ARGUS_CAMERA.>",
+      "$KV.modules.>",
+      "$O.files.>",
+      "$SYS.REQ.SERVER.PING",
+      "$SYS.>",
+      "$G.anything",
+      "_INBOX.$JS.EVENT.ADVISORY.CONSUMER",
+      "argus.$JS.EVENT.ADVISORY.x"};
+  for (const auto& subject : refused)
+    CHECK_MESSAGE(!isAdvisorySubject(subject), subject << " was admitted");
+
+  NatsBus bus;
+  const auto handler = [](std::string_view, std::string_view) {};
+  CHECK(bus.subscribe(
+               "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ARGUS_CAMERA.argus-guard",
+               handler)
+            .has_value());
+  for (const auto& subject : refused)
+    CHECK_MESSAGE(!bus.subscribe(subject, handler).has_value(),
+                  subject << " was subscribed");
+  CHECK_FALSE(bus.publish(
+      "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ARGUS_CAMERA.argus-guard",
+      "{}"));
+  CHECK_FALSE(bus.subscribeDurable(
+                     {.stream = "ARGUS_CAMERA",
+                      .durable = "argus-guard",
+                      .subject = "$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ARGUS_CAMERA.argus-guard",
+                      .deliverAll = false,
+                      .maxDeliver = 5,
+                      .maxAckPending = NatsBus::kDefaultMaxAckPending,
+                      .handler = {}})
+                  .has_value());
+  bus.drain();
+}
+
 TEST_CASE("the sync change subject keeps its contract spelling")
 {
   CHECK(std::string(nats_subject::kSyncChange) == "argus.sync.v1.change");

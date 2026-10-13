@@ -64,6 +64,11 @@ argus-guard binds its own feed with, not a spelling anything publishes on.
   `_INBOX.<service>.>`.
 - A direction with nothing to grant renders `deny: [">"]`, never an empty
   `allow` list: nats-server reads an empty `allow` as no restriction at all.
+- A subject with a `$` token is refused on every path of the bus, with one
+  exception: `NatsBus::subscribe` admits subjects under `$JS.EVENT.ADVISORY.`
+  (`nats_subject::isAdvisorySubject`), the JetStream advisories. The JetStream
+  API, acknowledgements and the system account stay behind the cnats calls that
+  use them.
 - A core publish is fire-and-forget by design: a publish that fails logs and
   returns false, it never throws into the caller's request path. A caller that
   must know the message landed asks for a reply subject, it does not read a
@@ -163,7 +168,9 @@ argus-guard binds its own feed with, not a spelling anything publishes on.
 
 ## Tests
 
-`tests/unit/nats-wrapper-test.cc` — `markInProgress` on a settlement with and
+`tests/unit/nats-wrapper-test.cc` — the advisory prefix admitted by a
+subscription while every other `$` subject is refused, `markInProgress` on a
+settlement with and
 without the broker hook, a durable feed refusing a mismatched stream or subject
 (and refusing to attach while disconnected), and, against a live broker, a feed
 keeping what core publishes sent while its consumer was away; also: publish subjects take plain dotted tokens

@@ -131,4 +131,13 @@ inline bool isValidSubject(std::string_view subject, SubjectKind kind)
   }
 }
 
+inline constexpr std::string_view kAdvisoryPrefix = "$JS.EVENT.ADVISORY.";
+
+inline bool isAdvisorySubject(std::string_view subject)
+{
+  return subject.starts_with(kAdvisoryPrefix) &&
+         isValidSubject(subject.substr(kAdvisoryPrefix.size()),
+                        SubjectKind::Subscribe);
+}
+
 }

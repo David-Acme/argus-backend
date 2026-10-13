@@ -92,6 +92,9 @@ the table bounds.
 
 The guard row grants the max-deliveries advisory on its `argus-guard` durable
 (`$JS.EVENT.ADVISORY.CONSUMER.MAX_DELIVERIES.ARGUS_CAMERA.argus-guard`), which
-guard subscribes to. `NatsBus::subscribe` refuses a token with `$` today, so
-that subscription does not attach until the subject check admits it; the grant
-is in place for when it does.
+guard subscribes to. `NatsBus::subscribe` admits exactly the
+`$JS.EVENT.ADVISORY.` prefix (ruled 2026-10-13) and refuses every other `$`
+subject: the JetStream API, acknowledgements, flow control, the system account,
+key-value and object stores are reached only through the cnats calls that need
+them, never through a bare subscription, and nothing publishes a `$` subject
+through the bus.

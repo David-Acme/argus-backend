@@ -843,7 +843,8 @@ std::optional<uint64_t> NatsBus::subscribe(const std::string& subject,
                                            MessageHandler handler)
 {
   if (!nats_subject::isValidSubject(subject,
-                                    nats_subject::SubjectKind::Subscribe))
+                                    nats_subject::SubjectKind::Subscribe) &&
+      !nats_subject::isAdvisorySubject(subject))
     return std::nullopt;
 
   std::lock_guard lock(mutex_);
