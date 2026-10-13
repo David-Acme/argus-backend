@@ -834,10 +834,16 @@ in order:
    refuses the control actions (`disconnect`, `replace_role_rooms`) from any
    feed but auth's session feed (a services/sync change, not done).
 4. **Per-service S3 credentials.** `rustfs-init` creates one service account
-   per writer (identity: `portraits/`, camera: `evidence/`, guard:
-   `incidents/`) with a prefix-scoped policy, and provisioning writes each pair
-   only into its owner's config, so a compromised camera can no longer read
-   private portraits. The `rc` invocations still pass keys as arguments inside
+   per writer with a prefix-scoped policy (identity: `portraits/` and `faces/`,
+   camera: `cameras/`, guard: `guard/incidents/`, the prefixes their code
+   writes), and provisioning writes each pair only into its owner's config, so
+   a compromised camera can no longer read private portraits. One bucket is
+   enough because RustFS enforces the policy: `scripts/rustfs-prefix-policy-test.sh`
+   (2026-10-13, RustFS 1.0.0-beta.12, run against binaries exported from the
+   pinned images on a scratch port and data directory) refuses every
+   cross-prefix read, write, delete, copy, multipart upload and listing and
+   every bucket-level call with 403, and its whole-bucket control fails. Re-run
+   it before any RustFS upgrade. The `rc` invocations still pass keys as arguments inside
    the short-lived init container (now non-root); moving them to an alias file
    written from the secret files goes with this step.
 

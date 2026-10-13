@@ -275,7 +275,14 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   valid until that check passes. Any later change to `argus-deploy/nats-permissions.conf` reaches
   the running broker only through a reload, `docker compose kill -s HUP nats`, after provisioning
   and before the services that need the new grants start.
-- S4 Per-service S3 credentials scoped by prefix; `rc` keys out of command arguments.
+- S4 Per-service S3 credentials scoped by prefix; `rc` keys out of command arguments. Decided
+  2026-10-13 by test: RustFS 1.0.0-beta.12 enforces a service account's prefix policy
+  (`scripts/rustfs-prefix-policy-test.sh` against the exported binaries: all 20 requests answered as
+  the policy says, cross-prefix reads, writes, deletes, copies, multipart uploads, listings and
+  bucket calls refused with 403; the same test with whole-bucket policies fails 12 of them). So S4
+  keeps one bucket with one prefix-scoped service account per writer, the ruling's first option:
+  identity `portraits/` and `faces/`, camera `cameras/`, guard `guard/incidents/`. A RustFS upgrade
+  re-runs the test before it ships.
 - S5 Legacy refresh tokens two rotations old refused without revoking their family (accepted gap).
 
 Rulings of 2026-10-12 (reviewer, owner away and delegating): S2 is superseded by the separate Argus
