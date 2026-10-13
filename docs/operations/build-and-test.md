@@ -194,6 +194,14 @@ clang-tidy) is absent. A test that needs a file the repository carries
 (`models/intent/intent.bin`) fails without it. The final sweep counts each
 project's Skipped tests and the `SKIPPED:` lines of the scripts.
 
+That verdict is per binary, not per case, and it is worth reading it that way.
+A binary with eleven cases and one `doctest::skip` on an absent model reports
+Skipped whether the other ten ran green or the one you are asking about was
+skipped too - `tts-pocket-test` reads as Skipped while its fixed-seed case
+passes. To know whether a particular case ran, run it alone
+(`<binary> -tc="<case>"`) or read its own summary; a sweep's Skipped line
+answers only "this binary had nothing to report as a failure".
+
 ## Current scale
 
 15 projects in `dev`. Per-suite test and assertion counts move with the
