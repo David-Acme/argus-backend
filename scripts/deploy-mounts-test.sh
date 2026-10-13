@@ -550,11 +550,23 @@ native_dry_run() {
   ARGUS_DATA_DIR="$sandbox/data" bash -x "$native/run.sh" > "$native/out-$1" 2> "$native/trace-$1" \
     || fail "the native setup dry run ($1) failed: $(tail -n 3 "$native/out-$1" | tr '\n' ' ')"
 }
+mkdir -p "$native/argus-deploy"
+for service in identity camera; do
+  cp "$ROOT/argus-deploy/config.$service.toml.example" "$native/argus-deploy/config.$service.toml"
+done
+deploy_state="$(sha256sum "$native"/argus-deploy/config.*.toml)"
 native_dry_run first
 native_state="$(cat "$native"/services/*/config.toml | sha256sum)"
 native_dry_run second
 [ "$(cat "$native"/services/*/config.toml | sha256sum)" = "$native_state" ] \
   || fail "a second native setup changed a config"
+[ "$(sha256sum "$native"/argus-deploy/config.*.toml)" = "$deploy_state" ] \
+  || fail "the native setup changed a container config, which belongs to provision-host.sh"
+for run in first second; do
+  [ "$(grep -cF 'The container configs argus-deploy/config.*.toml belong to provision-host.sh; setup.sh leaves them untouched.' \
+      "$native/out-$run")" = 1 ] \
+    || fail "the native setup did not say once that it leaves the container configs alone ($run run)"
+done
 [ "$(toml_value "$native/services/identity/config.toml" storage.s3 secret_key)" \
     = "$(tr -d '\r\n' < "$sandbox/data/rustfs/secrets/argus_s3_secret_key")" ] \
   || fail "the native setup did not sync the S3 secret into identity's config"

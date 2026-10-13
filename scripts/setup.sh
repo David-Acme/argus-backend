@@ -267,6 +267,9 @@ sync_storage_credentials() {
   local data_dir="${ARGUS_DATA_DIR:-$ROOT/argus-deploy/data}"
   local secrets="$data_dir/rustfs/secrets"
   local name
+  if compgen -G "$ROOT/argus-deploy/config.*.toml" > /dev/null; then
+    log "The container configs argus-deploy/config.*.toml belong to provision-host.sh; setup.sh leaves them untouched."
+  fi
   for name in rustfs-bucket argus_s3_access_key argus_s3_secret_key; do
     [ -r "$secrets/$name" ] || return 0
   done
@@ -278,8 +281,7 @@ sync_storage_credentials() {
   done
 
   local config synced=0
-  for config in "$ROOT"/argus-deploy/config.*.toml \
-                "$ROOT"/argus-deploy/data/native/*/config.toml \
+  for config in "$ROOT"/argus-deploy/data/native/*/config.toml \
                 "$ROOT"/services/*/config.toml; do
     [ -f "$config" ] || continue
     toml_key_exists "$config" "storage.s3" "bucket" || continue
