@@ -572,7 +572,7 @@ shared file-static behind a mutex.
 - **NO spdlog** — use Drogon's built-in logging (`LOG_INFO`, `LOG_WARN`, `LOG_FATAL`)
 - **NO libsodium** — auth is face-based
 - **NO ORM** — raw SQL via `DbService::client()->execSqlCoro()`
-- **NO std::future** — use plain `std::thread` + `join` (e.g. ServiceRegistry parallel init)
+- **NO std::future** — use plain `std::thread` + `join` where work must run in parallel
 
 ### 16. Smart pointers
 
@@ -581,7 +581,10 @@ Raw pointers only for non-owning access (`.get()`).
 
 ### 17. Startup & database hygiene
 
-- Services are initialized IN PARALLEL by `ServiceRegistry` (threads + join).
+- Each service's `main()` starts with `ConfigService::load` and then builds its own components in
+  order; process-wide material (the internal TLS credentials, the module gate) is installed right
+  after the config load, before the first client or channel is made. (The monolith's parallel
+  `ServiceRegistry` is gone with the split.)
 - `DbService::applyPragmas()` runs at every boot (WAL, synchronous=NORMAL,
   busy_timeout, mmap, foreign_keys) — pragmas are per-connection and do NOT
   survive a restart otherwise.
