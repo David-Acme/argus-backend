@@ -118,6 +118,13 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 - R19 Activity never shows productivity, notification or assistant actions and does not update live:
   only identity, auth and settings feed `user_action_log`, and `insertAction` pushes nothing. Add the
   action publishers and push the new row.
+  Owner ruling (2026-10-12) for R19b, under "what a person tells Argus privately stays theirs":
+  every user-initiated create, update and delete in productivity is journaled (not only updates);
+  for personal rows (reminders, a person's own calendar events and projects) the journal carries only
+  who, the kind of action, the table and the time, never the row's content or its before/after diff
+  ("Ana creó un recordatorio — 10:42"); for shared or household rows (a shared project or event) it
+  may also carry the title; marking notifications as read is not journaled; the identity rename gets
+  its missing action row (R18).
 - R20 A confirmed optimistic change hides a remote change to the same record for up to 60 s
   (`shared/libs/optimistic.ts`, `OPTIMISTIC_TTL_MS`); clear on any server update for that record.
 - R21 Grantees never receive the other members' / share holders' rows (scoped pull excludes
