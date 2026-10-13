@@ -11,23 +11,21 @@ Provisions a throwaway broker the way provision-host.sh provisions the stack's
 (one nkey per row of argus-deploy/nats-permissions.conf plus the shared user),
 starts it on a free loopback port that is never 4222, with JetStream in a
 temporary directory, runs the given test binary against it and removes it all.
-Exits 77 (skipped) when ARGUS_NATS_SERVER_BIN is not set, is empty or names no
-executable file, and 2 when the test binary is not executable. It never falls
-back to a running broker, to ARGUS_NATS_URL or to a nats-server on PATH.
+Without a usable nats-server (ARGUS_NATS_SERVER_BIN not set, empty or naming no
+executable file) it exits 77 (skipped), or fails with exit 1 when CI=true: the
+decision and the CI rule are scripts/lib/nats-server-binary.sh's, shared with
+scripts/nats-scratch-run.sh and scripts/nats-seed-round-trip-test.sh. It exits
+2 when the test binary is not executable, and never falls back to a running
+broker, to ARGUS_NATS_URL or to a nats-server on PATH.
 USAGE
 }
 
 [ "$#" -eq 1 ] || { usage >&2; exit 2; }
 test_bin="$1"
-server="${ARGUS_NATS_SERVER_BIN:-}"
-if [ -z "$server" ]; then
-  printf 'nats-permissions-live-test: skipped, ARGUS_NATS_SERVER_BIN is not set\n'
-  exit 77
-fi
-if [ ! -f "$server" ] || [ ! -x "$server" ]; then
-  printf 'nats-permissions-live-test: skipped, ARGUS_NATS_SERVER_BIN (%s) names no executable file\n' "$server"
-  exit 77
-fi
+
+source "$ROOT/scripts/lib/nats-server-binary.sh"
+nats_server_binary_or_exit nats-permissions-live-test
+server="$NATS_SERVER_BIN"
 [ -x "$test_bin" ] || { printf 'nats-permissions-live-test: %s is not executable\n' "$test_bin" >&2; exit 2; }
 
 source "$ROOT/scripts/lib/nats-users.sh"
@@ -43,21 +41,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-port_free() {
-  ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
-}
-
-port=""
-for _ in $(seq 1 50); do
-  candidate=$(( 20000 + RANDOM % 40000 ))
-  [ "$candidate" -ne 4222 ] || continue
-  if port_free "$candidate"; then
-    port="$candidate"
-    break
-  fi
-done
-[ -n "$port" ] || { printf 'nats-permissions-live-test: no free port\n' >&2; exit 1; }
-[ "$port" -ne 4222 ] || { printf 'nats-permissions-live-test: port 4222 belongs to the stack broker, refusing it\n' >&2; exit 1; }
+nats_scratch_port nats-permissions-live-test
+port="$NATS_SCRATCH_PORT"
 
 mkdir -p "$work/seeds" "$work/js"
 chmod 700 "$work/seeds"
@@ -73,20 +58,7 @@ printf 'listen: "127.0.0.1:%s"\n\njetstream {\n  store_dir: "%s"\n}\n\ninclude .
 
 "$server" -c "$work/nats.conf" > "$work/server.log" 2>&1 &
 pid=$!
-ready=""
-for _ in $(seq 1 200); do
-  if ! port_free "$port"; then
-    ready=1
-    break
-  fi
-  kill -0 "$pid" 2>/dev/null || break
-  sleep 0.05
-done
-if [ -z "$ready" ]; then
-  cat "$work/server.log" >&2
-  printf 'nats-permissions-live-test: the broker did not start\n' >&2
-  exit 1
-fi
+nats_scratch_wait nats-permissions-live-test "$pid" "$port" "$work/server.log"
 
 ARGUS_NATS_PERMISSIONS_URL="nats://127.0.0.1:$port" \
 ARGUS_NATS_PERMISSIONS_SEEDS="$work/seeds" \

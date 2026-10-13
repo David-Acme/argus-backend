@@ -184,10 +184,34 @@ a closed endpoint, with or without the service's own key, that fails instead
 of crashing. The
 live roundtrip and the stream reconcile run only when `ARGUS_NATS_URL`
 names a broker. Every live suite of the tree reads that one variable through
-`nats/live-broker.hxx`: without it the case is a doctest skip (counted as
-`skipped` in the summary, never as passed), and with `CI=true` and no variable
-the case runs and fails on its first `REQUIRE`, so CI cannot go green without
-a broker. `.github/workflows/ci.yml` starts `nats:2 -js` for that reason.
+`nats/live-broker.hxx`, which has no default of its own: without the variable
+`url()` is empty and the case is a doctest skip, and with `CI=true` and no
+variable the case runs and fails its `REQUIRE_MESSAGE` (`kMissingUrl`).
+`nats-wrapper-test` pins both, because a broker-less run must never reach a
+broker it was not given: `NatsBus::Options` defaults to
+`nats://127.0.0.1:4222`, the production broker on a deploy host, and every test
+that connects names its URL (the live one, the permissions test's or the
+closed `nats://127.0.0.1:59999`).
+
+ctest runs every binary with live cases through
+`scripts/nats-scratch-run.sh`, registered by `argus_nats_scratch_test` in
+`cmake/argus-module.cmake` (no `add_test` of its own). With a usable
+nats-server (`ARGUS_NATS_SERVER_BIN` set and naming an executable file) the
+script starts a throwaway JetStream broker with no users on a random loopback
+port that is never 4222, its store in a temporary directory, and runs the
+binary with `ARGUS_NATS_URL` and `ARGUS_TEST_NATS_URL` set to it, replacing
+any inherited value; the broker and the directory go on exit. Without one, a
+run with `CI=true` fails: CI must exercise the live cases, and it sets
+`ARGUS_NATS_SERVER_BIN` to the pinned nats-server release
+(`.github/workflows/ci.yml`), with no broker of its own. Locally the binary
+then runs with both variables unset, so its live cases skip and nothing can
+reach an inherited broker; a failure stays a failure, and a pass exits 77,
+which ctest reports as skipped. The binary decision and the CI rule live in
+one place, `scripts/lib/nats-server-binary.sh`, shared by the three NATS
+scripts: this one, `nats-permissions-live-test.sh` and
+`nats-seed-round-trip-test.sh`. The two that need provisioned keys skip with
+77 locally and fail in CI when there is no usable binary. None of them falls
+back to a running broker, to `ARGUS_NATS_URL` or to a nats-server on `PATH`.
 
 `tests/unit/nats-permissions-test.cc` — the checked-in permission config is the
 table's rendering, byte for byte, and every grant in it is one the table names;
@@ -209,9 +233,10 @@ another service are refused, an unknown nkey is refused at connect, and the
 shared user still works. `scripts/nats-permissions-live-test.sh <binary>` builds
 that broker from the nats-server binary `ARGUS_NATS_SERVER_BIN` names (a
 loopback port that is never 4222, JetStream in a temporary directory) and runs
-the binary against it; without `ARGUS_NATS_SERVER_BIN` the script exits 77 and
-the binary's cases are doctest skips. It reads its own variables, never
-`ARGUS_NATS_URL`, because CI's broker carries no permissions.
+the binary against it; without a usable nats-server the script exits 77
+locally and fails with `CI=true`. It reads its own variables, never
+`ARGUS_NATS_URL`, because a scratch broker without users carries no
+permissions.
 
 `tests/unit/nats-seed-round-trip-test.cc` — the round trip of one seed:
 `scripts/nats-seed-round-trip-test.sh` issues a seed with
@@ -220,9 +245,10 @@ port, never 4222) whose only user is that seed's public key, and runs the
 binary: cnats connects through `natsOptions_SetNKeyFromSeed`, publishes inside
 the user's allow-list and is refused outside it, and a second seed presented
 with the same public key is refused at connect. ctest runs it through the
-script (`SKIP_RETURN_CODE 77`), so it runs at integration wherever
-`ARGUS_NATS_SERVER_BIN` names a nats-server binary or `nats-server` is on
-`PATH`, and is reported as skipped where none is.
+script (`SKIP_RETURN_CODE 77`), so it runs wherever `ARGUS_NATS_SERVER_BIN`
+names a nats-server binary, is reported as skipped locally where none does,
+and fails in CI. Since 2026-10-13 it no longer looks for a `nats-server` on
+`PATH`.
 
 `[nats] user` and `[nats] password`, when both are set, are passed to the
 broker with `natsOptions_SetUserInfo`; credentials never go into the URL,

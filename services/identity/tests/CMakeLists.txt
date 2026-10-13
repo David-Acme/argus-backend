@@ -66,8 +66,7 @@ target_link_libraries(identity-change-outbox-sink-test PRIVATE
     doctest::doctest)
 target_compile_options(identity-change-outbox-sink-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-change-outbox-sink-test)
-add_test(NAME identity-change-outbox-sink-test
-         COMMAND identity-change-outbox-sink-test)
+argus_nats_scratch_test(NAME identity-change-outbox-sink-test)
 
 add_executable(identity-sync-rpc-test unit/identity-sync-rpc-test.cc)
 target_link_libraries(identity-sync-rpc-test PRIVATE argus::lib::test-support)

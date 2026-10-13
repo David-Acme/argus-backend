@@ -15,18 +15,20 @@ the client connects through natsOptions_SetNKeyFromSeed, publishes inside its
 allow-list, is refused outside it, and a second seed presented with the same
 public key is refused at connect.
 
-The nats-server binary is ARGUS_NATS_SERVER_BIN, or nats-server on PATH.
-Without one the test exits 77, which ctest reports as skipped.
+The nats-server binary is ARGUS_NATS_SERVER_BIN alone, never one on PATH.
+Without a usable one (not set, empty or naming no executable file) the test
+exits 77, which ctest reports as skipped, or fails with exit 1 when CI=true:
+the decision and the CI rule are scripts/lib/nats-server-binary.sh's, shared
+with scripts/nats-scratch-run.sh and scripts/nats-permissions-live-test.sh.
 USAGE
 }
 
 [ "$#" -eq 1 ] || { usage >&2; exit 2; }
 test_bin="$1"
-server="${ARGUS_NATS_SERVER_BIN:-$(command -v nats-server || true)}"
-if [ -z "$server" ] || [ ! -x "$server" ]; then
-  printf 'nats-seed-round-trip-test: skipped, no nats-server binary (set ARGUS_NATS_SERVER_BIN or put nats-server on PATH)\n'
-  exit 77
-fi
+
+source "$ROOT/scripts/lib/nats-server-binary.sh"
+nats_server_binary_or_exit nats-seed-round-trip-test
+server="$NATS_SERVER_BIN"
 [ -x "$test_bin" ] || { printf 'nats-seed-round-trip-test: %s is not executable\n' "$test_bin" >&2; exit 2; }
 
 source "$ROOT/scripts/lib/nats-users.sh"
@@ -42,20 +44,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-port_free() {
-  ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
-}
-
-port=""
-for _ in $(seq 1 50); do
-  candidate=$(( 20000 + RANDOM % 40000 ))
-  [ "$candidate" -ne 4222 ] || continue
-  if port_free "$candidate"; then
-    port="$candidate"
-    break
-  fi
-done
-[ -n "$port" ] || { printf 'nats-seed-round-trip-test: no free port\n' >&2; exit 1; }
+nats_scratch_port nats-seed-round-trip-test
+port="$NATS_SCRATCH_PORT"
 
 nkey_issue "$work/client.seed" || { printf 'nats-seed-round-trip-test: the seed could not be issued\n' >&2; exit 1; }
 nkey_issue "$work/other.seed" || { printf 'nats-seed-round-trip-test: the second seed could not be issued\n' >&2; exit 1; }
@@ -72,20 +62,7 @@ CONF
 
 "$server" -c "$work/nats.conf" > "$work/server.log" 2>&1 &
 pid=$!
-ready=""
-for _ in $(seq 1 200); do
-  if ! port_free "$port"; then
-    ready=1
-    break
-  fi
-  kill -0 "$pid" 2>/dev/null || break
-  sleep 0.05
-done
-if [ -z "$ready" ]; then
-  cat "$work/server.log" >&2
-  printf 'nats-seed-round-trip-test: the broker did not start\n' >&2
-  exit 1
-fi
+nats_scratch_wait nats-seed-round-trip-test "$pid" "$port" "$work/server.log"
 
 ARGUS_NATS_ROUNDTRIP_URL="nats://127.0.0.1:$port" \
 ARGUS_NATS_ROUNDTRIP_NKEY="$public" \

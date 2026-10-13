@@ -43,7 +43,7 @@ find_package(doctest REQUIRED)
 add_executable(nats-wrapper-test tests/unit/nats-wrapper-test.cc)
 target_link_libraries(nats-wrapper-test PRIVATE argus::lib::nats doctest::doctest)
 target_compile_options(nats-wrapper-test PRIVATE -Wall -Wextra)
-add_test(NAME nats-wrapper-test COMMAND nats-wrapper-test)
+argus_nats_scratch_test(NAME nats-wrapper-test)
 
 get_filename_component(ARGUS_NATS_DEPLOY_DIR
                        ${CMAKE_CURRENT_SOURCE_DIR}/../../../argus-deploy ABSOLUTE)

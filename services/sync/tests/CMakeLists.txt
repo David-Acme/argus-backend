@@ -139,8 +139,7 @@ target_link_libraries(notification-delivery-live-test PRIVATE
     doctest::doctest)
 target_compile_options(notification-delivery-live-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(notification-delivery-live-test)
-add_test(NAME notification-delivery-live-test
-         COMMAND notification-delivery-live-test)
+argus_nats_scratch_test(NAME notification-delivery-live-test)
 
 add_executable(change-feed-live-test unit/change-feed-live-test.cc)
 target_compile_definitions(change-feed-live-test PRIVATE
@@ -155,7 +154,7 @@ target_link_libraries(change-feed-live-test PRIVATE
     doctest::doctest)
 target_compile_options(change-feed-live-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(change-feed-live-test)
-add_test(NAME change-feed-live-test COMMAND change-feed-live-test)
+argus_nats_scratch_test(NAME change-feed-live-test)
 
 add_executable(sync-migration-test unit/sync-migration-test.cc)
 target_link_libraries(sync-migration-test PRIVATE

@@ -61,11 +61,16 @@ if(DOCTEST_INCLUDE_DIRS)
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
 
-foreach(test_name IN ITEMS outbox-key-test outbox-repository-test
-                           transactional-outbox-test)
+foreach(test_name IN ITEMS outbox-key-test outbox-repository-test)
     add_executable(${test_name} tests/unit/${test_name}.cc)
     target_link_libraries(${test_name} PRIVATE argus::lib::outbox
                           doctest::doctest)
     target_compile_options(${test_name} PRIVATE -Wall -Wextra)
     add_test(NAME ${test_name} COMMAND ${test_name})
 endforeach()
+
+add_executable(transactional-outbox-test tests/unit/transactional-outbox-test.cc)
+target_link_libraries(transactional-outbox-test PRIVATE argus::lib::outbox
+                      doctest::doctest)
+target_compile_options(transactional-outbox-test PRIVATE -Wall -Wextra)
+argus_nats_scratch_test(NAME transactional-outbox-test)

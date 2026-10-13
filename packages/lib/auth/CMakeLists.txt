@@ -128,7 +128,7 @@ add_test(NAME tool-gate-test COMMAND tool-gate-test)
 add_executable(module-gate-test tests/unit/module-gate-test.cc)
 target_link_libraries(module-gate-test PRIVATE argus::lib::auth doctest::doctest)
 target_compile_options(module-gate-test PRIVATE -Wall -Wextra)
-add_test(NAME module-gate-test COMMAND module-gate-test)
+argus_nats_scratch_test(NAME module-gate-test)
 
 add_executable(remote-gate-test tests/unit/remote-gate-test.cc)
 target_link_libraries(remote-gate-test PRIVATE argus::lib::auth doctest::doctest)

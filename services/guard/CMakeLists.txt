@@ -250,7 +250,7 @@ target_include_directories(guard-dlq-service-live-test PRIVATE
 target_compile_definitions(guard-dlq-service-live-test PRIVATE
     ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(guard-dlq-service-live-test PRIVATE -Wall -Wextra)
-add_test(NAME guard-dlq-service-live-test COMMAND guard-dlq-service-live-test)
+argus_nats_scratch_test(NAME guard-dlq-service-live-test)
 
 add_executable(guard-module-lifecycle-live-test
     tests/unit/guard-module-lifecycle-live-test.cc)
@@ -266,8 +266,7 @@ target_include_directories(guard-module-lifecycle-live-test PRIVATE
 target_compile_definitions(guard-module-lifecycle-live-test PRIVATE
     ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(guard-module-lifecycle-live-test PRIVATE -Wall -Wextra)
-add_test(NAME guard-module-lifecycle-live-test
-         COMMAND guard-module-lifecycle-live-test)
+argus_nats_scratch_test(NAME guard-module-lifecycle-live-test)
 
 add_executable(guard-verdict-live-test tests/unit/guard-verdict-live-test.cc)
 set_target_properties(guard-verdict-live-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
@@ -280,14 +279,14 @@ target_include_directories(guard-verdict-live-test PRIVATE
 target_compile_definitions(guard-verdict-live-test PRIVATE
     ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(guard-verdict-live-test PRIVATE -Wall -Wextra)
-add_test(NAME guard-verdict-live-test COMMAND guard-verdict-live-test)
+argus_nats_scratch_test(NAME guard-verdict-live-test)
 
 add_executable(guard-dlq-live-test tests/unit/guard-dlq-live-test.cc)
 set_target_properties(guard-dlq-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(guard-dlq-live-test PRIVATE argus::lib::nats doctest::doctest)
 target_compile_options(guard-dlq-live-test PRIVATE -Wall -Wextra)
-add_test(NAME guard-dlq-live-test COMMAND guard-dlq-live-test)
+argus_nats_scratch_test(NAME guard-dlq-live-test)
 
 add_executable(vlm-client-live-test tests/unit/vlm-client-live-test.cc)
 set_target_properties(vlm-client-live-test PROPERTIES

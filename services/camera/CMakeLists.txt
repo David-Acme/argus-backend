@@ -525,7 +525,7 @@ target_compile_definitions(object-event-outbox-sink-test PRIVATE
 target_compile_options(object-event-outbox-sink-test PRIVATE -Wall -Wextra)
 set_target_properties(object-event-outbox-sink-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
-add_test(NAME object-event-outbox-sink-test COMMAND object-event-outbox-sink-test)
+argus_nats_scratch_test(NAME object-event-outbox-sink-test)
 
 add_executable(camera-operator-start-test
     tests/unit/camera-operator-start-test.cc)
@@ -551,7 +551,7 @@ target_compile_definitions(change-outbox-sink-test PRIVATE
 target_compile_options(change-outbox-sink-test PRIVATE -Wall -Wextra)
 set_target_properties(change-outbox-sink-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
-add_test(NAME change-outbox-sink-test COMMAND change-outbox-sink-test)
+argus_nats_scratch_test(NAME change-outbox-sink-test)
 
 add_executable(camera-settings-test tests/unit/camera-settings-test.cc)
 target_link_libraries(camera-settings-test PRIVATE

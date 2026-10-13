@@ -265,8 +265,7 @@ target_compile_definitions(notification-change-outbox-sink-test PRIVATE
 target_compile_options(notification-change-outbox-sink-test
                        PRIVATE -Wall -Wextra)
 
-add_test(NAME notification-change-outbox-sink-test
-         COMMAND notification-change-outbox-sink-test)
+argus_nats_scratch_test(NAME notification-change-outbox-sink-test)
 
 add_executable(notification-change-transaction-test
     tests/unit/notification-change-transaction-test.cc)
@@ -326,7 +325,7 @@ target_link_libraries(notification-delivery-live-test PRIVATE
 
 target_compile_options(notification-delivery-live-test PRIVATE -Wall -Wextra)
 
-add_test(NAME notification-delivery-live-test COMMAND notification-delivery-live-test)
+argus_nats_scratch_test(NAME notification-delivery-live-test)
 
 add_executable(push-intent-test tests/unit/push-intent-test.cc)
 

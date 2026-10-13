@@ -188,8 +188,7 @@ target_compile_definitions(productivity-change-outbox-sink-test PRIVATE
 target_compile_options(productivity-change-outbox-sink-test
                        PRIVATE -Wall -Wextra)
 
-add_test(NAME productivity-change-outbox-sink-test
-         COMMAND productivity-change-outbox-sink-test)
+argus_nats_scratch_test(NAME productivity-change-outbox-sink-test)
 
 add_executable(productivity-controller-test
     tests/unit/productivity-controller-test.cc)

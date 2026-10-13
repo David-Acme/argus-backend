@@ -536,7 +536,7 @@ target_compile_options(encounter-closed-live-test PRIVATE -Wall -Wextra)
 set_target_properties(encounter-closed-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
-add_test(NAME encounter-closed-live-test COMMAND encounter-closed-live-test)
+argus_nats_scratch_test(NAME encounter-closed-live-test)
 
 add_executable(memory-replica-test tests/unit/memory-replica-test.cc)
 

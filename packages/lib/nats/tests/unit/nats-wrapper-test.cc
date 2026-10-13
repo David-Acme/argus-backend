@@ -56,6 +56,33 @@ std::string isolatedSubject(const std::string& stream)
   return stream + ".events";
 }
 
+class ScopedVariable
+{
+public:
+  explicit ScopedVariable(const char* name) : name_(name)
+  {
+    if (const char* value = std::getenv(name))
+      saved_ = std::string(value);
+  }
+
+  ~ScopedVariable()
+  {
+    if (saved_)
+      ::setenv(name_, saved_->c_str(), 1);
+    else
+      ::unsetenv(name_);
+  }
+
+  ScopedVariable(const ScopedVariable&) = delete;
+  ScopedVariable& operator=(const ScopedVariable&) = delete;
+  ScopedVariable(ScopedVariable&&) = delete;
+  ScopedVariable& operator=(ScopedVariable&&) = delete;
+
+private:
+  const char* name_;
+  std::optional<std::string> saved_;
+};
+
 struct Deliveries
 {
   std::mutex mutex;
@@ -226,6 +253,21 @@ TEST_CASE("every change stream carries the name its consumer subscribes to")
                        SubjectKind::Subscribe));
   CHECK(isValidSubject(nats_subject::kProductivityUserAction,
                        SubjectKind::Subscribe));
+}
+
+TEST_CASE("a live suite has no broker of its own: without ARGUS_NATS_URL it names none, never a default")
+{
+  const ScopedVariable url(live_broker::kUrlVariable);
+  const ScopedVariable ci("CI");
+  ::unsetenv(live_broker::kUrlVariable);
+  ::unsetenv("CI");
+  CHECK(live_broker::url().empty());
+  CHECK_FALSE(live_broker::required());
+  CHECK(live_broker::skipped());
+  ::setenv("CI", "true", 1);
+  CHECK(live_broker::url().empty());
+  CHECK(live_broker::required());
+  CHECK_FALSE(live_broker::skipped());
 }
 
 TEST_CASE("options fall back to sane defaults without config")

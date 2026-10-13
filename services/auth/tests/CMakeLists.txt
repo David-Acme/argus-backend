@@ -17,7 +17,7 @@ target_link_libraries(session-verdict-test PRIVATE
     doctest::doctest)
 target_compile_options(session-verdict-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(session-verdict-test)
-add_test(NAME session-verdict-test COMMAND session-verdict-test)
+argus_nats_scratch_test(NAME session-verdict-test)
 
 add_executable(device-login-test unit/device-login-test.cc)
 target_compile_definitions(device-login-test PRIVATE

@@ -1,6 +1,7 @@
 include_guard(GLOBAL)
 
 set(ARGUS_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR})
+get_filename_component(ARGUS_REPO_ROOT "${ARGUS_CMAKE_DIR}/.." ABSOLUTE)
 
 set(argus_link_budget_mb 4096)
 find_program(ARGUS_MOLD_EXECUTABLE NAMES mold)
@@ -516,6 +517,21 @@ function(argus_clients)
         SOURCES ${ARG_SOURCES} INCLUDES ${ARG_INCLUDES}
         DEPENDS ${ARG_DEPENDS} SYSTEM_DEPENDS ${ARG_SYSTEM_DEPENDS})
   endif()
+endfunction()
+
+function(argus_nats_scratch_test)
+  cmake_parse_arguments(ARG "" "NAME;TARGET" "" ${ARGN})
+  argus_reject_unknown_args(argus_nats_scratch_test)
+  if(NOT ARG_NAME)
+    message(FATAL_ERROR "argus_nats_scratch_test requires NAME")
+  endif()
+  if(NOT ARG_TARGET)
+    set(ARG_TARGET ${ARG_NAME})
+  endif()
+  add_test(NAME ${ARG_NAME}
+           COMMAND bash ${ARGUS_REPO_ROOT}/scripts/nats-scratch-run.sh
+                   $<TARGET_FILE:${ARG_TARGET}>)
+  set_tests_properties(${ARG_NAME} PROPERTIES SKIP_RETURN_CODE 77)
 endfunction()
 
 set(ARGUS_DOCTEST_SKIPPED_PATTERN "\\| *0 failed \\| *[1-9][0-9]* skipped")
