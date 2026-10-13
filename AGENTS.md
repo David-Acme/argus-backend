@@ -306,7 +306,7 @@ already governs it).
 ### 8. JWT auth flow
 
 1. `DeviceFilter` extracts UA+IP → `DeviceContext` (stored as `"device_ctx"` attribute)
-2. `JwtFilter` extracts token (Header Bearer / query `?token=` / cookie), verifies HS256,
+2. `JwtFilter` extracts token (Header Bearer / query `?token=`; a cookie is NOT a token source), verifies HS256,
    validates `refresh_token` in DB (is_valid=1, is_used=0, device_hash match),
    injects `JwtContext` as `"jwt_ctx"` attribute
 3. `RoleFilter` reads `JwtContext.role` and checks via
