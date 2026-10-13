@@ -24,6 +24,22 @@ gate worktree is pointed at that commit - which is also why an uncommitted
 change never appears in a sweep's numbers, and why a baseline must never be
 written from a sweep run in the shared tree.
 
+The gitignored model artifacts are not in a fresh worktree, and the tts wire and rpc
+tests hard-fail when their model directory is missing (plan debt D13). Link the untracked
+directories of `models/` from the shared tree once, before the first gate of a worktree.
+The links are ignored by `models/.gitignore`, so the worktree stays clean. Run the loop
+again when the shared tree gains a model directory:
+
+```bash
+cd ~/argus-gate
+TRACKED=$(git ls-files models | cut -d/ -f2 | sort -u | tr '\n' ' ')
+for entry in $(ls -A ~/Desktop/argus/backend/models); do
+  case " $TRACKED " in *" $entry "*) continue ;; esac
+  [ -e "models/$entry" ] || [ -L "models/$entry" ] || ln -s ~/Desktop/argus/backend/models/"$entry" "models/$entry"
+done
+git status --porcelain   # prints nothing
+```
+
 ## Orchestrator
 
 ```bash
