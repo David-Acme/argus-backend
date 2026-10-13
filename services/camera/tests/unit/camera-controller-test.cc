@@ -21,6 +21,8 @@
 #include <feature/zone/controllers/zone-controller.hxx>
 #include <feature/zone/dtos/create-zone-dto.hxx>
 #include <auth/jwt-filter.hxx>
+#include <auth/request-context.hxx>
+#include <auth/role-filter.hxx>
 #include <config/config-service.hxx>
 #include <text/json-util.hxx>
 #include <validation/validator.hxx>
@@ -728,6 +730,32 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK(day["date"].asString() == "2026-10-12");
   CHECK(day["segments"].isArray());
   CHECK(sdCard->asked == std::vector<std::string>{"2026-10-01..2026-10-31", "2026-10-12"});
+  const auto sdRefusal = [](UserRole role, const std::string& path) {
+    const auto request = drogon::HttpRequest::newHttpRequest();
+    request->setMethod(drogon::Get);
+    request->setPath(path);
+    request->getAttributes()->insert(
+        AuthContext::kJwtKey,
+        JwtContext{.sub = 7, .name = "SD", .role = role, .isActive = true, .deviceHash = {}, .sessionId = {}});
+    return refusalOf(RoleFilter().doFilter(request));
+  };
+  const std::string sdDaysPath = "/camera/" + std::to_string(cameraId2) + "/sd/days";
+  const std::string sdDayPath = "/camera/" + std::to_string(cameraId2) + "/sd/day";
+  for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CAPTURE(userRoleToString(role));
+    for (const std::string& path : {sdDaysPath, sdDayPath}) {
+      CAPTURE(path);
+      const auto refused = sdRefusal(role, path);
+      REQUIRE(refused.has_value());
+      CHECK(refused->status == 403);
+      CHECK(refused->message == "Access denied");
+    }
+    CHECK_FALSE(sdRefusal(role, "/camera/" + std::to_string(cameraId2) + "/snapshot").has_value());
+  }
+  CHECK_FALSE(sdRefusal(UserRole::Owner, sdDaysPath).has_value());
+  CHECK_FALSE(sdRefusal(UserRole::Owner, sdDayPath).has_value());
+  CHECK(body(drogon::sync_wait(controlController.sdDays(daysRequest, cameraId2)))["status"].asInt() == 200);
+  CHECK(body(drogon::sync_wait(controlController.sdDay(dayRequest, cameraId2)))["status"].asInt() == 200);
   for (const auto& [from, to] : std::vector<std::pair<std::string, std::string>>{{"2026-10-31", "2026-10-01"},
                                                                                 {"2026-02-30", "2026-03-01"},
                                                                                 {"2026-10-01", "2027-10-03"},
@@ -741,7 +769,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   const auto badDay = drogon::HttpRequest::newHttpRequest();
   badDay->setParameter("date", "12-10-2026");
   CHECK_THROWS_AS(drogon::sync_wait(controlController.sdDay(badDay, cameraId2)), ValidationException);
-  CHECK(sdCard->asked.size() == 2);
+  CHECK(sdCard->asked.size() == 4);
   CameraDriverRegistry::instance().forget(cameraId2);
   CameraSchema rtsp;
   rtsp.driver = CameraDriver::Rtsp;

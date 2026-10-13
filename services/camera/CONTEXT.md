@@ -1298,11 +1298,14 @@ through the same control session as everything else:
   driver, answers that it keeps no recordings Argus can list. A camera that
   refuses the search says so with its error code. A malformed date is a 422
   (`CameraSdDaysDto`, `CameraSdDayDto`).
-- **Who may read it.** Camera read, like the live view and the stills:
-  `/camera/{id}/…` maps to the `camera` table. Whether the timeline should be
-  Owner-only, as the recording spec makes Argus-side recordings, needs a row
-  in `role-access.hxx`. That is track A's file, so it is a design fork
-  carried in the report, not decided here.
+- **Who may read it: the Owner alone** (reviewer ruling, 2026-10-13, the
+  same rule the recording spec gives Argus-side recordings). Both routes are
+  rows of `kRouteOverrides` in `packages/lib/auth/src/auth/role-access.hxx`,
+  so `RoleFilter` answers 403 to a resident, a guard or a guest, while every
+  other `/camera/{id}/…` route keeps the `camera` table's read. The app has
+  no SD screen yet; when it gets one, it is Owner-only, and the app's role
+  mirror (`shared/libs/role-access.ts`) needs the same two rows then.
+  `camera-controller-test` drives `RoleFilter` for all four roles.
 - **Not yet.** Playback, the `sdvod` stream above.
 
 Proven without a camera: `tests/unit/tapo-control-test.cc` drives `TapoApi`
