@@ -661,7 +661,7 @@ Raw pointers only for non-owning access (`.get()`).
   to every connected socket when the enabled set changes, and a trimmed
   `{id, enabled, lifecycle, dataPurgedAt}` to every socket when a module's
   `dataPurgedAt` advances (`services/sync/CONTEXT.md`, "Selectable modules").
-  `InitialInfo` carries `info.context` (`{userId, role, roleActive,
+  `InitialInfo` carries `info.context` (`{userId, role, roleActive, timeZone,
   capabilities[], roles[], modules[], ownerCatalog?}`) and `ContextUpdate=13`
   (additive, `context_update`) sends the same bare context to the user's
   sockets whenever their role, a module or their capabilities change; argus-sync

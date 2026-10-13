@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdlib>
 #include <memory>
 #include <optional>
 #include <string>
@@ -549,4 +550,14 @@ TEST_CASE("a producer that sends no kind gets one inferred: core for core, avail
   const Json::Value context = user_context::build({.userId = 1, .role = UserRole::Guest, .modules = modules, .ownerCatalog = none});
   CHECK(context["modules"][0]["kind"] == "core");
   CHECK(context["modules"][1]["kind"] == "available");
+}
+
+TEST_CASE("the context names the zone the household runs in, taken from TZ")
+{
+  setenv("TZ", "America/New_York", 1);
+  const auto modules = snapshotWith(true, true);
+  const Json::Value none;
+  const Json::Value context = user_context::build({.userId = 1, .role = UserRole::Guest, .modules = modules, .ownerCatalog = none});
+  unsetenv("TZ");
+  CHECK(context["timeZone"] == "America/New_York");
 }

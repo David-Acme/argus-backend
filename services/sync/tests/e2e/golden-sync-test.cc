@@ -192,6 +192,11 @@ bool isMaskedSecretKey(const std::string& key)
          containsLower(key, "password") || containsLower(key, "credential");
 }
 
+bool isMaskedZoneKey(const std::string& key)
+{
+  return key == "timeZone";
+}
+
 void normalizeInPlace(Json::Value& node)
 {
   if (node.isArray()) {
@@ -209,6 +214,8 @@ void normalizeInPlace(Json::Value& node)
       node[key] = 0;
     else if (isMaskedSecretKey(key) && node[key].isString())
       node[key] = "<masked>";
+    else if (isMaskedZoneKey(key) && node[key].isString())
+      node[key] = "<zone>";
     else
       normalizeInPlace(node[key]);
   }

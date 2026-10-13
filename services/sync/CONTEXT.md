@@ -1032,6 +1032,7 @@ user's role.
 
 ```json
 { "userId": 7, "role": "guard", "roleActive": false,
+  "timeZone": "America/Lima",
   "capabilities": ["safety.panic", "reminders.read", ...],
   "roles": [ { "id": "owner", "module": "core", "active": true },
              { "id": "guard", "module": "surveillance", "active": false }, ... ],
@@ -1042,6 +1043,15 @@ user's role.
                  "dataPurgedAt": null }, ... ],
   "ownerCatalog": [ ...the Owner's module JSON, only for the Owner... ] }
 ```
+
+`timeZone` is the household zone: the IANA name the host runs in, resolved by
+`hostTimeZone()` (`packages/lib/runtime/src/runtime/host-time-zone.cc`) from
+`TZ`, then the `/etc/localtime` link, then `/etc/timezone`, then `UTC`. Docker
+deployments give every service `TZ=${ARGUS_TZ}` (the `x-host-zone` anchor in
+`argus-deploy/docker-compose.yml`), and `scripts/provision-host.sh` writes
+`ARGUS_TZ` from the host's zone; a native run reads the zone of the machine it
+runs on. The app reads it to expand recurring events in the household zone and
+show them in the device zone (plan H6, and the frontend part of F6).
 
 `InitialInfo` carries it as `info.context` beside `id`, `role` and `isActive`,
 **only while the module gate is settled** (`ModuleGate::settled()`): a service

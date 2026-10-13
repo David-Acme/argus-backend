@@ -11,9 +11,13 @@ x-readonly-root: &readonly-root
     - "/tmp:size=64m,mode=1777"
     - "/opt/argus/uploads:size=64m,mode=0700,uid=${ARGUS_UID:-1000},gid=${ARGUS_GID:-1000}"
 
+x-host-zone: &host-zone
+  environment:
+    TZ: "${ARGUS_TZ:-UTC}"
+
 services:
   argus-auth:
-    <<: [*hardening, *readonly-root]
+    <<: [*hardening, *readonly-root, *host-zone]
     build:
       context: ..
       dockerfile: services/auth/Dockerfile
@@ -71,7 +75,7 @@ services:
     restart: unless-stopped
 
   argus-identity:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     build:
       context: ..
       dockerfile: services/identity/Dockerfile
@@ -140,7 +144,7 @@ services:
     restart: unless-stopped
 
   argus-camera:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     build:
       context: ..
       dockerfile: services/camera/Dockerfile
@@ -211,7 +215,7 @@ services:
     restart: unless-stopped
 
   argus-productivity:
-    <<: [*hardening, *readonly-root]
+    <<: [*hardening, *readonly-root, *host-zone]
     build:
       context: ..
       dockerfile: services/productivity/Dockerfile
@@ -264,7 +268,7 @@ services:
     restart: unless-stopped
 
   argus-notification:
-    <<: [*hardening, *readonly-root]
+    <<: [*hardening, *readonly-root, *host-zone]
     build:
       context: ..
       dockerfile: services/notification/Dockerfile
@@ -316,7 +320,7 @@ services:
     restart: unless-stopped
 
   argus-sync:
-    <<: [*hardening, *readonly-root]
+    <<: [*hardening, *readonly-root, *host-zone]
     build:
       context: ..
       dockerfile: services/sync/Dockerfile
@@ -373,7 +377,7 @@ services:
     restart: unless-stopped
 
   argus-guard:
-    <<: [*hardening, *readonly-root]
+    <<: [*hardening, *readonly-root, *host-zone]
     build:
       context: ..
       dockerfile: services/guard/Dockerfile
@@ -428,7 +432,7 @@ services:
     restart: unless-stopped
 
   argus-settings:
-    <<: [*hardening, *readonly-root]
+    <<: [*hardening, *readonly-root, *host-zone]
     build:
       context: ..
       dockerfile: services/settings/Dockerfile
@@ -492,7 +496,7 @@ services:
     restart: unless-stopped
 
   argus-tts:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     build:
       context: ..
       dockerfile: services/tts/Dockerfile
@@ -534,7 +538,7 @@ services:
     restart: unless-stopped
 
   argus-stt:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     build:
       context: ..
       dockerfile: services/stt/Dockerfile
@@ -576,7 +580,7 @@ services:
     restart: unless-stopped
 
   argus-vlm:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     build:
       context: ..
       dockerfile: services/vlm/Dockerfile
@@ -619,7 +623,7 @@ services:
     restart: unless-stopped
 
   argus-llm:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     build:
       context: ..
       dockerfile: services/llm/Dockerfile
@@ -691,7 +695,7 @@ services:
     restart: unless-stopped
 
   argus-voice:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     build:
       context: ..
       dockerfile: services/voice/Dockerfile
@@ -737,7 +741,7 @@ services:
     restart: unless-stopped
 
   argus-relay:
-    <<: [*hardening, *readonly-root]
+    <<: [*hardening, *readonly-root, *host-zone]
     profiles: ["tunnel"]
     build:
       context: ..
@@ -779,7 +783,7 @@ services:
     restart: unless-stopped
 
   argus-tunnel-client:
-    <<: [*hardening, *readonly-root]
+    <<: [*hardening, *readonly-root, *host-zone]
     profiles: ["tunnel"]
     image: argus-tunnel:local
     pull_policy: never
@@ -808,7 +812,7 @@ services:
     restart: unless-stopped
 
   livekit:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     image: livekit/livekit-server:v1.13.7
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: host
@@ -838,7 +842,7 @@ services:
     restart: unless-stopped
 
   livekit-tls:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     image: nginx:1.28.3-alpine
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     network_mode: host
@@ -875,11 +879,12 @@ services:
     restart: unless-stopped
 
   rustfs:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     image: rustfs/rustfs:1.0.0-beta.12
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     entrypoint: ["/bin/sh", "/opt/argus/s3-entrypoint.sh"]
     environment:
+      TZ: "${ARGUS_TZ:-UTC}"
       RUSTFS_ADDRESS: "0.0.0.0:9000"
       RUSTFS_CONSOLE_ENABLE: "false"
       RUSTFS_ACCESS_KEY_FILE: /run/secrets/rustfs_access_key
@@ -910,11 +915,12 @@ services:
     restart: unless-stopped
 
   rustfs-init:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     image: rustfs/rc:v0.1.31
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     entrypoint: ["/bin/sh", "/opt/argus/s3-init.sh"]
     environment:
+      TZ: "${ARGUS_TZ:-UTC}"
       HOME: /tmp
       RUSTFS_ENDPOINT: http://rustfs:9000
       RUSTFS_REGION: "${RUSTFS_REGION:-us-east-1}"
@@ -935,7 +941,7 @@ services:
     restart: "no"
 
   nats:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     image: nats:2.11.14-alpine
     command: ["-c", "/etc/nats/argus.conf"]
     ports:
@@ -968,7 +974,7 @@ services:
     restart: unless-stopped
 
   identity-init:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     profiles: ["identity-init"]
     image: argus-identity:local
     pull_policy: never
@@ -993,7 +999,7 @@ services:
     restart: "no"
 
   camera-init:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     profiles: ["camera-init"]
     image: argus-camera:local
     pull_policy: never
@@ -1020,7 +1026,7 @@ services:
     restart: "no"
 
   productivity-init:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     profiles: ["productivity-init"]
     image: argus-productivity:local
     pull_policy: never
@@ -1047,7 +1053,7 @@ services:
     restart: "no"
 
   notification-init:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     profiles: ["notification-init"]
     image: argus-notification:local
     pull_policy: never
@@ -1074,7 +1080,7 @@ services:
     restart: "no"
 
   sync-init:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     profiles: ["sync-init"]
     image: argus-sync:local
     pull_policy: never
@@ -1105,7 +1111,7 @@ services:
     restart: "no"
 
   sync-rollback:
-    <<: *hardening
+    <<: [*hardening, *host-zone]
     profiles: ["sync-rollback"]
     image: argus-sync:local
     pull_policy: never
@@ -1136,7 +1142,7 @@ services:
     restart: "no"
 
   vulkan-probe:
-    <<: [*hardening, *readonly-root]
+    <<: [*hardening, *readonly-root, *host-zone]
     profiles: ["vulkan-probe"]
     image: argus-camera:local
     pull_policy: never

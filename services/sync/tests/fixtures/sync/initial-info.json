@@ -401,6 +401,7 @@
                 "module" : "core"
               }
             ],
+            "timeZone" : "<zone>",
             "userId" : 0
           },
           "id" : 0,

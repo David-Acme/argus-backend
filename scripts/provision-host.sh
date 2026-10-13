@@ -158,6 +158,31 @@ ensure_env_value() {
   printf '%s=%s\n' "$key" "$value" >> "$file"
 }
 
+zone_from_path() {
+  case "$1" in
+    */zoneinfo/*)
+      local name="${1##*/zoneinfo/}"
+      printf '%s\n' "${name#posix/}"
+      ;;
+  esac
+}
+
+host_timezone() {
+  local zone="${TZ:-}"
+
+  zone="${zone#:}"
+  case "$zone" in
+    /*) zone="$(zone_from_path "$zone")" ;;
+  esac
+  if [ -z "$zone" ] && [ -L /etc/localtime ]; then
+    zone="$(zone_from_path "$(readlink /etc/localtime)")"
+  fi
+  if [ -z "$zone" ] && [ -r /etc/timezone ]; then
+    zone="$(head -n 1 /etc/timezone)"
+  fi
+  printf '%s\n' "${zone:-UTC}"
+}
+
 write_env() {
   local env_file="$DEPLOY_DIR/.env"
 
@@ -165,6 +190,7 @@ write_env() {
   chmod 600 "$env_file"
   ensure_env_value "$env_file" ARGUS_UID "$(id -u)"
   ensure_env_value "$env_file" ARGUS_GID "$(id -g)"
+  ensure_env_value "$env_file" ARGUS_TZ "$(host_timezone)"
   ensure_env_value "$env_file" ARGUS_DATA_DIR "$DATA_DIR"
   ensure_env_value "$env_file" ARGUS_CERTS_DIR "$CERTS_DIR"
   ensure_env_value "$env_file" ARGUS_MODELS_DIR "$MODELS_DIR"

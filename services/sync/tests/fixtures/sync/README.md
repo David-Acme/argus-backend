@@ -12,8 +12,8 @@ already speaks must not move.
 a running stack and compares two things:
 
 - **Incoming frames** — each response is normalized (ids, timestamps,
-  secrets masked, `camera:closed` dropped, see the `normalization` block in
-  `manifest.json`), canonicalized (sorted keys, compact) and compared with
+  secrets and the household zone masked, `camera:closed` dropped, see the
+  `normalization` block in `manifest.json`), canonicalized (sorted keys, compact) and compared with
   the fixture *structurally*, not textually. A difference is reported with
   its JSON path and fails the run.
 - **Outgoing frames** — every request the harness sends is hashed and its

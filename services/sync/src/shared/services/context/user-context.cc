@@ -5,6 +5,7 @@
 #include <auth/module-gate.hxx>
 #include <auth/role-access.hxx>
 #include <runtime/blocking-task.hxx>
+#include <runtime/host-time-zone.hxx>
 #include <sync/socket-emit-dto.hxx>
 #include <sync/sync-operation.hxx>
 #include <text/json-util.hxx>
@@ -101,6 +102,7 @@ Json::Value build(const BuildInput& input)
   context["userId"] = static_cast<Json::Int64>(input.userId);
   context["role"] = userRoleToString(input.role);
   context["roleActive"] = input.modules.roleActive(input.role);
+  context["timeZone"] = hostTimeZone();
   Json::Value capabilities(Json::arrayValue);
   for (const auto capability : role_access::capabilitiesFor({.role = input.role, .modules = input.modules}))
     capabilities.append(std::string(capability));

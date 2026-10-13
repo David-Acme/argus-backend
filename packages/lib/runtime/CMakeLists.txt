@@ -14,6 +14,8 @@ argus_lib(NAME runtime
         src/runtime/thread-budget.cc
         src/runtime/thread-budget.hxx
         src/runtime/cpu-limits.hxx
+        src/runtime/host-time-zone.cc
+        src/runtime/host-time-zone.hxx
         src/runtime/shutdown-signal.cc
         src/runtime/shutdown-signal.hxx
         src/runtime/log-output.cc
@@ -121,6 +123,12 @@ target_link_libraries(blocking-pool-stress-test PRIVATE argus::lib::runtime
     doctest::doctest)
 target_compile_options(blocking-pool-stress-test PRIVATE -Wall -Wextra)
 add_test(NAME blocking-pool-stress-test COMMAND blocking-pool-stress-test)
+
+add_executable(host-time-zone-test tests/unit/host-time-zone-test.cc)
+target_link_libraries(host-time-zone-test PRIVATE argus::lib::runtime
+    doctest::doctest)
+target_compile_options(host-time-zone-test PRIVATE -Wall -Wextra)
+add_test(NAME host-time-zone-test COMMAND host-time-zone-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
