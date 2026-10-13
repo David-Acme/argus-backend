@@ -17,19 +17,19 @@ HealthStatus relayHealthStatus(TunnelRelay& relay)
        }},
       {"pushQueued",
        [&relay] {
-         return Json::Value(Json::Value::Int64(relay.pushQueued()));
+         return Json::Value(static_cast<Json::Int64>(relay.pushQueued()));
        }},
       {"pushReceived",
        [&relay] {
-         return Json::Value(Json::Value::Int64(relay.pushReceived()));
+         return Json::Value(static_cast<Json::Int64>(relay.pushReceived()));
        }},
       {"pushDropped",
        [&relay] {
-         return Json::Value(Json::Value::Int64(relay.pushDropped()));
+         return Json::Value(static_cast<Json::Int64>(relay.pushDropped()));
        }},
       {"pushForwarded",
        [&relay] {
-         return Json::Value(Json::Value::Int64(relay.pushForwarded()));
+         return Json::Value(static_cast<Json::Int64>(relay.pushForwarded()));
        }},
   };
   return status;
@@ -48,15 +48,15 @@ HealthStatus clientHealthStatus(TunnelClient& client)
        }},
       {"pushQueued",
        [&client] {
-         return Json::Value(Json::Value::Int64(client.pushQueued()));
+         return Json::Value(static_cast<Json::Int64>(client.pushQueued()));
        }},
       {"pushReceived",
        [&client] {
-         return Json::Value(Json::Value::Int64(client.pushReceived()));
+         return Json::Value(static_cast<Json::Int64>(client.pushReceived()));
        }},
       {"pushDropped",
        [&client] {
-         return Json::Value(Json::Value::Int64(client.pushDropped()));
+         return Json::Value(static_cast<Json::Int64>(client.pushDropped()));
        }},
   };
   return status;
@@ -85,15 +85,15 @@ HealthStatus linkHealthStatus(link::LinkClient& client)
        [&client] { return Json::Value(client.lastReconnectDelayMs()); }},
       {"pushQueued",
        [&client] {
-         return Json::Value(Json::Value::Int64(client.pushQueued()));
+         return Json::Value(static_cast<Json::Int64>(client.pushQueued()));
        }},
       {"pushReceived",
        [&client] {
-         return Json::Value(Json::Value::Int64(client.pushReceived()));
+         return Json::Value(static_cast<Json::Int64>(client.pushReceived()));
        }},
       {"pushDropped",
        [&client] {
-         return Json::Value(Json::Value::Int64(client.pushDropped()));
+         return Json::Value(static_cast<Json::Int64>(client.pushDropped()));
        }},
   };
   return status;

@@ -92,7 +92,7 @@ TestIdentity mintIdentity(const IdentityInput& input)
   X509_set_version(certificate, 2);
   std::random_device device;
   ASN1_INTEGER_set(X509_get_serialNumber(certificate),
-                   static_cast<long>(device() & 0x7FFFFFFF));
+                   static_cast<long>(device() & 0x7FFFFFFFU));
   X509_gmtime_adj(X509_getm_notBefore(certificate), 0);
   X509_gmtime_adj(X509_getm_notAfter(certificate), 3600);
   X509_set_pubkey(certificate, key);

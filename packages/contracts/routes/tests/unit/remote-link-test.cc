@@ -6,15 +6,16 @@
 #include <json/value.h>
 
 #include <string>
+#include <string_view>
 
 namespace
 {
-const std::string kHomeId = "0123456789abcdef0123456789abcdef";
+constexpr std::string_view kHomeId = "0123456789abcdef0123456789abcdef";
 
 Json::Value validFrame()
 {
   Json::Value json(Json::objectValue);
-  json["homeId"] = kHomeId;
+  json["homeId"] = std::string(kHomeId);
   json["domain"] = "argus-tunnel.lynk.page";
   json["link"] = "up";
   json["since"] = static_cast<Json::Int64>(1'790'000'000);
@@ -42,7 +43,7 @@ TEST_CASE("a home id is 32 lowercase hexadecimal characters")
   CHECK(routes::isHomeId(kHomeId));
   CHECK_FALSE(routes::isHomeId("0123456789ABCDEF0123456789ABCDEF"));
   CHECK_FALSE(routes::isHomeId(kHomeId.substr(1)));
-  CHECK_FALSE(routes::isHomeId(kHomeId + "0"));
+  CHECK_FALSE(routes::isHomeId(std::string(kHomeId) + "0"));
   CHECK_FALSE(routes::isHomeId("0123456789abcdef0123456789abcdeg"));
 }
 
@@ -70,7 +71,7 @@ TEST_CASE("a domain is a lowercase DNS name of two labels or more")
 
 TEST_CASE("a valid frame reads back as the state it was written from")
 {
-  const routes::RemoteLinkState state{.homeId = kHomeId,
+  const routes::RemoteLinkState state{.homeId = std::string(kHomeId),
                                       .domain = "argus-tunnel.lynk.page",
                                       .link = routes::RemoteLink::Connecting,
                                       .since = 1'790'000'123};
@@ -80,7 +81,7 @@ TEST_CASE("a valid frame reads back as the state it was written from")
   const auto reading = routes::readRemoteLink(json);
   CHECK(reading.refusal == routes::RemoteLinkRefusal::None);
   REQUIRE(reading.state.has_value());
-  CHECK(*reading.state == state);
+  CHECK(reading.state == state);
 }
 
 TEST_CASE("a frame is refused when its home id is not 32 lowercase hex characters")

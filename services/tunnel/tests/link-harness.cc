@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cstring>
 #include <stdexcept>
 #include <utility>
@@ -61,12 +62,12 @@ int listenLoopback(uint16_t& port)
   return fd;
 }
 
-int acceptWithTimeout(int listenFd, int timeoutMs)
+int acceptWithTimeout(int listenFd, std::chrono::milliseconds timeout)
 {
   pollfd descriptor{};
   descriptor.fd = listenFd;
   descriptor.events = POLLIN;
-  const int ready = ::poll(&descriptor, 1, timeoutMs);
+  const int ready = ::poll(&descriptor, 1, static_cast<int>(timeout.count()));
   if (ready <= 0)
     return -1;
   return ::accept4(listenFd, nullptr, nullptr, SOCK_CLOEXEC);
@@ -97,10 +98,10 @@ std::string commonNameOf(X509* certificate)
 int selectAlpn(SSL*, const unsigned char** out, unsigned char* outlen,
                const unsigned char* in, unsigned int inlen, void*)
 {
-  static constexpr unsigned char kWire[] = {12, 'a', 'r', 'g', 'u', 's', '-',
-                                            'l', 'i', 'n', 'k', '/', '2'};
-  if (SSL_select_next_proto(const_cast<unsigned char**>(out), outlen, kWire,
-                            sizeof(kWire), in, inlen) !=
+  static constexpr std::array<unsigned char, 13> kWire = {
+      12, 'a', 'r', 'g', 'u', 's', '-', 'l', 'i', 'n', 'k', '/', '2'};
+  if (SSL_select_next_proto(const_cast<unsigned char**>(out), outlen, kWire.data(),
+                            static_cast<unsigned int>(kWire.size()), in, inlen) !=
       OPENSSL_NPN_NEGOTIATED) {
     return SSL_TLSEXT_ERR_ALERT_FATAL;
   }
@@ -152,13 +153,13 @@ void EchoServer::serve()
 {
   std::array<char, kReadChunk> chunk{};
   while (!stopped_.load()) {
-    const int fd = acceptWithTimeout(listenFd_, 200);
+    const int fd = acceptWithTimeout(listenFd_, std::chrono::milliseconds(200));
     if (fd < 0)
       continue;
     accepted_.fetch_add(1);
     timeval timeout{};
     timeout.tv_sec = 0;
-    timeout.tv_usec = 200 * 1000;
+    timeout.tv_usec = 200'000;
     ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     while (!stopped_.load()) {
       if (hangUpRequested_.exchange(false))
@@ -239,7 +240,7 @@ void FakeNode::serve()
     return;
   }
   while (!stopped_.load()) {
-    const int fd = acceptWithTimeout(listenFd_, 200);
+    const int fd = acceptWithTimeout(listenFd_, std::chrono::milliseconds(200));
     if (fd < 0)
       continue;
     connections_.fetch_add(1);
@@ -250,7 +251,7 @@ void FakeNode::serve()
     SSL_set_accept_state(ssl);
     timeval timeout{};
     timeout.tv_sec = 0;
-    timeout.tv_usec = 500 * 1000;
+    timeout.tv_usec = 500'000;
     ::setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
     bool handshaken = false;
     while (!stopped_.load()) {

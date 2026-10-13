@@ -1,6 +1,7 @@
 #include <link/tls/pinned-key.hxx>
 
-#include <cstdio>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <string_view>
 
@@ -46,18 +47,12 @@ std::optional<std::string> subjectPublicKeyDerOfPem(std::string_view pem)
 
 std::optional<std::string> subjectPublicKeyDerOfFile(const std::string& path)
 {
-  FILE* file = std::fopen(path.c_str(), "r");
-  if (file == nullptr)
+  std::ifstream file(path, std::ios::binary);
+  if (!file)
     return std::nullopt;
-  std::string contents;
-  char chunk[4096];
-  while (true) {
-    const size_t count = std::fread(chunk, 1, sizeof(chunk), file);
-    contents.append(chunk, count);
-    if (count < sizeof(chunk))
-      break;
-  }
-  std::fclose(file);
+  std::ostringstream buffer;
+  buffer << file.rdbuf();
+  const std::string contents = buffer.str();
   if (contents.empty())
     return std::nullopt;
   if (const auto der = subjectPublicKeyDerOfPem(contents))

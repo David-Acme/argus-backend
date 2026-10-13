@@ -12,11 +12,12 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace
 {
-const std::string kHomeId = "0123456789abcdef0123456789abcdef";
+constexpr std::string_view kHomeId = "0123456789abcdef0123456789abcdef";
 constexpr int64_t kStart = 1'790'000'000;
 
 struct Harness
@@ -40,7 +41,7 @@ struct Harness
                                                   },
                                               .now = [this] { return now; }},
         tunnel::link::LinkStatusPublisherOptions{
-            .homeId = kHomeId, .domain = "argus-tunnel.lynk.page", .republish = std::chrono::seconds{30}});
+            .homeId = std::string(kHomeId), .domain = "argus-tunnel.lynk.page", .republish = std::chrono::seconds{30}});
   }
 
   void tickAt(int64_t at)
@@ -59,7 +60,7 @@ routes::RemoteLinkState decoded(const std::string& payload)
   REQUIRE(Json::parseFromStream(builder, stream, &json, &errors));
   const auto reading = routes::readRemoteLink(json);
   REQUIRE(reading.state.has_value());
-  return *reading.state;
+  return reading.state.value_or(routes::RemoteLinkState{});
 }
 }
 
