@@ -4,6 +4,7 @@
 #include <shared/utils/network-address/private-address.hxx>
 #include <shared/vocabulary/camera-stream-paths.hxx>
 
+#include <json/value.h>
 #include <optional>
 #include <string>
 
@@ -29,6 +30,13 @@ inline std::optional<std::string> pathError(const std::optional<std::string>& pa
   if (!path || camera_stream_paths::isValid(*path))
     return std::nullopt;
   return "must start with / and use only letters, digits and / . _ ~ - ? = & % + , ; :";
+}
+
+inline constexpr int32_t kUnreadableOnvifPort = -1;
+
+inline int32_t onvifPortFrom(const Json::Value& value)
+{
+  return value.isInt() ? value.asInt() : kUnreadableOnvifPort;
 }
 
 inline std::optional<std::string> onvifPortError(const std::optional<int32_t>& port)

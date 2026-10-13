@@ -41,8 +41,8 @@ UpdateCameraDto UpdateCameraDto::fromJson(const Json::Value& json)
     dto.catalogId = json["catalogId"].asString();
   if (json.isMember("retentionIncident") && json["retentionIncident"].isBool())
     dto.retentionIncident = json["retentionIncident"].asBool();
-  if (json.isMember("onvifPort") && json["onvifPort"].isInt())
-    dto.onvifPort = json["onvifPort"].asInt();
+  if (json.isMember("onvifPort"))
+    dto.onvifPort = camera_address_rules::onvifPortFrom(json["onvifPort"]);
 
   START_VALIDATION(UpdateCameraDto, dto)
   IS_NOT_EMPTY_OPTIONAL(name)

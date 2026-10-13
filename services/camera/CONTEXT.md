@@ -2037,8 +2037,12 @@ go2rtc (no PTZ), gSOAP (GPL or commercial) and a Python sidecar.
   (`camera_stream_paths::onvifPortOf`). `POST /camera` and `PATCH
   /camera/{id}` take `onvifPort`, 1 to 65535; `0` removes it and hands the
   camera back to its model's port. Any other value is a 422
-  (`camera_address_rules::onvifPortError`). A stored value outside the range
-  is ignored. The app's camera form has no field for it yet; that is app
+  (`camera_address_rules::onvifPortError`), and so is a present key whose
+  value is not an integer: a string such as `"8080"`, a fraction, a
+  boolean or `null` reads as the unreadable port `-1`
+  (`camera_address_rules::onvifPortFrom`) and gets the same message,
+  instead of being dropped while the request answered 200. A stored value
+  outside the range is ignored. The app's camera form has no field for it yet; that is app
   work. The probe does not speak ONVIF and does not take it.
 - **Connecting reads the camera itself.** After the clock come
   `GetCapabilities`, `GetDeviceInformation` and, from the media service,

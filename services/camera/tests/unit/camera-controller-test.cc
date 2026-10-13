@@ -38,6 +38,7 @@
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <functional>
 #include <mutex>
 #include <optional>
 #include <sqlite3.h>
@@ -893,6 +894,46 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
     outOfRange["ip"] = "192.168.1.42";
     CHECK_THROWS_AS(CreateCameraDto::fromJson(outOfRange), ValidationException);
   }
+  const auto portRefusal = [](const std::function<void()>& call) -> std::vector<std::string> {
+    try {
+      call();
+    }
+    catch (const ValidationException& refused) {
+      if (refused.statusCode() == 422 && refused.errors().count("onvifPort") == 1)
+        return refused.errors().at("onvifPort");
+    }
+    return {};
+  };
+  const auto patchPort = [&cameraController, &portRefusal, garageId](const Json::Value& value) {
+    Json::Value patch;
+    patch["onvifPort"] = value;
+    return portRefusal([&cameraController, &patch, garageId] {
+      static_cast<void>(
+          drogon::sync_wait(cameraController.update(drogon::HttpRequest::newHttpJsonRequest(patch), garageId)));
+    });
+  };
+  const auto postPort = [&cameraController, &portRefusal](const Json::Value& value) {
+    Json::Value post;
+    post["name"] = "Porch";
+    post["ip"] = "192.168.1.43";
+    post["driver"] = "onvif";
+    post["onvifPort"] = value;
+    return portRefusal([&cameraController, &post] {
+      static_cast<void>(drogon::sync_wait(cameraController.create(drogon::HttpRequest::newHttpJsonRequest(post))));
+    });
+  };
+  const std::vector<std::string> rangeMessage = patchPort(Json::Value(70000));
+  REQUIRE_FALSE(rangeMessage.empty());
+  CHECK(postPort(Json::Value(70000)) == rangeMessage);
+  for (const Json::Value& unreadable :
+       {Json::Value("8080"), Json::Value(8080.5), Json::Value(true), Json::Value(Json::nullValue)}) {
+    CAPTURE(json_util::toString(unreadable));
+    CHECK(patchPort(unreadable) == rangeMessage);
+    CHECK(postPort(unreadable) == rangeMessage);
+  }
+  CHECK_FALSE(camera_stream_paths::onvifPortOf(
+                  drogon::sync_wait(CameraRepository().findById(garageId)).value_or(CameraSchema{}).config)
+                  .has_value());
   CameraDriverRegistry::instance().forget(garageId);
 
   CameraPresenceRecorder presence;
