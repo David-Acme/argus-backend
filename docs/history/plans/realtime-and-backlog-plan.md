@@ -250,6 +250,10 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   false`), so production is not affected; any other client that closes per request gets silence.
   Fix on the server side (ignore the close for the stream, or close after the last chunk) with a test
   that streams audio to a closing client.
+- D10 `scripts/build-all-test.sh`, the orchestrator's own self-test, exits 1 on master (reproduced on
+  2026-10-12 at `6408cec6`), silently around its second mocked `build-all.sh dev --only camera` call,
+  after the check-vendored step that sees no git tree. Find the change that broke it and restore it
+  green; a gate's own test that fails unnoticed is no gate.
 
 ## 8. Decisions awaiting the owner
 
