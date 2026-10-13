@@ -12,8 +12,6 @@ jobs:
   build:
     name: Build and unit tests
     runs-on: ubuntu-24.04
-    env:
-      ARGUS_NATS_URL: nats://127.0.0.1:4222
     steps:
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
@@ -51,17 +49,21 @@ jobs:
             cp "$f" "${f%.example}"
           done
 
-      - name: Start a JetStream broker for the live suites
+      - name: Install the pinned nats-server for the live suites
         run: |
-          docker run -d --name argus-ci-nats -p 127.0.0.1:4222:4222 nats:2 -js
-          for _ in $(seq 1 30); do
-            if (exec 3<>/dev/tcp/127.0.0.1/4222) 2>/dev/null; then
-              exit 0
-            fi
-            sleep 1
-          done
-          docker logs argus-ci-nats
-          exit 1
+          pin="$GITHUB_WORKSPACE/.github/nats-server.sha256"
+          asset="$(awk '{print $2}' "$pin")"
+          version="${asset#nats-server-v}"
+          version="${version%-linux-amd64.tar.gz}"
+          dir="$RUNNER_TEMP/nats-server"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$dir/$asset" \
+            "https://github.com/nats-io/nats-server/releases/download/v$version/$asset"
+          (cd "$dir" && sha256sum -c "$pin")
+          tar -xzf "$dir/$asset" -C "$dir"
+          bin="$dir/${asset%.tar.gz}/nats-server"
+          "$bin" --version
+          echo "ARGUS_NATS_SERVER_BIN=$bin" >> "$GITHUB_ENV"
 
       - name: Test build orchestrator
         run: |
