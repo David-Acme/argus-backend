@@ -40,7 +40,7 @@ order below.
 - [NATS subjects](architecture/wire-nats-subjects.md) — the frozen subject
   contract.
 - [Voice quality evaluation](operations/voice-quality-eval.md) — the judge
-  corpus, the fast-tier, LLM-tier and speech-recogniser gates and their
+  corpus, the decider, LLM-tier and speech-recogniser gates and their
   measured baselines.
 
 ## Proposals

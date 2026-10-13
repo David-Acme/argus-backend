@@ -298,10 +298,11 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
   consumes the bus (the guard encounter-closed stream, durable
   `argus-llm-encounters`) and hosts the memory stack: memory.db under its
   `${ARGUS_DATA_DIR:-./data}/memory` mount, plus the
-  `services/llm/database/schema.sql`, `models/memory`, `models/extract` and
-  `models/intent` binds (without the last one the fast tier of the intent router is
-  silently off and every turn pays an LLM round trip; `provision-host.sh` copies the
-  tracked `models/intent/intent.bin` into a custom `ARGUS_MODELS_DIR`).
+  `services/llm/database/schema.sql`, `models/memory`, `models/decide` and
+  `models/extract` binds (`models/decide` carries the Laya decider bundle and
+  `models/extract` the GLiNER extractor bundle; without them the turn runs on the
+  rules, the explicit triggers and the rule text; `provision-host.sh` copies the two
+  pilot bundles into a custom `ARGUS_MODELS_DIR`).
   argus-memory (7033) is retired since f8-b3: the memory capacity is
   a feature of argus-llm and the worker chat is an in-process
   call. None of them is
@@ -351,10 +352,10 @@ Fase 4 (Rulings CB/CC/CD/CE, compose v4) adds the four AI engine services:
 - **Models (Ruling CB).** Per-service read-only subpath binds, never the
   whole tree: `models/tts` → argus-tts, `models/stt` → argus-stt,
   `models/vision` → argus-vlm (the GGUF + its mmproj projector),
-  `models/llm` → argus-llm, `models/intent` → argus-llm (the fast tier's
-  fastText classifier). `models/memory` + `models/extract` are
-  argus-llm binds since f8-b4, which hosts the memory stack (their
-  argus-memory binds are gone with the process, f8-b3).
+  `models/llm` → argus-llm, `models/decide` → argus-llm (the Laya decider
+  bundle), `models/extract` → argus-llm (the GLiNER extractor bundle).
+  `models/memory` is an argus-llm bind since f8-b4, which hosts the memory
+  stack (its argus-memory bind is gone with the process, f8-b3).
 - **memory.db single-owner exception (Ruling CB).** memory.db lives in
   `${ARGUS_DATA_DIR:-./data}/memory` (the old `argus-cutover-memory-db`
   named volume is copied there by `scripts/provision-host.sh
@@ -568,7 +569,8 @@ the matching `*-init` profile is the only migration path onto a volume.
   in config.voice.toml — the compose-shape static internal literals — plus
   `[tts] remote_url` in config.camera.toml, the loopback publish), the GPU
   pins, and (from f8-b4) the `[memory]`/`[extract]` blocks config.llm.toml
-  gains with the hosted memory feature.
+  gains with the hosted memory feature; `[decide]` and `[extract]` name the
+  Laya and GLiNER bundles and select no engine (there is no NuExtract).
 - No docker secrets for the services: nothing is baked into images and
   instance secrets live only in the gitignored config files (rustfs and its
   init job read theirs from compose secret files).

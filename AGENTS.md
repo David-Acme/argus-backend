@@ -537,8 +537,8 @@ shared file-static behind a mutex.
   `supersedes`), `memory_edge`, `memory_episode` (compaction/system-event
   summaries, now recallable), `memory_procedure`. Capture: deterministic
   `RuleParser`+`PhraseCatalog` (vocabulary is static per-language constants in
-  `packages/lib/phrase/src/phrase/details/`, never DB tables) → `TieredExtractor` (lexicon tier
-  inline, NuExtract tier off-turn).
+  `packages/lib/phrase/src/phrase/details/`, never DB tables) → the lexicon tier
+  with its coverage floor (`CoveredLexiconExtractor`).
   Recall (`GraphRecall`): entity-anchored (recursive CTE) → FTS5 → vec0
   semantic tier with store-size-aware margin gates → episode tier; anaphora
   via `WorkingMemory.activeEntities`; block injected at the TAIL of the user
@@ -548,24 +548,24 @@ shared file-static behind a mutex.
   off-turn LLM polish). Facade `MemoryService`; DB via `SqliteGraph`/`VecDb`
   (mutex-serialized, prepared statements are RAII `SqliteStmt`). Embeddings:
   `multilingual-e5-small` int8 ONNX, loaded lazily. Full details in docs/history/project-log.md.
-- **fastText as a submodule** (`third_party/fastText`, `1142dc4`) — inference
-  only, built as a static lib by `services/llm`'s project file. It backs the fast
-  tier of the intent router: rules (`argus::lib::phrase`) and fastText each
-  propose, and the router arbitrates (an explicit trigger decides alone, a
-  confident model outranks a rule, a statement or recall marker stands only when
-  the model agrees); fastText classifies into six classes (`memory_save`,
-  `memory_recall`, `reminder_set`, `memory_forget`, `camera`, `none`) where
-  `none` means no tool, and the router abstains on every turn it is not confident
-  about: the LLM never chooses a tool, it only speaks. The classifier picks the
-  tool, the turn fills its arguments, and the model speaks about the result. Operating point 0.90 / 0.10,
-  precision-gated — a gated false `none` costs one LLM round trip, a false tool
-  call writes a fact nobody stated. The model is a published artifact carried
-  in-repo (`models/intent/intent.bin`, 12.9 MB) with a configure-time SHA256 pin
-  in `services/llm/src/feature/intent/models/`; training lives OUTSIDE this
-  repo, in the sibling `intent-training/` project, and only the artifact, its
-  card and the frozen eval fixtures cross over. **Degradation is a contract**: no
-  model on disk, or a sub-threshold score, and only an explicit trigger can still
-  route, so the turn runs on the rule tier alone. The judge corpus is
+- **Laya and GLiNER bundles** — the decider is Laya (an mmBERT-based
+  multilingual choice model, ONNX through onnxruntime) and the extractor is
+  GLiNER (the gliner2.5-multi backbone, ONNX). Both load from bundle
+  directories, `models/decide/bundle-laya-pilot` and
+  `models/extract/pilot-bundle` by default, validated at load by the bundle's
+  own `sha256` listing and `manifest.json`: no configured pin, no compile-time
+  pin. Thresholds and the decode come from the bundle's `decision.json`, never
+  config. A new model is installed by replacing the files with
+  `services/llm/scripts/install-bundle.sh <decide|extract> <bundle-dir>`, which
+  keeps the replaced bundle as `<slot>.previous` (`--rollback` swaps it back);
+  training lives OUTSIDE this repo, in the sibling `intent-training/` project.
+  The turn decides with the rules first, then Laya; the explicit triggers
+  ("recuerda que", "remind me that") are Laya's fallback. The LLM never chooses
+  a tool: the decider picks it, the turn fills its arguments, and the model
+  speaks about the result. **Degradation is a contract**: no decider bundle on
+  disk and only the rule commands and the explicit triggers route; no
+  extractor bundle and the rule tier fills the text slots; one log line names
+  the bundle and why, and nothing fails the turn. The judge corpus is
   `services/llm/tests/fixtures/eval/cases.jsonl`, measured by
   `services/llm/tests/eval` against versioned gates
   (`docs/operations/voice-quality-eval.md`).
@@ -1165,13 +1165,12 @@ their post-move spellings.
 | File | Purpose |
 |------|---------|
 | `services/llm/src/feature/llm/services/` | LLM inference (llama.cpp) + the tool runtime under its own `tools/`: `ToolRegistry`/`ToolExecutor` over MCP providers (the core tools in process, the modules' by their services through `ToolDirectory`), filtered per turn by capability |
-| `services/llm/src/feature/llm/services/turn/` | The turn (the LLM only speaks): the `Decider` interface (`Candidate` with `runnerUp`, `exact`, `confident`; per-decider `DecisionPolicy{act, ask, margin}` as data), the judge (Act, Ask, Choose, Pass), the write guard's second signal, the slot layer (`slots`, `ModelText`), the pendings (slot question, confirmation, choice) and the flow that runs them through the executor |
+| `services/llm/src/feature/llm/services/turn/` | The turn (the LLM only speaks): the `Decider` interface (`Candidate` with `runnerUp`, `exact`, `confident`; per-decider `DecisionPolicy{act, ask, margin}` as data), the judge (Act, Ask, Choose, Pass), the deciders (`RuleDecider`, `TriggerDecider`, `LayaDecider`), the write guard's second signal, the slot layer (`slots`, the GLiNER extractor over the rule tier), the pendings (slot question, confirmation, choice) and the flow that runs them through the executor |
 | `services/llm/src/feature/pending-intent/` | `argus::pending-intent`: requests kept while a module was off (`pending_intent`), completed from the module feed, the user told through an `assistant_task` notification |
 | `services/{camera,guard,productivity,settings}/src/feature/mcp/` | each owner's tools served over MCP (`app.show_camera`, `app.set_guard_mode`, `calendar.*`/`project.*`/`task.*`, `modules.*`), gated by `tool_gate::capabilities()` |
 | `services/llm/src/feature/encounter-closed/` | The camera guard feed's durable JetStream consumer: receipts in `encounter_closed_inbox`, captured once into the memory graph |
-| `services/llm/src/feature/memory/services/{memory,embedding,extract}/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`EntityResolver`/`ToolParser`/`MemoryChat` — semantic-graph long-term memory (async worker, episode recall, L3 profile) — and the artifacts it drives: `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer`, and the NuExtract/lexicon/tiered extractors |
-| `services/llm/src/feature/intent/` | `argus::intent` — the fast tier of the router: the fastText classifier + the intent router (rules and model propose, the router arbitrates), with the model pin and NOTICE beside them |
-| `services/llm/tests/eval/` | The voice-quality harnesses: `decider-eval.py` (any router over the same selection sets and the pinned sealed set), `slot-eval.py`, `conversation-eval.py`, `fast-tier-eval` (the production memory router), the scoring core and `gates.json`; a missing model or command exits 77 (skipped) and a worse gated number fails (`docs/operations/voice-quality-eval.md`) |
+| `services/llm/src/feature/memory/services/{memory,embedding,extract}/` | `MemoryService`/`SemanticGraph`(`SqliteGraph`)/`GraphRecall`/`MemoryFormation`/`EntityResolver`/`ToolParser`/`MemoryChat` — semantic-graph long-term memory (async worker, episode recall, L3 profile) — and the artifacts it drives: `EmbeddingService` (multilingual-e5-small int8 ONNX) + `UnigramTokenizer`, and the lexicon extractor with its coverage floor |
+| `services/llm/tests/eval/` | The voice-quality harnesses: `decider-eval.py` (any router over the same selection sets and the pinned sealed set), `slot-eval.py`, `conversation-eval.py`, `production-decider` (the shipped decider stack over a bundle), the scoring core and `gates.json`; a missing model or command exits 77 (skipped) and a worse gated number fails (`docs/operations/voice-quality-eval.md`) |
 | `services/stt/tests/eval/` | `stt-wer-eval`: the deployed engine's word error rate on Common Voice es and Peruvian clips fetched by `scripts/stt-eval-data.py` |
 | `services/llm/src/shared/vocabulary/tool-contracts.hxx` | `tools::ToolContext`/`ToolDescriptor`/`ToolCall` — the vocabulary the tool runtime and the memory feature both read, in the service's `src/shared/` because 2+ features read it (root rule 23) |
 | `services/identity/src/shared/services/face/` | Face detection + recognition (ncnn) — FaceDB = vec0 index (sqlite-vec) |

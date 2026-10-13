@@ -233,9 +233,11 @@ untouched), module families pooled, ACT only:
 
 Laya's confidence is compressed (it stops near 0.945 and falls off a cliff above it), so thresholds must
 be fitted by calibration before two deciders are compared at equal wrong-ACT; no non-trivial ACT / ASK
-policy meets the 0.1% ceiling on that selection set for either decider. The production router today
-(`appCommandFor` + the six-class memory router, `tests/eval/production-decider`) routes no module family and
-sends 3.98% of module-family requests to a memory tool.
+policy meets the 0.1% ceiling on that selection set for either decider. The production router of that
+day (`appCommandFor` + the six-class fastText memory router, then behind `tests/eval/production-decider`)
+routed no module family and sent 3.98% of module-family requests to a memory tool. Since 2026-10-12
+`production-decider --bundle <decider bundle dir>` is the shipped stack over a bundle: the rules, then Laya,
+with the explicit triggers as the fallback, answering with the tool, the confidence, the runner-up and `now`.
 
 ## Performance and consumption
 
@@ -247,7 +249,7 @@ marks it not reportable). `gates.json` (`performance.metrics`) holds the budget:
 
 | decider | p50 / p95 ms | CPU ms per call | resident / peak MB | threads | artifact MB |
 |---|---|---|---|---|---|
-| fastText router, C++ dev build (today) | 0.28 / 0.39 | 0.27 | 54.8 / 54.8 | 1 | 12.3 |
+| fastText router, C++ dev build (removed 2026-10-12) | 0.28 / 0.39 | 0.27 | 54.8 / 54.8 | 1 | 12.3 |
 | fastText 20 classes, Python adapter | 0.06 / 0.14 | 0.03 | 52.3 / 52.3 | 1 | 12.5 |
 | Laya round 0, PyTorch fp32, CPU | 91.7 / 101.4 | 740.6 | 1,733 / 2,324 | 39 | 1,294 (615 weights) |
 
@@ -282,9 +284,12 @@ the reason for it: with the fast tier removed the model called `memory.remember`
 the other three memory tools in none; it never called a calendar, task, project or module tool (28 of
 28 requests with a policy sentence in its prompt: 0 calls); 13.2% of its turns claimed an action
 nothing had done (22.7% of the productivity requests); and with a module off it never made the offer
-(0 of 146). The router before this wave sent 27.7% of the negatives to a memory tool, which the new
+(0 of 146). The fastText router before this wave sent 27.7% of the negatives to a memory tool, which the new
 arbitration and the retrained classifier took to 1.4% (productivity requests routed to a memory tool
-52.6% to 0.9%). `llm-tier-eval` and its stub tools still drive that loop and are retired with it.
+52.6% to 0.9%). `llm-tier-eval` and its stub tools drove that loop; since 2026-10-12 they drive the shipped turn
+(rules, Laya, GLiNER, through `installTurnEngines`) and print `[REFUSED]` and exit 1 when either engine
+is not up, as `call-faithfulness-eval` does; `llm-tier-eval --no-engines` measures the rules, the
+triggers and the rule text alone.
 
 ## Speech recogniser
 
@@ -389,6 +394,11 @@ services/llm/build/dev/tests/eval/call-faithfulness-eval \
   --report <path>
 ```
 
+The decider and extractor bundles default to `models/decide/bundle-laya-pilot` and
+`models/extract/pilot-bundle` under the models root of `--llm-model`; `--decide-bundle` and
+`--extract-bundle` name others. A run whose Laya or GLiNER does not come up prints `[REFUSED]` and
+exits 1.
+
 Add `--force` on a debug build and `--temperature 0.3 --seed 42` for the pinned invocation
 (any other temperature or seed is a measurement, not the gate: the eval refuses it); it is a
 heavy job (big lane, cap 3), and it skips 77 without the model or while the gates are unpinned.
@@ -468,7 +478,7 @@ Details and the per-seed table: `docs/history/project-log.md` and the unit's rep
 ## What these numbers do not say
 
 - The judges are short, written utterances. Nothing here is a recording of a household through a
-  far-field microphone, so the fast tier's recall on speech and the STT error rate on speech in a
+  far-field microphone, so the decider's recall on speech and the STT error rate on speech in a
   room are unmeasured.
 - Peruvian coverage is lexical and written by the assistant; the speech set is read sentences.
 - `memory_recall` has the thinnest memory data (about 1,200 training rows); its real-traffic recall

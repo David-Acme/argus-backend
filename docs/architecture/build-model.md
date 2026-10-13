@@ -38,7 +38,6 @@ at build time. Pins come from `.gitmodules` and `git submodule status`.
 | `ncnn` | submodule | `4c1110c9` | camera, identity |
 | `llama.cpp` | submodule | `31558dbb` | llm, vlm |
 | `sherpa-onnx` | submodule | `dc130227` | stt |
-| `fastText` | submodule | `1142dc4` | llm |
 | `stb` | vendored | `stb_image.h` | identity |
 | `go2rtc` | downloaded binary | release artifact | camera provisioning |
 
@@ -46,8 +45,12 @@ at build time. Pins come from `.gitmodules` and `git submodule status`.
 
 Model weights are runtime artifacts under `models/` (gitignored); each owner
 provisions and resolves its own subfolder, and the image never bakes them.
-The intent classifier is the one tracked artifact (`models/intent/intent.bin`)
-with a configure-time SHA-256 pin.
+No model artifact is tracked. The Laya and GLiNER pilot bundles
+(`models/decide/bundle-laya-pilot`, `models/extract/pilot-bundle`) are local
+runtime artifacts exported by the sibling `intent-training/` project; each is
+validated at load by its own `sha256` listing and `manifest.json`, with no
+configure-time pin (`services/llm/CONTEXT.md`, "Laya and GLiNER: the turn's
+engines").
 
 ## Wrappers and includes
 
