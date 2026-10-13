@@ -178,6 +178,12 @@ def main():
               f"to the tool, so install clang-tidy {major} or re-measure "
               f"deliberately with --write-baseline", file=sys.stderr)
         return 2
+    if not recorded and not arguments.write_baseline:
+        print(f"check-tidy: {baseline_path} records no clang-tidy version, so "
+              f"the counts it holds cannot be compared with the {version} "
+              f"found here; write a baseline with --write-baseline first",
+              file=sys.stderr)
+        return 2
 
     jobs, stale = translation_units(root)
     if not jobs:

@@ -454,6 +454,18 @@ if command -v "$tidy_tool" >/dev/null 2>&1; then
     exit 1
   fi
 
+  printf 'tus 1\n' > "$TIDY/scripts/lib/tidy-baseline.txt"
+  if tidy_untooled="$("$ROOT/scripts/check-tidy.sh" --root "$TIDY" 2>&1)"; then
+    echo "check-tidy compared counts against a baseline naming no tool" >&2
+    exit 1
+  fi
+  case "$tidy_untooled" in
+    *"records no clang-tidy version"*) ;;
+    *) echo "check-tidy refused an untooled baseline without saying why:" >&2
+       printf '%s\n' "$tidy_untooled" >&2
+       exit 1 ;;
+  esac
+
   if ! "$ROOT/scripts/check-tidy.sh" --root "$TIDY" --write-baseline >/dev/null; then
     echo "check-tidy could not record a baseline" >&2
     exit 1
