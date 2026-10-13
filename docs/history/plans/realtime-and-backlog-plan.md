@@ -265,18 +265,27 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 
 ## 5. Security and deployment hardening
 
-- S1 mTLS on internal gRPC with an internal CA (voice and others are cleartext today). Shape
-  decided 2026-10-13: files under `${ARGUS_DATA_DIR}/certs/internal`, a CA valid for 10 years and
-  service certificates for 2, renewed by `provision-host.sh` (and natively by `setup.sh`) when fewer
-  than 60 days remain, each service's health warning under 30 days, the per-caller secret kept as
-  the authorisation on top of mutual TLS, and an additive migration whose plaintext listeners stay
-  until the owner's deploy check (their removal is a later cleanup unit). Step 1, 2026-10-13:
+- S1 mTLS on internal gRPC with an internal CA (voice and others are cleartext today). Shape decided
+  2026-10-13: files under `${ARGUS_DATA_DIR}/certs/internal`, a CA valid for 10 years and service
+  certificates for 2, renewed by `provision-host.sh` (and natively by `setup.sh`) when fewer than 60
+  days remain, each service's health warning under 30 days, the per-caller secret kept as the
+  authorisation on top of mutual TLS, and an additive migration whose plaintext listeners stay until
+  the owner's deploy check (their removal is a later cleanup unit). Step 1, 2026-10-13:
   `scripts/lib/internal-pki.sh` issues the CA (ECDSA P-256) and one certificate per service that
   speaks internal gRPC (13, for server and client use), renews them, rotates the CA in two passes
   (the next CA joins every trust bundle first and takes over a day or more later, counted from its
-  `notBefore` rather than its file's time, the old one trusted until it expires), so each pass is followed by a rolling restart, one service at a time with no
-  outage, and `scripts/internal-pki-test.sh` proves it, mutual TLS with openssl included
-  (`argus-deploy/CONTEXT.md`, "The internal CA").
+  `notBefore` rather than its file's time, the old one trusted until it expires), so each pass is
+  followed by a rolling restart, one service at a time with no outage, and
+  `scripts/internal-pki-test.sh` proves it, mutual TLS with openssl included
+  (`argus-deploy/CONTEXT.md`, "The internal CA"). Step 2: `packages/lib/grpc` loads those files
+  (server credentials that require and verify the client's certificate, channel credentials that
+  present the service's own). Step 3, the health warning, needs services that read their trust
+  bundle, so it follows step 2, and its scope is three items: each service's health response reports
+  how many CAs its loaded trust bundle holds; a CA's own expiry gets the same 30-day health warning
+  as the service certificates; and before a pass that would move the certificates to the next CA,
+  provisioning prints a check that the two-CA bundle is live on every service, which it prints and
+  never gates on. Then the services, one commit each, and after the owner's deploy check the cleanup
+  that removes the plaintext listeners.
 - S2 Tunnel home link: TLS 1.3 with a pinned relay, a MAC on every frame after AUTH, the device side
   refusing unauthenticated connections.
 - S3 Per-service NATS accounts (nkeys, subject and `$JS.API` scoping). Status 2026-10-13
