@@ -14,8 +14,16 @@ camera and sync, in permissions.conf and auth.conf) and checks the verdict and
 the exit status of each: every service on its own key, camera missing, a key
 auth.conf does not record, a connection on the shared user, and a broker
 without authorization whose connections carry no authorized_user. It also
-checks that a permissions row nobody connects for is missing and that a
-connection never adds an expected service.
+checks that a deployed permissions row nobody connects for is missing and
+that a connection never adds an expected service.
+
+The deployed services come from --services in the recorded cases. Over a
+five-row permissions file (permissions-tunnel.conf: auth, camera, sync, relay
+and tunnel), a stack without the tunnel profile passes with relay and tunnel
+not deployed, and a stack with the profile and no relay connection fails. A
+stub docker stands in for docker compose config --services: the gate reads
+its list when --services is absent, exits 2 when it fails, and exits 2 when
+the stack deploys no row.
 
 --live also starts a throwaway broker from the image argus-deploy/docker-compose.yml
 names, as the container argus-gatecheck-nats-<random> on random loopback ports
@@ -55,25 +63,42 @@ mkdir -p "$TEST_TMP/bin"
 printf '#!/usr/bin/env bash\ncat "$ARGUS_GATE_CONNZ"\n' > "$TEST_TMP/bin/curl"
 chmod 700 "$TEST_TMP/bin/curl"
 
+printf '%s\n' '#!/usr/bin/env bash' \
+  'printf "%s\n" "$*" >> "$ARGUS_GATE_DOCKER_LOG"' \
+  '[ "${ARGUS_GATE_DOCKER_FAIL:-0}" = 0 ] || { echo "no configuration file provided: not found" >&2; exit 1; }' \
+  'printf "nats\nrustfs\nargus-auth\nargus-camera\nargus-sync\n"' \
+  'case ",${COMPOSE_PROFILES:-}," in *,tunnel,*) printf "argus-relay\nargus-tunnel-client\n" ;; esac' \
+  > "$TEST_TMP/bin/docker"
+chmod 700 "$TEST_TMP/bin/docker"
+
+THREE="nats rustfs argus-auth argus-camera argus-sync"
+
 gate() {
-  local answer="$1" permissions="$2"
+  local answer="$1" permissions="$2" auth="$3" services="$4"
+  local arguments=(--monitor http://recorded --auth-conf "$auth" --permissions "$permissions")
+  [ "$services" = compose ] || arguments+=(--services "$services")
   set +e
-  PATH="$TEST_TMP/bin:$PATH" ARGUS_GATE_CONNZ="$answer" "$ROOT/scripts/nats-users-check.sh" \
-    --monitor http://recorded --auth-conf "$FIXTURES/auth.conf" --permissions "$permissions" \
-    > "$TEST_TMP/out" 2>&1
+  PATH="$TEST_TMP/bin:$PATH" ARGUS_GATE_CONNZ="$answer" ARGUS_GATE_DOCKER_LOG="$TEST_TMP/docker.log" \
+    "$ROOT/scripts/nats-users-check.sh" "${arguments[@]}" > "$TEST_TMP/out" 2>&1
   status=$?
   set -e
 }
 
-expect() {
-  local answer="$1" wanted="$2" pattern
+check_output() {
+  local name="$1" wanted="$2" pattern
   shift 2
-  gate "$FIXTURES/$answer.json" "$FIXTURES/permissions.conf"
   [ "$status" = "$wanted" ] \
-    || fail "$answer: exit $status, expected $wanted: $(tail -n 1 "$TEST_TMP/out")"
+    || fail "$name: exit $status, expected $wanted: $(tail -n 1 "$TEST_TMP/out")"
   for pattern in "$@"; do
-    grep -Eq -- "$pattern" "$TEST_TMP/out" || fail "$answer: no line matches /$pattern/ in: $(cat "$TEST_TMP/out")"
+    grep -Eq -- "$pattern" "$TEST_TMP/out" || fail "$name: no line matches /$pattern/ in: $(cat "$TEST_TMP/out")"
   done
+}
+
+expect() {
+  local answer="$1" wanted="$2"
+  shift 2
+  gate "$FIXTURES/$answer.json" "$FIXTURES/permissions.conf" "$FIXTURES/auth.conf" "$THREE"
+  check_output "$answer" "$wanted" "$@"
 }
 
 service_rows() {
@@ -91,8 +116,8 @@ grep -q "\"authorized_user\": \"$(key_of AUTH)\"" "$FIXTURES/healthy.json" \
 
 expect healthy 0 \
   '^auth +own +cid 5$' '^camera +own +cid 6$' '^sync +own +cid 7$' \
-  '3 expected service\(s\), 3 own, 0 missing; 3 connection\(s\), 0 SHARED, 0 unknown$' \
-  '^nats-users-check: pass: '
+  '3 expected service\(s\), 3 own, 0 missing, 0 not deployed; 3 connection\(s\), 0 SHARED, 0 unknown$' \
+  '^nats-users-check: deployed services from --services$' '^nats-users-check: pass: '
 [ "$(service_rows)" = "auth camera sync " ] || fail "healthy: the service table is $(service_rows)"
 
 expect missing 1 \
@@ -118,12 +143,56 @@ expect no-user 1 \
   cat "$FIXTURES/permissions.conf"
   printf '\nARGUS_NATS_GUARD: {\n  publish: {\n    allow: [\n      "argus.guard.v1.change"\n    ]\n  }\n}\n'
 } > "$TEST_TMP/permissions-guard.conf"
-gate "$FIXTURES/healthy.json" "$TEST_TMP/permissions-guard.conf"
-[ "$status" = 1 ] || fail "a permissions row with no connection did not fail the gate"
+gate "$FIXTURES/healthy.json" "$TEST_TMP/permissions-guard.conf" "$FIXTURES/auth.conf" "$THREE argus-guard"
+[ "$status" = 1 ] || fail "a deployed permissions row with no connection did not fail the gate"
 grep -Eq '^guard +missing +auth\.conf holds no key for it; re-run provision-host\.sh$' "$TEST_TMP/out" \
   || fail "a permissions row with no key in auth.conf was not named missing: $(cat "$TEST_TMP/out")"
+gate "$FIXTURES/healthy.json" "$TEST_TMP/permissions-guard.conf" "$FIXTURES/auth.conf" "$THREE"
+check_output "a row the stack does not deploy" 0 '^guard +not deployed +not in the stack'"'"'s active profiles$'
 
-printf 'nats-users-check-test: 6 recorded cases ok\n'
+gate "$FIXTURES/profile-off.json" "$FIXTURES/permissions-tunnel.conf" "$FIXTURES/auth-tunnel.conf" "$THREE"
+check_output "no tunnel profile" 0 \
+  '^auth +own +cid 5$' '^camera +own +cid 6$' '^sync +own +cid 7$' \
+  '^relay +not deployed +not in the stack'"'"'s active profiles$' \
+  '^tunnel +not deployed +not in the stack'"'"'s active profiles$' \
+  '3 expected service\(s\), 3 own, 0 missing, 2 not deployed; 3 connection\(s\), 0 SHARED, 0 unknown$' \
+  '^nats-users-check: pass: '
+
+gate "$FIXTURES/profile-on-relay-absent.json" "$FIXTURES/permissions-tunnel.conf" "$FIXTURES/auth-tunnel.conf" \
+  "$THREE argus-relay argus-tunnel-client"
+check_output "the tunnel profile without relay" 1 \
+  '^relay +missing +no connection presented its key$' '^tunnel +own +cid 8$' \
+  '5 expected service\(s\), 4 own, 1 missing, 0 not deployed; 4 connection\(s\), 0 SHARED, 0 unknown$' \
+  '^nats-users-check: fail; missing: relay; keep the shared user$'
+
+: > "$TEST_TMP/docker.log"
+gate "$FIXTURES/healthy.json" "$FIXTURES/permissions.conf" "$FIXTURES/auth.conf" compose
+check_output "the compose service list" 0 \
+  '^nats-users-check: deployed services from docker compose config --services, profiles: ' \
+  '^auth +own +cid 5$' '^nats-users-check: pass: '
+[ "$(cat "$TEST_TMP/docker.log")" = "compose config --services" ] \
+  || fail "the gate did not ask docker compose config --services: $(cat "$TEST_TMP/docker.log")"
+
+set +e
+COMPOSE_PROFILES=tunnel PATH="$TEST_TMP/bin:$PATH" ARGUS_GATE_CONNZ="$FIXTURES/profile-on-relay-absent.json" \
+  ARGUS_GATE_DOCKER_LOG="$TEST_TMP/docker.log" "$ROOT/scripts/nats-users-check.sh" --monitor http://recorded \
+  --auth-conf "$FIXTURES/auth-tunnel.conf" --permissions "$FIXTURES/permissions-tunnel.conf" > "$TEST_TMP/out" 2>&1
+status=$?
+set -e
+check_output "the tunnel profile through compose" 1 \
+  '^nats-users-check: deployed services from docker compose config --services, profiles: tunnel$' \
+  '^relay +missing ' '^tunnel +own +cid 8$'
+
+set +e
+ARGUS_GATE_DOCKER_FAIL=1 gate "$FIXTURES/healthy.json" "$FIXTURES/permissions.conf" "$FIXTURES/auth.conf" compose
+set -e
+check_output "an unreadable compose config" 2 \
+  '^nats-users-check: the compose config could not be read \(docker compose config --services in argus-deploy\): no configuration file provided: not found$'
+
+gate "$FIXTURES/healthy.json" "$FIXTURES/permissions.conf" "$FIXTURES/auth.conf" "nats rustfs argus-tts"
+check_output "a stack that deploys no row" 2 '^nats-users-check: the stack deploys no service of '
+
+printf 'nats-users-check-test: 13 recorded cases ok\n'
 
 if [ "$live" -eq 0 ]; then
   printf 'nats-users-check-test: the live broker check runs with --live\n'
@@ -212,7 +281,7 @@ printf 'nats-users-check-test: live: %s, the public key of the nkey the client p
 set +e
 "$ROOT/scripts/nats-users-check.sh" --monitor "http://127.0.0.1:$monitor_port" \
   --auth-conf "$TEST_TMP/live/auth.conf" --permissions "$TEST_TMP/live/permissions.conf" \
-  > "$TEST_TMP/live/gate.out" 2>&1
+  --services argus-auth > "$TEST_TMP/live/gate.out" 2>&1
 status=$?
 set -e
 [ "$status" = 0 ] || fail "the gate did not pass the live broker: $(cat "$TEST_TMP/live/gate.out")"
