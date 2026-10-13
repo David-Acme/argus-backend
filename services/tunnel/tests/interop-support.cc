@@ -153,7 +153,7 @@ void ChildProcess::terminate()
   pid_ = -1;
 }
 
-HomeTlsServer::HomeTlsServer(const Params& params) : params_(params)
+HomeTlsServer::HomeTlsServer(Params params) : params_(std::move(params))
 {
   listenFd_ = listenLoopback(port_);
   worker_ = std::jthread([this] { serve(); });

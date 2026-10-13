@@ -40,7 +40,7 @@ public:
     std::string keyPath;
   };
 
-  explicit HomeTlsServer(const Params& params);
+  explicit HomeTlsServer(Params params);
   ~HomeTlsServer();
   HomeTlsServer(const HomeTlsServer&) = delete;
   HomeTlsServer& operator=(const HomeTlsServer&) = delete;

@@ -200,7 +200,7 @@ void FakeNode::stop()
   if (stopped_.exchange(true))
     return;
   {
-    std::lock_guard<std::mutex> lock{mutex_};
+    std::scoped_lock lock{mutex_};
     if (ssl_ != nullptr)
       ::shutdown(SSL_get_fd(ssl_), SHUT_RDWR);
   }
@@ -218,7 +218,7 @@ void FakeNode::serve()
 {
   SSL_CTX* context = SSL_CTX_new(TLS_server_method());
   if (context == nullptr) {
-    std::lock_guard<std::mutex> lock{mutex_};
+    std::scoped_lock lock{mutex_};
     state_.lastError = "SSL_CTX_new failed: " + lastError();
     return;
   }
@@ -231,7 +231,7 @@ void FakeNode::serve()
           context, options_.certificatePath.c_str()) != 1 ||
       SSL_CTX_use_PrivateKey_file(context, options_.keyPath.c_str(),
                                   SSL_FILETYPE_PEM) != 1) {
-    std::lock_guard<std::mutex> lock{mutex_};
+    std::scoped_lock lock{mutex_};
     state_.lastError = "cannot load the node certificate: " + lastError();
     SSL_CTX_free(context);
     return;
@@ -261,7 +261,7 @@ void FakeNode::serve()
       if (error == SSL_ERROR_WANT_READ || error == SSL_ERROR_WANT_WRITE)
         continue;
       {
-        std::lock_guard<std::mutex> lock{mutex_};
+        std::scoped_lock lock{mutex_};
         state_.lastError = "the home handshake failed: " + lastError();
       }
       break;
@@ -272,7 +272,7 @@ void FakeNode::serve()
       continue;
     }
     {
-      std::lock_guard<std::mutex> lock{mutex_};
+      std::scoped_lock lock{mutex_};
       ssl_ = ssl;
       state_ = State{};
       frames_.clear();
@@ -286,7 +286,7 @@ void FakeNode::serve()
       sendHello();
     readLoop(ssl);
     {
-      std::lock_guard<std::mutex> lock{mutex_};
+      std::scoped_lock lock{mutex_};
       if (ssl_ == ssl)
         ssl_ = nullptr;
     }
@@ -305,14 +305,14 @@ bool FakeNode::sendHello()
 
 void FakeNode::closeConnection()
 {
-  std::lock_guard<std::mutex> lock{mutex_};
+  std::scoped_lock lock{mutex_};
   if (ssl_ != nullptr)
     ::shutdown(SSL_get_fd(ssl_), SHUT_RDWR);
 }
 
 bool FakeNode::sendFrame(std::string_view frame)
 {
-  std::lock_guard<std::mutex> lock{mutex_};
+  std::scoped_lock lock{mutex_};
   if (ssl_ == nullptr || stopped_.load())
     return false;
   size_t offset = 0;
@@ -338,7 +338,7 @@ void FakeNode::readLoop(SSL* ssl)
       parser.feed(
           std::string_view{chunk.data(), static_cast<size_t>(received)});
       if (parser.failed()) {
-        std::lock_guard<std::mutex> lock{mutex_};
+        std::scoped_lock lock{mutex_};
         state_.violations.push_back(parser.error());
         break;
       }
@@ -358,7 +358,7 @@ void FakeNode::handleFrame(SSL* ssl, const link::Frame& frame)
   (void)ssl;
   if (frame.type == link::FrameType::Ping && options_.answerPings)
     (void)sendFrame(link::encodePong(link::decodeNonce(frame)));
-  std::lock_guard<std::mutex> lock{mutex_};
+  std::scoped_lock lock{mutex_};
   state_.helloSeen = state_.helloSeen ||
                      frame.type == link::FrameType::Hello;
   frames_.push_back(frame);
@@ -383,7 +383,7 @@ std::optional<link::Frame> FakeNode::nextFrame(int timeoutMs)
 
 FakeNode::State FakeNode::state() const
 {
-  std::lock_guard<std::mutex> lock{mutex_};
+  std::scoped_lock lock{mutex_};
   return state_;
 }
 
