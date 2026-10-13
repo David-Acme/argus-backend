@@ -224,6 +224,9 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   Developer Program yearly for iOS, the relay/tunnel server).
 - F4 Guard: a voice duress phrase, a persistent PIN lockout (in memory today), the single-member
   household case.
+  - F4 follow-up, ruled 2026-10-13: fuzzy matching of the duress phrase (one word off). It trades
+    against false alerts and needs measuring on real STT before any change. Matching stays exact after
+    normalisation until then.
 - F5 App siren button with its consent setting (owner decision).
 - F6 Productivity: reminder snooze and recurrence (recurring reminders fire once), project member and
   event share management screens with permissions reflected in the UI, task assignee validation and

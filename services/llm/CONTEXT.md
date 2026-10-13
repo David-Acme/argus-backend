@@ -1967,3 +1967,9 @@ removing any of the 425 s. It lives outside the repository, at
 `~/.cache/argus-scratch-backup/backend13/shaders/candidate-patch.patch`, because
 the tree has no durable mechanism for a submodule patch; it is recorded here so
 the cost is known rather than fought.
+
+## Merge gate for the parked Laya/GLiNER branch
+
+- Rebase over b8f32d76's duress screening. The controller hands each identified caller's words to the
+  duress screen (`src/feature/duress/`) before the turn is decided, so the cutover branch's turn changes
+  must keep that order.
