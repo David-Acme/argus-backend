@@ -1,5 +1,7 @@
 #pragma once
 
+#include <shared/repositories/camera/camera-repository.hxx>
+
 #include <drogon/utils/coroutine.h>
 
 #include <cstdint>
@@ -12,9 +14,16 @@ struct CapabilityRecordInput
   std::string capabilities{};
 };
 
-namespace capability_record
+class CapabilityRecorder
 {
-drogon::Task<bool> record(CapabilityRecordInput input);
-void learned(CapabilityRecordInput input);
-void discover(std::vector<int64_t> cameraIds);
-}
+public:
+  [[nodiscard]] drogon::Task<bool> record(CapabilityRecordInput input) const;
+  void learned(CapabilityRecordInput input) const;
+  void discover(std::vector<int64_t> cameraIds) const;
+
+private:
+  [[nodiscard]] drogon::Task<void> recordQuietly(CapabilityRecordInput input) const;
+  [[nodiscard]] drogon::Task<void> discoverAll(std::vector<int64_t> cameraIds) const;
+
+  CameraRepository repository_;
+};

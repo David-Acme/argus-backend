@@ -6,7 +6,6 @@
 #include <feature/camera/dtos/camera-address-rules.hxx>
 #include <shared/services/camera-driver/camera-capabilities.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
-#include <shared/services/camera-driver/capability-record.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <shared/services/stream/camera-live-board.hxx>
@@ -283,6 +282,6 @@ drogon::Task<int> CameraFeatureService::reconcileCapabilities() const
     if (co_await update(camera.id, UpdateCameraDto{}))
       ++updated;
   }
-  capability_record::discover(std::move(onvif));
+  CameraDriverRegistry::instance().recorder().discover(std::move(onvif));
   co_return updated;
 }

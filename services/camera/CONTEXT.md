@@ -2084,13 +2084,17 @@ go2rtc (no PTZ), gSOAP (GPL or commercial) and a Python sidecar.
 - **The camera row carries what the camera reported** (2026-10-13). The
   app draws the PTZ pad from the row's `capabilities` list, so the first
   time the driver connects it compares what the camera reported with the
-  row, and writes the difference (`capability_record::learned`, in the
+  row, and writes the difference (`CapabilityRecorder::learned`, in the
   camera-driver module). The write is an ordinary audited camera update
   through the change sink, run off the request in the background, so the
   pad appears live in the app. At boot, `reconcileCapabilities` also asks
   every live ONVIF camera in the background, one at a time
-  (`capability_record::discover`), so a camera nobody opens is recorded
-  too. The static recomputation on create, update and boot keeps an ONVIF
+  (`CapabilityRecorder::discover`), so a camera nobody opens is recorded
+  too. There is one `CapabilityRecorder`, a member of the driver registry
+  with its `CameraRepository` as its own member (rule 4): the registry
+  hands it to every ONVIF driver it builds, and the boot path reaches it
+  through `CameraDriverRegistry::recorder()`. A driver built without it
+  (the unit tests' scripted drivers) records nothing. The static recomputation on create, update and boot keeps an ONVIF
   camera's recorded `ptz` and `presets` (`camera_capabilities::of`), and
   forgets them when the driver or the address changes, until the camera
   answers again. A camera that does not answer keeps its last recorded

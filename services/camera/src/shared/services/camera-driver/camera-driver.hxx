@@ -4,6 +4,7 @@
 #include <memory>
 #include <optional>
 #include <shared/schemas/camera/camera-schema.hxx>
+#include <shared/services/camera-driver/capability-record.hxx>
 #include <span>
 #include <string>
 #include <vector>
@@ -111,7 +112,13 @@ public:
 
   std::shared_ptr<ICameraDriver> driverFor(const CameraSchema& camera);
   std::shared_ptr<ICameraDriver> controlDriverFor(const CameraSchema& camera);
+  [[nodiscard]] const CapabilityRecorder& recorder() const;
   void forget(int64_t cameraId);
+
+private:
+  std::shared_ptr<ICameraDriver> cached(const CameraSchema& camera);
+
+  CapabilityRecorder recorder_;
 };
 
 struct CameraDriverTestAccess

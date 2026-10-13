@@ -2,7 +2,6 @@
 
 #include <shared/services/camera-catalog/camera-catalog.hxx>
 #include <shared/services/camera-driver/camera-capabilities.hxx>
-#include <shared/services/camera-driver/capability-record.hxx>
 #include <shared/vocabulary/camera-stream-paths.hxx>
 
 #include <cmath>
@@ -33,14 +32,22 @@ DriverResult answered(Json::Value data)
 }
 }
 
-OnvifDriver::OnvifDriver(const CameraSchema& camera)
-    : OnvifDriver(camera, std::make_shared<OnvifHttpTransport>(endpointOf(camera)))
+OnvifDriver::OnvifDriver(const CameraSchema& camera, const CapabilityRecorder& recorder)
+    : OnvifDriver(OnvifDriverParts{.camera = camera,
+                                   .transport = std::make_shared<OnvifHttpTransport>(endpointOf(camera)),
+                                   .recorder = &recorder})
 {
 }
 
 OnvifDriver::OnvifDriver(const CameraSchema& camera, std::shared_ptr<IOnvifTransport> transport)
-    : camera_(camera),
-      client_({.endpoint = endpointOf(camera), .transport = std::move(transport), .clock = {}})
+    : OnvifDriver(OnvifDriverParts{.camera = camera, .transport = std::move(transport), .recorder = nullptr})
+{
+}
+
+OnvifDriver::OnvifDriver(OnvifDriverParts parts)
+    : camera_(std::move(parts.camera)),
+      recorder_(parts.recorder),
+      client_({.endpoint = endpointOf(camera_), .transport = std::move(parts.transport), .clock = {}})
 {
 }
 
@@ -89,8 +96,9 @@ DriverResult OnvifDriver::connected()
     const std::scoped_lock lock(knownMutex_);
     known_ = outcome.value;
   }
-  if (std::string reported = camera_capabilities::listOf(capabilities()); reported != camera_.capabilities)
-    capability_record::learned({.cameraId = camera_.id, .capabilities = std::move(reported)});
+  if (std::string reported = camera_capabilities::listOf(capabilities());
+      recorder_ != nullptr && reported != camera_.capabilities)
+    recorder_->learned({.cameraId = camera_.id, .capabilities = std::move(reported)});
   return answered(Json::Value());
 }
 

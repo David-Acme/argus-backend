@@ -850,7 +850,10 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
     const auto garage = drogon::sync_wait(CameraRepository().findById(garageId));
     REQUIRE(garage.has_value());
     const auto answering = scripted_onvif::ptzCamera();
-    CameraDriverTestAccess::install(garageId, std::make_shared<OnvifDriver>(garage.value_or(CameraSchema{}), answering));
+    CameraDriverTestAccess::install(
+        garageId, std::make_shared<OnvifDriver>(OnvifDriverParts{.camera = garage.value_or(CameraSchema{}),
+                                                                 .transport = answering,
+                                                                 .recorder = &CameraDriverRegistry::instance().recorder()}));
     CHECK(drogon::sync_wait(CameraFeatureService().reconcileCapabilities()) == 0);
     CHECK(settled(garageId, R"(["ptz","presets"])"));
     REQUIRE_FALSE(answering->sent.empty());

@@ -7,11 +7,19 @@
 #include <mutex>
 #include <optional>
 
+struct OnvifDriverParts
+{
+  CameraSchema camera;
+  std::shared_ptr<IOnvifTransport> transport;
+  const CapabilityRecorder* recorder{nullptr};
+};
+
 class OnvifDriver final : public ICameraDriver
 {
 public:
-  explicit OnvifDriver(const CameraSchema& camera);
+  OnvifDriver(const CameraSchema& camera, const CapabilityRecorder& recorder);
   OnvifDriver(const CameraSchema& camera, std::shared_ptr<IOnvifTransport> transport);
+  explicit OnvifDriver(OnvifDriverParts parts);
 
   static OnvifEndpoint endpointOf(const CameraSchema& camera);
 
@@ -28,6 +36,7 @@ private:
   DriverResult connected();
 
   CameraSchema camera_;
+  const CapabilityRecorder* recorder_;
   std::mutex callMutex_;
   OnvifClient client_;
   mutable std::mutex knownMutex_;

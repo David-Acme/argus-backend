@@ -1,9 +1,8 @@
 #include <shared/services/camera-driver/capability-record.hxx>
 
-#include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
 
-#include <drogon/drogon.h>
+#include <drogon/utils/coroutine.h>
 #include <runtime/blocking-task.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
@@ -14,13 +13,11 @@
 #include <optional>
 #include <utility>
 
-namespace
-{
-drogon::Task<void> recordQuietly(CapabilityRecordInput input)
+drogon::Task<void> CapabilityRecorder::recordQuietly(CapabilityRecordInput input) const
 {
   const int64_t cameraId = input.cameraId;
   try {
-    co_await capability_record::record(std::move(input));
+    co_await record(std::move(input));
   }
   catch (const std::exception& error) {
     LOG_WARN << "Camera capabilities: could not record what camera " << cameraId
@@ -28,12 +25,11 @@ drogon::Task<void> recordQuietly(CapabilityRecordInput input)
   }
 }
 
-drogon::Task<void> discoverAll(std::vector<int64_t> cameraIds)
+drogon::Task<void> CapabilityRecorder::discoverAll(std::vector<int64_t> cameraIds) const
 {
-  const CameraRepository cameras;
   for (const int64_t cameraId : cameraIds) {
     try {
-      const auto camera = co_await cameras.findById(cameraId);
+      const auto camera = co_await repository_.findById(cameraId);
       if (!camera || camera->driver != CameraDriver::Onvif || !camera->isEnabled)
         continue;
       const auto driver = CameraDriverRegistry::instance().controlDriverFor(*camera);
@@ -46,17 +42,15 @@ drogon::Task<void> discoverAll(std::vector<int64_t> cameraIds)
     }
   }
 }
-}
 
-drogon::Task<bool> capability_record::record(CapabilityRecordInput input)
+drogon::Task<bool> CapabilityRecorder::record(CapabilityRecordInput input) const
 {
   const auto client = DbService::cameraClient();
   if (!client)
     co_return false;
-  const CameraRepository cameras;
   auto transaction = co_await db_transaction::begin(client);
   try {
-    const auto before = co_await cameras.findById(input.cameraId, transaction.get());
+    const auto before = co_await repository_.findById(input.cameraId, transaction.get());
     if (!before || before->capabilities == input.capabilities) {
       db_transaction::rollback(transaction);
       co_return false;
@@ -64,7 +58,7 @@ drogon::Task<bool> capability_record::record(CapabilityRecordInput input)
     CameraUpdateInput change;
     change.capabilities = std::move(input.capabilities);
     change.client = transaction.get();
-    const CameraSchema row = co_await cameras.update(input.cameraId, change);
+    const CameraSchema row = co_await repository_.update(input.cameraId, change);
     if (row.id == 0) {
       db_transaction::rollback(transaction);
       co_return false;
@@ -86,16 +80,17 @@ drogon::Task<bool> capability_record::record(CapabilityRecordInput input)
   }
 }
 
-void capability_record::learned(CapabilityRecordInput input)
+void CapabilityRecorder::learned(CapabilityRecordInput input) const
 {
   if (input.cameraId <= 0)
     return;
-  drogon::async_run([input = std::move(input)]() mutable { return recordQuietly(std::move(input)); });
+  drogon::async_run([this, input = std::move(input)]() mutable { return recordQuietly(std::move(input)); });
 }
 
-void capability_record::discover(std::vector<int64_t> cameraIds)
+void CapabilityRecorder::discover(std::vector<int64_t> cameraIds) const
 {
   if (cameraIds.empty())
     return;
-  drogon::async_run([cameraIds = std::move(cameraIds)]() mutable { return discoverAll(std::move(cameraIds)); });
+  drogon::async_run(
+      [this, cameraIds = std::move(cameraIds)]() mutable { return discoverAll(std::move(cameraIds)); });
 }
