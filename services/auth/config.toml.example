@@ -2,6 +2,10 @@
 host = "127.0.0.1"
 grpc_port = 7043
 
+[internal_tls]
+dir = ""
+address = "127.0.0.1:7243"
+
 [rpc.callers]
 camera = ""
 guard = ""

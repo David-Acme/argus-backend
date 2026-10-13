@@ -994,7 +994,7 @@ composition test under its own certificate name: two ports, plaintext only,
 one handshake. A service whose main used to build its server inline gets
 such a delegate.
 
-Wired so far: tts, settings, productivity, notification and sync.
+Wired so far: tts, settings, productivity, notification, sync and auth.
 - tts and settings publish no gRPC port, so 7329 and 7247 are not published
   either.
 - settings opens its mutual TLS port on the modules RPC server, beside
@@ -1014,6 +1014,13 @@ Wired so far: tts, settings, productivity, notification and sync.
   (services/sync/src/app/rpc/sync-control-rpc-server). If the control RPC
   cannot listen on either port, sync does not start (fatal since step 4; see
   services/sync/CONTEXT.md, "The control RPC must listen").
+- auth publishes its plaintext RPC 7043 on 127.0.0.1, so 7243 is published
+  there too (`AUTH_RPC_TLS_PORT`). Its main used to build the RPC server
+  inline and now calls startAuthRpc
+  (services/auth/src/app/rpc/auth-rpc-server). If the RPC cannot listen on
+  either port, auth does not start (services/auth/CONTEXT.md, "The verdict
+  RPC must listen"). The plaintext verdict path answers a recorded golden
+  both with and without the material loaded.
 
 The clients move to `tls:` targets in step 5, and the plaintext listeners
 go only after the owner's check. For every deploy template that declares

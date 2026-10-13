@@ -107,3 +107,29 @@ target_link_libraries(auth-rpc-callers-test PRIVATE
 target_compile_options(auth-rpc-callers-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(auth-rpc-callers-test)
 add_test(NAME auth-rpc-callers-test COMMAND auth-rpc-callers-test)
+
+add_executable(auth-rpc-server-test unit/auth-rpc-server-test.cc)
+target_compile_definitions(auth-rpc-server-test PRIVATE
+    ARGUS_AUTH_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql"
+    ARGUS_AUTH_GOLDEN_FILE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/validate-token-golden.json")
+target_include_directories(auth-rpc-server-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/support)
+target_link_libraries(auth-rpc-server-test PRIVATE
+    argus::auth-session
+    argus::auth-device
+    argus::auth-rpc
+    argus::lib::auth
+    argus::lib::config
+    argus::lib::sqlite
+    argus::lib::text
+    argus::clients::auth
+    argus::clients::identity
+    argus::lib::grpc-test-support
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(auth-rpc-server-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(auth-rpc-server-test)
+add_test(NAME auth-rpc-server-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:auth-rpc-server-test> 5)
+set_tests_properties(auth-rpc-server-test PROPERTIES SKIP_RETURN_CODE 77)

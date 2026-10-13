@@ -34,6 +34,7 @@ services:
     ports:
       - "${AUTH_PORT:-7042}:7042"
       - "127.0.0.1:${AUTH_RPC_PORT:-7043}:7043"
+      - "127.0.0.1:${AUTH_RPC_TLS_PORT:-7243}:7243"
       - "127.0.0.1:${AUTH_TUNNEL_PORT:-7142}:7142"
     entrypoint: ["/opt/argus/argus-auth"]
     volumes:
@@ -46,6 +47,12 @@ services:
       - type: bind
         source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/auth.seed
         target: /run/secrets/nats.seed
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/certs/internal/auth
+        target: /run/secrets/internal-tls
         read_only: true
         bind:
           create_host_path: false

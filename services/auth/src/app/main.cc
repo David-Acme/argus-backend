@@ -1,4 +1,5 @@
 #include <app/rpc/auth-callers.hxx>
+#include <app/rpc/auth-rpc-server.hxx>
 #include <app/rpc/auth-rpc-service.hxx>
 #include <app/rpc/local-auth-client.hxx>
 #include <auth/device-filter.hxx>
@@ -21,6 +22,7 @@
 #include <feature/session/services/session-service.hxx>
 #include <grpc/fleet-caller-gate.hxx>
 #include <grpc/grpc-client-base.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
@@ -28,11 +30,13 @@
 #include <http/certificate-reload.hxx>
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
+#include <http/tls-health.hxx>
 #include <identity/identity-client.hxx>
 #include <json/value.h>
 #include <mdns/mdns-service.hxx>
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 #include <runtime/shutdown-signal.hxx>
@@ -91,6 +95,16 @@ int main()
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
+  const InternalTlsConfig internalTlsConfig = InternalTlsConfig::resolve();
+  std::optional<argus::client::InternalTlsMaterial> internalTls;
+  try {
+    internalTls = argus::client::installInternalTlsFrom(internalTlsConfig.directory);
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  const auto loadedTls = internalTls.value_or(argus::client::InternalTlsMaterial{});
 
   const AuthDbConfig authDb = AuthConfig::resolveDb();
   const ListenerConfig listener = AuthConfig::resolveListener();
@@ -265,7 +279,10 @@ int main()
                                  status["enabled"] = true;
                                  status["connected"] = bus->isConnected();
                                  return status;
-                               }}}}));
+                               }},
+                              tls_health::healthExtra(
+                                  {.certificatePem = loadedTls.certificatePem,
+                                   .trustBundlePem = loadedTls.trustBundlePem})}}));
 
   const auto rpcGate = std::make_shared<const argus::client::FleetCallerGate>(
       argus::client::FleetGateConfig{
@@ -282,27 +299,29 @@ int main()
   AuthRpcService rpcService({.sessions = &sessions,
                              .deviceCredentials = &deviceCredentials},
                             rpcGate);
-  grpc::ServerBuilder rpcBuilder;
-  rpcBuilder.AddListeningPort(rpc.listener.host + ":" +
-                                  std::to_string(rpc.listener.port),
-                              grpc::InsecureServerCredentials());
-  rpcBuilder.RegisterService(&rpcService);
-  std::unique_ptr<grpc::Server> rpcServer(rpcBuilder.BuildAndStart());
-  if (rpcServer)
-    LOG_INFO << "Auth RPC listening on " << rpc.listener.host << ":"
-             << rpc.listener.port << " (cleartext, "
-             << (rpcGate->open() ? "loopback only, no caller credential"
-                                 : std::to_string(rpcGate->pairedCount()) +
-                                       " paired callers" +
-                                       (rpcGate->acceptsLegacy()
-                                            ? ", legacy fleet secret for the "
-                                              "unpaired ones"
-                                            : ""))
-             << ")";
-  else
-    LOG_WARN << "Auth RPC failed to listen on " << rpc.listener.host << ":"
-             << rpc.listener.port
-             << "; no service can validate a session against this one";
+  const AuthRpcListenInput rpcInput{
+      .address = rpc.listener.host + ":" + std::to_string(rpc.listener.port),
+      .tlsAddress = internalTlsConfig.address,
+      .tls = internalTls,
+      .services = {&rpcService}};
+  auto rpcListener = startAuthRpc(rpcInput);
+  if (const auto failure = authRpcFailure(rpcInput, rpcListener)) {
+    LOG_FATAL << *failure << " — aborting startup";
+    _exit(1);
+  }
+  std::unique_ptr<grpc::Server> rpcServer = std::move(rpcListener.server);
+  if (rpcListener.tlsPort > 0)
+    LOG_INFO << "Auth RPC with mutual TLS on " << internalTlsConfig.address;
+  LOG_INFO << "Auth RPC listening on " << rpc.listener.host << ":"
+           << rpc.listener.port << " (cleartext, "
+           << (rpcGate->open() ? "loopback only, no caller credential"
+                               : std::to_string(rpcGate->pairedCount()) +
+                                     " paired callers" +
+                                     (rpcGate->acceptsLegacy()
+                                          ? ", legacy fleet secret for the "
+                                            "unpaired ones"
+                                          : ""))
+           << ")";
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
            << (listener.tls ? " (TLS" : " (plain") << ", cert "

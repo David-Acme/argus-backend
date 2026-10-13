@@ -388,6 +388,20 @@ secret shorter than 32 characters in every mode, native included
 authenticates. The deploy template binds `0.0.0.0` and the compose publishes
 7043 on `127.0.0.1` only.
 
+**The verdict RPC must listen.** Since S1 step 4 (2026-10-13), auth does
+not start when its RPC cannot listen on 7043, or on its mutual TLS port 7243
+when that one is configured. It logs the cause with LOG_FATAL and exits 1.
+It used to log a warning and run on, but an auth without its verdict RPC
+leaves every filter chain in the house without an answer. A stopped auth is
+restarted by its supervisor, shows in the logs, and is marked unhealthy by
+compose. The RPC server comes from startAuthRpc
+(`src/app/rpc/auth-rpc-server`), a thin delegate to lib/grpc's
+startListening, and the decision is authRpcFailure. auth-rpc-server-test
+covers both. Its golden case also shows that the plaintext verdict path on
+7043 answers the recorded ValidateToken golden
+(`tests/fixtures/validate-token-golden.json`, recorded through the old inline
+server) both with and without the mutual TLS material loaded.
+
 **Ports.** 7042 is this service's HTTP subroute (TLS with the instance
 certificate), 7043 its RPC listener. The compose publishes 7042 on the LAN,
 where the app dials `/auth` directly, and 7043 on `127.0.0.1` only, where the

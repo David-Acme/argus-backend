@@ -2,6 +2,10 @@
 host = "0.0.0.0"
 grpc_port = 7043
 
+[internal_tls]
+dir = "/run/secrets/internal-tls"
+address = "0.0.0.0:7243"
+
 [rpc.callers]
 camera = "CHANGE_ME_CAMERA_AUTH"
 guard = "CHANGE_ME_GUARD_AUTH"

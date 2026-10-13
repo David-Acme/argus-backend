@@ -1,5 +1,6 @@
 argus_module(NAME auth-rpc
     SOURCES
+        auth-rpc-server.cc
         auth-rpc-service.cc
         local-auth-client.cc
         session-verdict-wire.cc
