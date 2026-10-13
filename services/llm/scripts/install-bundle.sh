@@ -7,6 +7,7 @@ ROOT="$(cd "$LLM_ROOT/../.." && pwd)"
 usage() {
   cat <<'EOF'
 usage: install-bundle.sh <decide|extract> <bundle-dir> [--slot DIR] [--config PATH]
+                         [--checker PATH] [--skip-parity]
        install-bundle.sh <decide|extract> --rollback [--slot DIR] [--config PATH]
 
 Installs a trained model bundle into the slot argus-llm reads: the decider
@@ -18,7 +19,10 @@ directly.
 The bundle is verified before anything moves: every file its sha256 file lists
 matches, no file is unlisted, manifest.json names the model the slot serves
 and records the hash of model.onnx (and, for a decider, of questions.json),
-and a decider's labels all name a tool the server serves. It is copied beside
+and a decider's labels all name a tool the server serves. The model then runs
+on the bundle's own golden vectors through llm-bundle-check (the build's, or
+--checker PATH); a bundle without golden vectors is installed with a warning,
+and --skip-parity installs without the checker. It is copied beside
 the slot, verified again, and swapped in; the bundle it replaces is kept as
 <slot>.previous. --rollback swaps the two back. Restart argus-llm to load it.
 EOF
@@ -82,6 +86,14 @@ if manifest.get("model") != model:
     refuse(f"manifest.json names the model {manifest.get('model')!r}, and this slot serves {model!r}")
 if (manifest.get("modelOnnx") or {}).get("sha256", "").lower() != listed.get("model.onnx"):
     refuse("manifest.json does not record the hash of the model.onnx this bundle carries")
+precision = manifest.get("precision") or ""
+kind_name = manifest.get("artefactKind") or ""
+if precision not in ("", "fp32", "int8") or not (precision or kind_name.startswith(("fp32", "int8"))):
+    refuse("manifest.json declares no precision (fp32 or int8)")
+golden = manifest.get("golden")
+if golden is not None:
+    if listed.get(golden.get("file", "")) != (golden.get("sha256") or "").lower():
+        refuse("manifest.json records golden vectors the bundle does not carry under that hash")
 if kind == "decide":
     questions = manifest.get("questions") or {}
     if questions.get("file") != "questions.json" or questions.get("sha256", "").lower() != listed.get("questions.json"):
@@ -91,7 +103,8 @@ if kind == "decide":
         if label not in served and label not in ("none", "ask"):
             refuse(f"the bundle names the label {label!r}, which no tool serves")
 fit = (manifest.get("calibration") or {}).get("fitOn", "")
-print(f"verified {model} bundle {bundle.name}: model.onnx {listed['model.onnx'][:12]}, thresholds fit on {fit or 'an unrecorded split'}")
+print(f"verified {model} bundle {bundle.name}: model.onnx {listed['model.onnx'][:12]}, precision {precision or kind_name}, "
+      f"golden vectors {'present' if golden else 'absent'}, thresholds fit on {fit or 'an unrecorded split'}")
 PY
 }
 
@@ -110,7 +123,37 @@ print(value or default)
 PY
 }
 
+find_checker() {
+  local candidate
+  for candidate in "$LLM_ROOT/build/prod/llm-bundle-check" "$LLM_ROOT/build/dev/llm-bundle-check"; do
+    if [ -x "$candidate" ]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+check_parity() {
+  local bundle="$1" code=0
+  if [ "$skip_parity" -eq 1 ]; then
+    printf 'install-bundle: the golden vectors were not checked (--skip-parity)\n' >&2
+    return 0
+  fi
+  if [ -z "$checker" ]; then
+    checker="$(find_checker)" || fail "no llm-bundle-check is built; build argus-llm, pass --checker, or --skip-parity"
+  fi
+  "$checker" "$kind" "$bundle" || code=$?
+  case "$code" in
+    0) ;;
+    3) printf 'install-bundle: %s carries no golden vectors; its model was not checked against them\n' "$bundle" >&2 ;;
+    *) return 1 ;;
+  esac
+}
+
 kind=""
+checker=""
+skip_parity=0
 source_dir=""
 slot=""
 config="$LLM_ROOT/config.toml"
@@ -121,6 +164,8 @@ while [ $# -gt 0 ]; do
     --rollback) rollback=1; shift ;;
     --slot) [ $# -ge 2 ] || { usage >&2; exit 1; }; slot="$2"; shift 2 ;;
     --config) [ $# -ge 2 ] || { usage >&2; exit 1; }; config="$2"; shift 2 ;;
+    --checker) [ $# -ge 2 ] || { usage >&2; exit 1; }; checker="$2"; shift 2 ;;
+    --skip-parity) skip_parity=1; shift ;;
     decide | extract)
       [ -z "$kind" ] || fail "one slot per run"
       kind="$1"
@@ -166,6 +211,7 @@ mkdir -p "$(dirname "$slot")"
 rm -rf "$incoming"
 cp -a "$source_dir" "$incoming"
 verify "$incoming" "$kind" || { rm -rf "$incoming"; fail "the copy at $incoming does not verify"; }
+check_parity "$incoming" || { rm -rf "$incoming"; fail "the model in $source_dir does not reproduce its own golden vectors"; }
 if [ -d "$slot" ]; then
   rm -rf "$previous"
   mv "$slot" "$previous"

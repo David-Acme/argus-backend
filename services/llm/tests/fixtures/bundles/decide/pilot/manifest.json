@@ -19,5 +19,6 @@
  "questions": {
   "file": "questions.json",
   "sha256": "1ce9e1a2ca112f525036b280447f786d2753954a76fc169914152ed60f3520c7"
- }
+ },
+ "precision": "fp32"
 }

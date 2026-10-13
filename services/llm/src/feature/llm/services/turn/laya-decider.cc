@@ -90,7 +90,7 @@ class LayaBundleModel final : public LayaModel
 public:
   explicit LayaBundleModel(LayaModelInput input)
       : modelPath_(input.bundle.modelPath()), tokenizerJson_(input.bundle.tokenizerJson()), questionsJson_(input.bundle.questionsJson()),
-        maxLen_(input.bundle.maxLen()), decode_(input.decode), options_(input.options)
+        maxLen_(input.bundle.maxLen()), precision_(input.bundle.precision()), decode_(input.decode), options_(input.options)
   {
   }
 
@@ -107,19 +107,17 @@ public:
       return std::nullopt;
     const LayaQuestion& tool = *tool_;
     const LayaQuestion& now = *now_;
-    const std::optional<std::vector<float>> toolLogits = logitsOf(tool, text);
-    if (!toolLogits || toolLogits->size() < tool.labels.size())
+    const std::array<const LayaQuestion*, 2> questions{&tool, &now};
+    const std::optional<std::vector<std::vector<float>>> logits = logitsOf(questions, text);
+    if (!logits || (*logits)[0].size() < tool.labels.size() || (*logits)[1].size() < 2)
       return std::nullopt;
     const std::vector<double> toolProbs =
-        softmax(std::span(*toolLogits).first(tool.labels.size()), decode_.temperature[0]);
+        softmax(std::span((*logits)[0]).first(tool.labels.size()), decode_.temperature[0]);
     std::vector<std::pair<std::string, double>> probabilities;
     probabilities.reserve(tool.labels.size());
     for (std::size_t index = 0; index < tool.labels.size(); ++index)
       probabilities.emplace_back(tool.labels[index], toolProbs[index]);
-    const std::optional<std::vector<float>> nowLogits = logitsOf(now, text);
-    if (!nowLogits || nowLogits->size() < 2)
-      return std::nullopt;
-    const std::vector<double> nowProbs = softmax(std::span(*nowLogits).first(2), decode_.temperature[2]);
+    const std::vector<double> nowProbs = softmax(std::span((*logits)[1]).first(2), decode_.temperature[2]);
     return LayaReading{.probabilities = std::move(probabilities), .now = nowProbs[1]};
   }
 
@@ -155,40 +153,70 @@ private:
       return;
     }
     LOG_INFO << "argus-llm: the Laya decider is ready on " << modelPath_.filename().string() << " with " << tool_->labels.size()
-             << " options, max_len=" << maxLen_ << " head_max_len=" << decode_.headMaxLen;
+             << " options, precision=" << std::string(bundlePrecisionToString(precision_)) << " max_len=" << maxLen_
+             << " head_max_len=" << decode_.headMaxLen;
     ready_ = true;
   }
 
-  [[nodiscard]] std::optional<std::vector<float>> logitsOf(const LayaQuestion& question, std::string_view text)
+  [[nodiscard]] std::optional<std::vector<std::vector<float>>> logitsOf(std::span<const LayaQuestion* const> questions, std::string_view text)
   {
-    const LayaSequence sequence =
-        layaBuildSequence({.tokenizer = tokenizer_, .state = text, .maxLen = maxLen_, .headMaxLen = decode_.headMaxLen}, question);
-    if (sequence.ids.empty() || sequence.markers.empty())
-      return std::nullopt;
-    const auto length = static_cast<std::int64_t>(sequence.ids.size());
-    const auto markers = static_cast<std::int64_t>(sequence.markers.size());
-    std::vector<std::int64_t> ids(sequence.ids.begin(), sequence.ids.end());
-    std::vector<std::int64_t> attention(sequence.ids.size(), 1);
-    std::vector<std::int64_t> positions(sequence.markers.begin(), sequence.markers.end());
-    std::vector<std::int64_t> markerMask(sequence.markers.size(), 1);
-    std::vector<std::int64_t> qtype{static_cast<std::int64_t>(question.kind)};
+    std::vector<LayaSequence> sequences;
+    sequences.reserve(questions.size());
+    std::size_t length = 0;
+    std::size_t width = 0;
+    for (const LayaQuestion* question : questions) {
+      LayaSequence sequence =
+          layaBuildSequence({.tokenizer = tokenizer_, .state = text, .maxLen = maxLen_, .headMaxLen = decode_.headMaxLen}, *question);
+      if (sequence.ids.empty() || sequence.markers.empty())
+        return std::nullopt;
+      length = std::max(length, sequence.ids.size());
+      width = std::max(width, sequence.markers.size());
+      sequences.push_back(std::move(sequence));
+    }
+    const std::size_t rows = sequences.size();
+    std::vector<std::int64_t> ids(rows * length, tokenizer_.padId());
+    std::vector<std::int64_t> attention(rows * length, 0);
+    std::vector<std::int64_t> positions(rows * width, 0);
+    std::vector<std::int64_t> markerMask(rows * width, 0);
+    std::vector<std::int64_t> qtype;
+    qtype.reserve(rows);
+    for (std::size_t row = 0; row < rows; ++row) {
+      const LayaSequence& sequence = sequences[row];
+      std::ranges::copy(sequence.ids, ids.begin() + static_cast<std::ptrdiff_t>(row * length));
+      std::fill_n(attention.begin() + static_cast<std::ptrdiff_t>(row * length), sequence.ids.size(), 1);
+      std::ranges::copy(sequence.markers, positions.begin() + static_cast<std::ptrdiff_t>(row * width));
+      std::fill_n(markerMask.begin() + static_cast<std::ptrdiff_t>(row * width), sequence.markers.size(), 1);
+      qtype.push_back(static_cast<std::int64_t>(questions[row]->kind));
+    }
+    const auto batch = static_cast<std::int64_t>(rows);
+    const auto tokens = static_cast<std::int64_t>(length);
+    const auto slots = static_cast<std::int64_t>(width);
     const OnnxCall call{
-        .inputs = {{.name = "input_ids", .shape = {1, length}, .values = std::move(ids)},
-                   {.name = "attention_mask", .shape = {1, length}, .values = std::move(attention)},
-                   {.name = "marker_pos", .shape = {1, markers}, .values = std::move(positions)},
-                   {.name = "marker_mask", .shape = {1, markers}, .values = std::move(markerMask), .boolean = true},
-                   {.name = "qtype", .shape = {1}, .values = std::move(qtype)}},
+        .inputs = {{.name = "input_ids", .shape = {batch, tokens}, .values = std::move(ids)},
+                   {.name = "attention_mask", .shape = {batch, tokens}, .values = std::move(attention)},
+                   {.name = "marker_pos", .shape = {batch, slots}, .values = std::move(positions)},
+                   {.name = "marker_mask", .shape = {batch, slots}, .values = std::move(markerMask), .boolean = true},
+                   {.name = "qtype", .shape = {batch}, .values = std::move(qtype)}},
         .outputs = {"logits"}};
     const std::optional<std::vector<OnnxTensor>> out = session_.run(call);
-    if (!out || out->empty())
+    if (!out || out->empty() || out->front().shape.size() != 2 || out->front().shape[0] != batch)
       return std::nullopt;
-    return out->front().values;
+    const auto columns = static_cast<std::size_t>(out->front().shape[1]);
+    const std::vector<float>& values = out->front().values;
+    std::vector<std::vector<float>> logits;
+    logits.reserve(rows);
+    for (std::size_t row = 0; row < rows; ++row) {
+      const auto from = values.begin() + static_cast<std::ptrdiff_t>(row * columns);
+      logits.emplace_back(from, from + static_cast<std::ptrdiff_t>(std::min(columns, sequences[row].markers.size())));
+    }
+    return logits;
   }
 
   std::filesystem::path modelPath_;
   std::filesystem::path tokenizerJson_;
   std::filesystem::path questionsJson_;
   int maxLen_{512};
+  BundlePrecision precision_{BundlePrecision::Fp32};
   BundleDecode decode_;
   OnnxOptions options_;
   SpTokenizer tokenizer_;

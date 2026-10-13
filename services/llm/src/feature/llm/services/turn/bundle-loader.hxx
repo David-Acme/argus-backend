@@ -18,6 +18,23 @@ enum class BundleKind : unsigned char
   Extractor
 };
 
+enum class BundlePrecision : unsigned char
+{
+  Fp32,
+  Int8
+};
+
+[[nodiscard]] std::string_view bundlePrecisionToString(BundlePrecision precision);
+
+struct BundleGolden
+{
+  std::filesystem::path file;
+  double probability{0.0};
+  double now{0.0};
+  double score{0.0};
+  bool present{false};
+};
+
 struct BundleDecode
 {
   int headMaxLen{192};
@@ -84,6 +101,10 @@ public:
 
   [[nodiscard]] const std::string& modelSha256() const { return modelSha256_; }
 
+  [[nodiscard]] BundlePrecision precision() const { return precision_; }
+
+  [[nodiscard]] const BundleGolden& golden() const { return golden_; }
+
 private:
   void load();
 
@@ -101,6 +122,8 @@ private:
   CalibrationModel nowCalibration_;
   std::string fitSplit_;
   std::string modelSha256_;
+  BundlePrecision precision_{BundlePrecision::Fp32};
+  BundleGolden golden_;
 };
 
 }

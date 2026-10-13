@@ -1,5 +1,5 @@
 tool 23.1.1
-tus 1179
+tus 1182
 modernize-use-nodiscard 371
 modernize-avoid-c-style-cast 307
 bugprone-suspicious-stringview-data-usage 250

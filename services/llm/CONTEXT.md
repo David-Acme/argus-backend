@@ -1655,9 +1655,114 @@ name a tool in `services/llm/tools/laya-labels.tsv`), copies it beside the slot
 `<slot>.previous` and swaps; `--rollback` swaps the two back. `--slot DIR` names
 the slot directly; otherwise it is `[decide]`/`[extract]` `bundle_dir` from
 `services/llm/config.toml` (or `--config PATH`), defaulting to the shipped
-slots. Restart argus-llm to load the new bundle.
-`services/llm/scripts/install-bundle-test.sh` tests the script and
-`scripts/build-all-test.sh` runs it.
+slots. Before the swap the copy's model runs on the bundle's own golden vectors
+through `llm-bundle-check` (the build's, or `--checker PATH`): a model that
+misses them is refused and the slot is untouched; a bundle that carries none is
+installed with a warning; `--skip-parity` installs without the checker, which
+`provision.sh` uses only when argus-llm is not built yet. Restart argus-llm to
+load the new bundle. `services/llm/scripts/install-bundle-test.sh` tests the
+script and `scripts/build-all-test.sh` runs it.
+
+### Precision: an fp32 or an int8 bundle
+
+`manifest.json` declares `precision`, `fp32` or `int8` (`turn::BundlePrecision`);
+any other value is refused. A bundle that predates the key is read from its
+`artefactKind` (`int8-…` is int8, `fp32…` is fp32), which is how both pilot
+bundles (`int8-embedding`: the embedding table alone is INT8, every MatMul fp32)
+read as int8; a bundle that declares neither is refused. The loader validates an
+int8 bundle exactly like an fp32 one, and the precision is printed on the
+engine's ready line.
+
+What an INT8 bundle contains is what intent-training's exporter writes today:
+`onnxruntime.quantization.quantize_dynamic` (`QInt8`, per channel,
+`reduce_range`; `scripts/onnx_tools.py`), so the bundle is still one
+`model.onnx` with no external data and no calibration or scale file — dynamic
+quantization computes the activation scales at run time — beside the same
+`tokenizer/`, `questions.json` (Laya), `labels.json`, `decision.json`,
+`max_len`, `model-card.md`, `manifest.json` and `sha256`. `kit_bundle.py`
+(Laya) and `gliner_bundle.py bundle` (GLiNER) write that layout; neither writes
+`precision` or golden vectors yet, and `tests/eval/bundle-golden.py` adds both.
+
+The session needs no option of its own for INT8: `ORT_ENABLE_ALL` fuses the
+exporter's `DynamicQuantizeLinear` + `MatMulInteger` pairs into the CPU
+execution provider's `DynamicQuantizeMatMul`, the one execution provider the
+service registers, so there is nothing to fall back to — a quantized operator
+the CPU EP did not implement would fail `Ort::Session` creation and turn the
+engine off with its log line, never run in fp32. Measured on a fully quantized
+copy of the pilot (every MatMul INT8, 337 MB against 701 MB), an onnxruntime
+1.24.4 profile assigns every node to `CPUExecutionProvider`, with
+`DynamicQuantizeMatMul` 40% of kernel time where fp32 `MatMul` was 67% on the
+pilot.
+
+**Dynamic INT8 makes batching part of the model.** `DynamicQuantizeLinear` takes
+one scale per activation tensor, over every row of the batch, so an INT8 model's
+scores depend on which rows run together. laya's `ONNXAgent` runs all of a
+state's questions as one batch, padded to the longest row with the tokenizer's
+pad id, attention 0 on the padding, `marker_pos` 0 and `marker_mask` false past
+each row's markers; `turn::LayaBundleModel` now does the same (one `Run` of
+batch 2 for `tool` and `now`). Run one question at a time, the fully quantized
+copy missed its own Python reference by up to 0.44 in probability and 0.74 in
+`now`, with 3 of 18 decisions different; batched like the reference, the worst
+gaps are 5.0e-05 and 4.6e-05 and no decision differs. On the fp32 pilot the
+batched run reproduces the reference as before (worst gap 5.0e-05).
+
+### Golden vectors: parity per bundle
+
+An INT8 model does not reproduce an fp32 model's scores, so parity is checked per
+bundle, against vectors the bundle carries. `manifest.json` records them:
+
+```json
+"golden": {"file": "golden.json", "sha256": "<hex>",
+           "tolerance": {"probability": 0.002, "now": 0.002}}
+```
+
+(`{"score": 0.002}` for an extractor). The file must be listed in `sha256` under
+that hash, or the bundle is refused at load. Its content:
+
+- **Laya** — `{"kind": "laya", "reference": "...", "modelSha256": "...",
+  "probes": [{"text", "lang", "sequences": {<qid>: {"ids", "markers"}},
+  "tool": {<label>: p}, "choice": <label>, "now": p}]}`: the sequences of every
+  question for the probe text, rendered by `laya.common.build_sequence` at the
+  bundle's `max_len` and `head_max_len`, and the probabilities, choice and noul
+  reading laya's `ONNXAgent` gives with the bundle's own `model.onnx`.
+- **GLiNER** — `{"kind": "gliner", ..., "probes": [{"id", "text", "lang",
+  "type", "fields", "inputIds", "wordIndices", "wordMask", "queryIndices",
+  "queryMask", "reference": {<field>: [{"text", "start", "end",
+  "confidence"}]}}]}`: the rows `intent-training/scripts/gliner_bundle.py
+  fixture` writes, with the spans Python `onnxruntime` decodes from the
+  bundle's own graph at its `pairThreshold`/`maxSpanWords` (flat overlap
+  policy).
+
+`turn::checkLayaGolden`/`turn::checkGlinerGolden` (`services/turn/bundle-golden.cc`)
+require the inputs to be identical — the renderer and the prompt builder are
+model-independent and stay exact — and the scores within the bundle's own
+tolerance, with the same choice or the same spans. `llm-bundle-check <decide|extract>
+<dir>` runs them on a bundle as argus-llm loads it (exit 0 passed, 1 failed, 2
+invalid, 3 no golden vectors); `install-bundle.sh` runs it before the swap, and
+ctest runs it on the installed bundles (`llm-bundle-check-decide`,
+`llm-bundle-check-extract`, skipped while a bundle carries no vectors);
+`llm-bundle-golden-test` holds the comparison to its tolerances. The writer is
+`tests/eval/bundle-golden.py --kind decide|extract --bundle DIR --precision
+fp32|int8 [--rows ROWS]`, run on a freshly exported bundle with the
+onnxruntime `parity-references.lock.toml` pins (1.24.4, the version argus-llm
+links): it writes `golden.json`, records it and the precision in the manifest
+and reseals the listing. The pilot bundles carry no vectors, so their parity
+stays the repository fixtures above (`parity-onnx.json`, `parity-pilot.json`,
+the GLiNER references); a copy of the Laya pilot with vectors written by the
+tool passes `llm-bundle-check` with worst gaps 5.0e-05 / 4.8e-05.
+
+### The operating point is the bundle's
+
+The thresholds a model was calibrated for ship in the bundle's
+`decision.json`, which the bundle's own `sha256` listing pins and which the
+exporter writes: Laya's `act`, `ask`, `margin`, `now` and the `calibration`
+block, GLiNER's `pairThreshold` and `maxSpanWords`. When `decision.json`
+declares a Laya policy, that policy is the effective one for the `laya` decider
+(`configuredPolicies` in `main.cc`, and the same in the evals); `[decide]`
+`act`/`ask`/`margin` (0.90 / 0.60 / 0.10 in the template) and `[decide.laya]`
+are only the fallback for a bundle that declares none. The pilot declares
+`act` 0.77, `ask` 0.77, `margin` 0.0, `now` 0.5 on Platt-calibrated
+confidence, so 0.77 is what runs; a new bundle sets its own the same way.
 
 ### The pilot bundles, and how they arrive
 
@@ -1822,14 +1927,16 @@ its own reading against them (`llm-gliner-decoder-test`).
 
 `turn::LayaBundleModel` (`laya-decider.cc`) is the runtime behind
 `turn::LayaModel`: it loads `questions.json` from the bundle, renders each
-question with `turn::layaBuildSequence`, and runs the graph once per question.
+question with `turn::layaBuildSequence`, and runs the graph once per turn, the
+`tool` and `now` rows padded into one batch exactly as laya's `ONNXAgent` does
+(see "Precision" above for why that matters for INT8).
 The pilot's `tool` question is a `choice` and `now` is a `noul`; `qtype` is
 `QuestionKind`'s own value (`Choice` 0, `Score` 1, `Noul` 2), which is the
 number the checkpoint trained with. The five graph inputs are `input_ids`,
 `attention_mask`, `marker_pos`, `marker_mask` (the graph's only bool tensor,
 which is why `turn::OnnxInput` carries a `boolean` flag) and `qtype`; the output
-is `logits`, one score per option, and `marker_mask` is all true for the single
-row a turn sends.
+is `logits`, one row per question and one score per option, and `marker_mask`
+is true on each row's own markers and false on the padding.
 
 The probabilities are `softmax(logits[:k] / temperature[qtype])`, exactly
 laya's own arithmetic, and the `calibration` block of `decision.json` then maps
