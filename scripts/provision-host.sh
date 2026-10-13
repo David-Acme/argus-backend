@@ -343,40 +343,44 @@ configure_webrtc_candidate() {
 
 ensure_secret_file() {
   local path="$1"
-  local value="$2"
+  shift
 
   if [ -s "$path" ]; then
     chmod 600 "$path"
     return
   fi
-  printf '%s\n' "$value" > "$path"
+  (umask 077 && "$@" > "$path")
   chmod 600 "$path"
+}
+
+upper_hex() {
+  openssl rand -hex "$1" | tr '[:lower:]' '[:upper:]'
+}
+
+lower_hex() {
+  openssl rand -hex "$1"
+}
+
+bucket_name() {
+  printf 'argus-%s-private\n' "$(lower_hex 10)"
 }
 
 configure_storage() {
   local config="$1"
   local endpoint="$2"
   local secrets="$DATA_DIR/rustfs/secrets"
-  local bucket access secret
 
   [ -f "$config" ] || return 0
-  bucket="$(tr -d '\r\n' < "$secrets/rustfs-bucket")"
-  access="$(tr -d '\r\n' < "$secrets/argus_s3_access_key")"
-  secret="$(tr -d '\r\n' < "$secrets/argus_s3_secret_key")"
-
   if ! toml_key_exists "$config" storage mode; then
-    printf '\n[storage]\nmode = "s3"\n\n[storage.s3]\nendpoint = "%s"\nregion = "us-east-1"\nbucket = "%s"\naccess_key = "%s"\nsecret_key = "%s"\n' \
-      "$endpoint" "$bucket" "$access" "$secret" >> "$config"
+    printf '\n[storage]\nmode = "s3"\n' >> "$config"
     chmod 600 "$config"
-    return
   fi
-
   replace_toml_value storage mode "s3" "$config"
   replace_toml_value storage.s3 endpoint "$endpoint" "$config"
   replace_toml_value storage.s3 region "us-east-1" "$config"
-  replace_toml_value storage.s3 bucket "$bucket" "$config"
-  replace_toml_value storage.s3 access_key "$access" "$config"
-  replace_toml_value storage.s3 secret_key "$secret" "$config"
+  replace_toml_value_from_file storage.s3 bucket "$secrets/rustfs-bucket" "$config"
+  replace_toml_value_from_file storage.s3 access_key "$secrets/argus_s3_access_key" "$config"
+  replace_toml_value_from_file storage.s3 secret_key "$secrets/argus_s3_secret_key" "$config"
 }
 
 ensure_object_store() {
@@ -386,15 +390,12 @@ ensure_object_store() {
   mkdir -p "$root/objects" "$secrets"
   chmod 700 "$root" "$secrets"
 
-  ensure_secret_file "$secrets/rustfs_access_key" \
-    "$(openssl rand -hex 20 | tr '[:lower:]' '[:upper:]')"
-  ensure_secret_file "$secrets/rustfs_secret_key" "$(openssl rand -hex 48)"
-  ensure_secret_file "$secrets/rustfs_rpc_secret" "$(openssl rand -hex 48)"
-  ensure_secret_file "$secrets/argus_s3_access_key" \
-    "$(openssl rand -hex 8 | tr '[:lower:]' '[:upper:]')"
-  ensure_secret_file "$secrets/argus_s3_secret_key" "$(openssl rand -hex 16)"
-  ensure_secret_file "$secrets/rustfs-bucket" \
-    "argus-$(openssl rand -hex 10)-private"
+  ensure_secret_file "$secrets/rustfs_access_key" upper_hex 20
+  ensure_secret_file "$secrets/rustfs_secret_key" lower_hex 48
+  ensure_secret_file "$secrets/rustfs_rpc_secret" lower_hex 48
+  ensure_secret_file "$secrets/argus_s3_access_key" upper_hex 8
+  ensure_secret_file "$secrets/argus_s3_secret_key" lower_hex 16
+  ensure_secret_file "$secrets/rustfs-bucket" bucket_name
 
   configure_storage "$DEPLOY_DIR/config.identity.toml" "http://rustfs:9000"
   configure_storage "$DEPLOY_DIR/config.camera.toml" "http://rustfs:9000"

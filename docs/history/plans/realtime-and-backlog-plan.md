@@ -287,7 +287,17 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   bucket calls refused with 403; the same test with whole-bucket policies fails 12 of them). So S4
   keeps one bucket with one prefix-scoped service account per writer, the ruling's first option:
   identity `portraits/` and `faces/`, camera `cameras/`, guard `guard/incidents/`. A RustFS upgrade
-  re-runs the test before it ships.
+  re-runs the test before it ships. Step 2, 2026-10-13: no key on a command line or in a process
+  list. `rustfs-init` runs on the pinned RustFS image, which carries curl (`rustfs/rc` does not, and
+  `rc admin service-account create` takes keys only as arguments), and creates the bucket and the
+  shared application account through the S3 and admin APIs signed by curl; the keys reach curl only
+  in a 0600 config file and a piped request body, built from the secret files, never in an argument,
+  an environment or a shell variable (`scripts/rustfs-init-test.sh` logs every program's arguments
+  and environment and the `sh -x` trace). The shared account keeps its provisioned keys, which the
+  services' configs carry, until it is removed last; the per-service accounts take server-generated
+  keys, the admin API's JSON answer written straight into a 0600 file. `provision-host.sh` writes
+  the S3 secrets straight into their files and into the configs without a shell value, and
+  `deploy-mounts-test` fails if the `set -x` trace of a dry run carries one.
 - S5 Legacy refresh tokens two rotations old refused without revoking their family (accepted gap).
 
 Rulings of 2026-10-12 (reviewer, owner away and delegating): S2 is superseded by the separate Argus

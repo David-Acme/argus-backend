@@ -976,7 +976,7 @@ services:
 
   rustfs-init:
     <<: [*hardening, *host-zone]
-    image: rustfs/rc:v0.1.31
+    image: rustfs/rustfs:1.0.0-beta.12
     user: "${ARGUS_UID:-1000}:${ARGUS_GID:-1000}"
     entrypoint: ["/bin/sh", "/opt/argus/s3-init.sh"]
     environment:

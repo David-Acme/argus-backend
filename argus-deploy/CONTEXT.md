@@ -218,6 +218,8 @@ against a real client.
 | argus-relay | `argus-tunnel:local` | `profiles: [tunnel]`; internal network, loopback 7100/7101/7103 publishes; no database (Ruling CL); `/health` healthcheck |
 | argus-tunnel-client | `argus-tunnel:local` | `profiles: [tunnel]`; host-networked (it dials the remote listener a home service opens and the relay's loopback home publish on 127.0.0.1); no database (Ruling CL); `/health` healthcheck |
 | nats | `nats:2.11.14-alpine` | exact tag pin; core NATS (no JetStream needed) |
+| rustfs | `rustfs/rustfs:1.0.0-beta.12` | exact tag pin; private S3 objects under `${ARGUS_DATA_DIR}/rustfs/objects`, root keys and RPC secret from compose secret files; re-run the prefix-policy proof (`scripts/rustfs-prefix-policy-test.sh`) and the init proof (`scripts/rustfs-init-test.sh`) before any RustFS upgrade |
+| rustfs-init | `rustfs/rustfs:1.0.0-beta.12` | one-shot, after rustfs is healthy; `scripts/lib/s3-init.sh` creates the private bucket and the shared application service account through the S3 and admin APIs, signed by curl (`--aws-sigv4`); the root keys reach curl only in a 0600 config file and the account's keys only in its piped request body, never in an argument, an environment or a shell variable. It runs on the server's image because that image carries curl and `rustfs/rc` does not, and `rc admin service-account create` takes keys only as arguments |
 | identity-init | `argus-identity:local` | `profiles: [identity-init]`, runs `argus-migrate-identity` |
 | sync-init | `argus-sync:local` | `profiles: [sync-init]`, runs `argus-migrate-sync` (identity.db → sync.db), identity's directory read-only |
 | sync-rollback | `argus-sync:local` | `profiles: [sync-rollback]`, runs the same tool with the paths swapped (sync.db → identity.db), sync's directory read-only and identity's writable |
@@ -843,9 +845,11 @@ in order:
    pinned images on a scratch port and data directory) refuses every
    cross-prefix read, write, delete, copy, multipart upload and listing and
    every bucket-level call with 403, and its whole-bucket control fails. Re-run
-   it before any RustFS upgrade. The `rc` invocations still pass keys as arguments inside
-   the short-lived init container (now non-root); moving them to an alias file
-   written from the secret files goes with this step.
+   it before any RustFS upgrade. The init job's keys left command arguments
+   on 2026-10-13 (the `rustfs-init` row above); the per-service accounts take
+   keys the server generates, its JSON answer written straight into a 0600
+   file, because the admin API generates and confines them when the request
+   names none.
 
 ## Port map (host)
 

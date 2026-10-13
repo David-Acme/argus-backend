@@ -122,6 +122,59 @@ replace_toml_value() {
   mv "$temp" "$config"
 }
 
+replace_toml_value_from_file() {
+  local table="$1"
+  local key="$2"
+  local source="$3"
+  local config="$4"
+  local temp
+
+  temp="$(mktemp "${config}.tmp.XXXXXX")"
+  if ! awk -v table="$table" -v key="$key" -v source="$source" '
+    BEGIN {
+      if ((getline value < source) <= 0) {
+        failed = 1
+        exit 2
+      }
+      sub(/\r$/, "", value)
+      rendered = "\"" value "\""
+    }
+    function emit() {
+      if (in_table && !found) {
+        print key " = " rendered
+        found = 1
+      }
+    }
+    /^[[:space:]]*\[/ {
+      emit()
+      in_table = ($0 ~ "^\\[" table "\\][[:space:]]*$")
+      if (in_table)
+        seen = 1
+      found = 0
+      print
+      next
+    }
+    in_table && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+      print key " = " rendered
+      found = 1
+      next
+    }
+    { print }
+    END {
+      if (failed)
+        exit 2
+      emit()
+      if (!seen)
+        printf "\n[%s]\n%s = %s\n", table, key, rendered
+    }
+  ' "$config" > "$temp"; then
+    rm -f "$temp"
+    return 1
+  fi
+  chmod 600 "$temp"
+  mv "$temp" "$config"
+}
+
 remove_toml_key() {
   local table="$1"
   local key="$2"

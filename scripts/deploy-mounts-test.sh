@@ -256,6 +256,58 @@ done
 grep -Eq '^  configure_nats_users$' "$ROOT/scripts/provision-host.sh" \
   || fail "provision-host.sh does not write each service's NATS key into its config"
 
+image_of() {
+  service_block "$COMPOSE" "$1" | sed -n 's/^    image: //p'
+}
+[ -n "$(image_of rustfs)" ] && [ "$(image_of rustfs-init)" = "$(image_of rustfs)" ] \
+  || fail "rustfs-init does not run on the pinned RustFS image, whose curl it signs with"
+! grep -Eq '(^|[^a-z_])rc[[:space:]]' "$ROOT/scripts/lib/s3-init.sh" \
+  || fail "s3-init.sh calls rc, which takes keys only as arguments"
+holds_key() {
+  grep -Eq '^[[:space:]]*[A-Za-z_]+=\$\((secret |[^)]*\$secrets/)|read[^<]*<[^)]*\$secrets/' "$1"
+}
+! holds_key "$ROOT/scripts/lib/s3-init.sh" || fail "s3-init.sh holds a key in a shell variable"
+printf 'leak=$(secret argus_s3_secret_key)\n' > "$TEST_TMP/held-key.sh"
+holds_key "$TEST_TMP/held-key.sh" || fail "a key held in a shell variable was not reported"
+
+sandbox="$TEST_TMP/provision"
+mkdir -p "$sandbox/root/scripts" "$sandbox/root/argus-deploy" "$sandbox/bin"
+cp "$ROOT/scripts/provision-host.sh" "$sandbox/root/scripts/"
+cp -R "$ROOT/scripts/lib" "$ROOT/scripts/privacy" "$sandbox/root/scripts/"
+cp "$ROOT"/argus-deploy/*.example "$ROOT/argus-deploy/docker-compose.yml" \
+  "$ROOT/argus-deploy/nats.conf" "$ROOT/argus-deploy/nats-permissions.conf" "$sandbox/root/argus-deploy/"
+for stub in docker sudo; do
+  printf '#!/bin/sh\nexit 1\n' > "$sandbox/bin/$stub"
+  chmod 700 "$sandbox/bin/$stub"
+done
+PATH="$sandbox/bin:$PATH" \
+ARGUS_DATA_DIR="$sandbox/data" \
+ARGUS_CERTS_DIR="$sandbox/certs" \
+ARGUS_MODELS_DIR="$sandbox/models" \
+ARGUS_GO2RTC_DIR="$sandbox/go2rtc" \
+ARGUS_MDNS_ADDRESS=192.168.1.20 \
+  bash -x "$sandbox/root/scripts/provision-host.sh" --no-docker -y --accept-privacy-notice \
+  > "$sandbox/out" 2> "$sandbox/trace" \
+  || fail "the provisioning dry run failed: $(tail -n 3 "$sandbox/out" | tr '\n' ' ')"
+grep -q 'storage.s3\|nats' "$sandbox/trace" || fail "the provisioning dry run left no trace"
+for name in rustfs_access_key rustfs_secret_key rustfs_rpc_secret argus_s3_access_key argus_s3_secret_key; do
+  secret_file="$sandbox/data/rustfs/secrets/$name"
+  [ -s "$secret_file" ] || fail "the provisioning dry run wrote no $name"
+  [ "$(find "$secret_file" -perm 600)" = "$secret_file" ] || fail "$name is not 0600"
+  ! grep -qF -f "$secret_file" "$sandbox/trace" \
+    || fail "the set -x trace of provision-host.sh carries the value of $name"
+done
+for service in identity camera guard; do
+  for pair in "access_key argus_s3_access_key" "secret_key argus_s3_secret_key" "bucket rustfs-bucket"; do
+    set -- $pair
+    [ "$(toml_value "$sandbox/root/argus-deploy/config.$service.toml" storage.s3 "$1")" \
+        = "$(tr -d '\r\n' < "$sandbox/data/rustfs/secrets/$2")" ] \
+      || fail "provisioning did not write $1 into config.$service.toml"
+  done
+done
+grep -Eq '^ensure_secret_file "\$secrets/argus_s3_secret_key" lower_hex 16$|^  ensure_secret_file "\$secrets/argus_s3_secret_key" lower_hex 16$' \
+  "$ROOT/scripts/provision-host.sh" || fail "provision-host.sh no longer generates the application secret into its file"
+
 if [ -n "${ARGUS_NATS_SERVER_BIN:-}" ]; then
   mkdir -p "$TEST_TMP/broker/js"
   cp "$permissions" "$TEST_TMP/broker/"
