@@ -87,6 +87,8 @@ inline constexpr const char* kSettingsActionStream = "ARGUS_SETTINGS_ACTION";
 inline constexpr const char* kSettingsChange = "argus.settings.v1.change";
 inline constexpr const char* kSettingsChangeStream = "ARGUS_SETTINGS_CHANGE";
 
+inline constexpr const char* kTunnelLink = "argus.tunnel.v1.link";
+
 enum class SubjectKind
 {
   Publish,

@@ -52,6 +52,7 @@ add_library(tunnel-core STATIC
     ${TUNNEL_SRC_ROOT}/link/tls/host-resolver.cc
     ${TUNNEL_SRC_ROOT}/link/client/home-service.cc
     ${TUNNEL_SRC_ROOT}/link/client/link-client.cc
+    ${TUNNEL_SRC_ROOT}/link/status/link-status.cc
     ${TUNNEL_SRC_ROOT}/core/tunnel-mux.cc
     ${TUNNEL_SRC_ROOT}/client/tunnel-client.cc
     ${TUNNEL_SRC_ROOT}/relay/tunnel-relay.cc
@@ -62,12 +63,12 @@ add_library(tunnel-core STATIC
 target_include_directories(tunnel-core PUBLIC ${TUNNEL_SRC_ROOT})
 
 target_link_libraries(tunnel-core PUBLIC argus::lib::config argus::lib::http
-    argus::lib::runtime OpenSSL::SSL OpenSSL::Crypto)
+    argus::lib::runtime argus::contracts::routes OpenSSL::SSL OpenSSL::Crypto)
 
 target_compile_options(tunnel-core PRIVATE -Wall -Wextra)
 
 add_executable(argus-tunnel-client ${TUNNEL_SRC_ROOT}/main-client.cc)
-target_link_libraries(argus-tunnel-client PRIVATE tunnel-core)
+target_link_libraries(argus-tunnel-client PRIVATE tunnel-core argus::lib::nats)
 target_compile_options(argus-tunnel-client PRIVATE -Wall -Wextra)
 
 add_executable(argus-tunnel-relay ${TUNNEL_SRC_ROOT}/main-relay.cc)
@@ -169,6 +170,11 @@ target_include_directories(cloud-interop-test PRIVATE
 target_link_libraries(cloud-interop-test PRIVATE tunnel-core doctest::doctest)
 target_compile_options(cloud-interop-test PRIVATE -Wall -Wextra)
 
+add_executable(link-status-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-status-test.cc)
+target_link_libraries(link-status-test PRIVATE tunnel-core doctest::doctest)
+target_compile_options(link-status-test PRIVATE -Wall -Wextra)
+
 set_target_properties(framing-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-integration-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-reconnect-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
@@ -180,6 +186,7 @@ set_target_properties(tunnel-health-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(link-protocol-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(link-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(cloud-interop-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(link-status-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME framing-test COMMAND framing-test)
 add_test(NAME tunnel-integration-test COMMAND tunnel-integration-test)
@@ -192,3 +199,4 @@ add_test(NAME tunnel-health-test COMMAND tunnel-health-test)
 add_test(NAME link-protocol-test COMMAND link-protocol-test)
 add_test(NAME link-client-test COMMAND link-client-test)
 add_test(NAME cloud-interop-test COMMAND cloud-interop-test)
+add_test(NAME link-status-test COMMAND link-status-test)

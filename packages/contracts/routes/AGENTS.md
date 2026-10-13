@@ -1,13 +1,16 @@
 # argus_contracts_routes
 
-The discovery vocabulary: how a service announces a route, and how a client
-reads the announcement back.
+The route vocabulary: how a service announces a route on the LAN, how a client
+reads the announcement back, and how the home says where it is reachable from
+outside (its remote link state).
 
 ## What this is
 
-A CONTRACT, and a header-only one: three constants, no enum, no
-dependencies. The include root is `src/`, so a consumer writes
-`<routes/service-discovery.hxx>` and links `argus::contracts::routes`.
+A CONTRACT, and a header-only one. The include root is `src/`, so a consumer
+writes `<routes/service-discovery.hxx>` or `<routes/remote-link.hxx>` and links
+`argus::contracts::routes`. The discovery header is three constants with no
+dependency; the remote-link header reads and writes JSON, so the package
+depends on Drogon's jsoncpp.
 
 It is the C++ half of a wire that is **not** protobuf: the announcements
 travel as DNS-SD records over mDNS, and the app parses them with the
@@ -16,6 +19,17 @@ service type, an instance-label spelling and two TXT keys — nothing else.
 
 ## Layout
 
+- `src/routes/remote-link.hxx` (2026-10-13, the home-id contract) — the
+  message the home's tunnel client publishes on `argus.tunnel.v1.link` and
+  argus-sync reads into its context: `RemoteLinkState {homeId, domain, link,
+  since}`, the closed `RemoteLink` enum (`up`, `connecting`, `down`) with
+  `remoteLinkToString`/`remoteLinkFromString`, `remoteLinkToJson`, and
+  `readRemoteLink`, which validates a frame and names the first check it fails
+  (`RemoteLinkRefusal`): `homeId` is 32 lowercase hexadecimal characters,
+  `domain` a lowercase DNS name of two labels or more, `link` one of the enum's
+  values, `since` a positive integer. `isHomeId` and `isDomainName` are the same
+  rules as the app's `isHomeId` and domain pattern
+  (`frontend/src/core/services/net/net-route-choice.ts`).
 - `src/routes/service-discovery.hxx` —
   - `kServiceType = "_argus-route._tcp"`, the DNS-SD service every advertising
     service registers one instance of per logical route;
@@ -44,14 +58,18 @@ service type, an instance-label spelling and two TXT keys — nothing else.
   cleartext listener that is not meant to be dialled off-host.
 - Rule 25: the folder IS the module. One `argus_contracts(NAME routes ...)`
   with an explicit source list, never `file(GLOB)`.
-- Tier 2: this package depends on nothing, and nothing in tier 1 may consume
-  it — `packages/lib/mdns` takes the service type as a parameter for exactly
-  that reason. The one reader is `packages/lib/http`, itself tier 2, in
-  `src/http/route-announcements.cc:17-21`; the services call that function and
-  never spell a constant of this package.
+- Tier 2: this package depends on Drogon alone (for jsoncpp), and nothing in
+  tier 1 may consume it — `packages/lib/mdns` takes the service type as a
+  parameter for exactly that reason. The discovery constants have one reader,
+  `packages/lib/http`, itself tier 2, in `src/http/route-announcements.cc:17-21`;
+  the services call that function and never spell a discovery constant. The
+  remote-link header has two: the tunnel client, which writes the message, and
+  argus-sync, which reads it.
 
 ## Tests
 
 - `tests/unit/route-discovery-test.cc` — the spellings are pinned verbatim
   (they are what an already-shipped client parses), and the service type is
   checked to be a well-formed DNS-SD name.
+- `tests/unit/remote-link-test.cc` — the link vocabulary, the home id and
+  domain rules, the round trip, and one case per check a frame can fail.

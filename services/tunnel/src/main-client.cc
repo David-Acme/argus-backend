@@ -9,11 +9,18 @@
 
 #include <client/tunnel-client.hxx>
 #include <link/client/link-client.hxx>
+#include <link/status/link-status.hxx>
+#include <nats/nats-bus.hxx>
+#include <nats/nats-subject.hxx>
 
 #include <json/value.h>
+#include <chrono>
 #include <functional>
 #include <memory>
+#include <optional>
+#include <string>
 #include <thread>
+#include <utility>
 #include <runtime/log-output.hxx>
 
 namespace
@@ -56,6 +63,60 @@ struct ClientRunner
   std::function<void()> start;
   std::function<void()> stop;
 };
+
+constexpr std::chrono::seconds kLinkStateRepublish{30};
+constexpr double kLinkStateTickSeconds = 1.0;
+
+int64_t epochSeconds()
+{
+  return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
+
+struct LinkStateWiring
+{
+  std::shared_ptr<NatsBus> bus;
+  std::unique_ptr<tunnel::link::LinkStatusPublisher> publisher;
+  std::optional<trantor::TimerId> timer;
+};
+
+LinkStateWiring linkStateWiring(const ClientConfig& config, const tunnel::link::LinkClient& client)
+{
+  const std::string natsUrl = ConfigService::getString("nats.url");
+  if (natsUrl.empty()) {
+    LOG_INFO << "argus-tunnel: no nats.url, so the link state stays off the home's bus";
+    return {};
+  }
+  const auto domain = tunnel::link::deviceDomainOf(config.link.deviceDomainSuffix);
+  if (!domain) {
+    LOG_WARN << "argus-tunnel: the device domain " << config.link.deviceDomainSuffix
+             << " is not a DNS name, so the link state is not published";
+    return {};
+  }
+  auto bus = std::make_shared<NatsBus>();
+  if (!bus->connect())
+    LOG_WARN << "argus-tunnel: NATS unavailable at " << natsUrl
+             << "; the link state is published once it connects";
+  const std::weak_ptr<NatsBus> weakBus = bus;
+  auto publisher = std::make_unique<tunnel::link::LinkStatusPublisher>(
+      tunnel::link::LinkStatusPublisherDeps{
+          .sample =
+              [&client] {
+                return tunnel::link::LinkSample{.connected = client.connected(),
+                                                .attempts = client.reconnectAttempts()};
+              },
+          .publish =
+              [weakBus](std::string_view payload) {
+                const auto locked = weakBus.lock();
+                return locked && locked->publish(nats_subject::kTunnelLink, payload);
+              },
+          .now = epochSeconds},
+      tunnel::link::LinkStatusPublisherOptions{
+          .homeId = config.homeId, .domain = *domain, .republish = kLinkStateRepublish});
+  LOG_INFO << "argus-tunnel: the link state goes to " << nats_subject::kTunnelLink << " as home "
+           << config.homeId << " under " << *domain;
+  return {.bus = std::move(bus), .publisher = std::move(publisher), .timer = std::nullopt};
+}
 
 int serveClient(const ClientConfig& config, const HealthStatus& status,
                 const ClientRunner& runner, PollLoop& loop)
@@ -121,18 +182,30 @@ int main()
   const HealthStatus status = linkClient
                                   ? tunnel::linkHealthStatus(*linkClient)
                                          : clientHealthStatus(legacyClient);
+  LinkStateWiring linkState = linkClient ? linkStateWiring(config, *linkClient) : LinkStateWiring{};
   const ClientRunner runner{
       .start = [&] {
         if (linkClient)
           linkClient->start();
         else
           legacyClient.start();
+        if (linkState.publisher) {
+          tunnel::link::LinkStatusPublisher* publisher = linkState.publisher.get();
+          publisher->tick();
+          linkState.timer = drogon::app().getLoop()->runEvery(kLinkStateTickSeconds,
+                                                              [publisher] { publisher->tick(); });
+        }
       },
       .stop = [&] {
+        if (linkState.timer)
+          drogon::app().getLoop()->invalidateTimer(*linkState.timer);
+        linkState.timer.reset();
         if (linkClient)
           linkClient->stop();
         else
           legacyClient.stop();
+        if (linkState.bus)
+          linkState.bus->drain();
       }};
 
   if (config.linkEnabled) {

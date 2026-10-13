@@ -141,6 +141,45 @@ The node routes on the home id; the home picks its listener by the service. The
 client does not read a device name yet. The SNI dispatch that does is the next
 step, and it runs these vectors.
 
+## The link state on the home's bus (home-id contract, 2026-10-13)
+
+argus-cloud `docs/plan.md`, section 4b: the home's tunnel client owns the link
+state and tells the home, so no other service touches the network or reads this
+service's config to learn it. The app learns its home id, its device domain and
+whether the cloud link is up from argus-sync's context, which is fed by this
+message (`services/sync/CONTEXT.md`, "Remote access in the context").
+
+- **The message.** `argus.tunnel.v1.link` (`nats_subject::kTunnelLink`), a core
+  NATS publish: `{homeId, domain, link, since}`, written and read by
+  `packages/contracts/routes/src/routes/remote-link.hxx`. `homeId` is
+  `[link] home_id`; `domain` is the device domain this client routes on
+  (`LinkOptions.deviceDomainSuffix` without its leading dot, so the domain the
+  app must dial is the one this build matches); `link` is `up`, `connecting` or
+  `down`; `since` is when the link entered that state, in epoch seconds.
+- **The state** (`src/link/status/link-status.{hxx,cc}`) is read from the link
+  client's own counters once a second, so the link client did not change: `up`
+  while connected, `connecting` while no attempt has failed yet (the client just
+  started, or reconnects at once after a GOAWAY), `down` after a failed attempt
+  or a drop. `since` moves only when the state does, so the retries of a down
+  link change nothing.
+- **When it is sent.** At once on every change, and again every 30 seconds while
+  nothing changes, so a subscriber that restarts learns the state within 30
+  seconds and one that stops hearing it can call the link down (argus-sync does
+  after 90 seconds). A state the bus did not take is tried again on the next
+  tick.
+- **Who publishes.** Only link v2, and only with `nats.url` set and a device
+  domain that is a DNS name; the v1 relay link has no home id, so it publishes
+  nothing, and a home without remote access never appears in the context. The
+  client connects to NATS with its own key (the `tunnel` row of the permission
+  table, which publishes this subject and nothing else); that row, the seed
+  mount and the client's `[nats]` keys are the deploy track's.
+
+Tests: `tests/link-status-test.cc` (the three states, `since` across retries, the
+domain, the first message read back through the contract, the at-once change,
+the 30-second republish and the retry after a refused publish) and
+`packages/contracts/routes/tests/unit/remote-link-test.cc` (the codec and its
+four checks).
+
 ## Wire protocol
 
 12-byte header, little-endian, then the payload:
