@@ -12,9 +12,11 @@
 #include <feature/camera-control/dtos/camera-ptz-dto.hxx>
 #include <feature/camera/dtos/create-camera-dto.hxx>
 #include <feature/camera/dtos/update-camera-dto.hxx>
+#include <feature/camera/services/camera-feature-service.hxx>
 #include <feature/camera/services/camera-probe-service.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/repositories/zone/zone-repository.hxx>
+#include <shared/services/camera-driver/onvif-driver.hxx>
 #include <shared/services/camera-driver/stream-only-driver.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
@@ -28,6 +30,7 @@
 #include <validation/validator.hxx>
 
 #include <opencv2/imgcodecs.hpp>
+#include <scripted-onvif.hxx>
 
 #include <algorithm>
 #include <array>
@@ -819,6 +822,58 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   StreamOnlyDriver videoOnly(rtsp);
   CHECK_FALSE(videoOnly.sdDays({.from = "2026-10-01", .to = "2026-10-31"}).ok);
   CHECK_FALSE(videoOnly.sdDay({.date = "2026-10-12"}).ok);
+
+  Json::Value onvifBody;
+  onvifBody["name"] = "Garage";
+  onvifBody["ip"] = "192.168.1.40";
+  onvifBody["port"] = 554;
+  onvifBody["driver"] = "onvif";
+  onvifBody["catalogId"] = "onvif";
+  const Json::Value onvifRow =
+      body(drogon::sync_wait(cameraController.create(drogon::HttpRequest::newHttpJsonRequest(onvifBody))))["info"];
+  const int64_t garageId = onvifRow["id"].asInt64();
+  CHECK(onvifRow["capabilities"] == R"(["streamOnly"])");
+  const auto capabilitiesOf = [](int64_t id) {
+    const auto row = drogon::sync_wait(CameraRepository().findById(id));
+    return row ? row->capabilities : std::string();
+  };
+  const auto settled = [&capabilitiesOf](int64_t id, const std::string& expected) {
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (capabilitiesOf(id) == expected)
+        return true;
+      std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    return capabilitiesOf(id) == expected;
+  };
+  {
+    const auto garage = drogon::sync_wait(CameraRepository().findById(garageId));
+    REQUIRE(garage.has_value());
+    const auto answering = scripted_onvif::ptzCamera();
+    CameraDriverTestAccess::install(garageId, std::make_shared<OnvifDriver>(garage.value_or(CameraSchema{}), answering));
+    CHECK(drogon::sync_wait(CameraFeatureService().reconcileCapabilities()) == 0);
+    CHECK(settled(garageId, R"(["ptz","presets"])"));
+    REQUIRE_FALSE(answering->sent.empty());
+    CHECK(answering->operations().front() == "GetSystemDateAndTime");
+    const Json::Value reported =
+        body(drogon::sync_wait(controlController.capabilities(drogon::HttpRequest::newHttpRequest(), garageId)))["info"];
+    CHECK(reported["ptz"].asBool());
+    CHECK(reported["presets"].asBool());
+    CHECK_FALSE(reported["streamOnly"].asBool());
+    CHECK(reported["holdRenewMs"].asInt() == 1000);
+    CHECK(answering->sent.size() == 5);
+  }
+  Json::Value garageRenamed;
+  garageRenamed["name"] = "Garage door";
+  CHECK(body(drogon::sync_wait(
+            cameraController.update(drogon::HttpRequest::newHttpJsonRequest(garageRenamed), garageId)))
+            ["info"]["capabilities"] == R"(["ptz","presets"])");
+  Json::Value garageMoved;
+  garageMoved["ip"] = "192.168.1.41";
+  CHECK(body(drogon::sync_wait(
+            cameraController.update(drogon::HttpRequest::newHttpJsonRequest(garageMoved), garageId)))
+            ["info"]["capabilities"] == R"(["streamOnly"])");
+  CameraDriverRegistry::instance().forget(garageId);
 
   CameraPresenceRecorder presence;
   const CameraRepository cameras;

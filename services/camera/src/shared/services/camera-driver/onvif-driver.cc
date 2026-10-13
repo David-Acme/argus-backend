@@ -2,6 +2,7 @@
 
 #include <shared/services/camera-catalog/camera-catalog.hxx>
 #include <shared/services/camera-driver/camera-capabilities.hxx>
+#include <shared/services/camera-driver/capability-record.hxx>
 #include <shared/vocabulary/camera-stream-paths.hxx>
 
 #include <cmath>
@@ -15,6 +16,7 @@ constexpr double kTimeoutSeconds = 5.0;
 constexpr double kHoldSpeed = 0.5;
 constexpr double kPanSpanDegrees = 180.0;
 constexpr double kTiltSpanDegrees = 90.0;
+constexpr int kHoldRenewMs = 1000;
 
 template <typename T>
 DriverResult failureOf(const OnvifOutcome<T>& outcome)
@@ -57,6 +59,7 @@ OnvifEndpoint OnvifDriver::endpointOf(const CameraSchema& camera)
 Json::Value OnvifDriver::capabilities() const
 {
   Json::Value out = camera_capabilities::of(camera_);
+  out["holdRenewMs"] = kHoldRenewMs;
   const std::scoped_lock lock(knownMutex_);
   if (known_) {
     out["ptz"] = known_->ptz;
@@ -82,8 +85,12 @@ DriverResult OnvifDriver::connected()
   const auto outcome = client_.connect();
   if (!outcome.ok())
     return failureOf(outcome);
-  const std::scoped_lock lock(knownMutex_);
-  known_ = outcome.value;
+  {
+    const std::scoped_lock lock(knownMutex_);
+    known_ = outcome.value;
+  }
+  if (std::string reported = camera_capabilities::listOf(capabilities()); reported != camera_.capabilities)
+    capability_record::learned({.cameraId = camera_.id, .capabilities = std::move(reported)});
   return answered(Json::Value());
 }
 

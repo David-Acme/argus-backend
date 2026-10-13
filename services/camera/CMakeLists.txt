@@ -235,6 +235,12 @@ target_link_libraries(camera-config-test PRIVATE
     argus::camera-config
     argus::lib::http)
 
+target_include_directories(camera-controller-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+
+target_compile_definitions(camera-controller-test PRIVATE
+    ARGUS_ONVIF_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/onvif")
+
 target_link_libraries(camera-controller-test PRIVATE
     argus::camera-control
     argus::camera-feature
@@ -378,6 +384,9 @@ target_link_libraries(onvif-client-test PRIVATE
     argus::camera-onvif
     argus::camera-driver
     doctest::doctest)
+
+target_include_directories(onvif-client-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 
 target_compile_definitions(onvif-client-test PRIVATE
     ARGUS_ONVIF_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/onvif")

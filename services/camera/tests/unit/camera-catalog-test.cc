@@ -278,6 +278,7 @@ TEST_CASE("a fixed Tapo camera offers no pan and tilt, an unknown model keeps ev
   CHECK(all["ptz"].asBool());
   CHECK_FALSE(all["talk"].asBool());
   CHECK(all["catalogId"].asString().empty());
+  CHECK_FALSE(all.isMember("holdRenewMs"));
 
   CameraSchema generic;
   generic.driver = CameraDriver::Onvif;
@@ -285,6 +286,23 @@ TEST_CASE("a fixed Tapo camera offers no pan and tilt, an unknown model keeps ev
   const Json::Value stream = StreamOnlyDriver(generic).capabilities();
   CHECK(stream["streamOnly"].asBool());
   CHECK(stream["catalogId"].asString() == "hikvision");
+
+  CameraSchema reported = generic;
+  reported.capabilities = R"(["ptz","presets","privacy","talk"])";
+  const Json::Value kept = camera_capabilities::of(reported);
+  CHECK(kept["ptz"].asBool());
+  CHECK(kept["presets"].asBool());
+  CHECK_FALSE(kept["privacy"].asBool());
+  CHECK_FALSE(kept["talk"].asBool());
+  CHECK_FALSE(kept["streamOnly"].asBool());
+  CHECK(camera_capabilities::listOf(kept) == R"(["ptz","presets"])");
+  CameraSchema plainRtsp = reported;
+  plainRtsp.driver = CameraDriver::Rtsp;
+  CHECK_FALSE(camera_capabilities::of(plainRtsp)["ptz"].asBool());
+  CHECK(camera_capabilities::of(plainRtsp)["streamOnly"].asBool());
+  CameraSchema unreadable = generic;
+  unreadable.capabilities = "not json";
+  CHECK(camera_capabilities::of(unreadable)["streamOnly"].asBool());
 }
 
 TEST_CASE("the catalog id lives in the camera config beside the stream paths")

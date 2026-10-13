@@ -1,26 +1,25 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <shared/services/camera-driver/camera-capabilities.hxx>
 #include <shared/services/camera-driver/onvif-driver.hxx>
 #include <shared/services/onvif/onvif-client.hxx>
 #include <shared/services/onvif/onvif-parse.hxx>
 #include <shared/services/onvif/onvif-soap.hxx>
 #include <shared/services/tapo/tapo-crypto.hxx>
 
+#include <scripted-onvif.hxx>
+
 #include <drogon/drogon.h>
 
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
-#include <deque>
-#include <filesystem>
-#include <fstream>
 #include <map>
 #include <memory>
 #include <mutex>
 #include <optional>
 #include <regex>
-#include <sstream>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -34,95 +33,12 @@ constexpr int64_t kDeviceTime = 1791911070;
 constexpr const char* kUser = "admin";
 constexpr const char* kPassword = "Secret!1";
 
-std::string fixture(const std::string& name)
-{
-  std::ifstream in(std::filesystem::path(ARGUS_ONVIF_FIXTURES) / name, std::ios::binary);
-  REQUIRE(in.good());
-  std::ostringstream out;
-  out << in.rdbuf();
-  return out.str();
-}
-
-OnvifHttpResponse answer(const std::string& name, int status = 200)
-{
-  return {.status = status, .body = fixture(name), .challenge = {}, .error = {}};
-}
-
-std::string operationOf(const std::string& action)
-{
-  const auto slash = action.rfind('/');
-  return slash == std::string::npos ? action : action.substr(slash + 1);
-}
-
-class ScriptedOnvif final : public IOnvifTransport
-{
-public:
-  void always(const std::string& operation, OnvifHttpResponse response)
-  {
-    always_[operation] = std::move(response);
-  }
-
-  void once(const std::string& operation, OnvifHttpResponse response)
-  {
-    once_[operation].push_back(std::move(response));
-  }
-
-  OnvifHttpResponse post(const OnvifHttpRequest& request) override
-  {
-    sent.push_back(request);
-    const std::string operation = operationOf(request.action);
-    if (auto queued = once_.find(operation); queued != once_.end() && !queued->second.empty()) {
-      OnvifHttpResponse next = std::move(queued->second.front());
-      queued->second.pop_front();
-      return next;
-    }
-    if (const auto standing = always_.find(operation); standing != always_.end())
-      return standing->second;
-    return {.status = 0, .body = {}, .challenge = {}, .error = "no fixture answers " + operation};
-  }
-
-  [[nodiscard]] std::vector<std::string> operations() const
-  {
-    std::vector<std::string> out;
-    out.reserve(sent.size());
-    for (const auto& request : sent)
-      out.push_back(operationOf(request.action));
-    return out;
-  }
-
-  std::vector<OnvifHttpRequest> sent;
-
-private:
-  std::map<std::string, std::deque<OnvifHttpResponse>> once_;
-  std::map<std::string, OnvifHttpResponse> always_;
-};
-
-std::shared_ptr<ScriptedOnvif> ptzCamera()
-{
-  auto camera = std::make_shared<ScriptedOnvif>();
-  camera->always("GetSystemDateAndTime", answer("get-system-date-and-time.xml"));
-  camera->always("GetCapabilities", answer("get-capabilities.xml"));
-  camera->always("GetDeviceInformation", answer("get-device-information.xml"));
-  camera->always("GetProfiles", answer("get-profiles.xml"));
-  camera->always("GetPresets", answer("get-presets.xml"));
-  camera->always("SetPreset", answer("set-preset.xml"));
-  camera->always("GotoPreset", answer("goto-preset.xml"));
-  camera->always("RemovePreset", answer("remove-preset.xml"));
-  camera->always("ContinuousMove", answer("continuous-move.xml"));
-  camera->always("RelativeMove", answer("relative-move.xml"));
-  camera->always("Stop", answer("stop.xml"));
-  return camera;
-}
-
-std::shared_ptr<ScriptedOnvif> fixedCamera()
-{
-  auto camera = std::make_shared<ScriptedOnvif>();
-  camera->always("GetSystemDateAndTime", answer("get-system-date-and-time.xml"));
-  camera->always("GetCapabilities", answer("get-capabilities-fixed.xml"));
-  camera->always("GetDeviceInformation", answer("get-device-information.xml"));
-  camera->always("GetProfiles", answer("get-profiles-fixed.xml"));
-  return camera;
-}
+using scripted_onvif::answer;
+using scripted_onvif::fixedCamera;
+using scripted_onvif::fixture;
+using scripted_onvif::operationOf;
+using scripted_onvif::ptzCamera;
+using scripted_onvif::ScriptedOnvif;
 
 OnvifEndpoint endpoint()
 {
@@ -195,10 +111,10 @@ std::string expectedDigest(const std::map<std::string, std::string>& fields, con
              fields.at("qop") + ":" + ha2);
 }
 
-CameraSchema onvifCamera(const std::string& config)
+CameraSchema onvifCamera(const std::string& config, int64_t id = 0)
 {
   CameraSchema camera;
-  camera.id = 77;
+  camera.id = id;
   camera.name = "Garage";
   camera.ip = "192.168.1.64";
   camera.port = 554;
@@ -564,12 +480,15 @@ TEST_CASE("the ONVIF driver answers the app in the shapes it already reads")
   const Json::Value before = driver.capabilities();
   CHECK_FALSE(before["ptz"].asBool());
   CHECK(before["streamOnly"].asBool());
+  CHECK(before["holdRenewMs"].asInt() == 1000);
   CHECK(camera->sent.empty());
 
   const Json::Value discovered = driver.discoverCapabilities();
   CHECK(discovered["ptz"].asBool());
   CHECK(discovered["presets"].asBool());
   CHECK_FALSE(discovered["streamOnly"].asBool());
+  CHECK(discovered["holdRenewMs"].asInt() == 1000);
+  CHECK(camera_capabilities::listOf(discovered) == R"(["ptz","presets"])");
   CHECK_FALSE(discovered["talk"].asBool());
   CHECK_FALSE(discovered["privacy"].asBool());
   CHECK(driver.capabilities() == discovered);
@@ -794,9 +713,9 @@ TEST_CASE("over HTTP the transport posts SOAP 1.2 with its action and answers th
                                  "/onvif/device_service", "/onvif/media_service", "/onvif/ptz_service",
                                  "/onvif/ptz_service"});
 
-  const auto control = CameraDriverRegistry::instance().controlDriverFor(onvifCamera("{}"));
+  const auto control = CameraDriverRegistry::instance().controlDriverFor(onvifCamera("{}", 77));
   CHECK(std::dynamic_pointer_cast<OnvifDriver>(control) != nullptr);
-  CHECK(CameraDriverRegistry::instance().driverFor(onvifCamera("{}")) == nullptr);
+  CHECK(CameraDriverRegistry::instance().driverFor(onvifCamera("{}", 77)) == nullptr);
   CameraDriverRegistry::instance().forget(77);
 
   drogon::app().quit();

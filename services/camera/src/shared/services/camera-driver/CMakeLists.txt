@@ -3,6 +3,7 @@ argus_module(NAME camera-driver
         camera-capabilities.cc
         camera-driver-registry.cc
         camera-scene-log.cc
+        capability-record.cc
         onvif-driver.cc
         stream-only-driver.cc
         tapo-driver.cc
@@ -13,8 +14,10 @@ argus_module(NAME camera-driver
         argus::camera-onvif
         argus::camera-repositories
         argus::camera-tapo
+        argus::contracts::sync
         argus::lib::config
         argus::lib::runtime
+        argus::lib::sqlite
         argus::lib::text
         Drogon::Drogon
         nlohmann_json::nlohmann_json)

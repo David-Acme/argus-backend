@@ -49,6 +49,27 @@ Json::Value streamOnlyCapabilities(const CameraCatalogEntry* entry)
   out["streamOnly"] = true;
   return out;
 }
+
+Json::Value onvifCapabilities(const CameraSchema& camera, const CameraCatalogEntry* entry)
+{
+  Json::Value out = streamOnlyCapabilities(entry);
+  const Json::Value stored = json_util::fromString(camera.capabilities);
+  const auto reported = [&stored](std::string_view flag) {
+    if (!stored.isArray())
+      return false;
+    for (const auto& name : stored) {
+      if (name.isString() && name.asString() == flag)
+        return true;
+    }
+    return false;
+  };
+  const bool ptz = reported("ptz");
+  const bool presets = reported("presets");
+  out["ptz"] = ptz;
+  out["presets"] = presets;
+  out["streamOnly"] = !ptz && !presets;
+  return out;
+}
 }
 
 namespace camera_capabilities
@@ -56,8 +77,9 @@ namespace camera_capabilities
 Json::Value of(const CameraSchema& camera)
 {
   const auto* entry = entryOf(camera);
-  Json::Value out = camera.driver == CameraDriver::Tapo ? tapoCapabilities(camera, entry)
-                                                        : streamOnlyCapabilities(entry);
+  Json::Value out = camera.driver == CameraDriver::Tapo    ? tapoCapabilities(camera, entry)
+                    : camera.driver == CameraDriver::Onvif ? onvifCapabilities(camera, entry)
+                                                           : streamOnlyCapabilities(entry);
   out["catalogId"] = entry == nullptr ? std::string() : std::string(entry->id);
   return out;
 }

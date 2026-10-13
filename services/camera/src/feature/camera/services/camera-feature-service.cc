@@ -6,6 +6,7 @@
 #include <feature/camera/dtos/camera-address-rules.hxx>
 #include <shared/services/camera-driver/camera-capabilities.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
+#include <shared/services/camera-driver/capability-record.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <shared/services/stream/camera-live-board.hxx>
@@ -15,6 +16,9 @@
 #include <sqlite/transaction.hxx>
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
+
+#include <utility>
+#include <vector>
 
 namespace
 {
@@ -34,6 +38,8 @@ drogon::Task<void> dropSource(int64_t cameraId)
 CameraSchema projectedCamera(const CameraSchema& before, const CameraUpdateInput& input)
 {
   CameraSchema camera = before;
+  if ((input.driver && *input.driver != before.driver) || (input.ip && *input.ip != before.ip))
+    camera.capabilities = "[]";
   if (input.model)
     camera.model = *input.model;
   if (input.driver)
@@ -268,11 +274,15 @@ drogon::Task<bool> CameraFeatureService::remove(int64_t id) const
 drogon::Task<int> CameraFeatureService::reconcileCapabilities() const
 {
   int updated = 0;
+  std::vector<int64_t> onvif;
   for (const auto& camera : co_await repository_.findLive()) {
+    if (camera.driver == CameraDriver::Onvif && camera.isEnabled)
+      onvif.push_back(camera.id);
     if (capabilityListOf(camera) == camera.capabilities)
       continue;
     if (co_await update(camera.id, UpdateCameraDto{}))
       ++updated;
   }
+  capability_record::discover(std::move(onvif));
   co_return updated;
 }

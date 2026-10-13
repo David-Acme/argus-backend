@@ -1286,8 +1286,8 @@ Not done yet, in the order they pay off:
    the live view; the call path plays its own copy, so a native `muted` prop on `argus-camera`
    is the clean fix once a device is at hand to test it.
 7. **ONVIF control** for generic cameras: pan, tilt and presets landed (2026-10-13, "ONVIF
-   control"); the discovered capabilities on the camera row, imaging (day/night) and events
-   (motion) are still to come.
+   control"), and the camera row records what each camera reports; the app's hold renewal,
+   imaging (day/night), events (motion) and a per-camera ONVIF port are still to come.
 
 ## The SD card's timeline (2026-10-13, F1)
 
@@ -2048,8 +2048,13 @@ go2rtc (no PTZ), gSOAP (GPL or commercial) and a Python sidecar.
     camera stops by itself after 2 s instead of turning to its end stop.
     The app's hold has no lease of its own to copy: it sends one move when
     the hold starts and a stop on release, and does not repeat while the
-    button is held. So on an ONVIF camera a hold longer than 2 s stops
-    early, until the app renews the move while the button is held.
+    button is held. The reviewer chose renewal (option (a)): the ONVIF
+    driver's capabilities announce `holdRenewMs: 1000`, and the app resends
+    the hold's move that often while the button is held, so one lost
+    renewal still ends inside the 2 s timeout. Tapo announces nothing and
+    keeps its hold as it was: one `relativeMove`, then `stop` on release.
+    The renewal itself is an app commit; until it lands, an ONVIF hold
+    longer than 2 s stops early.
   - A step (`x`, `y` in degrees) is a `RelativeMove` in the generic
     translation space, at `x/180` and `y/90`. Those spans assume the space
     covers ±180° of pan and ±90° of tilt; no camera has been measured.
@@ -2070,12 +2075,26 @@ go2rtc (no PTZ), gSOAP (GPL or commercial) and a Python sidecar.
   whose password changed, recovers without a restart of argus-camera. A
   SOAP fault (an unsupported action, an unknown preset) keeps the session.
 - **Capabilities never wait on the network.** `capabilities()` answers what
-  the driver has learned so far, which is stream only until it has connected.
-  `discoverCapabilities()` connects first; `GET /camera/{id}/capabilities`
-  calls it on its blocking lane. The talk service and the overview call
-  `capabilities()` on the event loop, so it must stay cheap. Writing the
-  discovered list to the camera row, so the app shows the pad without asking,
-  is the next step; until then the row still says `["streamOnly"]`.
+  the driver has learned so far: until it has connected, the flags the
+  camera row last recorded. `discoverCapabilities()` connects first;
+  `GET /camera/{id}/capabilities` calls it on its blocking lane. The talk
+  service and the overview call `capabilities()` on the event loop, so it
+  must stay cheap. The answer also carries `holdRenewMs`, which the row's
+  list of names cannot; the app reads it from this route, beside `catalogId`.
+- **The camera row carries what the camera reported** (2026-10-13). The
+  app draws the PTZ pad from the row's `capabilities` list, so the first
+  time the driver connects it compares what the camera reported with the
+  row, and writes the difference (`capability_record::learned`, in the
+  camera-driver module). The write is an ordinary audited camera update
+  through the change sink, run off the request in the background, so the
+  pad appears live in the app. At boot, `reconcileCapabilities` also asks
+  every live ONVIF camera in the background, one at a time
+  (`capability_record::discover`), so a camera nobody opens is recorded
+  too. The static recomputation on create, update and boot keeps an ONVIF
+  camera's recorded `ptz` and `presets` (`camera_capabilities::of`), and
+  forgets them when the driver or the address changes, until the camera
+  answers again. A camera that does not answer keeps its last recorded
+  list. Creating or editing a camera never contacts it.
 - **Guard's actions do not change.** `CameraDriverRegistry::driverFor` still
   answers no driver for an ONVIF camera, so guard's speaker and siren
   actions keep rejecting it with `no_driver`, and the talk service and the
