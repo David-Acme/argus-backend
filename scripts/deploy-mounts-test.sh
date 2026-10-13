@@ -364,9 +364,12 @@ provision_dry_run() {
 }
 
 provisioned_state() {
-  cat "$sandbox/root/argus-deploy"/config.*.toml "$sandbox/root/argus-deploy/livekit-keys.yaml" \
-    "$sandbox/data/nats/auth.conf" "$sandbox/data/nats/seeds"/*.seed "$sandbox/data/pki/pairing.code" \
-    "$sandbox/data/rustfs/secrets"/* | sha256sum
+  {
+    cat "$sandbox/root/argus-deploy"/config.*.toml "$sandbox/root/argus-deploy/livekit-keys.yaml" \
+      "$sandbox/data/nats/auth.conf" "$sandbox/data/nats/seeds"/*.seed "$sandbox/data/pki/pairing.code" \
+      "$sandbox/data/rustfs/secrets"/*
+    find "$sandbox/data/certs/internal" -type f | sort | xargs cat
+  } | sha256sum
 }
 
 secret_values() {
@@ -455,7 +458,7 @@ check_trace "$sandbox/secrets.tsv" "$sandbox/trace-first" "the first provisionin
 check_trace "$sandbox/secrets.tsv" "$sandbox/trace-second" "a second provisioning run"
 
 generated_secret_files() {
-  find "$@" -type f \( -name '*.key' -o -name '*.seed' -o -name 'pairing.code' \
+  find "$@" -type f \( -name '*.key' -o -name 'key.pem' -o -name '*.seed' -o -name 'pairing.code' \
     -o -path '*/rustfs/secrets/*' -o -path '*/rustfs/accounts/*' \) | sort
 }
 
@@ -517,6 +520,8 @@ done
   || fail "the secret file values miss a writer account key"
 [ "$(grep -c '/nats/seeds/' "$sandbox/secret-files.tsv")" -ge 20 ] \
   || fail "the secret file values miss a NATS seed"
+[ "$(awk -F '\t' '$1 ~ /\/certs\/internal\/[a-z]+\/key[.]pem$/' "$sandbox/secret-files.tsv" | cut -f1 | sort -u | wc -l)" -eq 13 ] \
+  || fail "the secret file values miss an internal service key"
 check_trace "$sandbox/secret-files.tsv" "$sandbox/trace-first" "the first provisioning run (secret files)"
 check_trace "$sandbox/secret-files.tsv" "$sandbox/trace-second" "a second provisioning run (secret files)"
 {
@@ -589,6 +594,11 @@ for service in identity camera guard; do
 done
 grep -Eq '^ensure_secret_file "\$secrets/argus_s3_secret_key" lower_hex 16$|^  ensure_secret_file "\$secrets/argus_s3_secret_key" lower_hex 16$' \
   "$ROOT/scripts/provision-host.sh" || fail "provision-host.sh no longer generates the application secret into its file"
+source "$ROOT/scripts/lib/internal-pki.sh"
+for service in $INTERNAL_PKI_SERVICES; do
+  openssl verify -CAfile "$sandbox/data/certs/internal/trust.pem" "$sandbox/data/certs/internal/$service/cert.pem" \
+    > /dev/null 2>&1 || fail "provisioning did not issue the internal certificate of $service"
+done
 
 if [ -n "${ARGUS_NATS_SERVER_BIN:-}" ]; then
   mkdir -p "$TEST_TMP/broker/js"

@@ -1,0 +1,270 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+usage: scripts/internal-pki-test.sh
+
+Issues the internal CA and the service certificates of scripts/lib/internal-pki.sh
+in a scratch directory and checks them: the CA (10 years, the only issuer), one
+2-year certificate per internal gRPC service with server and client use, renewal
+under 60 days, a key that no longer matches, an older profile and a CA rotation,
+the trust bundle each service gets, mutual TLS between two services with
+openssl, and a set -x trace that carries no private key.
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help) usage; exit 0 ;;
+esac
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+TEST_TMP="$(mktemp -d)"
+server_pid=""
+cleanup() {
+  if [ -n "$server_pid" ]; then
+    kill "$server_pid" 2>/dev/null || true
+    wait "$server_pid" 2>/dev/null || true
+  fi
+  rm -rf "$TEST_TMP"
+}
+trap cleanup EXIT
+
+source "$ROOT/scripts/lib/common.sh"
+source "$ROOT/scripts/lib/internal-pki.sh"
+
+fail() {
+  printf 'internal-pki-test: %s\n' "$*" >&2
+  exit 1
+}
+
+pki="$TEST_TMP/certs/internal"
+
+fingerprint() {
+  openssl x509 -in "$1" -noout -fingerprint -sha256
+}
+
+days_valid() {
+  local start end
+  start="$(date -d "$(openssl x509 -in "$1" -noout -startdate | sed 's/^notBefore=//')" +%s)"
+  end="$(date -d "$(openssl x509 -in "$1" -noout -enddate | sed 's/^notAfter=//')" +%s)"
+  printf '%s\n' "$(( (end - start) / 86400 ))"
+}
+
+mode_of() {
+  stat -c '%a' "$1"
+}
+
+state_of() {
+  find "$pki" -type f | sort | xargs sha256sum
+}
+
+grpc_services_in_templates() {
+  local template name
+  for template in "$ROOT"/argus-deploy/config.*.toml.example; do
+    name="${template##*/config.}"
+    name="${name%.toml.example}"
+    if awk '
+      /^\[rpc\.callers\]/ { found = 1 }
+      /^caller_[a-z]+[[:space:]]*=/ { found = 1 }
+      /^(grpc_port|rpc_port)[[:space:]]*=/ { found = 1 }
+      /^[a-z_]*target[[:space:]]*=[[:space:]]*"argus-[a-z]+:[0-9]+"/ { found = 1 }
+      END { exit !found }' "$template"; then
+      printf '%s\n' "$name"
+    fi
+  done | sort
+}
+
+[ "$(grpc_services_in_templates | tr '\n' ' ')" = "$(printf '%s\n' $INTERNAL_PKI_SERVICES | sort | tr '\n' ' ')" ] \
+  || fail "the internal certificate list ($INTERNAL_PKI_SERVICES) is not the set of services that speak internal gRPC ($(grpc_services_in_templates | tr '\n' ' '))"
+
+ensure_internal_pki "$pki" > "$TEST_TMP/first.out" 2>&1 || fail "the first issuance failed: $(cat "$TEST_TMP/first.out")"
+
+[ "$(mode_of "$pki")" = 700 ] || fail "the internal PKI directory is not 0700"
+[ "$(mode_of "$pki/ca.key")" = 600 ] || fail "the CA key is not 0600"
+[ "$(mode_of "$pki/ca.pem")" = 644 ] || fail "the CA certificate is not 0644"
+openssl x509 -in "$pki/ca.pem" -noout -ext basicConstraints | grep -q 'CA:TRUE, pathlen:0' \
+  || fail "the internal CA is not a CA limited to one level"
+openssl x509 -in "$pki/ca.pem" -noout -ext keyUsage | grep -q 'Certificate Sign, CRL Sign' \
+  || fail "the internal CA cannot sign certificates"
+[ "$(days_valid "$pki/ca.pem")" = 3650 ] || fail "the internal CA is not valid for 10 years"
+case "$(internal_pki_subject "$pki/ca.pem")" in
+  "CN=Argus internal CA "*",OU=internal-v1,O=Argus") ;;
+  *) fail "the internal CA subject is $(internal_pki_subject "$pki/ca.pem")" ;;
+esac
+openssl verify -CAfile "$pki/ca.pem" "$pki/ca.pem" >/dev/null 2>&1 || fail "the internal CA is not self-signed"
+cmp -s "$pki/ca.pem" "$pki/trust.pem" || fail "a fresh trust bundle is not the CA alone"
+
+for service in $INTERNAL_PKI_SERVICES; do
+  leaf="$pki/$service"
+  [ "$(mode_of "$leaf")" = 700 ] || fail "the directory of $service is not 0700"
+  [ "$(mode_of "$leaf/key.pem")" = 600 ] || fail "the key of $service is not 0600"
+  [ "$(mode_of "$leaf/cert.pem")" = 644 ] || fail "the certificate of $service is not 0644"
+  [ "$(find "$leaf" -type f | sort | tr '\n' ' ')" = "$leaf/ca.pem $leaf/cert.pem $leaf/key.pem " ] \
+    || fail "the directory of $service holds more than its certificate, its key and the trust bundle"
+  cmp -s "$leaf/ca.pem" "$pki/trust.pem" || fail "$service does not carry the trust bundle"
+  openssl verify -CAfile "$pki/trust.pem" "$leaf/cert.pem" >/dev/null 2>&1 \
+    || fail "the certificate of $service does not verify against the internal CA"
+  internal_pki_pair_matches "$leaf/cert.pem" "$leaf/key.pem" || fail "the key of $service does not match its certificate"
+  [ "$(days_valid "$leaf/cert.pem")" = 730 ] || fail "the certificate of $service is not valid for 2 years"
+  [ "$(internal_pki_subject "$leaf/cert.pem")" = "CN=argus-$service,OU=internal-v1,O=Argus" ] \
+    || fail "the certificate of $service has the subject $(internal_pki_subject "$leaf/cert.pem")"
+  sans="$(openssl x509 -in "$leaf/cert.pem" -noout -ext subjectAltName)"
+  for name in "DNS:argus-$service" "DNS:localhost" "IP Address:127.0.0.1" "IP Address:0:0:0:0:0:0:0:1"; do
+    grep -qF "$name" <<<"$sans" || fail "the certificate of $service does not name $name"
+  done
+  openssl x509 -in "$leaf/cert.pem" -noout -ext extendedKeyUsage \
+    | grep -q 'TLS Web Server Authentication, TLS Web Client Authentication' \
+    || fail "the certificate of $service is not for both server and client use"
+  openssl x509 -in "$leaf/cert.pem" -noout -ext basicConstraints | grep -q 'CA:FALSE' \
+    || fail "the certificate of $service can sign certificates"
+done
+
+first_state="$(state_of)"
+ensure_internal_pki "$pki" > "$TEST_TMP/second.out" 2>&1 || fail "the second run failed"
+[ "$(state_of)" = "$first_state" ] || fail "a second run changed a certificate or a key"
+grep -q 'valid for more than 60 days' "$TEST_TMP/second.out" || fail "a second run did not say every certificate is valid"
+
+kept="$(fingerprint "$pki/auth/cert.pem")"
+internal_pki_issue_leaf "$pki" camera 59
+internal_pki_issue_leaf "$pki" guard 61
+guard_before="$(fingerprint "$pki/guard/cert.pem")"
+ensure_internal_pki "$pki" > "$TEST_TMP/renew.out" 2>&1 || fail "the renewal run failed"
+[ "$(days_valid "$pki/camera/cert.pem")" = 730 ] || fail "a certificate with 59 days left was not renewed"
+[ "$(fingerprint "$pki/guard/cert.pem")" = "$guard_before" ] || fail "a certificate with 61 days left was renewed"
+[ "$(fingerprint "$pki/auth/cert.pem")" = "$kept" ] || fail "a renewal touched a certificate that did not need it"
+grep -q 'certificates for camera$' "$TEST_TMP/renew.out" || fail "the renewal did not name the one certificate it issued"
+
+(umask 077 && openssl ecparam -name prime256v1 -genkey -noout -out "$pki/llm/key.pem")
+ensure_internal_pki "$pki" > /dev/null 2>&1 || fail "the run after a key change failed"
+internal_pki_pair_matches "$pki/llm/cert.pem" "$pki/llm/key.pem" || fail "a key that no longer matched was not re-issued"
+
+openssl req -new -key "$pki/sync/key.pem" -subj "/O=Argus/OU=internal-v0/CN=argus-sync" -out "$TEST_TMP/old.csr"
+openssl x509 -req -in "$TEST_TMP/old.csr" -CA "$pki/ca.pem" -CAkey "$pki/ca.key" -set_serial 7 -days 700 \
+  -extfile <(internal_pki_leaf_extensions sync) -out "$pki/sync/cert.pem" 2>/dev/null
+ensure_internal_pki "$pki" > /dev/null 2>&1 || fail "the run after a profile change failed"
+[ "$(internal_pki_subject "$pki/sync/cert.pem")" = "CN=argus-sync,OU=internal-v1,O=Argus" ] \
+  || fail "a certificate of an older profile was not re-issued"
+
+old_ca="$(fingerprint "$pki/ca.pem")"
+internal_pki_issue_ca "$pki" 30
+short_ca="$(fingerprint "$pki/ca.pem")"
+rm -f "$pki/ca-previous.pem"
+for service in $INTERNAL_PKI_SERVICES; do
+  internal_pki_issue_leaf "$pki" "$service"
+done
+ensure_internal_pki "$pki" > "$TEST_TMP/rotate.out" 2>&1 || fail "the CA rotation run failed"
+[ "$(fingerprint "$pki/ca.pem")" != "$short_ca" ] || fail "a CA with 30 days left was not renewed"
+[ "$(fingerprint "$pki/ca.pem")" != "$old_ca" ] || fail "the CA rotation brought back the first CA"
+[ "$(fingerprint "$pki/ca-previous.pem")" = "$short_ca" ] || fail "the rotated CA was not kept as the previous one"
+[ "$(grep -c 'BEGIN CERTIFICATE' "$pki/trust.pem")" = 2 ] || fail "the trust bundle does not carry both CAs during the rotation"
+[ "$(days_valid "$pki/ca.pem")" = 3650 ] || fail "the renewed CA is not valid for 10 years"
+grep -q 'a new internal CA was issued' "$TEST_TMP/rotate.out" || fail "the rotation did not ask for a restart"
+for service in $INTERNAL_PKI_SERVICES; do
+  openssl verify -CAfile "$pki/ca.pem" "$pki/$service/cert.pem" >/dev/null 2>&1 \
+    || fail "the certificate of $service was not re-issued by the new CA"
+  cmp -s "$pki/$service/ca.pem" "$pki/trust.pem" || fail "$service does not carry the rotated trust bundle"
+done
+
+if openssl x509 -help 2>&1 | grep -q -- '-not_after'; then
+  openssl req -x509 -new -key "$pki/ca.key" -subj "/CN=expired" -not_before 20200101000000Z -not_after 20200102000000Z \
+    -out "$pki/ca-previous.pem" 2>/dev/null
+  ensure_internal_pki "$pki" > /dev/null 2>&1 || fail "the run after the previous CA expired failed"
+  [ ! -e "$pki/ca-previous.pem" ] || fail "an expired previous CA was kept"
+  cmp -s "$pki/ca.pem" "$pki/trust.pem" || fail "an expired previous CA stayed in the trust bundle"
+else
+  printf 'internal-pki-test: openssl has no -not_after, so the expired previous CA case is skipped\n'
+fi
+
+port_free() {
+  ! (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+}
+
+port=""
+for _ in $(seq 1 50); do
+  candidate=$(( 20000 + RANDOM % 40000 ))
+  case "$candidate" in 4222|9000|9001) continue ;; esac
+  if port_free "$candidate"; then
+    port="$candidate"
+    break
+  fi
+done
+[ -n "$port" ] || fail "no free loopback port"
+
+serve_once() {
+  openssl s_server -accept "127.0.0.1:$port" -naccept 2 -quiet \
+    -cert "$pki/auth/cert.pem" -key "$pki/auth/key.pem" -CAfile "$pki/auth/ca.pem" \
+    -Verify 1 -verify_return_error > "$TEST_TMP/server.out" 2>&1 &
+  server_pid=$!
+  for _ in $(seq 1 100); do
+    port_free "$port" || return 0
+    sleep 0.05
+  done
+  fail "openssl s_server did not listen"
+}
+
+finish_server() {
+  kill "$server_pid" 2>/dev/null || true
+  wait "$server_pid" 2>/dev/null || true
+  server_pid=""
+}
+
+serve_once
+openssl s_client -connect "127.0.0.1:$port" -cert "$pki/camera/cert.pem" -key "$pki/camera/key.pem" \
+  -CAfile "$pki/camera/ca.pem" -verify_return_error -verify_hostname argus-auth \
+  < /dev/null > "$TEST_TMP/client.out" 2>&1 || fail "mutual TLS between camera and auth failed: $(tail -n 3 "$TEST_TMP/client.out")"
+finish_server
+grep -q 'Verify return code: 0 (ok)' "$TEST_TMP/client.out" || fail "camera did not verify auth's certificate"
+
+serve_once
+! openssl s_client -connect "127.0.0.1:$port" -cert "$pki/camera/cert.pem" -key "$pki/camera/key.pem" \
+  -CAfile "$pki/camera/ca.pem" -verify_return_error -verify_hostname argus-identity \
+  < /dev/null > "$TEST_TMP/client.out" 2>&1 || fail "a client expecting identity accepted auth's certificate"
+finish_server
+grep -q 'hostname mismatch' "$TEST_TMP/client.out" || fail "the client refused auth's certificate for another reason than its name"
+
+(umask 077 && openssl ecparam -name prime256v1 -genkey -noout -out "$TEST_TMP/foreign.key")
+openssl req -x509 -new -key "$TEST_TMP/foreign.key" -subj "/CN=argus-camera" -days 30 -out "$TEST_TMP/foreign.pem"
+serve_once
+! openssl s_client -tls1_2 -connect "127.0.0.1:$port" -cert "$TEST_TMP/foreign.pem" -key "$TEST_TMP/foreign.key" \
+  -CAfile "$pki/camera/ca.pem" -verify_return_error \
+  < /dev/null > "$TEST_TMP/client.out" 2>&1 || fail "auth accepted a client certificate the internal CA did not issue"
+finish_server
+grep -q 'certificate verify failed' "$TEST_TMP/server.out" || fail "auth refused the foreign client for another reason than its issuer"
+
+serve_once
+! openssl s_client -tls1_2 -connect "127.0.0.1:$port" -CAfile "$pki/camera/ca.pem" -verify_return_error \
+  < /dev/null > "$TEST_TMP/client.out" 2>&1 || fail "auth accepted a client without a certificate"
+finish_server
+grep -q 'peer did not return a certificate' "$TEST_TMP/server.out" \
+  || fail "auth refused the client without a certificate for another reason"
+
+traced="$TEST_TMP/traced"
+{
+  printf 'set -euo pipefail\nsource %q\nsource %q\n' "$ROOT/scripts/lib/common.sh" "$ROOT/scripts/lib/internal-pki.sh"
+  printf 'ensure_internal_pki %q\n' "$traced"
+  printf 'cp -R %q %q\n' "$traced" "$TEST_TMP/first-keys"
+  printf 'internal_pki_issue_ca %q 30\n' "$traced"
+  printf 'ensure_internal_pki %q\n' "$traced"
+} > "$TEST_TMP/traced.sh"
+bash -x "$TEST_TMP/traced.sh" > /dev/null 2> "$TEST_TMP/trace" || fail "the traced issuance failed"
+find "$traced" "$TEST_TMP/first-keys" -type f \( -name '*.key' -o -name 'key.pem' \) -exec cat {} + \
+  | awk '
+      /^-----/ { next }
+      {
+        print
+        count = split($0, part, /[^A-Za-z0-9]+/)
+        for (i = 1; i <= count; i++)
+          if (length(part[i]) >= 16 && part[i] != $0)
+            print part[i]
+      }' | sort -u > "$TEST_TMP/key-values"
+[ "$(wc -l < "$TEST_TMP/key-values")" -ge 84 ] || fail "the trace check gathered too few key lines"
+! grep -qF -f "$TEST_TMP/key-values" "$TEST_TMP/trace" || fail "the set -x trace of the issuance carries a private key"
+
+grep -Eq '^  ensure_internal_pki "\$DATA_DIR/certs/internal"$' "$ROOT/scripts/provision-host.sh" \
+  || fail "provision-host.sh does not issue and renew the internal certificates"
+grep -Eq '^  ensure_internal_pki "\$\{ARGUS_DATA_DIR:-\$ROOT/argus-deploy/data\}/certs/internal"$' "$ROOT/scripts/setup.sh" \
+  || fail "setup.sh does not issue and renew the internal certificates natively"
+
+printf 'internal-pki-test: ok\n'

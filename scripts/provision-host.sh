@@ -2,6 +2,7 @@
 set -euo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/pki.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/internal-pki.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/docker.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/privacy.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/nats-users.sh"
@@ -476,6 +477,7 @@ print_summary() {
   printf '  data dir       : %s\n' "$DATA_DIR"
   printf '  certs dir      : %s\n' "$CERTS_DIR"
   printf '  CA signer dir  : %s\n' "$CA_DIR"
+  printf '  internal CA    : %s\n' "$DATA_DIR/certs/internal"
   printf '  models dir     : %s\n' "$MODELS_DIR"
   printf '  go2rtc dir     : %s\n' "$GO2RTC_DIR"
   printf '  objects dir    : %s\n' "$DATA_DIR/rustfs/objects"
@@ -517,6 +519,7 @@ main() {
   fi
   ensure_instance_certs "$ROOT" "$CERTS_DIR" "$DEPLOY_DIR/config.identity.toml" \
     "$CA_DIR" "$lan_address"
+  ensure_internal_pki "$DATA_DIR/certs/internal"
   if [ "$WITH_S3" -eq 1 ]; then
     ensure_object_store
   fi

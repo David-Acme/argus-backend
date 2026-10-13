@@ -818,6 +818,49 @@ a poll of `server.pem` (mtime and inode, every 60 s) that runs `nginx -t` and
 leaf until a restart, so calls failed about 90 days after boot.
 `scripts/livekit.sh` starts the native front the same way.
 
+## The internal CA (S1, 2026-10)
+
+The internal gRPC legs get mutual TLS from a CA of their own, separate from the
+instance CA the apps pin (ruling of 2026-10-12): a key that leaks from one signs
+nothing the other trusts. Step 1 issues the CA and the certificates; no service
+loads them yet.
+
+- `scripts/lib/internal-pki.sh` (`ensure_internal_pki`) keeps, under
+  `${ARGUS_DATA_DIR}/certs/internal` (0700):
+  - `ca.key` (0600) and `ca.pem`: an ECDSA P-256 CA valid for 10 years,
+    `pathlen:0`, named `O=Argus, OU=internal-v1, CN=Argus internal CA <random>`,
+    so two CAs never share a name during a rotation;
+  - `trust.pem`: the CAs a service trusts, the current one and, after a
+    rotation, the previous one until it expires;
+  - one 0700 directory per service that speaks internal gRPC (`auth`, `camera`,
+    `guard`, `identity`, `llm`, `notification`, `productivity`, `settings`,
+    `stt`, `sync`, `tts`, `vlm`, `voice`) with `cert.pem`, `key.pem` (0600)
+    and `ca.pem` (a copy of `trust.pem`): an ECDSA P-256 certificate valid for
+    2 years, `CN=argus-<service>`, SAN `argus-<service>`, `localhost`,
+    `127.0.0.1` and `::1`, for server and client use, so one certificate
+    serves both ends of a leg. That directory is all a service will mount.
+- `provision-host.sh` runs it on every pass, and `setup.sh` natively (data dir
+  `${ARGUS_DATA_DIR:-argus-deploy/data}`). A certificate is issued again, with
+  a new key, when it is missing, no longer matches its key, was issued by
+  another CA, carries an older profile or has fewer than 60 days left; the rest
+  is kept. A CA with fewer than 60 days left is replaced: every certificate is
+  issued again, the old CA stays in `trust.pem` until it expires, and
+  provisioning asks for one restart of every service.
+- The per-caller secret stays the authorisation on top of mutual TLS: the
+  certificate says which service is calling, the secret still decides what it
+  may call. Plaintext listeners stay until the owner's deploy check; removing
+  them is a later cleanup unit, like the S3 and S4 cleanups.
+- `scripts/internal-pki-test.sh` checks the CA and every certificate
+  (validity, use, names, permissions, what each directory holds), that the
+  list of services is the set whose deploy templates speak internal gRPC,
+  renewal at 59 days and not at 61, a changed key, an older profile, a CA
+  rotation and the drop of an expired previous CA, mutual TLS between two
+  services with `openssl s_server`/`s_client` (a client that expects another
+  name, a client certificate from another CA and a client without one are
+  refused, each for that reason), and a `set -x` trace that carries no line
+  of a private key. `deploy-mounts-test` checks that the provisioning dry run
+  issues every certificate and that no trace carries a line of their keys.
+
 ## Init jobs and rule 27 (2026-10)
 
 `camera-init`, `productivity-init` and `notification-init` read the legacy
@@ -836,16 +879,14 @@ undoing the split is exactly that; it stays behind its own opt-in profile.
 The owner decided to keep this pass bounded. These four are the next steps,
 in order:
 
-1. **mTLS on the internal gRPC legs.** Each service gets its own client/server
-   leaf from a dedicated *internal* CA (separate from the app-facing instance
-   CA, so app pinning is unaffected), minted by `provision-host.sh` into a
-   per-service `${ARGUS_DATA_DIR}/pki/internal/<service>/` mounted read-only
-   into that service alone. `packages/lib/grpc` gains a credentials helper
-   that loads `[rpc] tls_cert/tls_key/tls_ca`; servers require and verify the
-   client certificate and map its SAN (`argus-<service>`) to the caller the
-   shared secrets identify today, so the per-caller secrets can retire once
-   every leg is mutual. Rollout: servers accept both for one release, then
-   refuse plaintext.
+1. **mTLS on the internal gRPC legs.** In progress as S1 (see "The internal
+   CA" above): the CA and one certificate per service are issued under
+   `${ARGUS_DATA_DIR}/certs/internal`. Next, `packages/lib/grpc` loads them,
+   servers listen with mutual TLS beside their plaintext port, clients present
+   their certificate, each service's health warns when a certificate has fewer
+   than 30 days left, and each service mounts its own directory read-only. The
+   per-caller secrets stay as the authorisation on top of mutual TLS; the
+   plaintext listeners go only after the owner's deploy check.
 2. **TLS on the tunnel home link.** TLS 1.3 on the relay's home port with a
    relay leaf the client pins by SPKI hash (`[tunnel] relay_pin`), the HMAC
    challenge kept inside as the second factor. PUSH bodies then stop

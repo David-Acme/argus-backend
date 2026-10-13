@@ -265,7 +265,16 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 
 ## 5. Security and deployment hardening
 
-- S1 mTLS on internal gRPC with an internal CA (voice and others are cleartext today).
+- S1 mTLS on internal gRPC with an internal CA (voice and others are cleartext today). Shape
+  decided 2026-10-13: files under `${ARGUS_DATA_DIR}/certs/internal`, a CA valid for 10 years and
+  service certificates for 2, renewed by `provision-host.sh` (and natively by `setup.sh`) when fewer
+  than 60 days remain, each service's health warning under 30 days, the per-caller secret kept as
+  the authorisation on top of mutual TLS, and an additive migration whose plaintext listeners stay
+  until the owner's deploy check (their removal is a later cleanup unit). Step 1, 2026-10-13:
+  `scripts/lib/internal-pki.sh` issues the CA (ECDSA P-256) and one certificate per service that
+  speaks internal gRPC (13, for server and client use), renews them, rotates the CA with the old one
+  trusted until it expires, and `scripts/internal-pki-test.sh` proves it, mutual TLS with openssl
+  included (`argus-deploy/CONTEXT.md`, "The internal CA").
 - S2 Tunnel home link: TLS 1.3 with a pinned relay, a MAC on every frame after AUTH, the device side
   refusing unauthenticated connections.
 - S3 Per-service NATS accounts (nkeys, subject and `$JS.API` scoping). Status 2026-10-13
