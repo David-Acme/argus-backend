@@ -2203,6 +2203,80 @@ memory**, and memory has a ceiling again, measured where it is spent:
 This replaces the earlier "memory is reported, not gated" wording of the same
 day.
 
+### The merge gate, and how to pass it (ruled 2026-10-12)
+
+The cutover branch is ready and parked: it is merged only when the owner's
+trained INT8 bundles beat master where master works today (the no-regression
+rule). With the pilots, the shipped pipeline drops `memory.recall` recall from
+0.520 to 0 and `memory.remember` from 0.228 to 0.025, and `selection.accuracy`
+falls under its gate, because the pilot Laya scores plain memory statements and
+questions below its 0.77 operating point and only explicit triggers still route
+them.
+
+**The bar** — master `ef85ad81` (fastText router + NuExtract), `llm-tier-eval`
+in a prod build, 789 cases, beside the branch on the pilots:
+
+| metric | gate | master (the bar) | branch, pilots |
+|---|---|---|---|
+| `selection.accuracy` | ≥ 0.55 | 0.643 | 0.544 |
+| `selection.memory.accuracy` | ≥ 0.60 | 0.241 | 0.008 |
+| `tool.memory.remember.recall` | ≥ 0.50 | 0.228 | 0.025 |
+| `tool.memory.recall.recall` | ≥ 0.45 | 0.520 | 0 |
+| `tool.memory.forget.recall` | ≥ 0.60 | 0.156 | 0 |
+| `tool.memory.remind.recall` | ≥ 0.75 | 0.013 | 0 |
+| `tool.memory.remember.precision` | ≥ 0.85 | 0.947 | 1.0 |
+| `tool.memory.recall.precision` | ≥ 0.93 | 1.0 | 0 |
+| `tool.memory.forget.precision` | ≥ 0.90 | 1.0 | 0 |
+| `tool.memory.remind.precision` | ≥ 0.90 | 1.0 | 0 |
+| `falseCompletionRate` | ≤ 0 | 0.046 | 0.051 |
+| app / camera / modules / productivity / none accuracy | | 0.68 / 1.0 / 0.92 / 0.96 / 0.99 | same (none 1.0) |
+
+`call-faithfulness-eval` (prod, 32 cases, temperature 0.3, seed 42) is the same
+on master and on the branch: casePass 29/32, and four gates fail on both
+(`missedNameAsk` 1, `recital` 1, `relevance` 1, `retryShare` 0.333 against
+0.05) — not the cutover's.
+
+**The gate.** The new bundles install through `install-bundle.sh` with their
+golden vectors checked, and in prod `selection.accuracy` ≥ 0.55, every memory
+metric above ≥ master's value, and `call-faithfulness-eval` unchanged
+(casePass ≥ 29, no gate failing that does not fail on master). Then the series
+is merged and pushed in one go.
+
+**The procedure**, from the repository root of the branch's worktree:
+
+1. Rebase on master and check the series still applies: `git rebase master`.
+   `scripts/lib/tidy-baseline.txt` is the usual conflict: take master's file,
+   then re-measure, never hand-merge — scan the llm project on master and on the
+   branch with `scripts/lib/tidy_scan.py`'s logic, lower each count by the
+   findings that disappear from `services/llm` files only, and set `tus` to
+   master's value minus the TUs the branch removes plus those it adds (this
+   series: −9 +5).
+2. Build: `HEAVY_MIN_FREE_GB=6 ~/.cache/argus-scratch-backup/heavy-gate.sh 6
+   ./scripts/build-all.sh dev --only llm --jobs 6` (0 errors, 0 warnings), then
+   the same with `prod` for the evals.
+3. If the exporter has not written them, add the golden vectors and the
+   precision to each exported bundle (onnxruntime pinned to 1.24.4, the version
+   argus-llm links): `python3 services/llm/tests/eval/bundle-golden.py --kind
+   decide --bundle <laya> --precision int8` and `... --kind extract --bundle
+   <gliner> --precision int8 --rows <gliner_bundle.py fixture rows>`.
+4. Install: `services/llm/scripts/install-bundle.sh decide <laya>` and
+   `services/llm/scripts/install-bundle.sh extract <gliner>`. Each verifies the
+   bundle, runs `llm-bundle-check` on its golden vectors before the swap, and
+   keeps the pilot as `<slot>.previous` (`--rollback` restores it).
+5. Measure in prod, against the bar above:
+   `ctest --test-dir services/llm/build/prod -R '^(llm-bundle-check-decide|llm-bundle-check-extract|llm-tier-eval|call-faithfulness-eval)$' --output-on-failure`
+   (both bundle checks must pass, not skip), then the decider on real traffic:
+   `python3 -I services/llm/tests/eval/decider-eval.py --decider
+   "services/llm/build/prod/tests/eval/production-decider --bundle
+   models/decide/<slot>" --gates services/llm/tests/eval/gates.json --select
+   services/llm/tests/fixtures/eval/cases.jsonl --traffic
+   services/llm/tests/fixtures/intent/eval-production.tsv` (the pilot's
+   reading: 57.4% ACT, memory coverage 60.3%, 0 false actions), and the decide
+   latency of the "Decide latency" table below (the budget is p95 150 ms).
+6. Gates of the merge: `--only llm`, `scripts/build-all-test.sh`, and the
+   comment, deps and routes gates; then the reviewer merges and pushes the
+   series.
+
 ### Decide latency: the pilot's recorded gap (2026-10-12)
 
 The budget is p95 150 ms per decide (`gates.json`, `performance`). Measured on
