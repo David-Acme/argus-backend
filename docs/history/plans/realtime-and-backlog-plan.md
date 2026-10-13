@@ -305,9 +305,14 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   deploy step, in this order: re-run `scripts/provision-host.sh` (it issues the seeds and writes
   each service's key into its config); bring the stack up (`docker compose build` and
   `docker compose up -d`; the first deploy recreates the broker, whose mounts changed); run
-  `scripts/nats-users-check.sh`, which must list every connection under its service and none as
-  `SHARED` (exit 0); only then the cleanup that removes the shared user. Both credentials stay
-  valid until that check passes. Any later change to `argus-deploy/nats-permissions.conf` reaches
+  `scripts/nats-users-check.sh`, which exits 0 only when every service the stack deploys has a
+  connection of its own and no connection is `SHARED` or unknown (a missing, stopped or
+  crash-looping service fails it); only then the cleanup that removes the shared user. The gate
+  expects the rows that `docker compose config --services` lists under the stack's active
+  profiles, read from `COMPOSE_PROFILES` or `.env`, so run it with the profiles the stack runs
+  with. `relay` and `tunnel` are expected only under the `tunnel` profile, and a stack that turns
+  that profile on later runs the gate again with it on. Both credentials stay valid until that
+  check passes. Any later change to `argus-deploy/nats-permissions.conf` reaches
   the running broker only through a reload, `docker compose kill -s HUP nats`, after provisioning
   and before the services that need the new grants start.
 - S4 Per-service S3 credentials scoped by prefix; `rc` keys out of command arguments. Decided

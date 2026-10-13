@@ -705,13 +705,16 @@ change, or nats fails to start on the missing include.
 The broker ran with no authorization, so any container on the internal
 network - the camera container that parses untrusted media, the relay -
 could publish forged identity changes (signing users out), change-feed
-events, encounter summaries for the LLM's memory or push intents. The
-compose now starts it with `--user argus --pass ${NATS_PASSWORD}`, every
-service's `[nats]` carries `user`/`password` (read by `NatsBus` and passed
-with `natsOptions_SetUserInfo`, never in the URL, so it never reaches a
-log), and `provision-host.sh` generates the password once for every config
-and writes it to `.env`. Per-service subject permissions (an nkey per
-service) are the next step; the section below records them.
+events, encounter summaries for the LLM's memory or push intents. The first
+fix was one shared user, `argus`, with a password every service's `[nats]`
+carried as `user`/`password` (passed with `natsOptions_SetUserInfo`, never
+in the URL, so it never reached a log). That password is in `auth.conf` now,
+as the paragraph above says, and no longer on the command line or in `.env`.
+Each service now connects with its own nkey and the grants of its row ("One
+NATS user per service" below). A service uses the shared user's password
+only when its config lacks its key. The tunnel client never had the
+password. The shared user stays in `auth.conf` only until the owner's gate
+passes and the cleanup removes it.
 
 ## One NATS user per service (S3, 2026-10)
 
@@ -763,10 +766,30 @@ its own key; removing it is the last step.
   `provision-host.sh`, then `docker compose kill -s HUP nats` (nats-server
   re-reads `auth.conf` and its include and keeps its connections), and only then
   start the services that need the new grants.
-- **Removing the shared user.** `scripts/nats-users-check.sh` lists every
-  broker connection with the service whose key it presented, or `SHARED`; it
-  reads the monitor from inside the nats container and changes nothing. The
-  shared user is removed only after it exits 0 on the running stack.
+- **Removing the shared user.** `scripts/nats-users-check.sh` is the gate.
+  It reads the monitor from inside the nats container and changes nothing.
+  It names every broker connection by the key it presented: `own` (a key
+  `auth.conf` records for a row), `SHARED` (the shared user) or `unknown` (a
+  key `auth.conf` does not record, or none). It names every service the
+  stack deploys as `own` (at least one connection of its own) or `missing`.
+  It exits 0 only when every deployed service has a connection of its own
+  and no connection is `SHARED` or `unknown`. A service that is stopped or
+  crash-looping during the check is `missing` and fails the gate.
+  `scripts/nats-users-check-test.sh` replays recorded broker answers through
+  it. With `--live` it also checks, on a throwaway broker, that the monitor
+  reports an nkey user by the key's public key, which the matching relies
+  on.
+  The services it expects are the rows of `nats-permissions.conf` that
+  `docker compose config --services` lists under the stack's active
+  profiles. Compose reads those profiles from `COMPOSE_PROFILES` or from
+  `.env`, where `provision-host.sh --with-tunnel` writes `tunnel`. So `relay`
+  and `tunnel` are expected only when the tunnel profile is on, and are
+  listed as not deployed, without failing, when it is off. Run the gate with
+  the profiles the stack runs with. A stack that turns the tunnel profile on
+  after the shared user is gone runs the gate again with it on: the relay
+  and the tunnel client connect with their own keys, which provisioning
+  issues for every row whatever the profiles. The shared user is removed
+  only after the gate exits 0 on the running stack.
 - **Deploying this change.** The broker now includes `nats-permissions.conf`
   and every NATS client mounts its seed with `create_host_path: false`, so
   re-run `scripts/provision-host.sh` before `docker compose up -d`: without the
