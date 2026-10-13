@@ -1,5 +1,6 @@
 #include "project-task-feature-service.hxx"
 
+#include <algorithm>
 #include <ctime>
 #include <errors/response-exception.hxx>
 #include <productivity/productivity-errors.hxx>
@@ -21,6 +22,21 @@ ProjectTaskFeatureService::canWorkOn(const CanWorkOnInput& input) const
        .userId = input.actorId,
        .client = input.client});
   co_return access && *access == ShareAccess::Edit;
+}
+
+drogon::Task<void>
+ProjectTaskFeatureService::requireAssignee(const AssigneeInput& input) const
+{
+  if (!input.assigneeId)
+    co_return;
+  const auto project =
+      co_await projectRepository_.findById(input.projectId, input.client);
+  if (project && project->ownerId == *input.assigneeId)
+    co_return;
+  const auto members =
+      co_await memberRepository_.memberIds(input.projectId, input.client);
+  if (std::ranges::find(members, *input.assigneeId) == members.end())
+    throw ResponseException(ProductivityErrors::AssigneeNotInProject);
 }
 
 drogon::Task<void>
@@ -90,6 +106,9 @@ ProjectTaskFeatureService::create(const CreateInput& input) const
       }
     }
 
+    co_await requireAssignee({.projectId = body.projectId,
+                              .assigneeId = body.assigneeId,
+                              .client = transaction.get()});
     row = co_await repository_.create({
         .projectId = body.projectId,
         .createdBy = actorId > 0 ? std::optional<int64_t>(actorId) : std::nullopt,
@@ -148,12 +167,16 @@ ProjectTaskFeatureService::update(const UpdateInput& input) const
       co_return std::nullopt;
     }
     before = existing->toJson();
+    co_await requireAssignee({.projectId = existing->projectId,
+                              .assigneeId = input.body.assigneeId,
+                              .client = transaction.get()});
 
     row = co_await repository_.update(input.id, {
         .title = input.body.title,
         .status = input.body.status,
         .priority = input.body.priority,
         .assigneeId = input.body.assigneeId,
+        .clearAssignee = input.body.clearsAssignee,
         .dueAt = input.body.dueAt,
         .clearDueAt = input.body.clearsDueAt,
         .sortOrder = input.body.sortOrder,

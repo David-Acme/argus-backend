@@ -41,6 +41,10 @@ inline constexpr ErrorDefinition OwnerAlreadyHasAccess{
     .code = ErrorCode::Conflict,
     .status = 409,
     .message = "The owner already has access"};
+inline constexpr ErrorDefinition AssigneeNotInProject{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "The assignee is neither the project's owner nor one of its members"};
 inline constexpr ErrorDefinition IdempotencyKeyReused{
     .code = ErrorCode::Conflict,
     .status = 409,

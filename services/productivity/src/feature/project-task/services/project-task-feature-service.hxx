@@ -53,7 +53,15 @@ private:
     drogon::orm::DbClient* client{nullptr};
   };
 
+  struct AssigneeInput
+  {
+    int64_t projectId{0};
+    std::optional<int64_t> assigneeId;
+    drogon::orm::DbClient* client{nullptr};
+  };
+
   drogon::Task<bool> canWorkOn(const CanWorkOnInput& input) const;
+  drogon::Task<void> requireAssignee(const AssigneeInput& input) const;
   drogon::Task<void> emit(const EmitInput& input) const;
 
   ActionJournal journal_;

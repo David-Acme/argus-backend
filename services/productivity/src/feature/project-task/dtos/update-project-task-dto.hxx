@@ -14,6 +14,7 @@ struct UpdateProjectTaskDto
   std::optional<int64_t> assigneeId;
   std::optional<int64_t> dueAt;
   bool clearsDueAt{false};
+  bool clearsAssignee{false};
   std::optional<double> sortOrder;
 
   static UpdateProjectTaskDto fromJson(const Json::Value& json);

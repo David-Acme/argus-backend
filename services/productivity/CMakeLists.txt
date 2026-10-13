@@ -288,6 +288,38 @@ target_compile_options(productivity-action-journal-test
 add_test(NAME productivity-action-journal-test
          COMMAND productivity-action-journal-test)
 
+add_executable(productivity-task-assignee-test
+    tests/unit/productivity-task-assignee-test.cc)
+target_link_libraries(productivity-task-assignee-test PRIVATE argus::lib::test-support)
+
+set_target_properties(productivity-task-assignee-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_compile_definitions(productivity-task-assignee-test PRIVATE
+    ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_link_libraries(productivity-task-assignee-test PRIVATE
+    argus::productivity-project
+    argus::productivity-project-member
+    argus::productivity-project-task
+    argus::lib::auth
+    argus::contracts::auth
+    argus::contracts::productivity
+    argus::contracts::sync
+    argus::lib::config
+    argus::lib::errors
+    argus::lib::text
+    argus::lib::sqlite
+    argus::lib::validation
+    argus::lib::http
+    doctest::doctest)
+
+target_compile_options(productivity-task-assignee-test
+                       PRIVATE -Wall -Wextra)
+
+add_test(NAME productivity-task-assignee-test
+         COMMAND productivity-task-assignee-test)
+
 add_executable(productivity-agenda-test
     tests/unit/productivity-agenda-test.cc)
 target_link_libraries(productivity-agenda-test PRIVATE argus::lib::test-support)

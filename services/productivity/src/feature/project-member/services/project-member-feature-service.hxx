@@ -1,6 +1,7 @@
 #pragma once
 
 #include <shared/services/action-journal/action-journal.hxx>
+#include <shared/repositories/project-task/project-task-repository.hxx>
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
@@ -45,9 +46,11 @@ private:
   };
 
   drogon::Task<void> emitMembership(const EmitMembershipInput& input) const;
+  drogon::Task<void> unassignTasks(const EmitMembershipInput& input) const;
 
   ActionJournal journal_;
   ProjectMemberRepository repository_;
   ProjectRepository parentRepository_;
+  ProjectTaskRepository taskRepository_;
   IdentityUserDirectory directory_;
 };

@@ -134,6 +134,7 @@ inline constexpr std::string_view UPDATE_COL_TITLE = "title = ?";
 inline constexpr std::string_view UPDATE_COL_STATUS = "status = ?";
 inline constexpr std::string_view UPDATE_COL_PRIORITY = "priority = ?";
 inline constexpr std::string_view UPDATE_COL_ASSIGNEE_ID = "assignee_id = ?";
+inline constexpr std::string_view UPDATE_COL_ASSIGNEE_NULL = "assignee_id = NULL";
 inline constexpr std::string_view UPDATE_COL_DUE_AT = "due_at = ?";
 inline constexpr std::string_view UPDATE_COL_DUE_AT_NULL = "due_at = NULL";
 inline constexpr std::string_view UPDATE_COL_SORT_ORDER = "sort_order = ?";
@@ -172,6 +173,7 @@ struct ProjectTaskUpdateInput
   std::optional<std::string> status;
   std::optional<std::string> priority;
   std::optional<int64_t> assigneeId;
+  bool clearAssignee{false};
   std::optional<int64_t> dueAt;
   bool clearDueAt{false};
   std::optional<double> sortOrder;

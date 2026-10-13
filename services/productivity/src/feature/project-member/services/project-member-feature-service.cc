@@ -40,6 +40,46 @@ drogon::Task<void> ProjectMemberFeatureService::emitMembership(
   co_return;
 }
 
+drogon::Task<void>
+ProjectMemberFeatureService::unassignTasks(const EmitMembershipInput& input) const
+{
+  const auto tasks =
+      co_await taskRepository_.findByProject(input.row.projectId, input.client);
+  std::vector<int64_t> recipients;
+  bool resolved = false;
+  for (const auto& task : tasks) {
+    if (task.assigneeId != input.row.userId)
+      continue;
+    if (!resolved) {
+      recipients = co_await repository_.memberIds(input.row.projectId, input.client);
+      recipients.push_back(input.ownerId);
+      resolved = true;
+    }
+    const Json::Value before = task.toJson();
+    const auto after = co_await taskRepository_.update(task.id,
+                                                       {.title = std::nullopt,
+                                                        .status = std::nullopt,
+                                                        .priority = std::nullopt,
+                                                        .assigneeId = std::nullopt,
+                                                        .clearAssignee = true,
+                                                        .dueAt = std::nullopt,
+                                                        .clearDueAt = false,
+                                                        .sortOrder = std::nullopt,
+                                                        .client = input.client});
+    const auto* sink = user_change::getProductivitySink();
+    if (!sink) {
+      LOG_WARN << "user change sink not installed; drop project task audit";
+      continue;
+    }
+    co_await sink->publishAudit({.recordId = task.id,
+                                 .tableName = TableName::ProjectTask,
+                                 .before = before,
+                                 .after = after.toJson(),
+                                 .userIds = recipients,
+                                 .client = input.client});
+  }
+}
+
 drogon::Task<ProjectMemberResult>
 ProjectMemberFeatureService::create(const CreateProjectMemberDto& body, int64_t actorId) const
 {
@@ -203,6 +243,10 @@ drogon::Task<bool> ProjectMemberFeatureService::remove(int64_t id,
                              .row = before,
                              .ownerId = parent->ownerId,
                              .client = transaction.get()});
+    co_await unassignTasks({.operation = SyncOperation::Delete,
+                            .row = before,
+                            .ownerId = parent->ownerId,
+                            .client = transaction.get()});
     co_await journal_.record({.actorId = actorId,
                               .table = TableName::ProjectMember,
                               .recordId = before.id,

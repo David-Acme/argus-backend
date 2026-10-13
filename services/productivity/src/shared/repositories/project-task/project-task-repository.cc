@@ -95,7 +95,10 @@ ProjectTaskRepository::update(int64_t id,
   addString(UPDATE_COL_TITLE, input.title);
   addString(UPDATE_COL_STATUS, input.status);
   addString(UPDATE_COL_PRIORITY, input.priority);
-  addInt(UPDATE_COL_ASSIGNEE_ID, input.assigneeId);
+  if (input.clearAssignee)
+    addFragment(UPDATE_COL_ASSIGNEE_NULL);
+  else
+    addInt(UPDATE_COL_ASSIGNEE_ID, input.assigneeId);
   if (input.clearDueAt)
     addFragment(UPDATE_COL_DUE_AT_NULL);
   else
