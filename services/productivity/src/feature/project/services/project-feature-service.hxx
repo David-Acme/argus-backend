@@ -53,6 +53,7 @@ private:
 
   drogon::Task<void> emit(const EmitInput& input) const;
   drogon::Task<void> retireTasks(const EmitInput& input) const;
+  drogon::Task<void> retireMembers(const EmitInput& input) const;
   drogon::Task<bool> canEdit(const CanEditInput& input) const;
 
   ProjectRepository repository_;

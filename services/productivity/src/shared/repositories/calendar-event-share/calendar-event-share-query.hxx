@@ -96,6 +96,11 @@ inline constexpr std::string_view INSERT =
 inline constexpr std::string_view UPDATE_ACCESS =
     "UPDATE calendar_event_share SET access = ?, updated_at = strftime('%s', 'now') "
     "WHERE id = ? AND deleted_at IS NULL";
+inline constexpr std::string_view REMOVE_BY_EVENT =
+    "UPDATE calendar_event_share SET deleted_at = strftime('%s', 'now'), "
+    "updated_at = strftime('%s', 'now') "
+    "WHERE calendar_event_id = ? AND deleted_at IS NULL";
+
 inline constexpr std::string_view REMOVE =
     "UPDATE calendar_event_share SET deleted_at = strftime('%s', 'now'), "
     "updated_at = strftime('%s', 'now') WHERE id = ? AND deleted_at IS NULL";

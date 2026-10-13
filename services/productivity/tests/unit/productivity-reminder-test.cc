@@ -236,9 +236,9 @@ argus::client::CallerIdentity identityFor(int64_t userId)
   return {.userId = userId, .role = "owner", .device = "test-device"};
 }
 
-struct Fixture
+struct DatabaseBoot
 {
-  Fixture()
+  DatabaseBoot()
   {
     std::remove(kDb);
     std::remove((std::string(kDb) + "-wal").c_str());
@@ -249,7 +249,11 @@ struct Fixture
                                    .name = "default",
                                    .timeout = -1});
   }
+};
 
+struct Fixture
+{
+  DatabaseBoot database;
   AppRunner runner;
 };
 

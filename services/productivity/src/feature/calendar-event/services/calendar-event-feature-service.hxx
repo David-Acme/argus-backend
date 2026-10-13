@@ -54,6 +54,7 @@ private:
 
   drogon::Task<void> emit(const EmitInput& input) const;
   drogon::Task<bool> canEdit(const CanEditInput& input) const;
+  drogon::Task<void> retireShares(const EmitInput& input) const;
   drogon::Task<void> requireProject(std::optional<int64_t> projectId,
                                     drogon::orm::DbClient* client) const;
 

@@ -38,8 +38,40 @@ CalendarEventFeatureService::emit(const EmitInput& input) const
   co_return;
 }
 
-drogon::Task<bool>
-CalendarEventFeatureService::canEdit(const CanEditInput& input) const
+drogon::Task<void>
+CalendarEventFeatureService::retireShares(const EmitInput& input) const
+{
+  const CalendarEventSchema& event = input.row;
+  const auto shares =
+      co_await shareRepository_.findByParent(event.id, input.client);
+  if (shares.empty())
+    co_return;
+  co_await shareRepository_.removeByEvent(event.id, input.client);
+
+  const auto* sink = user_change::getProductivitySink();
+  if (!sink) {
+    LOG_WARN << "user change sink not installed; drop event share tombstones";
+    co_return;
+  }
+  const auto deletedAt = static_cast<Json::Int64>(std::time(nullptr));
+  for (const auto& share : shares) {
+    SocketEmitDto body;
+    body.operation = SyncOperation::Delete;
+    body.option = TableName::CalendarEventShare;
+    Json::Value tombstone;
+    tombstone["id"] = static_cast<Json::Int64>(share.id);
+    tombstone["deletedAt"] = deletedAt;
+    body.obj = std::move(tombstone);
+    std::vector<int64_t> recipients{share.userId};
+    if (event.ownerId != share.userId)
+      recipients.push_back(event.ownerId);
+    co_await sink->emitUsers({.userIds = std::move(recipients),
+                              .body = std::move(body),
+                              .client = input.client});
+  }
+}
+
+drogon::Task<bool> CalendarEventFeatureService::canEdit(const CanEditInput& input) const
 {
   if (input.row.ownerId == input.actorId)
     co_return true;
@@ -195,6 +227,9 @@ drogon::Task<bool> CalendarEventFeatureService::remove(int64_t id,
       co_return false;
     }
 
+    co_await retireShares({.operation = SyncOperation::Delete,
+                           .row = before,
+                           .client = transaction.get()});
     co_await emit({.operation = SyncOperation::Delete,
                    .row = before,
                    .client = transaction.get()});

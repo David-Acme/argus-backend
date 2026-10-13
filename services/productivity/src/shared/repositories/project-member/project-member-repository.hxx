@@ -18,7 +18,12 @@ public:
 
   drogon::Task<std::optional<ProjectMemberSchema>>
   findById(int64_t id, drogon::orm::DbClient* client = nullptr) const;
-  drogon::Task<std::vector<ProjectMemberSchema>> findByParent(int64_t parentId) const;
+  drogon::Task<std::vector<ProjectMemberSchema>>
+  findByParent(int64_t parentId,
+               drogon::orm::DbClient* client = nullptr) const;
+
+  drogon::Task<void> removeByProject(int64_t projectId,
+                                     drogon::orm::DbClient* client) const;
   drogon::Task<std::optional<ShareAccess>>
   findAccess(const ProjectMemberLookupInput& input) const;
   drogon::Task<std::vector<int64_t>>

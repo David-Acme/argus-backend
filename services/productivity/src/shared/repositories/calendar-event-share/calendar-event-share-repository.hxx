@@ -18,7 +18,12 @@ public:
 
   drogon::Task<std::optional<CalendarEventShareSchema>>
   findById(int64_t id, drogon::orm::DbClient* client = nullptr) const;
-  drogon::Task<std::vector<CalendarEventShareSchema>> findByParent(int64_t parentId) const;
+  drogon::Task<std::vector<CalendarEventShareSchema>>
+  findByParent(int64_t parentId,
+               drogon::orm::DbClient* client = nullptr) const;
+
+  drogon::Task<void> removeByEvent(int64_t eventId,
+                                   drogon::orm::DbClient* client) const;
   drogon::Task<std::optional<ShareAccess>>
   findAccess(const CalendarEventShareLookupInput& input) const;
   drogon::Task<std::vector<int64_t>>

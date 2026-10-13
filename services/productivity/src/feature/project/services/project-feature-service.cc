@@ -7,6 +7,39 @@
 #include <sqlite/transaction.hxx>
 #include <trantor/utils/Logger.h>
 
+drogon::Task<void>
+ProjectFeatureService::retireMembers(const EmitInput& input) const
+{
+  const ProjectSchema& project = input.row;
+  const auto members =
+      co_await memberRepository_.findByParent(project.id, input.client);
+  if (members.empty())
+    co_return;
+  co_await memberRepository_.removeByProject(project.id, input.client);
+
+  const auto* sink = user_change::getProductivitySink();
+  if (!sink) {
+    LOG_WARN << "user change sink not installed; drop project member tombstones";
+    co_return;
+  }
+  const auto deletedAt = static_cast<Json::Int64>(std::time(nullptr));
+  for (const auto& member : members) {
+    SocketEmitDto body;
+    body.operation = SyncOperation::Delete;
+    body.option = TableName::ProjectMember;
+    Json::Value tombstone;
+    tombstone["id"] = static_cast<Json::Int64>(member.id);
+    tombstone["deletedAt"] = deletedAt;
+    body.obj = std::move(tombstone);
+    std::vector<int64_t> recipients{member.userId};
+    if (project.ownerId != member.userId)
+      recipients.push_back(project.ownerId);
+    co_await sink->emitUsers({.userIds = std::move(recipients),
+                              .body = std::move(body),
+                              .client = input.client});
+  }
+}
+
 drogon::Task<void> ProjectFeatureService::emit(const EmitInput& input) const
 {
   const SyncOperation operation = input.operation;
@@ -210,6 +243,9 @@ drogon::Task<bool> ProjectFeatureService::remove(int64_t id,
     co_await retireTasks({.operation = SyncOperation::Delete,
                           .row = before,
                           .client = transaction.get()});
+    co_await retireMembers({.operation = SyncOperation::Delete,
+                            .row = before,
+                            .client = transaction.get()});
     co_await emit({.operation = SyncOperation::Delete,
                    .row = before,
                    .client = transaction.get()});

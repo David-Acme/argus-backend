@@ -18,14 +18,26 @@ CalendarEventShareRepository::findById(int64_t id,
 }
 
 drogon::Task<std::vector<CalendarEventShareSchema>>
-CalendarEventShareRepository::findByParent(int64_t parentId) const
+CalendarEventShareRepository::findByParent(int64_t parentId,
+                                            drogon::orm::DbClient* client) const
 {
-  auto client = DbService::productivityClient();
-  const auto result = co_await client->execSqlCoro(FIND_BY_PARENT.data(), parentId);
+  const auto pooled = DbService::productivityClient();
+  auto* effective = client ? client : pooled.get();
+  const auto result =
+      co_await effective->execSqlCoro(FIND_BY_PARENT.data(), parentId);
   std::vector<CalendarEventShareSchema> rows;
   for (const auto& row : result)
     rows.emplace_back(row);
   co_return rows;
+}
+
+drogon::Task<void>
+CalendarEventShareRepository::removeByEvent(int64_t eventId,
+                                             drogon::orm::DbClient* client) const
+{
+  const auto pooled = DbService::productivityClient();
+  auto* effective = client ? client : pooled.get();
+  co_await effective->execSqlCoro(std::string(REMOVE_BY_EVENT), eventId);
 }
 
 drogon::Task<std::optional<ShareAccess>>

@@ -17,14 +17,26 @@ ProjectMemberRepository::findById(int64_t id, drogon::orm::DbClient* client) con
 }
 
 drogon::Task<std::vector<ProjectMemberSchema>>
-ProjectMemberRepository::findByParent(int64_t parentId) const
+ProjectMemberRepository::findByParent(int64_t parentId,
+                                       drogon::orm::DbClient* client) const
 {
-  auto client = DbService::productivityClient();
-  const auto result = co_await client->execSqlCoro(FIND_BY_PARENT.data(), parentId);
+  const auto pooled = DbService::productivityClient();
+  auto* effective = client ? client : pooled.get();
+  const auto result =
+      co_await effective->execSqlCoro(FIND_BY_PARENT.data(), parentId);
   std::vector<ProjectMemberSchema> rows;
   for (const auto& row : result)
     rows.emplace_back(row);
   co_return rows;
+}
+
+drogon::Task<void>
+ProjectMemberRepository::removeByProject(int64_t projectId,
+                                         drogon::orm::DbClient* client) const
+{
+  const auto pooled = DbService::productivityClient();
+  auto* effective = client ? client : pooled.get();
+  co_await effective->execSqlCoro(std::string(REMOVE_BY_PROJECT), projectId);
 }
 
 drogon::Task<std::optional<ShareAccess>>

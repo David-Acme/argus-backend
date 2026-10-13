@@ -422,6 +422,27 @@ TEST_CASE("a productivity write and its change are one unit of work")
   CHECK(drogon::sync_wait(shares.remove(shareId, kOwner)));
   CHECK(liveShares(event.id) == 0);
 
+  const auto retiring = drogon::sync_wait(projects.create(
+      {.body = projectBody("Retiring Project"), .ownerId = kOwner, .idempotencyKey = {}}));
+  const int64_t firstMember = insertMember(retiring.id, kMember);
+  const int64_t secondMember = insertMember(retiring.id, kSharee);
+  REQUIRE(firstMember > 0);
+  REQUIRE(secondMember > 0);
+  const int beforeProjectRetire = sink.calls();
+  CHECK(drogon::sync_wait(projects.remove(retiring.id, kOwner)));
+  CHECK(liveProject(retiring.id) == 0);
+  CHECK(liveMember(firstMember) == 0);
+  CHECK(liveMember(secondMember) == 0);
+  CHECK(sink.calls() > beforeProjectRetire + 1);
+
+  const int64_t retiringShare = insertShare(event.id, kSharee);
+  REQUIRE(retiringShare > 0);
+  const int beforeEventRetire = sink.calls();
+  CHECK(drogon::sync_wait(events.remove(event.id, kOwner)));
+  CHECK(liveEvents("Renamed Event") == 0);
+  CHECK(liveShares(event.id) == 0);
+  CHECK(sink.calls() > beforeEventRetire + 1);
+
   NatsProductivityChangeSink durableSink(
       nullptr, NatsProductivityChangeSink::Config{
                    .retryMs = 20, .publishSubject = {}, .streamName = {}});

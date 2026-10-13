@@ -110,9 +110,9 @@ struct Caller
   std::string lang;
 };
 
-struct Fixture
+struct DatabaseBoot
 {
-  Fixture()
+  DatabaseBoot()
   {
     setenv("TZ", "UTC", 1);
     tzset();
@@ -122,7 +122,11 @@ struct Fixture
     drogon::app().addDbClient(
         drogon::orm::Sqlite3Config{.connectionNumber = 1, .filename = kDb, .name = "default", .timeout = -1});
   }
+};
 
+struct Fixture
+{
+  DatabaseBoot database;
   AppRunner runner;
 };
 
