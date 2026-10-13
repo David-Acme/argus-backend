@@ -1,8 +1,10 @@
 #include "camera-driver.hxx"
 
+#include "onvif-driver.hxx"
 #include "tapo-driver.hxx"
 
 #include <mutex>
+#include <shared/vocabulary/camera-stream-paths.hxx>
 #include <text/sha256.hxx>
 #include <trantor/utils/Logger.h>
 #include <unordered_map>
@@ -20,16 +22,50 @@ std::unordered_map<int64_t, Entry> gDrivers;
 
 std::string fingerprintOf(const CameraSchema& camera)
 {
-  return argus::hash::sha256Hex(camera.ip + '|' + std::to_string(camera.port) + '|' +
-                                cameraDriverToString(camera.driver) + '|' + camera.username +
-                                '|' + camera.password + '|' + camera.cloudUsername + '|' +
-                                camera.cloudPassword);
+  std::string material = camera.ip + '|' + std::to_string(camera.port) + '|' +
+                         cameraDriverToString(camera.driver) + '|' + camera.username + '|' +
+                         camera.password + '|' + camera.cloudUsername + '|' + camera.cloudPassword;
+  if (camera.driver == CameraDriver::Onvif)
+    material += '|' + camera_stream_paths::catalogIdOf(camera.config);
+  return argus::hash::sha256Hex(material);
+}
+
+std::shared_ptr<ICameraDriver> cachedDriver(const CameraSchema& camera)
+{
+  const std::scoped_lock lock(gMutex);
+  const std::string fingerprint = fingerprintOf(camera);
+  const auto it = gDrivers.find(camera.id);
+  if (it != gDrivers.end() &&
+      (it->second.fingerprint.empty() || it->second.fingerprint == fingerprint))
+    return it->second.driver;
+
+  std::shared_ptr<ICameraDriver> driver;
+  switch (camera.driver) {
+    case CameraDriver::Tapo:
+      driver = std::make_shared<TapoDriver>(camera);
+      break;
+    case CameraDriver::Onvif:
+      driver = std::make_shared<OnvifDriver>(camera);
+      break;
+    case CameraDriver::Rtsp:
+      LOG_WARN << "Camera driver not implemented yet: "
+               << cameraDriverToString(camera.driver);
+      return nullptr;
+  }
+
+  gDrivers[camera.id] = {.fingerprint = fingerprint, .driver = driver};
+  return driver;
 }
 }
 
 TalkLineOpen ICameraDriver::talkLine()
 {
   return {.line = nullptr, .error = "This camera has no speaker Argus can reach"};
+}
+
+Json::Value ICameraDriver::discoverCapabilities()
+{
+  return capabilities();
 }
 
 Json::Value ICameraDriver::controlStatus() const
@@ -55,27 +91,14 @@ CameraDriverRegistry& CameraDriverRegistry::instance()
 
 std::shared_ptr<ICameraDriver> CameraDriverRegistry::driverFor(const CameraSchema& camera)
 {
-  std::lock_guard<std::mutex> lock(gMutex);
-  const std::string fingerprint = fingerprintOf(camera);
-  const auto it = gDrivers.find(camera.id);
-  if (it != gDrivers.end() &&
-      (it->second.fingerprint.empty() || it->second.fingerprint == fingerprint))
-    return it->second.driver;
+  if (camera.driver == CameraDriver::Onvif)
+    return nullptr;
+  return cachedDriver(camera);
+}
 
-  std::shared_ptr<ICameraDriver> driver;
-  switch (camera.driver) {
-    case CameraDriver::Tapo:
-      driver = std::make_shared<TapoDriver>(camera);
-      break;
-    case CameraDriver::Onvif:
-    case CameraDriver::Rtsp:
-      LOG_WARN << "Camera driver not implemented yet: "
-               << cameraDriverToString(camera.driver);
-      return nullptr;
-  }
-
-  gDrivers[camera.id] = {.fingerprint = fingerprint, .driver = driver};
-  return driver;
+std::shared_ptr<ICameraDriver> CameraDriverRegistry::controlDriverFor(const CameraSchema& camera)
+{
+  return cachedDriver(camera);
 }
 
 void CameraDriverRegistry::forget(int64_t cameraId)

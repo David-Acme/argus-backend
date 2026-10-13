@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope" xmlns:tptz="http://www.onvif.org/ver20/ptz/wsdl" xmlns:tt="http://www.onvif.org/ver10/schema">
+  <env:Body>
+    <tptz:GetPresetsResponse>
+      <tptz:Preset token="1">
+        <tt:Name>Puerta</tt:Name>
+        <tt:PTZPosition>
+          <tt:PanTilt x="0.125" y="-0.200" space="http://www.onvif.org/ver10/tptz/PanTiltSpaces/PositionGenericSpace"/>
+        </tt:PTZPosition>
+      </tptz:Preset>
+      <tptz:Preset token="2">
+        <tt:Name>Jard&#xED;n &amp; patio</tt:Name>
+      </tptz:Preset>
+      <tptz:Preset token="">
+        <tt:Name>Sin token</tt:Name>
+      </tptz:Preset>
+    </tptz:GetPresetsResponse>
+  </env:Body>
+</env:Envelope>

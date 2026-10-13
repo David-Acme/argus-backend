@@ -3,12 +3,14 @@ argus_module(NAME camera-driver
         camera-capabilities.cc
         camera-driver-registry.cc
         camera-scene-log.cc
+        onvif-driver.cc
         stream-only-driver.cc
         tapo-driver.cc
     INCLUDES
         ../../..
     DEPENDS
         argus::camera-catalog
+        argus::camera-onvif
         argus::camera-repositories
         argus::camera-tapo
         argus::lib::config

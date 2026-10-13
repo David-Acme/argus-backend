@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl" xmlns:tt="http://www.onvif.org/ver10/schema">
+  <s:Body>
+    <tds:GetCapabilitiesResponse>
+      <tds:Capabilities>
+        <tt:Device>
+          <tt:XAddr>http://192.168.1.70:2020/onvif/device_service</tt:XAddr>
+        </tt:Device>
+        <tt:Media>
+          <tt:XAddr>http://192.168.1.70:2020/onvif/service</tt:XAddr>
+        </tt:Media>
+      </tds:Capabilities>
+    </tds:GetCapabilitiesResponse>
+  </s:Body>
+</s:Envelope>

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope" xmlns:tds="http://www.onvif.org/ver10/device/wsdl" xmlns:tt="http://www.onvif.org/ver10/schema">
+  <env:Body>
+    <tds:GetCapabilitiesResponse>
+      <tds:Capabilities>
+        <tt:Analytics>
+          <tt:XAddr>http://192.168.1.64/onvif/analytics_service</tt:XAddr>
+          <tt:RuleSupport>true</tt:RuleSupport>
+          <tt:AnalyticsModuleSupport>true</tt:AnalyticsModuleSupport>
+        </tt:Analytics>
+        <tt:Device>
+          <tt:XAddr>http://192.168.1.64/onvif/device_service</tt:XAddr>
+          <tt:Network>
+            <tt:IPFilter>true</tt:IPFilter>
+            <tt:ZeroConfiguration>true</tt:ZeroConfiguration>
+            <tt:IPVersion6>true</tt:IPVersion6>
+            <tt:DynDNS>true</tt:DynDNS>
+          </tt:Network>
+        </tt:Device>
+        <tt:Events>
+          <tt:XAddr>http://192.168.1.64/onvif/event_service</tt:XAddr>
+          <tt:WSSubscriptionPolicySupport>true</tt:WSSubscriptionPolicySupport>
+          <tt:WSPullPointSupport>true</tt:WSPullPointSupport>
+          <tt:WSPausableSubscriptionManagerInterfaceSupport>false</tt:WSPausableSubscriptionManagerInterfaceSupport>
+        </tt:Events>
+        <tt:Imaging>
+          <tt:XAddr>http://192.168.1.64/onvif/imaging_service</tt:XAddr>
+        </tt:Imaging>
+        <tt:Media>
+          <tt:XAddr>http://192.168.1.64/onvif/media_service?profile=all</tt:XAddr>
+          <tt:StreamingCapabilities>
+            <tt:RTPMulticast>true</tt:RTPMulticast>
+            <tt:RTP_TCP>true</tt:RTP_TCP>
+            <tt:RTP_RTSP_TCP>true</tt:RTP_RTSP_TCP>
+          </tt:StreamingCapabilities>
+        </tt:Media>
+        <tt:PTZ>
+          <tt:XAddr>http://10.9.9.9:8899/onvif/ptz_service</tt:XAddr>
+        </tt:PTZ>
+      </tds:Capabilities>
+    </tds:GetCapabilitiesResponse>
+  </env:Body>
+</env:Envelope>

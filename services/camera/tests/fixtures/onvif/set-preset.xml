@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope" xmlns:tptz="http://www.onvif.org/ver20/ptz/wsdl">
+  <env:Body>
+    <tptz:SetPresetResponse>
+      <tptz:PresetToken>3</tptz:PresetToken>
+    </tptz:SetPresetResponse>
+  </env:Body>
+</env:Envelope>

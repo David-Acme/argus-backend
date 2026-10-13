@@ -482,6 +482,8 @@ shared file-static behind a mutex.
 - `onnxruntime/1.24.4` (STT/TTS via sherpa-onnx, VAD via Silero ONNX)
 - `utf8proc/2.12.0` (MIT, for `text_norm::nfc`, the one Unicode NFC normaliser the
   llm's turn entry runs over an utterance before anything downstream reads it)
+- `pugixml/1.16` (MIT, the XML reader and writer of the camera's ONVIF SOAP
+  client, `services/camera/src/shared/services/onvif/`; nothing else parses XML)
 - **Kùzu — NOT a dependency (removed).** The Phase 0 gate rejected both Kùzu
   candidates (upstream `kuzudb/kuzu` @ `v0.11.3` and the Vela fork
   @ `v0.12.0-vela.87bf0be`) as the memory engine: write+read interleaving on

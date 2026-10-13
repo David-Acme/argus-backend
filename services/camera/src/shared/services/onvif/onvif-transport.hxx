@@ -1,0 +1,41 @@
+#pragma once
+
+#include <shared/services/onvif/onvif-types.hxx>
+
+#include <drogon/HttpClient.h>
+#include <string>
+
+struct OnvifHttpRequest
+{
+  std::string path;
+  std::string action;
+  std::string body;
+  std::string authorization;
+};
+
+struct OnvifHttpResponse
+{
+  int status{0};
+  std::string body;
+  std::string challenge;
+  std::string error;
+};
+
+class IOnvifTransport
+{
+public:
+  virtual ~IOnvifTransport() = default;
+  virtual OnvifHttpResponse post(const OnvifHttpRequest& request) = 0;
+};
+
+class OnvifHttpTransport final : public IOnvifTransport
+{
+public:
+  explicit OnvifHttpTransport(OnvifEndpoint endpoint);
+
+  OnvifHttpResponse post(const OnvifHttpRequest& request) override;
+
+private:
+  OnvifEndpoint endpoint_;
+  drogon::HttpClientPtr client_;
+};

@@ -62,8 +62,10 @@ argus-camera/
                         connection probe (infra/rtsp-probe) and the overview
   src/feature/camera-control/
                         /camera PTZ, preset, settings and talk surface;
-                        RTSP/ONVIF cameras answer through the stream-only
-                        driver (every control false, streamOnly true)
+                        ONVIF cameras answer through the ONVIF driver
+                        (pan, tilt and presets the camera itself reports),
+                        RTSP cameras through the stream-only driver (every
+                        control false, streamOnly true)
   src/feature/health/   grpc.health.v1 service
   src/feature/media/    the camera media WebSocket and its service
   src/feature/monitor/  camera health monitor, its NATS sink and the presence
@@ -88,8 +90,10 @@ argus-camera/
                         predicate the DTOs and go2rtc's source guard share),
                         and the vocabulary the config module and a feature
                         share (health thresholds, operator zones, the RTSP
-                        stream paths a camera keeps in its config; tapo is
-                        camera-driver's own protocol stack, event-stream's one
+                        stream paths a camera keeps in its config; tapo and
+                        onvif are camera-driver's own protocol stacks (the
+                        ONVIF SOAP client reads XML with pugixml),
+                        event-stream's one
                         reader is operator, the change sink's readers are
                         composition and the outbox suites (the outbox itself
                         is `argus::lib::outbox`), and secret-box

@@ -992,7 +992,9 @@ event exactly as before, and `schemaVersion` stays 3.
   capabilities all `false` plus `streamOnly: true`, a status that reports the
   stored model, and a refusal that says the camera only streams for every
   control. The driver registry is untouched, so argus-guard's action RPCs keep
-  rejecting these cameras with `no_driver` exactly as before.
+  rejecting these cameras with `no_driver` exactly as before. Since
+  2026-10-13 an ONVIF camera answers camera-control through its own driver
+  instead ("ONVIF control" below); RTSP cameras keep `StreamOnlyDriver`.
 - **go2rtc's files.** The generated `go2rtc.yaml` holds every camera's
   credentials; it was written with the default mode and chmod-ed to 0600
   afterwards, and `go2rtc.log` was 0644. The config is now written to a 0600
@@ -1119,6 +1121,8 @@ use.
   motion, auto-track, the alarm, the 8800 talk line). A generic profile claims
   nothing because `StreamOnlyDriver` drives nothing; whether it has a
   microphone shows in its stream (the probe and the app read the audio track).
+  ONVIF profiles still claim nothing: an ONVIF camera's pan, tilt and presets
+  are read from the camera itself ("ONVIF control" below).
   Doorbells claim only microphone and speaker: the control APIs on them were
   never measured.
 - **Models were researched, not guessed**, from the vendor's model pages and
@@ -1281,7 +1285,9 @@ Not done yet, in the order they pay off:
 6. **Live view audio on the native player**: Android's ExoPlayer may also play the FLAC track of
    the live view; the call path plays its own copy, so a native `muted` prop on `argus-camera`
    is the clean fix once a device is at hand to test it.
-7. **ONVIF control** (PTZ, presets, events) for generic cameras: `StreamOnlyDriver` today.
+7. **ONVIF control** for generic cameras: pan, tilt and presets landed (2026-10-13, "ONVIF
+   control"); the discovered capabilities on the camera row, imaging (day/night) and events
+   (motion) are still to come.
 
 ## The SD card's timeline (2026-10-13, F1)
 
@@ -1994,3 +2000,86 @@ repository read.
 only one camera has, an ambiguous word, a missing name), the app action in
 both views and both languages, the gate (role, module off) and the catalog
 being empty.
+
+## ONVIF control: pan, tilt and presets for generic cameras (2026-10-13)
+
+The reviewer chose option (a): Argus speaks ONVIF itself, through a small SOAP
+client and an `OnvifDriver` behind the driver registry. The alternatives were
+go2rtc (no PTZ), gSOAP (GPL or commercial) and a Python sidecar.
+
+- **The client** is `shared/services/onvif` (`argus::camera-onvif`). It builds
+  and reads SOAP 1.2 envelopes with pugixml (`pugixml/1.16` from Conan
+  Center, MIT licence, listed in the root `AGENTS.md` dependency register).
+  Every call except `GetSystemDateAndTime` carries a WS-Security
+  UsernameToken with a PasswordDigest: Base64 of SHA-1 over a fresh 16-byte
+  nonce, the Created time and the password. A camera that answers 401 with a
+  Digest challenge gets one retry with an HTTP Digest `Authorization` (qop
+  `auth`). The client then sends that challenge ahead on later calls with
+  the next nonce count, and a second 401 is a refused account. Basic
+  authentication is never offered, so the password never travels in clear.
+  The transport is Drogon's HTTP client (`OnvifHttpTransport`), called
+  synchronously on a blocking lane with a 5 s timeout. The HTTP Digest
+  helpers are the ones in `tapo-crypto`, which the RTSP probe uses too.
+- **The camera's clock signs the token.** `GetSystemDateAndTime` is read
+  first, unsigned. Every Created time is the server's clock plus the camera's
+  offset, so a camera whose clock drifted does not refuse the token as stale.
+  `status` reports that offset as `clockOffsetSeconds`, like the Tapo status.
+- **Only paths are taken from the camera.** `GetCapabilities` names the
+  device, media, PTZ and imaging services by URL. The client keeps only each
+  URL's path and always speaks to the camera's stored address and ONVIF port,
+  so an answer cannot send the credentials to another host.
+- **The port** is the catalog entry's `onvifPort` for the camera's
+  `catalogId`: 2020 for Tapo and VIGI, 8000 for Reolink, 80 for most others,
+  and 80 without an entry. There is no per-camera ONVIF port setting yet.
+- **Connecting reads the camera itself.** After the clock come
+  `GetCapabilities`, `GetDeviceInformation` and, from the media service,
+  `GetProfiles`. The first profile with a `PTZConfiguration` is the one every
+  PTZ call names. The camera has pan and tilt when it offers a PTZ service
+  and such a profile, and it has presets when `GetPresets` answers. Elements
+  are matched by local name, so `env:`, `s:` and `SOAP-ENV:` envelopes read
+  the same.
+- **The driver maps the app's controls.**
+  - A hold (`angle`) is a `ContinuousMove` at half speed in the generic
+    velocity space: `x = cos`, `y = sin`, with right at 0° and up at 90°.
+    The release is `Stop`.
+  - A step (`x`, `y` in degrees) is a `RelativeMove` in the generic
+    translation space, at `x/180` and `y/90`. Those spans assume the space
+    covers ±180° of pan and ±90° of tilt; no camera has been measured.
+  - Presets are `GetPresets`, `GotoPreset`, `SetPreset` (whose answer gives
+    the token the camera chose, returned as `id`) and `RemovePreset`.
+  - Moves answer `{moved: true, limit: false}`, because ONVIF reports no end
+    stop. Presets answer `{preset: {id[], name[]}}`, the parallel arrays the
+    app's parser already reads.
+  - Settings and the speaker are refused. Day/night (imaging), motion and
+    events are later work.
+- **Failures.** A WS-Security or HTTP refusal is `credential_refused`, a 409
+  as for Tapo. A SOAP fault keeps the camera's reason and code. An answer
+  that is not SOAP, or no answer, is the usual 502.
+- **Capabilities never wait on the network.** `capabilities()` answers what
+  the driver has learned so far, which is stream only until it has connected.
+  `discoverCapabilities()` connects first; `GET /camera/{id}/capabilities`
+  calls it on its blocking lane. The talk service and the overview call
+  `capabilities()` on the event loop, so it must stay cheap. Writing the
+  discovered list to the camera row, so the app shows the pad without asking,
+  is the next step; until then the row still says `["streamOnly"]`.
+- **Guard's actions do not change.** `CameraDriverRegistry::driverFor` still
+  answers no driver for an ONVIF camera, so guard's speaker and siren
+  actions keep rejecting it with `no_driver`, and the talk service and the
+  overview see no driver either. The ONVIF driver drives neither a speaker
+  nor a siren. A driver that refused them would turn the rejection into an
+  indeterminate command that guard keeps retrying, and leave a siren lease
+  behind. Camera-control uses `controlDriverFor`, the same cache with ONVIF
+  in it. For an ONVIF camera the cache key also covers the `catalogId`,
+  because the port comes from it.
+
+Proven without a camera: `tests/unit/onvif-client-test.cc` drives the client
+and the driver through a scripted transport over the SOAP fixtures in
+`tests/fixtures/onvif/`. It also drives the real transport over loopback,
+against a fake camera that demands HTTP Digest. The fixtures follow the ONVIF
+WSDL message shapes and the namespace prefixes devices use, but they were not
+captured from a device: this pass may not talk to one. A capture from the
+owner's C225 (ONVIF on port 2020) should replace them when a device test is
+allowed. The PasswordDigest is checked against the example in the ONVIF
+Application Programmer's Guide (nonce `LKqI6G/AikKCQrN0zqZFlg==`, created
+`2010-09-16T07:50:45Z`, password `userpassword`, digest
+`tuOSpGlFlIXsozq4HFNeeGeFLEI=`).

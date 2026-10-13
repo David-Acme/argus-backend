@@ -19,6 +19,7 @@ if(PROJECT_IS_TOP_LEVEL)
     find_package(nlohmann_json REQUIRED)
     find_package(OpenCV CONFIG REQUIRED)
     find_package(OpenSSL REQUIRED)
+    find_package(pugixml CONFIG REQUIRED)
     if(NOT TARGET sqlite-vec)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sqlite-vec
                          ${CMAKE_BINARY_DIR}/third_party/sqlite-vec)
@@ -141,6 +142,7 @@ add_subdirectory(src/shared/repositories)
 add_subdirectory(src/shared/services/change-sink)
 add_subdirectory(src/shared/services/camera-catalog)
 add_subdirectory(src/shared/services/tapo)
+add_subdirectory(src/shared/services/onvif)
 add_subdirectory(src/shared/services/camera-driver)
 add_subdirectory(src/shared/services/privacy)
 add_subdirectory(src/shared/services/stream)
@@ -368,6 +370,24 @@ set_target_properties(tapo-control-test PROPERTIES
 target_compile_options(tapo-control-test PRIVATE -Wall -Wextra)
 
 add_test(NAME tapo-control-test COMMAND tapo-control-test)
+
+add_executable(onvif-client-test
+    tests/unit/onvif-client-test.cc)
+
+target_link_libraries(onvif-client-test PRIVATE
+    argus::camera-onvif
+    argus::camera-driver
+    doctest::doctest)
+
+target_compile_definitions(onvif-client-test PRIVATE
+    ARGUS_ONVIF_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/onvif")
+
+set_target_properties(onvif-client-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_compile_options(onvif-client-test PRIVATE -Wall -Wextra)
+
+add_test(NAME onvif-client-test COMMAND onvif-client-test)
 
 add_executable(tapo-talk-client-test
     tests/unit/tapo-talk-client-test.cc)

@@ -90,6 +90,7 @@ public:
   virtual ~ICameraDriver() = default;
 
   virtual Json::Value capabilities() const = 0;
+  virtual Json::Value discoverCapabilities();
 
   virtual DriverResult status() = 0;
   virtual DriverResult presets() = 0;
@@ -109,6 +110,7 @@ public:
   static CameraDriverRegistry& instance();
 
   std::shared_ptr<ICameraDriver> driverFor(const CameraSchema& camera);
+  std::shared_ptr<ICameraDriver> controlDriverFor(const CameraSchema& camera);
   void forget(int64_t cameraId);
 };
 

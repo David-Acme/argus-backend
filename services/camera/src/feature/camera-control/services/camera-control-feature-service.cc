@@ -45,7 +45,7 @@ drogon::Task<CameraControlResult> CameraControlFeatureService::onDevice(
     co_return std::nullopt;
 
   std::shared_ptr<ICameraDriver> driver =
-      CameraDriverRegistry::instance().driverFor(*camera);
+      CameraDriverRegistry::instance().controlDriverFor(*camera);
   if (!driver)
     driver = std::make_shared<StreamOnlyDriver>(*camera);
 
@@ -66,7 +66,7 @@ drogon::Task<CameraControlResult>
 CameraControlFeatureService::capabilities(int64_t cameraId) const
 {
   co_return co_await onDevice(cameraId, [](ICameraDriver& driver) {
-    return DriverResult{.ok = true, .error = {}, .data = driver.capabilities()};
+    return DriverResult{.ok = true, .error = {}, .data = driver.discoverCapabilities()};
   });
 }
 
