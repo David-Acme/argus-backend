@@ -1,6 +1,9 @@
 add_executable(session-verdict-test unit/session-verdict-test.cc)
 target_compile_definitions(session-verdict-test PRIVATE
-    ARGUS_AUTH_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql")
+    ARGUS_AUTH_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql"
+    ARGUS_AUTH_GOLDEN_FILE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/validate-token-golden.json")
+target_include_directories(session-verdict-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/support)
 target_link_libraries(session-verdict-test PRIVATE
     argus::auth-session
     argus::auth-device

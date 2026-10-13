@@ -1,0 +1,31 @@
+{
+  "deactivated-account" :
+  {
+    "reason" : "User account is disabled"
+  },
+  "expired-session" :
+  {
+    "reason" : "Token expired"
+  },
+  "revoked-session" : {},
+  "unknown-token" : {},
+  "valid-session" :
+  {
+    "expires_at" : "4102444800",
+    "session_id" : "golden-live-session",
+    "user" :
+    {
+      "is_active" : true,
+      "lang" : "es",
+      "last_name" : "Rico",
+      "name" : "Ada",
+      "role" : "owner",
+      "user_id" : "42"
+    },
+    "valid" : true
+  },
+  "wrong-device" :
+  {
+    "reason" : "Device mismatch"
+  }
+}
