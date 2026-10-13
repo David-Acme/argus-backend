@@ -52,6 +52,13 @@ struct ChatRequest
   std::vector<ContextFact> contextFacts{};
 };
 
+struct UtteranceScreenRequest
+{
+  int64_t userId{0};
+  UserRole role{UserRole::Unknown};
+  std::string text;
+};
+
 using TokenCallback = std::function<void(const std::string& token, bool done)>;
 
 struct ClientAction

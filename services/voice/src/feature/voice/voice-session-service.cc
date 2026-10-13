@@ -1037,8 +1037,10 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
     emitReaction(session, sttFailed);
     return;
   }
+  if (session.userId > 0)
+    userText = llm_.screen(
+        {.userId = session.userId, .role = userRoleFromString(session.role), .text = userText});
   LOG_INFO << "Voice: STT turn of " << userText.size() << " bytes";
-  LOG_DEBUG << "Voice: STT -> " << userText;
 
   argus::voice::v1::ServerFrame sttFrame;
   sttFrame.mutable_stt()->set_text(userText);

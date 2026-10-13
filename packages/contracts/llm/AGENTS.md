@@ -29,7 +29,7 @@ controller.
   `InvalidRequest` 400, `Unauthorized` 401, `Cancelled` 499,
   `DeadlineExceeded` 504, `Busy` 429, `InternalError` 500,
   `InvalidResponse` 502 and `Unavailable` 503.
-- `llm.proto` — `package argus.llm.v1`: one `Chat` service with two **unary**
+- `llm.proto` — `package argus.llm.v1`: one `Chat` service with three **unary**
   RPCs and one **server-streaming** RPC — `Capabilities` (loaded, the engine's
   default token cap and temperature, the context size and the three last-prefill
   counters), `Chat` (the messages, the generation steering and the caller's
@@ -48,7 +48,11 @@ controller.
   (field 8) is additive and backend-internal: it carries the same
   `speech_unavailable` marker the HTTP sentinel's `speech` key carries, and
   `services/voice` reads it there instead of inferring the marker from an empty
-  reply. No app-facing client reads it — the app never speaks this wire — and it
+  reply. `Screen` (additive, 2026-10-13) takes a transcript with the caller's
+  user id and role and answers the text the call may keep: the same words, or
+  the neutral placeholder when they were the household's duress phrase
+  (`services/llm/CONTEXT.md`, "The duress screen"); its HTTP twin is
+  `POST /llm/v1/screen`. No app-facing client reads it — the app never speaks this wire — and it
   is dormant while no in-tree config sets the gRPC pair (`rpc.address` and
   `[rpc.callers]` are empty everywhere).
 - `CMakeLists.txt` — the vocabulary declaration and `argus_llm_rpc_contract()`,

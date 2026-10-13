@@ -36,6 +36,8 @@ argus_module(NAME llm
     SOURCES
         controllers/llm-controller.cc
         dtos/chat-dto.cc
+        dtos/response-screen-dto.cc
+        dtos/screen-dto.cc
         services/intent-gate.cc
         services/lfm-adapter.cc
         services/llm-service.cc

@@ -262,6 +262,35 @@ void RemoteVoiceLlm::chatStream(LlmStreamInput input)
   client->chatStream(input);
 }
 
+std::shared_ptr<const LlmClient>
+RemoteVoiceLlm::screenClientFor(const LlmRemoteConfig& config)
+{
+  if (!screenClient_ || config.url != screenUrl_) {
+    screenUrl_ = config.url;
+    screenClient_ = std::make_shared<LlmClient>(config.url, std::min(config.timeoutMs, kScreenTimeoutMs));
+  }
+  return screenClient_;
+}
+
+std::string RemoteVoiceLlm::screen(const UtteranceScreenRequest& request)
+{
+  const LlmRemoteConfig config = LlmRemoteConfig::resolve();
+  std::shared_ptr<const LlmClient> client;
+  {
+    std::scoped_lock lock(mutex_);
+    client = screenClientFor(config);
+  }
+  if (!client->remote())
+    return request.text;
+  try {
+    return client->screen(request);
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Voice: argus-llm did not screen the turn; it goes on as heard: " << error.what();
+  }
+  return request.text;
+}
+
 void GrpcVoiceIdentity::updateUserName(const VoiceNameWrite& write)
 {
   const std::string target = identityTarget();

@@ -350,6 +350,40 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
     return grpc::Status::OK;
   }
 
+  grpc::Status Screen(grpc::ServerContext* context,
+                      const wire::ScreenRequest* request,
+                      wire::ScreenResponse* response) override
+  {
+    const auto admission = gate_.admit(context, {});
+    if (!admission.admitted())
+      return argus::response::toRpcStatus(
+          ResponseException(401, LlmErrors::Unauthorized));
+    if (request->text().empty() || request->text().size() > kMaxContentBytes ||
+        request->user_id() < 0)
+      return argus::response::toRpcStatus(
+          ResponseException(400, LlmErrors::InvalidRequest));
+    if (!input_.screen) {
+      response->set_text(request->text());
+      return grpc::Status::OK;
+    }
+    ChatRequest screened;
+    screened.messages = {{.role = "user", .content = request->text()}};
+    screened.toolsEnabled = false;
+    screened.userId = request->user_id();
+    screened.role = callerRole(request->caller_role());
+    try {
+      response->set_text(input_.screen(boundToCaller(std::move(screened), admission.caller)));
+    }
+    catch (const ResponseException& error) {
+      return argus::response::toRpcStatus(error);
+    }
+    catch (...) {
+      return argus::response::toRpcStatus(
+          ResponseException(500, LlmErrors::InternalError));
+    }
+    return grpc::Status::OK;
+  }
+
   std::optional<ResponseException>
   acquireSlot(const grpc::ServerContext& context)
   {

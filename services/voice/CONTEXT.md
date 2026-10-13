@@ -910,6 +910,45 @@ and the sentinel, and there is no audible fallback. The `unansweredLine`
 is deleted in the same change, so there is never a build in which a failed
 turn is silent on a call.
 
+## A duress phrase is withheld before the transcript is used (2026-10-13, F4)
+
+The household's duress phrase (`services/guard/CONTEXT.md`, "The duress
+phrase") must never travel on as heard. argus-llm owns the detection
+(`services/llm/CONTEXT.md`, "The duress screen"). This service applies the
+answer before it does anything else with a transcript.
+
+- **Where.** `processTurn` asks `IVoiceLlm::screen` the moment STT answers,
+  for a caller with a user id. That call is `LlmClient::screen`:
+  `POST /llm/v1/screen`, or `argus.llm.v1.Chat/Screen` when the gRPC leg is
+  set.
+- **What the answer replaces.** The answer, the same words or the
+  placeholder `…`, is the transcript from then on: the `stt` frame the app
+  shows, the call history the next turns resend, the spoken-name extraction,
+  the reaction, the offer check and the turn itself.
+- **No transcript in the logs.** The turn logs the transcript's size and never
+  its words, at any level. The debug line that printed them is gone: a screen
+  that failed cannot tell whether the words were the phrase, so no build
+  prints a transcript at all.
+- **Why the app shows `…`.** The person holding the phone sees it the way it
+  sees any utterance the recogniser could not make out. Argus answers the
+  placeholder like one too ("¿Perdona?"), so nothing on the screen or in the
+  reply names the alert.
+- **The seam's default** returns the words unchanged, so a fake that does not
+  screen behaves as before.
+- **A screen that does not answer** leaves the words as heard. The call is
+  bounded at 5 s (`RemoteVoiceLlm::kScreenTimeoutMs`, its own client beside
+  the chat one), so a hung argus-llm delays the transcript by at most that.
+  The turn in argus-llm still withholds the words from its own decision,
+  tools, memory and prompt, but this call's in-memory history keeps them until
+  the call ends. That gap is logged as a warning that carries no words, and
+  nothing in it is written to disk by this service.
+
+`tests/unit/voice-session-seam-test.cc` ("A withheld transcript reaches no
+frame, no history and no turn as it was heard") pins it: the screen is asked
+with the speaker's id and role, the `stt` frame carries the placeholder, no
+frame carries the words, the request the turn sends holds no trace of them, and
+neither does the stored history.
+
 ## Owner settings
 
 `src/feature/settings/voice-settings.cc` (`argus::voice-settings`) is the

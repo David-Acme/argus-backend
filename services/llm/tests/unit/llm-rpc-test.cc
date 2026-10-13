@@ -138,6 +138,7 @@ LlmRpcInput serverInput()
           .capabilities = capabilities,
           .chat = answered,
           .chatStream = streamed,
+          .screen = {},
           .slots = 1,
           .services = {}};
 }
@@ -907,6 +908,36 @@ TEST_CASE("only the voice caller declares a user, a role and the tool loop")
   CHECK(seen[1].toolsEnabled);
   CHECK(seen[1].clientActions);
   CHECK(seen[1].sessionId == "voice-7-1");
+}
+
+TEST_CASE("screen answers the text a voice caller may keep, and screens no other caller")
+{
+  std::mutex seenMutex;
+  std::vector<ChatRequest> seen;
+  auto input = serverInput();
+  input.screen = [&seen, &seenMutex](const ChatRequest& request) {
+    std::scoped_lock lock(seenMutex);
+    seen.push_back(request);
+    return request.userId > 0 ? std::string("\u2026") : request.messages.back().content;
+  };
+  LlmRpcServer server(std::move(input));
+  const Client voice(clientConfig(server.port()));
+  CHECK(voice.screen({.userId = 7, .role = UserRole::Resident, .text = "el gato está en el tejado"}) == "\u2026");
+  const Client guard({.target = "127.0.0.1:" + std::to_string(server.port()),
+                      .credential = kGuardSecret,
+                      .timeout = std::chrono::seconds(5)});
+  CHECK(guard.screen({.userId = 7, .role = UserRole::Resident, .text = "el gato"}) == "el gato");
+  CHECK(refusalOf([&voice] {
+          static_cast<void>(voice.screen({.userId = 7, .role = UserRole::Resident, .text = ""}));
+        }).status == 400);
+
+  std::scoped_lock lock(seenMutex);
+  REQUIRE(seen.size() == 2);
+  CHECK(seen[0].userId == 7);
+  CHECK(seen[0].role == UserRole::Resident);
+  CHECK(seen[0].messages.back().content == "el gato está en el tejado");
+  CHECK(seen[1].userId == 0);
+  CHECK(seen[1].role == UserRole::Unknown);
 }
 
 TEST_CASE("boundToCaller strips the identity of every caller but voice")

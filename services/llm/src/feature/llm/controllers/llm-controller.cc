@@ -7,6 +7,8 @@
 #include <http/api-response.hxx>
 #include <llm/llm-errors.hxx>
 #include <feature/llm/dtos/chat-dto.hxx>
+#include <feature/llm/dtos/response-screen-dto.hxx>
+#include <feature/llm/dtos/screen-dto.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
@@ -21,6 +23,7 @@
 #include <chrono>
 #include <exception>
 #include <memory>
+#include <ranges>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -255,18 +258,32 @@ void LlmController::useScreen(const turn::UtteranceScreen& screen)
   screen_ = &screen;
 }
 
-void screenTurn(const turn::UtteranceScreen* screen, const ChatRequest& request)
+ChatRequest screenTurn(const turn::UtteranceScreen* screen, ChatRequest request)
 {
   if (screen == nullptr || request.prefillOnly || request.userId <= 0 || !userRoleKnown(request.role))
-    return;
-  const std::string utterance = LfmAdapter::lastUtterance(request.messages);
-  if (!utterance.empty())
-    screen->screen({.userId = request.userId, .role = request.role, .text = utterance});
+    return request;
+  const auto last = std::ranges::find(std::views::reverse(request.messages), std::string_view("user"),
+                                      &ChatMessage::role);
+  if (last == std::views::reverse(request.messages).end())
+    return request;
+  const std::string utterance = LfmAdapter::spokenText(last->content);
+  if (utterance.empty())
+    return request;
+  turn::ScreenedText screened = screen->screen({.userId = request.userId, .role = request.role, .text = utterance});
+  if (screened.withheld)
+    last->content = std::move(screened.text);
+  return request;
 }
 
-LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
+std::string LlmController::screenText(const ChatRequest& request) const
 {
-  screenTurn(screen_, request);
+  const ChatRequest screened = screenTurn(screen_, request);
+  return screened.messages.empty() ? std::string{} : screened.messages.back().content;
+}
+
+LlmChatOutcome LlmController::chatSync(const ChatRequest& unscreened)
+{
+  const ChatRequest request = screenTurn(screen_, unscreened);
   LlmChatOutcome outcome;
   const auto tools = requestTools(adapter_.executor(), request);
   if (tools.empty()) {
@@ -300,9 +317,10 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
   return outcome;
 }
 
-void LlmController::chatStreamSync(const LlmStreamInput& input)
+void LlmController::chatStreamSync(const LlmStreamInput& unscreened)
 {
-  screenTurn(screen_, input.request);
+  LlmStreamInput input = unscreened;
+  input.request = screenTurn(screen_, unscreened.request);
   LlmPrefillStats* stats = input.stats;
   const TokenCallback emit = [this, stats,
                               forward = input.onToken](const std::string& token,
@@ -415,6 +433,18 @@ LlmController::chatStream(drogon::HttpRequestPtr req)
   resp->setStatusCode(drogon::k200OK);
   resp->setContentTypeCode(drogon::CT_TEXT_PLAIN);
   co_return resp;
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+LlmController::screenUtterance(drogon::HttpRequestPtr req)
+{
+  if (!req->getJsonError().empty() || !req->getJsonObject())
+    co_return badRequest();
+  const ChatRequest bound = boundToCredential(ScreenDto::fromJson(*req->getJsonObject()).request(),
+                                              {.presented = req->getHeader(kCallerCredentialHeader),
+                                               .expected = identityCredential_});
+  const std::string text = co_await BlockingTask<std::string>([this, bound] { return screenText(bound); });
+  co_return ApiResponse::ok(ResponseScreenDto{.text = text}.toJson());
 }
 
 drogon::Task<drogon::HttpResponsePtr>

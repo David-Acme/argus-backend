@@ -169,6 +169,31 @@ struct FakeLlm final : IVoiceLlm
   }
 };
 
+struct ScreeningLlm final : IVoiceLlm
+{
+  std::vector<UtteranceScreenRequest> screened;
+  std::vector<ChatMessage> lastMessages;
+  int chatStreamCalls{0};
+
+  [[nodiscard]] std::string screen(const UtteranceScreenRequest& request) override
+  {
+    screened.push_back(request);
+    return "\u2026";
+  }
+
+  void chatStream(LlmStreamInput input) override
+  {
+    if (input.request.prefillOnly) {
+      input.onToken("", true);
+      return;
+    }
+    ++chatStreamCalls;
+    lastMessages = input.request.messages;
+    input.onToken("¿Perdona?", false);
+    input.onToken("", true);
+  }
+};
+
 struct ActingLlm final : IVoiceLlm
 {
   std::mutex mutex;
@@ -846,6 +871,54 @@ TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
 
   CHECK(sess->history.entries().back().kind == CallEntryKind::Assistant);
   CHECK(sess->history.entries().back().message.content == "Hola de nuevo.");
+  CHECK(sess->history.userTurns() == 1);
+
+  session.stop(sink);
+}
+
+TEST_CASE("A withheld transcript reaches no frame, no history and no turn as it was heard")
+{
+  FakeStt stt;
+  FakeTts tts;
+  ScreeningLlm llm;
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
+  VoiceSessionService session(seam);
+
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_role(argus::voice::v1::VOICE_ROLE_RESIDENT);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  voiceIdentity.set_name("Ana");
+  session.start(sink, voiceIdentity);
+  CHECK(waitFor([&] {
+    auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+    return tts.synthesizeCalls > 0 && !sess->speaking.load();
+  }));
+
+  const std::vector<float> samples(1600, 0.1F);
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+
+  REQUIRE(llm.screened.size() == 1);
+  CHECK(llm.screened[0].userId == 7);
+  CHECK(llm.screened[0].role == UserRole::Resident);
+  CHECK(llm.screened[0].text == "hola argus");
+
+  argus::voice::v1::ServerFrame sttFrame;
+  for (const auto& frame : sink.snapshot())
+    if (frame.has_stt())
+      sttFrame = frame;
+  CHECK(sttFrame.stt().text() == "\u2026");
+  for (const auto& frame : sink.snapshot())
+    CHECK(frame.SerializeAsString().find("hola argus") == std::string::npos);
+
+  CHECK(llm.chatStreamCalls == 1);
+  for (const ChatMessage& message : llm.lastMessages)
+    CHECK(message.content.find("hola argus") == std::string::npos);
+  for (const CallEntry& entry : sess->history.entries())
+    CHECK(entry.message.content.find("hola argus") == std::string::npos);
   CHECK(sess->history.userTurns() == 1);
 
   session.stop(sink);

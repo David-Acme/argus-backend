@@ -73,6 +73,8 @@ public:
   virtual ~IVoiceLlm() = default;
 
   virtual void chatStream(LlmStreamInput input) = 0;
+
+  [[nodiscard]] virtual std::string screen(const UtteranceScreenRequest& request) { return request.text; }
 };
 
 struct VoiceNameWrite
@@ -198,14 +200,23 @@ class RemoteVoiceLlm final : public IVoiceLlm
 public:
   void chatStream(LlmStreamInput input) override;
 
+  [[nodiscard]] std::string screen(const UtteranceScreenRequest& request) override;
+
+  static constexpr int kScreenTimeoutMs = 5000;
+
 private:
   std::shared_ptr<const LlmClient>
   clientFor(const LlmRemoteConfig& config);
+
+  std::shared_ptr<const LlmClient>
+  screenClientFor(const LlmRemoteConfig& config);
 
   mutable std::mutex mutex_;
   std::string cachedUrl_;
   int cachedTimeoutMs_{0};
   std::shared_ptr<const LlmClient> client_;
+  std::string screenUrl_;
+  std::shared_ptr<const LlmClient> screenClient_;
 };
 
 class IVoiceVad

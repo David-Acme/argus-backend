@@ -48,7 +48,7 @@ struct CallerCredential
 
 [[nodiscard]] ChatRequest boundToCredential(ChatRequest request, const CallerCredential& credential);
 
-void screenTurn(const turn::UtteranceScreen* screen, const ChatRequest& request);
+[[nodiscard]] ChatRequest screenTurn(const turn::UtteranceScreen* screen, ChatRequest request);
 
 class LlmController : public drogon::HttpController<LlmController, false>
 {
@@ -57,6 +57,7 @@ public:
   ADD_METHOD_TO(LlmController::chat, "/llm/v1/chat", drogon::Post);
   ADD_METHOD_TO(LlmController::chatStream, "/llm/v1/chat-stream", drogon::Post);
   ADD_METHOD_TO(LlmController::engine, "/llm/v1/config", drogon::Get);
+  ADD_METHOD_TO(LlmController::screenUtterance, "/llm/v1/screen", drogon::Post);
   METHOD_LIST_END
 
   LlmController();
@@ -77,12 +78,15 @@ public:
 
   void useScreen(const turn::UtteranceScreen& screen);
 
+  [[nodiscard]] std::string screenText(const ChatRequest& request) const;
+
   LlmChatOutcome chatSync(const ChatRequest& request);
   void chatStreamSync(const LlmStreamInput& input);
 
   drogon::Task<drogon::HttpResponsePtr> chat(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> chatStream(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> engine(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> screenUtterance(drogon::HttpRequestPtr req);
 
 private:
   LlmService service_;

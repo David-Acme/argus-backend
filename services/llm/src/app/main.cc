@@ -403,6 +403,9 @@ int main()
         .chatStream = [&llm](const LlmStreamInput& input) {
           llm->chatStreamSync(input);
         },
+        .screen = [&llm](const ChatRequest& request) {
+          return llm->screenText(request);
+        },
         .slots = ThreadBudget::inferenceSlots(),
         .services = std::move(services)});
     LOG_INFO << "argus-llm gRPC chat listening on " << rpcConfig.address;

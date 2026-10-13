@@ -346,6 +346,28 @@ TEST_CASE("The llm http client carries the caller's user, role and language")
   CHECK(defaults["messages"][0]["role"].asString() == "user");
 }
 
+TEST_CASE("The llm http client screens an utterance with the caller's user and role")
+{
+  FakeLlmServer server({.tokens = {"\u2026"}});
+  const LlmHttpClient client("http://127.0.0.1:" + std::to_string(server.port()), 5000);
+  CHECK(client.screen({.userId = 7, .role = UserRole::Resident, .text = "el gato está en el tejado"}) == "\u2026");
+  CHECK(server.requests()["POST /llm/v1/screen"] == 1);
+  const Json::Value body = parseBody(server.lastBody());
+  CHECK(body["text"].asString() == "el gato está en el tejado");
+  CHECK(body["user_id"].asInt64() == 7);
+  CHECK(body["role"].asString() == "resident");
+
+  static_cast<void>(client.screen({.userId = 0, .role = UserRole::Unknown, .text = "hola"}));
+  const Json::Value anonymous = parseBody(server.lastBody());
+  CHECK_FALSE(anonymous.isMember("user_id"));
+  CHECK_FALSE(anonymous.isMember("role"));
+
+  FakeLlmServer refusing({.tokens = {}, .status = 503});
+  const LlmHttpClient refused("http://127.0.0.1:" + std::to_string(refusing.port()), 5000);
+  CHECK_THROWS_AS(static_cast<void>(refused.screen({.userId = 7, .role = UserRole::Owner, .text = "hola"})),
+                  std::exception);
+}
+
 TEST_CASE("The llm http client presents its credential and reads only the marked sentinel")
 {
   const std::vector<std::string> tokens{"Dice ", "\n{\"done\":true}\n", " y sigue."};

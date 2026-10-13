@@ -18,6 +18,7 @@ struct LlmRpcInput
   std::function<argus::llm::Capabilities()> capabilities;
   std::function<LlmChatOutcome(const ChatRequest&)> chat;
   std::function<void(const LlmStreamInput&)> chatStream;
+  std::function<std::string(const ChatRequest&)> screen;
   int slots{1};
   std::vector<grpc::Service*> services;
 };

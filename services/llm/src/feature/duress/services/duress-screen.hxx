@@ -23,6 +23,7 @@ struct DuressScreenTiming
   std::chrono::milliseconds refresh{std::chrono::minutes(1)};
   std::chrono::milliseconds retryBase{std::chrono::seconds(2)};
   std::chrono::milliseconds retryMax{std::chrono::minutes(1)};
+  std::chrono::milliseconds memo{std::chrono::minutes(2)};
   std::size_t queueLimit{32};
 };
 
@@ -37,7 +38,7 @@ public:
   DuressScreen(DuressScreen&&) = delete;
   DuressScreen& operator=(DuressScreen&&) = delete;
 
-  void screen(const turn::ScreenedUtterance& utterance) const override;
+  [[nodiscard]] turn::ScreenedText screen(const turn::ScreenedUtterance& utterance) const override;
 
   void start();
   void requestRefresh() const;

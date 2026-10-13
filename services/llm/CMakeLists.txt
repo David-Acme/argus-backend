@@ -312,7 +312,9 @@ set_target_properties(llm-module-command-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME llm-module-command-test COMMAND llm-module-command-test)
 
 add_executable(llm-duress-screen-test tests/unit/llm-duress-screen-test.cc)
-target_link_libraries(llm-duress-screen-test PRIVATE argus::duress argus::llm doctest::doctest)
+target_link_libraries(llm-duress-screen-test PRIVATE argus::duress argus::llm argus::memory doctest::doctest)
+target_compile_definitions(llm-duress-screen-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(llm-duress-screen-test PRIVATE -Wall -Wextra)
 set_target_properties(llm-duress-screen-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME llm-duress-screen-test COMMAND llm-duress-screen-test)

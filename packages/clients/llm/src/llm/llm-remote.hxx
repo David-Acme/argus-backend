@@ -28,6 +28,8 @@ public:
 
   void chatStream(const LlmStreamInput& input) const;
 
+  [[nodiscard]] std::string screen(const UtteranceScreenRequest& request) const;
+
 private:
   std::string chatBody(const ChatRequest& request) const;
 
@@ -44,6 +46,8 @@ public:
   std::string chat(const ChatRequest& request) const;
 
   void chatStream(const LlmStreamInput& input) const;
+
+  [[nodiscard]] std::string screen(const UtteranceScreenRequest& request) const;
 
   bool remote() const;
 

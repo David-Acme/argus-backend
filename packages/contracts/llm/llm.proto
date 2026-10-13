@@ -6,6 +6,7 @@ service Chat {
   rpc Capabilities(CapabilitiesRequest) returns (CapabilitiesResponse);
   rpc Chat(ChatRequest) returns (ChatResponse);
   rpc ChatStream(ChatRequest) returns (stream ChatToken);
+  rpc Screen(ScreenRequest) returns (ScreenResponse);
 }
 
 message CapabilitiesRequest {}
@@ -69,4 +70,14 @@ message ChatToken {
   int32 decoded_tokens = 6;
   ClientAction action = 7;
   string speech = 8;
+}
+
+message ScreenRequest {
+  string text = 1;
+  int64 user_id = 2;
+  CallerRole caller_role = 3;
+}
+
+message ScreenResponse {
+  string text = 1;
 }

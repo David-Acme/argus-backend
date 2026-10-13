@@ -184,6 +184,23 @@ std::string Client::chat(const ChatRequest& request) const
   return response.text();
 }
 
+std::string Client::screen(const UtteranceScreenRequest& request) const
+{
+  if (request.text.empty() || request.text.size() > kMaxContentBytes || request.userId < 0)
+    throw ResponseException(400, LlmErrors::InvalidRequest);
+  grpc::ClientContext context;
+  const auto deadlineAt = Clock::now() + impl_->config.timeout;
+  context.set_deadline(deadlineAt);
+  argus::client::addCallerCredential(context, impl_->config.credential);
+  wire::ScreenRequest wire;
+  wire.set_text(request.text);
+  wire.set_user_id(request.userId);
+  wire.set_caller_role(wireRole(request.role));
+  wire::ScreenResponse response;
+  check(impl_->stub->Screen(&context, wire, &response), deadlineAt);
+  return response.text();
+}
+
 void Client::chatStream(const LlmStreamInput& input) const
 {
   if (!validRequest(input.request))

@@ -38,6 +38,7 @@ public:
   [[nodiscard]] Capabilities capabilities() const;
   [[nodiscard]] std::string chat(const ChatRequest& request) const;
   void chatStream(const LlmStreamInput& input) const;
+  [[nodiscard]] std::string screen(const UtteranceScreenRequest& request) const;
 
 private:
   struct Impl;

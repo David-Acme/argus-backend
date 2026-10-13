@@ -1,21 +1,26 @@
 #include "duress-screen.hxx"
 
 #include <text/secret-phrase.hxx>
+#include <text/sha256.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <deque>
 #include <mutex>
 #include <optional>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 struct DuressScreenState
 {
   using Clock = std::chrono::steady_clock;
+  using Fingerprint = std::array<std::uint8_t, 32>;
 
   enum class KeyState : uint8_t
   {
@@ -24,7 +29,7 @@ struct DuressScreenState
     Present
   };
 
-  struct Queued
+  struct Late
   {
     int64_t userId{0};
     UserRole role{UserRole::Unknown};
@@ -38,10 +43,17 @@ struct DuressScreenState
     Clock::time_point nextAt{};
   };
 
+  struct Memo
+  {
+    Fingerprint fingerprint{};
+    Clock::time_point at{};
+  };
+
   mutable std::mutex mutex;
   std::condition_variable_any wake;
-  std::deque<Queued> queue;
+  std::deque<Late> late;
   std::vector<Pending> pending;
+  std::unordered_map<int64_t, Memo> clean;
   KeyState keyState{KeyState::Unknown};
   std::optional<secret_phrase::PhraseKey> key;
   std::string encodedKey;
@@ -58,6 +70,13 @@ namespace
 using Clock = DuressScreenState::Clock;
 using KeyState = DuressScreenState::KeyState;
 
+DuressScreenState::Fingerprint fingerprintOf(std::string_view text)
+{
+  argus::hash::Sha256 hasher;
+  hasher.update(text);
+  return hasher.digest();
+}
+
 struct BackoffInput
 {
   const DuressScreenTiming& timing;
@@ -70,6 +89,21 @@ std::chrono::milliseconds backoff(const BackoffInput& input)
   for (int doubling = 1; doubling < input.failures && delay < input.timing.retryMax; ++doubling)
     delay *= 2;
   return std::min(delay, input.timing.retryMax);
+}
+
+void queueRaise(DuressScreenState& state, const DuressRaise& raise)
+{
+  const bool waiting = std::ranges::any_of(
+      state.pending, [&raise](const DuressScreenState::Pending& entry) { return entry.raise.userId == raise.userId; });
+  if (!waiting)
+    state.pending.push_back({.raise = raise, .failures = 0, .nextAt = Clock::now()});
+}
+
+bool raiseDue(const DuressScreenState& state)
+{
+  const Clock::time_point now = Clock::now();
+  return std::ranges::any_of(state.pending,
+                             [now](const DuressScreenState::Pending& entry) { return entry.nextAt <= now; });
 }
 
 struct AdoptInput
@@ -93,6 +127,8 @@ void adoptKey(const AdoptInput& input)
   if (state.refreshFailures > 0)
     LOG_INFO << "Duress screen: guard answers again";
   state.refreshFailures = 0;
+  if (state.encodedKey != *input.fetched || state.keyState == KeyState::Unknown)
+    state.clean.clear();
   state.encodedKey = *input.fetched;
   state.key = input.fetched->empty() ? std::nullopt : secret_phrase::decode(*input.fetched);
   if (!input.fetched->empty() && !state.key)
@@ -147,20 +183,49 @@ void DuressScreen::start()
   worker_ = std::jthread([this](const std::stop_token& stop) { run(stop); });
 }
 
-void DuressScreen::screen(const turn::ScreenedUtterance& utterance) const
+turn::ScreenedText DuressScreen::screen(const turn::ScreenedUtterance& utterance) const
 {
+  turn::ScreenedText kept{.text = std::string(utterance.text), .withheld = false};
   if (utterance.userId <= 0 || utterance.text.empty() || !dependencies_.eligible ||
       !dependencies_.eligible(utterance.role))
-    return;
+    return kept;
+  const DuressScreenState::Fingerprint fingerprint = fingerprintOf(utterance.text);
+  std::optional<secret_phrase::PhraseKey> key;
+  std::string encoded;
   {
     const std::scoped_lock lock(state_->mutex);
     if (state_->stopped.load(std::memory_order_acquire) || state_->keyState == KeyState::Absent)
-      return;
-    if (state_->queue.size() >= timing_.queueLimit)
-      state_->queue.pop_front();
-    state_->queue.push_back({.userId = utterance.userId, .role = utterance.role, .text = std::string(utterance.text)});
+      return kept;
+    if (state_->keyState == KeyState::Unknown) {
+      if (state_->late.size() >= timing_.queueLimit)
+        state_->late.pop_front();
+      state_->late.push_back({.userId = utterance.userId, .role = utterance.role, .text = kept.text});
+    }
+    else {
+      const auto memo = state_->clean.find(utterance.userId);
+      if (memo != state_->clean.end() && memo->second.fingerprint == fingerprint &&
+          Clock::now() - memo->second.at < timing_.memo)
+        return kept;
+      key = state_->key;
+      encoded = state_->encodedKey;
+    }
+  }
+  if (!key) {
+    state_->wake.notify_one();
+    return kept;
+  }
+  const bool said = secret_phrase::spokenIn(*key, utterance.text);
+  {
+    const std::scoped_lock lock(state_->mutex);
+    if (!said) {
+      if (state_->encodedKey == encoded)
+        state_->clean[utterance.userId] = {.fingerprint = fingerprint, .at = Clock::now()};
+      return kept;
+    }
+    queueRaise(*state_, {.userId = utterance.userId, .role = utterance.role, .key = encoded});
   }
   state_->wake.notify_one();
+  return {.text = std::string(turn::kWithheldUtterance), .withheld = true};
 }
 
 void DuressScreen::requestRefresh() const
@@ -188,7 +253,7 @@ bool DuressScreen::idle() const
 {
   const std::scoped_lock lock(state_->mutex);
   return !state_->busy && !state_->refreshRequested && state_->pending.empty() &&
-         (state_->queue.empty() || state_->keyState == KeyState::Unknown);
+         (state_->late.empty() || state_->keyState == KeyState::Unknown);
 }
 
 void DuressScreen::run(const std::stop_token& stop) const
@@ -207,9 +272,9 @@ void DuressScreen::run(const std::stop_token& stop) const
       adoptKey({.state = state, .timing = timing_, .fetched = fetched, .now = now});
       continue;
     }
-    if (state.keyState != KeyState::Unknown && !state.queue.empty()) {
-      DuressScreenState::Queued item = std::move(state.queue.front());
-      state.queue.pop_front();
+    if (state.keyState != KeyState::Unknown && !state.late.empty()) {
+      DuressScreenState::Late item = std::move(state.late.front());
+      state.late.pop_front();
       if (state.keyState != KeyState::Present || !state.key)
         continue;
       const secret_phrase::PhraseKey key = *state.key;
@@ -219,12 +284,8 @@ void DuressScreen::run(const std::stop_token& stop) const
       const bool said = secret_phrase::spokenIn(key, item.text);
       lock.lock();
       state.busy = false;
-      const bool waiting = std::ranges::any_of(
-          state.pending, [&item](const DuressScreenState::Pending& entry) { return entry.raise.userId == item.userId; });
-      if (said && !waiting)
-        state.pending.push_back({.raise = {.userId = item.userId, .role = item.role, .key = encoded},
-                                 .failures = 0,
-                                 .nextAt = Clock::now()});
+      if (said)
+        queueRaise(state, {.userId = item.userId, .role = item.role, .key = encoded});
       continue;
     }
     const auto due = std::ranges::find_if(
@@ -243,7 +304,8 @@ void DuressScreen::run(const std::stop_token& stop) const
     for (const auto& entry : state.pending)
       wakeAt = std::min(wakeAt, entry.nextAt);
     state.wake.wait_until(lock, stop, wakeAt, [&state] {
-      return state.refreshRequested || (state.keyState != KeyState::Unknown && !state.queue.empty());
+      return state.refreshRequested || raiseDue(state) ||
+             (state.keyState != KeyState::Unknown && !state.late.empty());
     });
   }
   std::vector<DuressScreenState::Pending> left = std::move(state.pending);

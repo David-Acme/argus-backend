@@ -3,10 +3,13 @@
 #include <auth/user-role.hxx>
 
 #include <cstdint>
+#include <string>
 #include <string_view>
 
 namespace turn
 {
+
+inline constexpr std::string_view kWithheldUtterance = "…";
 
 struct ScreenedUtterance
 {
@@ -15,12 +18,18 @@ struct ScreenedUtterance
   std::string_view text;
 };
 
+struct ScreenedText
+{
+  std::string text;
+  bool withheld{false};
+};
+
 class UtteranceScreen
 {
 public:
   virtual ~UtteranceScreen() = default;
 
-  virtual void screen(const ScreenedUtterance& utterance) const = 0;
+  [[nodiscard]] virtual ScreenedText screen(const ScreenedUtterance& utterance) const = 0;
 };
 
 }

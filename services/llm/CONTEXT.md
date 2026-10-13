@@ -861,55 +861,85 @@ The household can set a duress phrase in guard (`services/guard/CONTEXT.md`,
 the same silent alert its duress code raises, and the speaker hears an ordinary
 answer. The detection lives here, at the turn, and it is not a tool. The LLM
 never chooses a tool, is never told this exists, and no route or MCP tool for
-it is declared. The phrase decides nothing about what the turn says or does.
+it is declared.
 
-- **Where.** `LlmController::chatSync` and `chatStreamSync`, the one entry both
-  legs share (HTTP and `argus.llm.v1`), call `screenTurn` before anything is
-  decided. It hands the last user message (`LfmAdapter::lastUtterance`) to
-  the `turn::UtteranceScreen` that `main.cc` installed
-  (`shared/vocabulary/utterance-screen.hxx`, read by `llm` and `duress`). It
-  screens only an identified caller: a user id and a known role from the
-  `voice` credential (`boundToCaller` strips both from anyone else), never a
-  prefill request. It returns at once.
-- **Who.** `DuressScreen` (`feature/duress`, module `argus::duress`) queues the
-  words only for a speaker who holds `safety.duress` under the current module
-  snapshot (Owner, Resident, surveillance on). Guard checks again.
-- **Off the turn's path.** One worker thread folds the utterance and derives
-  every window of the phrase's word count with `secret_phrase::spokenIn`
-  (PBKDF2, `packages/lib/text`). The turn neither waits for it nor learns its
-  answer. So the reply, its timing, the tools and the memory are exactly those
-  of the same words without a phrase configured. That is the "no spoken
-  confirmation": there is nothing to suppress, because nothing changed. At most
-  the last 96 words of an utterance are screened, and at most 32 utterances
-  wait in the queue.
-- **The key.** The worker reads guard's key (`GuardDuressClient::phraseKey`,
+**A matched utterance never travels on as heard (the reviewer's F4 gap, closed
+2026-10-13).** The words are replaced by a neutral placeholder, `…`
+(`turn::kWithheldUtterance`), before anything downstream sees them: the
+history the call keeps, the frame the app shows, the logs, the turn's
+decision, its tools, the memory graph and the model's prompt. The placeholder
+is whole, never a sentence with words cut out of it, so nothing around the
+phrase hints at what was removed. The model answers "…" the way it answers any
+utterance it could not make out ("¿Perdona?"), so the reply stays ordinary and
+never names the alert.
+
+- **Voice asks first.** `services/voice` calls `POST /llm/v1/screen` (gRPC
+  `argus.llm.v1.Chat/Screen`, the SDK's `LlmClient::screen`) the moment STT
+  answers, before it logs, sends the `stt` frame, stores the user entry,
+  extracts a name, reacts or offers anything. From then on it uses the text
+  the screen returned. The route answers `{text}`: the same words, or the
+  placeholder. Like the chat routes, it lets only the `voice` caller declare a
+  user and a role (`boundToCredential`/`boundToCaller`); anyone else is never
+  screened. A screen that fails leaves voice with the words as heard, and the
+  turn below still withholds them from everything this service does with
+  them.
+- **The turn screens again.** `LlmController::chatSync` and `chatStreamSync`,
+  the entry both legs share, pass the request through `screenTurn` before
+  anything is decided. It replaces the last user message (as
+  `LfmAdapter::spokenText` reads it) with the placeholder when the screen
+  withholds it, and returns every other message untouched. Prefill requests,
+  callers without a user id or a known role, and a process with no screen
+  installed pass through as they are.
+- **Who.** `DuressScreen` (`feature/duress`, module `argus::duress`) screens
+  only a speaker who holds `safety.duress` under the current module snapshot
+  (Owner, Resident, surveillance on). Guard checks again.
+- **On the caller's thread, bounded.** The screen folds the utterance and
+  derives every window of the phrase's word count with
+  `secret_phrase::spokenIn` (PBKDF2, `packages/lib/text`): about 50 ms for a
+  20-word utterance with a 6-word phrase in a release build, and only for an
+  eligible speaker while a phrase is set. The HTTP route runs it on the light
+  lane, never on the event loop. At most the last 96 words are screened. A
+  clean answer is remembered per speaker for two minutes (a SHA-256 of the
+  words), so the turn that follows voice's screen of the same words does not
+  derive them again. A new key clears that memory, so a remembered clean
+  answer never hides a phrase set since.
+- **The key.** A worker thread reads guard's key (`GuardDuressClient::phraseKey`,
   the `[guard] target` and `credential` the tool provider already uses) at
   start and every minute. It reads it at once when guard's
   `argus.guard.v1.change` carries the `duress` resource notice
-  (`duress_feed::changesPhrase`). An unreachable guard is asked again
-  with a backoff of 2 s doubling to 60 s, and the last key read stays in force.
-  Before any key was ever read, utterances wait in the queue rather than being
-  skipped, so a household member who speaks while guard is still booting is
-  screened once it answers. Without a phrase, nothing is queued. The worker
-  holds only the key: the phrase's words are never in this process.
+  (`duress_feed::changesPhrase`). An unreachable guard is asked again with a
+  backoff of 2 s doubling to 60 s, and the last key read stays in force. The
+  process holds only the key: the phrase's words are never in it.
+- **Before guard first answers**, no key is known and nothing can be withheld.
+  The words go on as heard, and a copy waits (at most 32) to be matched once
+  the key arrives, so the alert is still raised. That boot window is the one
+  place the words can travel unredacted.
 - **The raise.** A match becomes one pending `RaiseSpoken {userId, role, key}`
-  per speaker. `RAISED` or `REPEATED` settle it. `STALE` and `NOT_ALLOWED` drop
-  it and read the key again, because words that are no longer the phrase are no
-  alert. An unreachable guard is retried with the same backoff for as long as
-  the process runs, and once more at stop (the `llm-duress` drain). A restart
-  of argus-llm while guard is down loses a pending raise. That gap is accepted,
-  because guard's own row is the durable record from the moment it answers.
+  per speaker, handed to guard by the worker. `RAISED` or `REPEATED` settle it.
+  `STALE` and `NOT_ALLOWED` drop it and read the key again, because words that
+  are no longer the phrase are no alert. An unreachable guard is retried with
+  the same backoff for as long as the process runs, and once more at stop (the
+  `llm-duress` drain). Whether the pending raise survives a restart of
+  argus-llm is the next F4 gap.
 - **Logs.** Never the utterance, the key or the speaker. The screen says only
   that guard did not answer, or answers again. The relay says only that "an
   alert" waits for guard.
 
-`tests/unit/llm-duress-screen-test.cc` covers a member who says the phrase and
-raises once with the key it matched, and nobody else raising it (other words, a
-guest, an anonymous caller, an unknown role). It also covers the retry until
-guard takes it, with one pending raise per speaker, nothing queued without a
-phrase, a refreshed phrase replacing the old one, words said while guard was
-unreachable being screened once it answers, the turn hook's caller rules, and
-the change notice that asks for a refresh.
+`tests/unit/llm-duress-screen-test.cc` covers:
+- a member who says the phrase is withheld at once and raises once, with the
+  key it matched;
+- nobody else is withheld: other words, a guest, an anonymous caller, an
+  unknown role;
+- the retry until guard takes the raise, with one pending raise per speaker;
+- nothing is withheld without a phrase;
+- a refreshed phrase replaces the old one, and the clean memory never hides it;
+- what is said before guard first answers still raises;
+- the turn carries the placeholder and the rest of its history unchanged, and
+  the turn hook's caller rules hold;
+- the model's prompt holds no trace of the phrase, and the reply stays ordinary;
+- the memory graph keeps the same words when they are not the phrase, and
+  keeps no trace of them once withheld;
+- the change notice that asks for a refresh.
 
 ## The per-turn context block (2026-10-08)
 

@@ -31,6 +31,7 @@ PUBLIC_ROUTES = frozenset({
     ("llm", "POST", "/llm/v1/chat"),
     ("llm", "POST", "/llm/v1/chat-stream"),
     ("llm", "GET", "/llm/v1/config"),
+    ("llm", "POST", "/llm/v1/screen"),
     ("shared", "GET", "/health"),
     ("stt", "GET", "/stt/v1/config"),
     ("stt", "POST", "/stt/v1/transcribe"),

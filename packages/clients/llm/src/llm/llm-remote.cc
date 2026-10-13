@@ -16,6 +16,7 @@ namespace
 
 constexpr const char* kChatPath = "/llm/v1/chat";
 constexpr const char* kChatStreamPath = "/llm/v1/chat-stream";
+constexpr const char* kScreenPath = "/llm/v1/screen";
 
 std::string trim(const std::string& value)
 {
@@ -179,6 +180,52 @@ argus::net::Connection connectTo(const ConnectInput& input)
   return connection;
 }
 
+struct UnaryInput
+{
+  const std::string& baseUrl;
+  int timeoutMs{0};
+  const std::string& credential;
+  const char* path{nullptr};
+  const std::string& body;
+};
+
+Json::Value unaryInfo(const UnaryInput& input)
+{
+  const auto address = argus::net::parseEndpoint(input.baseUrl);
+  const auto connection = connectTo(
+      {.baseUrl = input.baseUrl, .address = address, .timeoutMs = input.timeoutMs, .cancellation = {}});
+
+  const std::string path = input.path;
+  const HttpRequestHead head{.method = "POST",
+                             .path = &path,
+                             .body = &input.body,
+                             .address = &address,
+                             .credential = &input.credential,
+                             .closeConnection = true};
+  const std::string outgoing = serialize(head) + input.body;
+  sendRequest({.fd = connection.socket.get(), .outgoing = outgoing, .cancellation = {}});
+
+  const auto deadline =
+      std::chrono::steady_clock::now() +
+      std::chrono::milliseconds(input.timeoutMs);
+  const std::string wire =
+      argus::net::readUntilClosed(
+          {.fd = connection.socket.get(), .deadline = deadline, .cancellation = {}})
+          .data;
+  if (wire.empty())
+    throw std::runtime_error("argus-llm closed the connection before answering");
+
+  const Head parsed = parseHead(wire);
+  if (parsed.status != 200)
+    throwEnvelopeError(parsed.status, wire.substr(parsed.bodyStart));
+  const std::string bodyOut = wire.substr(parsed.bodyStart, parsed.contentLength);
+  Json::Value json;
+  Json::Reader reader;
+  if (!reader.parse(bodyOut, json) || !json["info"].isObject())
+    return {};
+  return json["info"];
+}
+
 std::chrono::milliseconds rpcTimeout(int timeoutMs)
 {
   const auto ceiling = std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -253,41 +300,30 @@ std::string LlmHttpClient::chatBody(const ChatRequest& request) const
 
 std::string LlmHttpClient::chat(const ChatRequest& request) const
 {
-  const auto address = argus::net::parseEndpoint(baseUrl_);
-  const auto connection = connectTo(
-      {.baseUrl = baseUrl_, .address = address, .timeoutMs = timeoutMs_, .cancellation = {}});
-
   const std::string body = chatBody(request);
-  const std::string path = kChatPath;
-  const HttpRequestHead head{.method = "POST",
-                             .path = &path,
-                             .body = &body,
-                             .address = &address,
-                             .credential = &credential_,
-                             .closeConnection = true};
-  const std::string outgoing = serialize(head) + body;
-  sendRequest({.fd = connection.socket.get(), .outgoing = outgoing, .cancellation = {}});
-
-  const auto deadline =
-      std::chrono::steady_clock::now() +
-      std::chrono::milliseconds(timeoutMs_);
-  const std::string wire =
-      argus::net::readUntilClosed(
-          {.fd = connection.socket.get(), .deadline = deadline, .cancellation = {}})
-          .data;
-  if (wire.empty())
-    throw std::runtime_error("argus-llm closed the connection before answering");
-
-  const Head parsed = parseHead(wire);
-  if (parsed.status != 200)
-    throwEnvelopeError(parsed.status, wire.substr(parsed.bodyStart));
-  const std::string bodyOut = wire.substr(parsed.bodyStart, parsed.contentLength);
-  Json::Value json;
-  Json::Reader reader;
-  if (!reader.parse(bodyOut, json) || !json["info"].isObject() ||
-      !json["info"].isMember("text"))
+  const Json::Value info = unaryInfo(
+      {.baseUrl = baseUrl_, .timeoutMs = timeoutMs_, .credential = credential_, .path = kChatPath, .body = body});
+  if (!info.isObject() || !info.isMember("text"))
     throw std::runtime_error("argus-llm chat response unreadable");
-  return json["info"]["text"].asString();
+  return info["text"].asString();
+}
+
+std::string LlmHttpClient::screen(const UtteranceScreenRequest& request) const
+{
+  Json::Value payload(Json::objectValue);
+  payload["text"] = request.text;
+  if (request.userId > 0)
+    payload["user_id"] = Json::Int64{request.userId};
+  if (userRoleKnown(request.role))
+    payload["role"] = userRoleToString(request.role);
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  const std::string body = Json::writeString(builder, payload);
+  const Json::Value info = unaryInfo(
+      {.baseUrl = baseUrl_, .timeoutMs = timeoutMs_, .credential = credential_, .path = kScreenPath, .body = body});
+  if (!info.isObject() || !info["text"].isString())
+    throw std::runtime_error("argus-llm screen response unreadable");
+  return info["text"].asString();
 }
 
 void LlmHttpClient::chatStream(const LlmStreamInput& input) const
@@ -439,6 +475,15 @@ void LlmClient::chatStream(const LlmStreamInput& input) const
   LlmHttpClient(baseUrl_, timeoutMs_)
       .withCredential(ConfigService::getString("llm.grpc_credential"))
       .chatStream(input);
+}
+
+std::string LlmClient::screen(const UtteranceScreenRequest& request) const
+{
+  if (const auto client = rpcClient())
+    return client->screen(request);
+  return LlmHttpClient(baseUrl_, timeoutMs_)
+      .withCredential(ConfigService::getString("llm.grpc_credential"))
+      .screen(request);
 }
 
 bool LlmClient::remote() const
