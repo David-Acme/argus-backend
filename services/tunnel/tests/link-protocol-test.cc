@@ -1,4 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include "tls-hello.hxx"
+
+#include <link/protocol/client-hello.hxx>
 #include <link/protocol/credit-window.hxx>
 #include <link/protocol/frames.hxx>
 
@@ -360,6 +363,73 @@ TEST_SUITE("home link v2 vectors")
       CHECK(listed.contains(file.filename().string()));
     CHECK(listed.contains("device-names.json"));
     CHECK(listed.size() >= 13);
+  }
+
+  TEST_CASE("every device-name vector reads as it says")
+  {
+    const nlohmann::json document = loadFile(
+        std::filesystem::path{ARGUS_LINK_VECTOR_DIR} / "device-names.json");
+    const std::string suffix = document.at("domainSuffix").get<std::string>();
+    size_t parsed = 0;
+    size_t refused = 0;
+    for (const auto& vector : document.at("vectors")) {
+      const std::string serverName = vector.at("serverName").get<std::string>();
+      const std::string label = vector.at("name").get<std::string>();
+      INFO(label);
+      const auto name = tunnel::link::parseDeviceName(
+          {.serverName = serverName, .domainSuffix = suffix});
+      if (vector.value("expect", "") == "refused") {
+        CHECK_FALSE(name.has_value());
+        ++refused;
+        continue;
+      }
+      const tunnel::link::DeviceName actual = name.value_or(
+          tunnel::link::DeviceName{.service = "refused", .homeId = "refused"});
+      CHECK(actual.service == vector.at("service").get<std::string>());
+      CHECK(actual.homeId == vector.at("homeId").get<std::string>());
+      ++parsed;
+    }
+    CHECK(parsed >= 6);
+    CHECK(refused >= 22);
+  }
+
+  TEST_CASE("the server name comes out of a client hello, whole or in pieces")
+  {
+    const std::string name =
+        "auth--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page";
+    const std::string hello = tunnel::test::clientHelloFor(name);
+    REQUIRE(hello.size() > 5);
+    const tunnel::link::ClientHelloResult whole =
+        tunnel::link::parseClientHello(hello);
+    CHECK(whole.status == tunnel::link::ClientHelloStatus::Parsed);
+    CHECK(whole.serverName == name);
+
+    const tunnel::link::ClientHelloResult behind =
+        tunnel::link::parseClientHello(hello + "carried bytes behind it");
+    CHECK(behind.status == tunnel::link::ClientHelloStatus::Parsed);
+    CHECK(behind.serverName == name);
+
+    for (size_t cut = 0; cut < hello.size(); cut += 97)
+      CHECK(tunnel::link::parseClientHello(std::string_view{hello}.substr(0, cut))
+                .status == tunnel::link::ClientHelloStatus::NeedMore);
+
+    const tunnel::link::ClientHelloResult unnamed =
+        tunnel::link::parseClientHello(tunnel::test::clientHelloFor(""));
+    CHECK(unnamed.status == tunnel::link::ClientHelloStatus::Parsed);
+    CHECK(unnamed.serverName.empty());
+
+    std::string notHandshake = hello;
+    notHandshake[0] = static_cast<char>(0x17);
+    CHECK(tunnel::link::parseClientHello(notHandshake).status ==
+          tunnel::link::ClientHelloStatus::Malformed);
+    CHECK(tunnel::link::parseClientHello("GET / HTTP/1.1\r\n\r\n").status ==
+          tunnel::link::ClientHelloStatus::Malformed);
+  }
+
+  TEST_CASE("a refusal is one unrecognized_name alert record")
+  {
+    CHECK(hexOf(tunnel::link::tlsAlertRecord(
+              tunnel::link::kUnrecognizedNameAlert)) == "15030300020270");
   }
 
   TEST_CASE("the cloud's vectors are the ones this test pinned"

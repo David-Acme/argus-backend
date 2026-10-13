@@ -45,10 +45,12 @@ add_library(tunnel-core STATIC
     ${TUNNEL_SRC_ROOT}/protocol/frames.cc
     ${TUNNEL_SRC_ROOT}/link/protocol/frames.cc
     ${TUNNEL_SRC_ROOT}/link/protocol/credit-window.cc
+    ${TUNNEL_SRC_ROOT}/link/protocol/client-hello.cc
     ${TUNNEL_SRC_ROOT}/link/tls/pinned-key.cc
     ${TUNNEL_SRC_ROOT}/link/tls/client-tls-context.cc
     ${TUNNEL_SRC_ROOT}/link/tls/tls-channel.cc
     ${TUNNEL_SRC_ROOT}/link/tls/host-resolver.cc
+    ${TUNNEL_SRC_ROOT}/link/client/home-service.cc
     ${TUNNEL_SRC_ROOT}/link/client/link-client.cc
     ${TUNNEL_SRC_ROOT}/core/tunnel-mux.cc
     ${TUNNEL_SRC_ROOT}/client/tunnel-client.cc
@@ -136,7 +138,10 @@ target_link_libraries(tunnel-health-test PRIVATE tunnel-core doctest::doctest)
 target_compile_options(tunnel-health-test PRIVATE -Wall -Wextra)
 
 add_executable(link-protocol-test
-               ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-protocol-test.cc)
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-protocol-test.cc
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/tls-hello.cc)
+target_include_directories(link-protocol-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 target_link_libraries(link-protocol-test PRIVATE tunnel-core doctest::doctest
                                             nlohmann_json::nlohmann_json)
 target_compile_options(link-protocol-test PRIVATE -Wall -Wextra)
@@ -147,7 +152,8 @@ target_compile_definitions(link-protocol-test PRIVATE
 add_executable(link-client-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-client-test.cc
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-harness.cc
-               ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-test-cert.cc)
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-test-cert.cc
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/tls-hello.cc)
 target_include_directories(link-client-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 target_link_libraries(link-client-test PRIVATE tunnel-core doctest::doctest)

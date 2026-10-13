@@ -35,6 +35,33 @@ this repository holds its second implementation, under `src/link/`.
   is listening or its own `max_streams` table is full. Normal-close semantics,
   the back-pressure valves and the idle sweep are the ones the v1 client
   already had.
+- **Dispatch by device name** (spec §2.4, 2026-10-13): through the cloud an
+  app dials one name per home service, `<service>--<home-id>.argus-tunnel.lynk.page`,
+  and the node routes on the home id alone. When `[link.services]` names at least
+  one listener, the client holds a new stream's first bytes until they hold a
+  whole ClientHello (its first TLS record, at most 32 KiB), reads the server name
+  out of it in the clear (`link/protocol/client-hello`, the same grammar and the
+  same `device-names.json` vectors as the node) and dials the listener of that
+  service; the ClientHello and every byte behind it then reach the listener
+  verbatim, and the credit for them is granted once they do. A bare name,
+  `<home-id>.argus-tunnel.lynk.page`, keeps the gateway listener, exactly as
+  before. A service this home does not list, a name for another home id, a name
+  that does not follow §2.4 (a service is 3 to 12 characters of `[a-z0-9]`
+  starting with a letter, because a label with `--` in its third and fourth
+  positions is reserved by IDNA), a ClientHello without a server name, bytes
+  that are not a ClientHello and 32 KiB that still do not hold a whole one are
+  refused: the client answers with one `unrecognized_name(112)` alert record as
+  DATA and a normal CLOSE, so the app reads the alert and then the end of the
+  connection. No local socket is opened for a refused stream. The services are
+  a closed vocabulary (`HomeService`: auth, identity, sync, camera,
+  productivity, notification, guard, settings), each entry a port on
+  `gateway_host`. With no `[link.services]` at all, every stream dials the
+  gateway as soon as it opens, as it always did, so an instance config written
+  before this step keeps working unchanged; `config.toml.example` lists the two
+  services that have a remote listener today, auth (7142) and identity (7144).
+  The other six reach the relay only once each has a remote listener of its
+  own; the deploy templates stay as they are until the per-service
+  certificates land.
 - **Closes are told, never answered** (spec §4.1): every close the client
   decides reaches the node as CLOSE — a home service that hangs up gets
   `normal` once the bytes it sent are framed, a failed one `error` — and a

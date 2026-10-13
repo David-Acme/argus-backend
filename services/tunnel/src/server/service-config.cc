@@ -90,6 +90,20 @@ void resolveLink(ClientConfig& config)
   config.link.reconnectBaseMs = positiveOr("link.reconnect_base_ms", 1000);
   config.link.reconnectCapMs = positiveOr("link.reconnect_cap_ms", 60000);
   config.link.pushQueueCapacity = resolvePushQueueCapacity();
+
+  config.link.homeId = config.homeId;
+  if (const std::string domain =
+          ConfigService::getString("link.device_domain_suffix");
+      !domain.empty())
+    config.link.deviceDomainSuffix = domain;
+  config.link.serviceListeners.clear();
+  for (const tunnel::link::HomeService service : tunnel::link::kHomeServices) {
+    const std::string key =
+        "link.services." + std::string{tunnel::link::homeServiceToString(service)};
+    const int port = ConfigService::getInt(key);
+    if (port > 0 && port < 65536)
+      config.link.serviceListeners[service] = static_cast<uint16_t>(port);
+  }
 }
 }
 

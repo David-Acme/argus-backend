@@ -43,6 +43,11 @@ reconnect_cap_ms = 60000
 
 stream_idle_seconds = 300
 max_streams = 256
+device_domain_suffix = ".argus-tunnel.lynk.page"
+
+[link.services]
+auth = 7142
+identity = 7144
 
 [push]
 enabled = false

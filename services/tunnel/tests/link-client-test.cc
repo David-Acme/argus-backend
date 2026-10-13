@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "link-harness.hxx"
+#include "tls-hello.hxx"
 
 #include <link/client/link-client.hxx>
 #include <link/protocol/frames.hxx>
@@ -14,6 +15,7 @@
 #include <filesystem>
 #include <string>
 #include <thread>
+#include <vector>
 
 using namespace tunnel;
 using namespace tunnel::test;
@@ -114,6 +116,41 @@ link::Frame awaitFrameOf(FakeNode& node, const FrameWanted& wanted)
       return *frame;
   }
   return link::Frame{.type = link::FrameType::Hello, .streamId = 0, .payload = {}};
+}
+
+struct DataWanted
+{
+  uint32_t streamId{0};
+  size_t bytes{0};
+  int timeoutMs{0};
+};
+
+std::string collectData(FakeNode& node, const DataWanted& wanted)
+{
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds{wanted.timeoutMs};
+  std::string collected;
+  while (collected.size() < wanted.bytes &&
+         std::chrono::steady_clock::now() < deadline) {
+    const auto frame = node.nextFrame(50);
+    if (frame && frame->type == link::FrameType::Data &&
+        frame->streamId == wanted.streamId)
+      collected += frame->payload;
+  }
+  return collected;
+}
+
+std::string deviceNameOf(const std::string& prefix)
+{
+  return prefix + std::string{kHomeId} + ".argus-tunnel.lynk.page";
+}
+
+std::string unrecognizedNameAlert()
+{
+  std::string record;
+  for (const unsigned int byte : {0x15U, 0x03U, 0x03U, 0x00U, 0x02U, 0x02U, 0x70U})
+    record.push_back(static_cast<char>(byte));
+  return record;
 }
 
 bool drainFrames(const DrainInput& input)
@@ -264,6 +301,126 @@ TEST_SUITE("home link v2 client")
         fixture.node(),
         {.type = link::FrameType::Close, .streamId = 19, .timeoutMs = 500});
     CHECK(answer.type != link::FrameType::Close);
+    CHECK(fixture.client().connected());
+  }
+
+  TEST_CASE("a device stream reaches the listener its service names")
+  {
+    const TestPki pki = makePki();
+    EchoServer auth;
+    EchoServer identity;
+    LinkFixtureOptions options = fixtureOptions(pki.home, pki.node);
+    options.link.serviceListeners = {{link::HomeService::Auth, auth.port()},
+                                     {link::HomeService::Identity, identity.port()}};
+    LinkFixture fixture{options};
+    REQUIRE(fixture.waitConnected(5000));
+
+    const std::string hello = clientHelloFor(deviceNameOf("identity--"));
+    REQUIRE(fixture.node().sendFrame(link::encodeOpen(21)));
+    REQUIRE(fixture.node().sendFrame(link::encodeData(21, hello)));
+    CHECK(waitFor([&identity, &hello] { return identity.received() == hello.size(); },
+                  5000));
+    CHECK(collectData(fixture.node(),
+                      {.streamId = 21, .bytes = hello.size(), .timeoutMs = 5000}) ==
+          hello);
+    CHECK(identity.accepted() == 1);
+    CHECK(auth.accepted() == 0);
+    CHECK(fixture.echo().accepted() == 0);
+    CHECK(fixture.node().state().violations.empty());
+  }
+
+  TEST_CASE("a client hello in pieces is routed once it is whole, with the bytes "
+            "behind it")
+  {
+    const TestPki pki = makePki();
+    EchoServer auth;
+    LinkFixtureOptions options = fixtureOptions(pki.home, pki.node);
+    options.link.serviceListeners = {{link::HomeService::Auth, auth.port()}};
+    LinkFixture fixture{options};
+    REQUIRE(fixture.waitConnected(5000));
+
+    const std::string hello = clientHelloFor(deviceNameOf("auth--"));
+    const std::string behind = "the first carried bytes";
+    const size_t third = hello.size() / 3;
+    REQUIRE(fixture.node().sendFrame(link::encodeOpen(23)));
+    REQUIRE(fixture.node().sendFrame(link::encodeData(23, hello.substr(0, third))));
+    REQUIRE(fixture.node().sendFrame(link::encodeData(23, hello.substr(third, third))));
+    std::this_thread::sleep_for(std::chrono::milliseconds{200});
+    CHECK(auth.accepted() == 0);
+    CHECK(fixture.client().streamCount() == 1);
+
+    REQUIRE(fixture.node().sendFrame(
+        link::encodeData(23, hello.substr(2 * third) + behind)));
+    const std::string carried = hello + behind;
+    CHECK(waitFor([&auth, &carried] { return auth.received() == carried.size(); },
+                  5000));
+    CHECK(collectData(fixture.node(), {.streamId = 23,
+                                       .bytes = carried.size(),
+                                       .timeoutMs = 5000}) == carried);
+    CHECK(auth.accepted() == 1);
+  }
+
+  TEST_CASE("a bare home name keeps the gateway listener")
+  {
+    const TestPki pki = makePki();
+    EchoServer auth;
+    LinkFixtureOptions options = fixtureOptions(pki.home, pki.node);
+    options.link.serviceListeners = {{link::HomeService::Auth, auth.port()}};
+    LinkFixture fixture{options};
+    REQUIRE(fixture.waitConnected(5000));
+
+    const std::string hello = clientHelloFor(deviceNameOf(""));
+    REQUIRE(fixture.node().sendFrame(link::encodeOpen(25)));
+    REQUIRE(fixture.node().sendFrame(link::encodeData(25, hello)));
+    CHECK(waitFor(
+        [&fixture, &hello] { return fixture.echo().received() == hello.size(); },
+        5000));
+    CHECK(fixture.echo().accepted() == 1);
+    CHECK(auth.accepted() == 0);
+  }
+
+  TEST_CASE("what this home does not serve is refused with one alert")
+  {
+    const TestPki pki = makePki();
+    EchoServer auth;
+    LinkFixtureOptions options = fixtureOptions(pki.home, pki.node);
+    options.link.serviceListeners = {{link::HomeService::Auth, auth.port()}};
+    LinkFixture fixture{options};
+    REQUIRE(fixture.waitConnected(5000));
+
+    struct Refusal
+    {
+      uint32_t streamId{0};
+      std::string bytes;
+    };
+    const std::vector<Refusal> refusals{
+        {.streamId = 31, .bytes = clientHelloFor(deviceNameOf("camera--"))},
+        {.streamId = 33,
+         .bytes = clientHelloFor("auth--" + std::string{kOtherHomeId} +
+                                 ".argus-tunnel.lynk.page")},
+        {.streamId = 35, .bytes = clientHelloFor(deviceNameOf("tv--"))},
+        {.streamId = 37, .bytes = "GET / HTTP/1.1\r\nHost: argus.local\r\n\r\n"}};
+    for (const Refusal& refusal : refusals) {
+      INFO(refusal.streamId);
+      REQUIRE(fixture.node().sendFrame(link::encodeOpen(refusal.streamId)));
+      REQUIRE(fixture.node().sendFrame(
+          link::encodeData(refusal.streamId, refusal.bytes)));
+      const link::Frame alert =
+          awaitFrameOf(fixture.node(), {.type = link::FrameType::Data,
+                                        .streamId = refusal.streamId,
+                                        .timeoutMs = 5000});
+      CHECK(alert.payload == unrecognizedNameAlert());
+      const link::Frame closed =
+          awaitFrameOf(fixture.node(), {.type = link::FrameType::Close,
+                                        .streamId = refusal.streamId,
+                                        .timeoutMs = 5000});
+      REQUIRE(closed.type == link::FrameType::Close);
+      CHECK(link::decodeCloseReason(closed) == link::CloseReason::Normal);
+    }
+    CHECK(waitFor([&fixture] { return fixture.client().streamCount() == 0; },
+                  5000));
+    CHECK(fixture.echo().accepted() == 0);
+    CHECK(auth.accepted() == 0);
     CHECK(fixture.client().connected());
   }
 

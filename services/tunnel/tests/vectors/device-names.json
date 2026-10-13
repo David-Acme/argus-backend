@@ -14,9 +14,9 @@
       "homeId": "0123456789abcdef0123456789abcdef"
     },
     {
-      "name": "one-letter-service",
-      "serverName": "a--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
-      "service": "a",
+      "name": "twelve-character-service",
+      "serverName": "notification--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "service": "notification",
       "homeId": "0123456789abcdef0123456789abcdef"
     },
     {
@@ -40,6 +40,21 @@
     {
       "name": "service-too-long",
       "serverName": "productivity1--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "one-letter-service",
+      "serverName": "a--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "two-character-service",
+      "serverName": "tv--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
+      "expect": "refused"
+    },
+    {
+      "name": "service-starting-with-digit",
+      "serverName": "2fa--0123456789abcdef0123456789abcdef.argus-tunnel.lynk.page",
       "expect": "refused"
     },
     {

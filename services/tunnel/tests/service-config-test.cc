@@ -42,6 +42,26 @@ TEST_CASE("a per-address stream quota comes from the config")
   ConfigService::setRuntimeString("tunnel.max_streams_per_ip", "32");
 }
 
+TEST_CASE("each [link.services] entry gives its service a listener")
+{
+  const ClientConfig unconfigured = ClientConfig::resolve();
+  CHECK(unconfigured.link.serviceListeners.empty());
+  CHECK(unconfigured.link.deviceDomainSuffix == ".argus-tunnel.lynk.page");
+
+  ConfigService::setRuntimeString("link.services.sync", "7025");
+  ConfigService::setRuntimeString("link.services.auth", "7142");
+  ConfigService::setRuntimeString("link.services.media", "7026");
+  const ClientConfig configured = ClientConfig::resolve();
+  CHECK(configured.link.serviceListeners.size() == 2);
+  CHECK(configured.link.serviceListeners.at(link::HomeService::Sync) == 7025);
+  CHECK(configured.link.serviceListeners.at(link::HomeService::Auth) == 7142);
+
+  ConfigService::setRuntimeString("link.services.sync", "0");
+  ConfigService::setRuntimeString("link.services.auth", "0");
+  ConfigService::setRuntimeString("link.services.media", "0");
+  CHECK(ClientConfig::resolve().link.serviceListeners.empty());
+}
+
 TEST_CASE("a tunnel secret must carry at least 32 bytes")
 {
   CHECK(tunnelSecretProblem("").has_value());

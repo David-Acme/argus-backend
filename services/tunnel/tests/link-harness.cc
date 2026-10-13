@@ -417,6 +417,8 @@ LinkFixture::LinkFixture(LinkFixtureOptions options)
           : options_.pinnedSubjectPublicKeyDer;
   if (link.gatewayHost.empty())
     link.gatewayHost = "127.0.0.1";
+  if (link.homeId.empty())
+    link.homeId = options_.home.commonName;
   link.gatewayPort =
       options_.gatewayPort == 0 ? echo_.port() : options_.gatewayPort;
   const tunnel::link::LinkClient::Deps deps{.loop = loop_,

@@ -287,11 +287,20 @@ void LinkClient::openStream(uint32_t streamId)
                     .window = kInitialStreamCredit,
                     .grantThreshold = kCreditGrantThreshold});
   streamCount_.store(streams_.size());
+  if (!options_.serviceListeners.empty()) {
+    stream.routed = false;
+    return;
+  }
+  dialListener(stream, options_.gatewayPort);
+}
 
+void LinkClient::dialListener(Stream& stream, uint16_t port)
+{
+  const uint32_t streamId = stream.id;
   TcpPeer::Params params;
   params.loop = &loop_;
   params.ip = options_.gatewayHost;
-  params.port = options_.gatewayPort;
+  params.port = port;
   params.sndBuf = options_.limits.socketSndBuf;
   params.callbacks.onConnected = [this, streamId](TcpPeer&) {
     Stream* target = findStream(streamId);
@@ -326,12 +335,72 @@ void LinkClient::openStream(uint32_t streamId)
       target->local = local;
   } catch (const std::exception& error) {
     LOG_WARN << "argus-tunnel: cannot reach the home remote listener on "
-             << options_.gatewayHost << ":" << options_.gatewayPort << ": "
-             << error.what();
+             << options_.gatewayHost << ":" << port << ": " << error.what();
     sendFrameToNode({.frame = encodeClose(streamId, CloseReason::Busy)});
     streams_.erase(streamId);
     streamCount_.store(streams_.size());
   }
+}
+
+void LinkClient::routeStream(uint32_t streamId)
+{
+  Stream* stream = findStream(streamId);
+  if (stream == nullptr || stream->routed)
+    return;
+  const ClientHelloResult hello = parseClientHello(stream->clientHello);
+  if (hello.status == ClientHelloStatus::NeedMore) {
+    if (stream->clientHello.size() > kClientHelloMaxBytes)
+      refuseStream(streamId);
+    return;
+  }
+  const std::optional<uint16_t> port =
+      hello.status == ClientHelloStatus::Parsed ? listenerFor(hello.serverName)
+                                                : std::nullopt;
+  if (!port) {
+    refuseStream(streamId);
+    return;
+  }
+  stream->routed = true;
+  std::string bytes = std::exchange(stream->clientHello, {});
+  const size_t size = bytes.size();
+  dialListener(*stream, *port);
+  Stream* routed = findStream(streamId);
+  if (routed == nullptr || !routed->local)
+    return;
+  TcpPeer::Ptr local = routed->local;
+  local->send(std::move(bytes));
+  Stream* delivered = findStream(streamId);
+  if (delivered != nullptr)
+    grantConsumedCredit(*delivered, size);
+}
+
+void LinkClient::refuseStream(uint32_t streamId)
+{
+  LOG_WARN << "argus-tunnel: stream " << streamId
+           << " named no service this home serves; refused";
+  sendFrameToNode({.frame = encodeData(streamId,
+                                       tlsAlertRecord(kUnrecognizedNameAlert))});
+  closeStream(streamId, CloseReason::Normal);
+}
+
+std::optional<uint16_t> LinkClient::listenerFor(std::string_view serverName) const
+{
+  const std::optional<DeviceName> name = parseDeviceName(
+      {.serverName = serverName, .domainSuffix = options_.deviceDomainSuffix});
+  if (!name)
+    return std::nullopt;
+  if (!options_.homeId.empty() && name->homeId != options_.homeId)
+    return std::nullopt;
+  if (name->service.empty())
+    return options_.gatewayPort;
+  const std::optional<HomeService> service =
+      homeServiceFromString(name->service);
+  if (!service)
+    return std::nullopt;
+  const auto listener = options_.serviceListeners.find(*service);
+  if (listener == options_.serviceListeners.end())
+    return std::nullopt;
+  return listener->second;
 }
 
 void LinkClient::handleData(const Frame& frame)
@@ -350,6 +419,11 @@ void LinkClient::handleData(const Frame& frame)
     return;
   }
   stream->receiveWindow.recordUsed(size);
+  if (!stream->routed) {
+    stream->clientHello.append(frame.payload);
+    routeStream(frame.streamId);
+    return;
+  }
   if (!stream->local || !stream->pendingToLocal.empty() ||
       stream->local->congested()) {
     if (stream->pendingToLocal.size() + size >

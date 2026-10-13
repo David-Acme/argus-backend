@@ -1,6 +1,8 @@
 #pragma once
 
 #include <core/push-queue.hxx>
+#include <link/client/home-service.hxx>
+#include <link/protocol/client-hello.hxx>
 #include <link/protocol/credit-window.hxx>
 #include <link/protocol/frames.hxx>
 #include <link/tls/client-tls-context.hxx>
@@ -13,7 +15,9 @@
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <map>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 #include <string_view>
@@ -62,6 +66,9 @@ struct LinkOptions
   int reconnectCapMs{60000};
   uint32_t capabilities{capability::kPushIntents | capability::kStreamCredit};
   size_t pushQueueCapacity{256};
+  std::string homeId;
+  std::string deviceDomainSuffix{kDeviceDomainSuffix};
+  std::map<HomeService, uint16_t> serviceListeners;
 };
 
 class LinkObserver
@@ -129,6 +136,8 @@ private:
     bool localReadPaused{false};
     bool localEof{false};
     bool closedByNode{false};
+    bool routed{true};
+    std::string clientHello;
   };
 
   struct DrainingPeer
@@ -162,6 +171,11 @@ private:
 
   Stream* findStream(uint32_t streamId);
   void openStream(uint32_t streamId);
+  void dialListener(Stream& stream, uint16_t port);
+  void routeStream(uint32_t streamId);
+  void refuseStream(uint32_t streamId);
+  [[nodiscard]] std::optional<uint16_t> listenerFor(
+      std::string_view serverName) const;
   void writeToStream(uint32_t streamId, const char* data, size_t size);
   void handleLocalEof(uint32_t streamId);
   void flushToHome(uint32_t streamId);
