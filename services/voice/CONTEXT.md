@@ -950,13 +950,23 @@ once and taken by both.
   reaction (`because: "stt_failed"`), then one line spoken and shown like any
   other answer. The history keeps the line as Argus's reply when it was
   heard. No model is asked, no name is extracted, no offer is answered.
+- **Ask once (reviewer ruling, 2026-10-13).** The second unheard turn in a
+  row is silent: it sends the `Confused` reaction alone, plus the correction
+  frame when the words had been shown, and leaves no history entry and no
+  line. Any readable turn resets the rule: one whose words reach the model or
+  answer an offer. The rule reads only "was the last turn unheard", never why,
+  so (empty, empty), (withheld, withheld) and (withheld, empty) send the same
+  frames under the same seed. A silent turn sends no transcript frame either,
+  because a final transcript that nothing answers would hold the LiveKit leg
+  in `thinking` until its 20 s `thinkingTimeout`.
 - **The line.** A small set per language (`unheard-reply.cc`), three each:
   "Perdona, no te entendí. ¿Me lo repites?", "No te escuché bien. ¿Puedes
   repetirlo?", "Disculpa, no te entendí. ¿Otra vez?" and their English
   pair. `UnheardRotation` picks `(seed + spoken) mod 3`: the seed is drawn
-  once per call (`std::random_device`), and `spoken` counts the unheard
-  replies of that call whatever caused them. The same seed therefore gives a
-  withheld turn and an unintelligible turn the same line, frame for frame.
+  once per call (`std::random_device`), and `spoken` counts the lines said
+  in that call whatever caused them (a silent turn says none). The same seed
+  therefore gives a withheld turn and an unintelligible turn the same line,
+  frame for frame.
 - **Why the app shows `…`.** The person holding the phone sees it the way it
   sees any utterance the recogniser could not make out, and hears the same
   "didn't catch that". Nothing on the screen or in the reply names the alert.
@@ -974,9 +984,14 @@ call history, sends the **correction frame** right away, and answers through
 `answerUnheard` like any other turn without words. A key that changed between
 voice's screen and the turn's takes the same path.
 
-What stays exposed in that degraded case: the app showed the words until the
-correction arrived, and a spoken name in them may already have reached
-identity. Nothing else keeps them.
+**The residual gap (accepted by the reviewer, 2026-10-13).** In that degraded
+case the words show on the app until the correction arrives, and a spoken
+name in them may already have reached identity. Nothing else keeps them. It
+happens only when voice's screen call fails, meaning argus-llm did not answer
+it within 5 s, or when the phrase changed between the two screens. A guard
+that is unreachable does not cause it: the screen keeps the last key it read
+and withholds as usual. Before guard has ever answered, nothing can be
+withheld at all (`services/llm/CONTEXT.md`, "Before guard first answers").
 
 ### The correction frame (frontend contract)
 
@@ -1007,9 +1022,15 @@ identity. Nothing else keeps them.
   the `Confused` reaction and one of the lines follow, and no frame and no
   history entry holds the words.
 - "Under the same seed a withheld turn and an unintelligible turn get the
-  same reply, byte for byte": two turns each of a withheld utterance, an empty
-  transcript and a marks-only transcript produce identical frames and history,
-  and another seed does not.
+  same reply, byte for byte": a withheld utterance, an empty transcript and a
+  marks-only transcript produce identical frames and history, and another seed
+  does not.
+- "Argus asks once…": (empty, empty), (withheld, withheld) and
+  (withheld, empty) produce identical frames and history under the same seed.
+  The second turn adds the `Confused` reaction alone. A second turn withheld
+  late adds the correction and the reaction, and no line.
+- "A readable turn resets the ask-once rule…": (unheard, readable, unheard)
+  speaks two different lines, the same for either cause.
 - "Words argus-llm withholds after they were shown are corrected…": the
   correction follows the shown words and precedes the line, nothing after it
   holds the words, and what follows it equals the unheard reply under the same

@@ -1065,6 +1065,7 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
   session.history.addTone(ReactionEngine::toneNote(reaction, lang));
 
   if (answerOffer(session, userText)) {
+    session.unheardLast = false;
     LOG_INFO << "Voice: turn latency stt_ms="
              << elapsedMs(clock.detected.load(), clock.transcribed.load())
              << " answered_offer";
@@ -1148,6 +1149,7 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
     answerUnheard(session, UnheardTranscript::Correct);
     return;
   }
+  session.unheardLast = false;
   if (full.empty()) {
     session.history.rollbackUser();
     if (!interrupted) {
@@ -1306,24 +1308,32 @@ bool VoiceSessionService::answerOffer(Session& session, const std::string& userT
 
 void VoiceSessionService::answerUnheard(Session& session, UnheardTranscript transcript)
 {
-  LOG_INFO << "Voice: the turn carried no words to answer; Argus asks again";
+  const bool askedAlready = std::exchange(session.unheardLast, true);
   const std::string placeholder(llm_speech::kWithheldUtterance);
-  argus::voice::v1::ServerFrame heard;
   if (transcript == UnheardTranscript::Correct) {
-    heard.mutable_stt_correction()->set_text(placeholder);
+    argus::voice::v1::ServerFrame corrected;
+    corrected.mutable_stt_correction()->set_text(placeholder);
+    sendFrame(session, std::move(corrected));
   }
-  else {
+  else if (!askedAlready) {
+    argus::voice::v1::ServerFrame heard;
     heard.mutable_stt()->set_text(placeholder);
     heard.mutable_stt()->set_final(true);
+    sendFrame(session, std::move(heard));
   }
-  sendFrame(session, std::move(heard));
-  session.history.addUser(placeholder);
   emitReaction(session, {.text = {}, .lang = langCode(session.lang), .sttFailed = true});
-  const std::string line(session.unheard.next(session.lang));
-  if (speak(session, line).audible)
-    session.history.addAssistant(line);
-  else
-    session.history.rollbackUser();
+  if (askedAlready) {
+    LOG_INFO << "Voice: the turn carried no words to answer; Argus asked already and stays silent";
+  }
+  else {
+    LOG_INFO << "Voice: the turn carried no words to answer; Argus asks again";
+    session.history.addUser(placeholder);
+    const std::string line(session.unheard.next(session.lang));
+    if (speak(session, line).audible)
+      session.history.addAssistant(line);
+    else
+      session.history.rollbackUser();
+  }
   session.speaking = false;
   if (!session.duplex)
     session.vad.reset();

@@ -202,6 +202,7 @@ private:
     CallHistory history;
     VoiceLang lang{VoiceLang::System};
     UnheardRotation unheard;
+    bool unheardLast{false};
     std::string callId;
     int64_t userId{0};
     std::string role;
