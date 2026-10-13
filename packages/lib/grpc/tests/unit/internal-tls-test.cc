@@ -10,6 +10,7 @@
 #include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -306,4 +307,126 @@ TEST_CASE("an empty install is refused and does not count as the install")
                   std::invalid_argument);
   CHECK_NOTHROW(argus::client::installInternalTls(
       materialOf(serviceDirectory("camera"))));
+}
+
+TEST_CASE("material and an address give a plaintext port and a mutual TLS "
+          "port")
+{
+  const auto ports =
+      argus::client::listenPorts({.address = "127.0.0.1:0",
+                                  .tlsAddress = "127.0.0.1:7243",
+                                  .tls = materialOf(serviceDirectory("auth")),
+                                  .services = {}});
+  REQUIRE(ports.size() == 2);
+  CHECK(ports[0].address == "127.0.0.1:0");
+  CHECK_FALSE(ports[0].mutualTls);
+  CHECK(ports[0].credentials != nullptr);
+  CHECK(ports[1].address == "127.0.0.1:7243");
+  CHECK(ports[1].mutualTls);
+  CHECK(ports[1].credentials != nullptr);
+  CHECK(ports[1].credentials != ports[0].credentials);
+}
+
+TEST_CASE("without material there is a plaintext port only")
+{
+  const auto ports = argus::client::listenPorts({.address = "127.0.0.1:0",
+                                                 .tlsAddress = "",
+                                                 .tls = std::nullopt,
+                                                 .services = {}});
+  REQUIRE(ports.size() == 1);
+  CHECK_FALSE(ports[0].mutualTls);
+}
+
+TEST_CASE("an address without material is a plaintext port only")
+{
+  const auto ports = argus::client::listenPorts({.address = "127.0.0.1:0",
+                                                 .tlsAddress = "127.0.0.1:7243",
+                                                 .tls = std::nullopt,
+                                                 .services = {}});
+  REQUIRE(ports.size() == 1);
+  CHECK(ports[0].address == "127.0.0.1:0");
+  CHECK_FALSE(ports[0].mutualTls);
+}
+
+TEST_CASE("material without an address opens no second port")
+{
+  const auto ports =
+      argus::client::listenPorts({.address = "127.0.0.1:0",
+                                  .tlsAddress = "",
+                                  .tls = materialOf(serviceDirectory("auth")),
+                                  .services = {}});
+  REQUIRE(ports.size() == 1);
+  CHECK_FALSE(ports[0].mutualTls);
+}
+
+TEST_CASE("no plaintext address opens nothing, mutual TLS included")
+{
+  const argus::client::ListenInput input{.address = "",
+                                         .tlsAddress = "127.0.0.1:0",
+                                         .tls = materialOf(
+                                             serviceDirectory("auth")),
+                                         .services = {}};
+  CHECK(argus::client::listenPorts(input).empty());
+  const auto listener = argus::client::startListening(input);
+  CHECK(listener.server == nullptr);
+  CHECK(listener.port == 0);
+  CHECK(listener.tlsPort == 0);
+}
+
+TEST_CASE("the mutual TLS port serves a peer of the internal CA and refuses "
+          "every other")
+{
+  AlwaysServing health;
+  auto listener = argus::client::startListening(
+      {.address = "127.0.0.1:0",
+       .tlsAddress = "127.0.0.1:0",
+       .tls = materialOf(serviceDirectory("auth")),
+       .services = {&health}});
+  REQUIRE(listener.server != nullptr);
+  REQUIRE(listener.port > 0);
+  REQUIRE(listener.tlsPort > 0);
+  CHECK(listener.tlsPort != listener.port);
+
+  const auto onPort =
+      [](int port,
+         const std::shared_ptr<grpc::ChannelCredentials>& credentials) {
+        grpc::ChannelArguments arguments;
+        arguments.SetSslTargetNameOverride("argus-auth");
+        return grpc::CreateCustomChannel("127.0.0.1:" + std::to_string(port),
+                                         credentials, arguments);
+      };
+  const auto camera = materialOf(serviceDirectory("camera"));
+  CHECK(healthOver(onPort(listener.port, grpc::InsecureChannelCredentials())) ==
+        grpc::StatusCode::OK);
+  CHECK(healthOver(onPort(listener.tlsPort,
+                          argus::client::internalChannelCredentials(camera))) ==
+        grpc::StatusCode::OK);
+  CHECK(healthOver(onPort(listener.tlsPort,
+                          argus::client::internalChannelCredentials(materialOf(
+                              environment("ARGUS_INTERNAL_TLS_FOREIGN"))))) ==
+        grpc::StatusCode::UNAVAILABLE);
+  CHECK(healthOver(onPort(listener.tlsPort,
+                          grpc::SslCredentials(
+                              {.pem_root_certs = camera.trustBundlePem,
+                               .pem_private_key = "",
+                               .pem_cert_chain = ""}))) ==
+        grpc::StatusCode::UNAVAILABLE);
+  CHECK(healthOver(
+            onPort(listener.tlsPort, grpc::InsecureChannelCredentials())) ==
+        grpc::StatusCode::UNAVAILABLE);
+  listener.server->Shutdown(std::chrono::system_clock::now() +
+                            std::chrono::seconds(2));
+}
+
+TEST_CASE("a mutual TLS address that cannot be bound starts nothing")
+{
+  AlwaysServing health;
+  const auto listener = argus::client::startListening(
+      {.address = "127.0.0.1:0",
+       .tlsAddress = "192.0.2.1:0",
+       .tls = materialOf(serviceDirectory("auth")),
+       .services = {&health}});
+  CHECK(listener.server == nullptr);
+  CHECK(listener.port == 0);
+  CHECK(listener.tlsPort == 0);
 }

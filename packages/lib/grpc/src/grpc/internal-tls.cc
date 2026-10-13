@@ -1,5 +1,6 @@
 #include "internal-tls.hxx"
 
+#include <algorithm>
 #include <fstream>
 #include <mutex>
 #include <sstream>
@@ -134,6 +135,48 @@ ChannelPlan openChannel(const std::string& target)
                              "installed no internal certificate");
   return {.address = target.substr(kInternalTlsScheme.size()),
           .credentials = internalChannelCredentials(*material)};
+}
+
+std::vector<ListenPort> listenPorts(const ListenInput& input)
+{
+  std::vector<ListenPort> ports;
+  if (input.address.empty())
+    return ports;
+  ports.push_back({.address = input.address,
+                   .credentials = grpc::InsecureServerCredentials(),
+                   .mutualTls = false});
+  if (input.tls && !input.tlsAddress.empty())
+    ports.push_back({.address = input.tlsAddress,
+                     .credentials = internalServerCredentials(*input.tls),
+                     .mutualTls = true});
+  return ports;
+}
+
+Listener startListening(const ListenInput& input)
+{
+  Listener listener;
+  const auto ports = listenPorts(input);
+  if (ports.empty())
+    return listener;
+  grpc::ServerBuilder builder;
+  for (const auto& port : ports)
+    builder.AddListeningPort(port.address, port.credentials,
+                             port.mutualTls ? &listener.tlsPort
+                                            : &listener.port);
+  for (grpc::Service* service : input.services)
+    builder.RegisterService(service);
+  listener.server = builder.BuildAndStart();
+  const bool tlsRequested = std::ranges::any_of(ports, &ListenPort::mutualTls);
+  if (listener.server &&
+      (listener.port == 0 || (tlsRequested && listener.tlsPort == 0))) {
+    listener.server->Shutdown();
+    listener.server.reset();
+  }
+  if (!listener.server) {
+    listener.port = 0;
+    listener.tlsPort = 0;
+  }
+  return listener;
 }
 
 }

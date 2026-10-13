@@ -157,5 +157,5 @@ target_link_libraries(settings-modules-rpc-test PRIVATE argus::settings-rpc argu
 target_compile_options(settings-modules-rpc-test PRIVATE -Wall -Wextra)
 add_test(NAME settings-modules-rpc-test
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh
-                 $<TARGET_FILE:settings-modules-rpc-test> 7)
+                 $<TARGET_FILE:settings-modules-rpc-test> 3)
 set_tests_properties(settings-modules-rpc-test PROPERTIES SKIP_RETURN_CODE 77)

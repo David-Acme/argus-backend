@@ -447,5 +447,5 @@ target_link_libraries(productivity-rpc-server-test PRIVATE
 target_compile_options(productivity-rpc-server-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-rpc-server-test
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh
-                 $<TARGET_FILE:productivity-rpc-server-test> 8)
+                 $<TARGET_FILE:productivity-rpc-server-test> 4)
 set_tests_properties(productivity-rpc-server-test PROPERTIES SKIP_RETURN_CODE 77)

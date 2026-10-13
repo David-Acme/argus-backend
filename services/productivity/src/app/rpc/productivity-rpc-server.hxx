@@ -22,24 +22,7 @@ struct ProductivityRpcListenInput
   std::vector<grpc::Service*> services;
 };
 
-struct ProductivityRpcPort
-{
-  std::string address;
-  std::shared_ptr<grpc::ServerCredentials> credentials;
-  bool mutualTls{false};
-};
-
-struct ProductivityRpcListener
-{
-  std::unique_ptr<grpc::Server> server;
-  int port{0};
-  int tlsPort{0};
-};
-
-[[nodiscard]] std::vector<ProductivityRpcPort>
-productivityRpcPorts(const ProductivityRpcListenInput& input);
-
-[[nodiscard]] ProductivityRpcListener
+[[nodiscard]] argus::client::Listener
 startProductivityRpc(const ProductivityRpcListenInput& input);
 
 class ProductivityRpcServer

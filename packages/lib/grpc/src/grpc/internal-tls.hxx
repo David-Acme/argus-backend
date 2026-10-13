@@ -5,6 +5,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace argus::client
 {
@@ -29,6 +30,28 @@ struct ChannelPlan
   std::shared_ptr<grpc::ChannelCredentials> credentials;
 };
 
+struct ListenInput
+{
+  std::string address;
+  std::string tlsAddress;
+  std::optional<InternalTlsMaterial> tls;
+  std::vector<grpc::Service*> services;
+};
+
+struct ListenPort
+{
+  std::string address;
+  std::shared_ptr<grpc::ServerCredentials> credentials;
+  bool mutualTls{false};
+};
+
+struct Listener
+{
+  std::unique_ptr<grpc::Server> server;
+  int port{0};
+  int tlsPort{0};
+};
+
 inline constexpr std::string_view kInternalTlsScheme = "tls:";
 
 [[nodiscard]] InternalTlsFiles internalTlsFilesIn(const std::string& directory);
@@ -50,5 +73,9 @@ installInternalTlsFrom(const std::string& directory);
 [[nodiscard]] bool isInternalTlsTarget(std::string_view target);
 
 [[nodiscard]] ChannelPlan openChannel(const std::string& target);
+
+[[nodiscard]] std::vector<ListenPort> listenPorts(const ListenInput& input);
+
+[[nodiscard]] Listener startListening(const ListenInput& input);
 
 }

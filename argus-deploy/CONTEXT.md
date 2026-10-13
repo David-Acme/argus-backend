@@ -982,18 +982,28 @@ the only way in. The wiring is the same for every service (ruling of 2026-10-13)
 | guard | 7139 | 7339 |
 
 The relay and the tunnel client speak no internal gRPC and get no listener.
+
+The rule and the start live once in lib/grpc. `argus::client::listenPorts`
+and `startListening` (`grpc/internal-tls.hxx`) take a plaintext address, a
+TLS address, the loaded material and the services. They open the mutual TLS
+port beside the plaintext one only with both material and an address, and
+return the server with both bound ports, or no server when either fails to
+bind. lib/grpc's `internal-tls-test` runs the full handshake suite. Each
+service keeps a thin delegate in its `src/app/rpc/`, with a short
+composition test under its own certificate name: two ports, plaintext only,
+one handshake. A service whose main used to build its server inline gets
+such a delegate.
+
 Wired so far: tts, settings and productivity.
 - tts and settings publish no gRPC port, so 7329 and 7247 are not published
   either.
 - settings opens its mutual TLS port on the modules RPC server, beside
-  7047. Its main calls startModulesRpc
-  (services/settings/src/app/rpc/modules-rpc-server), so that rule is
-  tested on its own. A service whose main used to build its server inline
-  gets the same kind of function.
+  7047, through startModulesRpc
+  (services/settings/src/app/rpc/modules-rpc-server).
 - productivity publishes its plaintext 7037 on 127.0.0.1, so 7237 is
   published there too (`PRODUCTIVITY_GRPC_TLS_PORT`). Its
   ProductivityRpcServer opens both ports through startProductivityRpc,
-  which is tested the same way.
+  which also refuses an empty or null service.
 
 The clients move to `tls:` targets in step 5, and the plaintext listeners
 go only after the owner's check. For every deploy template that declares
