@@ -224,6 +224,16 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 - S4 Per-service S3 credentials scoped by prefix; `rc` keys out of command arguments.
 - S5 Legacy refresh tokens two rotations old refused without revoking their family (accepted gap).
 
+Rulings of 2026-10-12 (reviewer, owner away and delegating): S2 is superseded by the separate Argus
+Cloud project (link v2, its C2). S3 uses per-service NATS **users with permissions inside the one
+existing account**, not separate accounts, because JetStream streams belong to an account and moving
+them would touch state; each service's publish/subscribe allow-lists come from one table beside
+`nats-subject.hxx`, enforced by a test, sync included (an explicit list, not a wildcard). S1 uses a
+**separate internal CA**, never the instance CA the apps pin, with renewal by re-running provisioning
+and a warning 30 days before expiry; the per-caller secret stays as authorisation. S4 uses one bucket
+with per-service prefix policies only if RustFS is proven by test to enforce them, per-service buckets
+otherwise. Order S3 → S4 → S1; every migration is additive and removes the old shared credential last.
+
 ## 6. Frontend quality programme
 
 - Q1 Tests mirror `src/`; component tests for critical screens (welcome, inactive role, response,
