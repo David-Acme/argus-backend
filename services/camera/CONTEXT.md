@@ -2133,3 +2133,91 @@ allowed. The PasswordDigest is checked against the example in the ONVIF
 Application Programmer's Guide (nonce `LKqI6G/AikKCQrN0zqZFlg==`, created
 `2010-09-16T07:50:45Z`, password `userpassword`, digest
 `tuOSpGlFlIXsozq4HFNeeGeFLEI=`).
+
+## ONVIF motion events over PullPoint (design note, 2026-10-13; not built)
+
+Queue (ii). This note comes before any code, because it touches what guard
+sees.
+
+**What.** The camera's own motion detector, read through the ONVIF events
+service: a WS-BaseNotification PullPoint (`CreatePullPointSubscription`,
+long-polled `PullMessages`, `Renew`, `Unsubscribe`) on the two topics Profile
+S and T devices publish, `tns1:RuleEngine/CellMotionDetector/Motion`
+(`IsMotion`) and `tns1:VideoSource/MotionAlarm` (`State`).
+
+**What it is for: waking the operator, never alerting.** Guard's posture
+rejects "motion detected" alerts (guard CONTEXT, "Site, camera context and
+episodes"). Camera motion is noisy: trees, headlights, rain and the IR
+switch all trigger it. So it would not reach guard as an event or a
+notification. It would feed the operator only.
+- A motion onset on camera N raises that camera's cadence to `active_fps`
+  at once. That is the state the operator enters today when its own frame
+  diff sees motion.
+- The camera keeps that cadence while it reports motion, plus a hold after
+  the motion ends.
+- The detector, the zones, the privacy mask, identity and the nine-rule
+  table stay the only path to `argus.camera.v1.object_detected`.
+
+What guard sees therefore does not change: the same subject, the same
+`schemaVersion: 3`, the same durable consumer. It gets the same person
+events, sooner, from a camera that was idling at `max_fps_inference`.
+
+Options:
+- **(a) A wake signal inside argus-camera** (recommended). This is
+  described above.
+- **(b) Also publish `argus.camera.v1.motion` on `ARGUS_CAMERA`, as an
+  indication for guard.** Guard would need a policy for it, and it would
+  duplicate the person path with the noisiest signal a camera has. It stays
+  additive for later, if guard asks for it (for example, motion in an armed
+  zone where no person was found).
+- **(c) Let camera motion replace the operator's frame-diff gate.**
+  Rejected: a camera whose subscription drops would go blind. The frame
+  diff stays the fallback, and a camera without events runs exactly as
+  today.
+
+**How.**
+- **Where it runs.** There is one subscriber per ONVIF camera whose
+  `GetCapabilities` names an `Events` service; today the client keeps only
+  the device, media, PTZ and imaging paths. All subscribers share one event
+  loop thread and use Drogon's HTTP client in coroutine form, so a 10 s long
+  poll holds no blocking-lane worker. The subscriber sits beside the driver,
+  not in the operator: Ruling AF stands, and the operator never touches
+  hardware. It only reads a per-camera motion state.
+- **The subscription.** Only the path of the subscription address is used,
+  never its host, as for the services. The WS-Addressing `To` and `Action`
+  headers and the subscription's reference parameters are echoed, because
+  some devices require them. `InitialTerminationTime` is PT60S, with a
+  `Renew` at half-life. `PullMessages` uses `Timeout` PT10S and
+  `MessageLimit` 10.
+- **When it ends.** The subscription is unsubscribed when the camera is
+  removed, disabled or edited (the registry's `forget`), and at shutdown
+  through a `shutdown_signal` drain.
+- **The messages.** A `PropertyOperation` of `Initialized` or `Changed` is
+  read. `IsMotion` or `State` true is an onset, false is an end. `UtcTime`
+  is corrected by the camera's clock offset. The source token is ignored in
+  this version, which handles one video source.
+- **Failures.** A fault, a refused account or no answer drops the
+  subscription and re-creates it from `GetCapabilities` after a backoff of
+  5 s rising to 60 s. This is the same rule as the session of 1b0d8f42. A
+  camera without the events service, or without either topic, gets no
+  subscriber.
+- **Budget.** Many cameras cap their pull points, often at 2 to 5. Argus
+  holds one per camera.
+- **Tapo cameras.** Their ONVIF service on port 2020 offers the same
+  PullPoint motion, but the Tapo driver drives them; they are out of this
+  version.
+
+**Tests, with no camera.**
+- A scripted transport over SOAP fixtures written to the events WSDL
+  (subscription, pulls with motion on and off, empty pulls, `Renew`,
+  faults, a lost subscription), with a fake clock.
+- An operator test that an onset raises the cadence and an end returns it
+  after the hold.
+
+**Open questions for the reviewer.**
+1. A wake signal only (a), or also a published motion indication (b)?
+2. Should events be on by default? The recommendation is on behind
+   `[onvif] events`, since they only raise the cadence; off keeps today's
+   behaviour exactly.
+3. How long is the hold after motion ends? The proposal is 5 s, the
+   operator's own `burst_ms` order.
