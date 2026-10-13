@@ -22,6 +22,10 @@ relaunch_on_error = false
 [rpc]
 address = "0.0.0.0:7139"
 
+[internal_tls]
+dir = "/run/secrets/internal-tls"
+address = "0.0.0.0:7339"
+
 [rpc.callers]
 settings = "CHANGE_ME_SETTINGS_GUARD"
 sync = "CHANGE_ME_PRESENCE_SYNC"

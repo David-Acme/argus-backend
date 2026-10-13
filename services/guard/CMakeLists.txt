@@ -376,3 +376,16 @@ target_compile_definitions(guard-module-data-test PRIVATE
     ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 argus_runtime_rpath(guard-module-data-test)
 add_test(NAME guard-module-data-test COMMAND guard-module-data-test)
+
+add_executable(guard-rpc-server-test tests/unit/guard-rpc-server-test.cc)
+set_target_properties(guard-rpc-server-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(guard-rpc-server-test PRIVATE
+    argus::guard-rpc
+    argus::lib::grpc-test-support
+    doctest::doctest)
+target_compile_options(guard-rpc-server-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(guard-rpc-server-test)
+add_test(NAME guard-rpc-server-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:guard-rpc-server-test> 4)
+set_tests_properties(guard-rpc-server-test PROPERTIES SKIP_RETURN_CODE 77)

@@ -489,6 +489,12 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/certs/internal/guard
+        target: /run/secrets/internal-tls
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: ${ARGUS_CERTS_DIR:-../certs}
         target: /opt/argus/certs
         read_only: true

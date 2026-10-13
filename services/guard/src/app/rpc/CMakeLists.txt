@@ -1,6 +1,7 @@
 argus_module(NAME guard-rpc
     SOURCES
         duress-rpc-service.cc
+        guard-rpc-server.cc
         presence-rpc-service.cc
     INCLUDES ../..
     DEPENDS

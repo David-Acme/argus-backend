@@ -1,4 +1,5 @@
 #include <app/rpc/duress-rpc-service.hxx>
+#include <app/rpc/guard-rpc-server.hxx>
 #include <app/rpc/presence-rpc-service.hxx>
 #include <feature/guard/repositories/environment/environment-repository.hxx>
 #include <feature/mcp/services/guard-tools.hxx>
@@ -37,10 +38,12 @@
 #include <auth/role-access.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
+#include <grpc/internal-tls.hxx>
 #include <http/certificate-reload.hxx>
 #include <http/error-handler.hxx>
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
+#include <http/tls-health.hxx>
 #include <identity/identity-client.hxx>
 #include <mdns/mdns-service.hxx>
 #include <notification/notification-client.hxx>
@@ -59,6 +62,7 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -112,6 +116,8 @@ struct RpcListenerInput
   EnvironmentCatalog environments;
   std::shared_ptr<const SafetyService> safety;
   const SafetyActorDirectory* actors{nullptr};
+  std::string tlsAddress;
+  std::optional<argus::client::InternalTlsMaterial> tls;
 };
 
 std::unique_ptr<argus::mcp::McpRpcService> toolsService(const RpcListenerInput& input, const GuardRpcConfig& rpc)
@@ -136,7 +142,7 @@ RpcListener startRpcListener(const RpcListenerInput& input)
   if (rpc.address.empty())
     return {};
   RpcListener listener;
-  grpc::ServerBuilder builder;
+  std::vector<grpc::Service*> services;
   if (rpc.settingsCredentials.empty()) {
     LOG_WARN << "Guard settings RPC not served: [rpc.callers] settings is "
                 "empty";
@@ -149,7 +155,7 @@ RpcListener startRpcListener(const RpcListenerInput& input)
     listener.settings->attachModuleData(input.moduleData);
     listener.settings->attachOwnerPin(input.ownerPin);
     listener.settings->attachModuleImpact(input.moduleImpact);
-    builder.RegisterService(listener.settings.get());
+    services.push_back(listener.settings.get());
   }
   if (rpc.presenceCredentials.empty()) {
     LOG_INFO << "Guard presence RPC not served: no [rpc.callers] sync or "
@@ -159,27 +165,33 @@ RpcListener startRpcListener(const RpcListenerInput& input)
     listener.presence = std::make_unique<PresenceRpcService>(
         PresenceRpcInput{.presence = &input.presence,
                          .credentials = std::move(rpc.presenceCredentials)});
-    builder.RegisterService(listener.presence.get());
+    services.push_back(listener.presence.get());
   }
   listener.tools = toolsService(input, rpc);
   if (listener.tools)
-    builder.RegisterService(listener.tools.get());
+    services.push_back(listener.tools.get());
   if (argus::client::FleetCallerGate::pairedSecret(rpc.toolCredential)) {
     listener.duress = std::make_unique<DuressRpcService>(DuressRpcInput{
         .safety = input.safety,
         .actors = input.actors,
         .credentials = {{.service = std::string(argus::mcp::kToolCaller), .secret = rpc.toolCredential}}});
-    builder.RegisterService(listener.duress.get());
+    services.push_back(listener.duress.get());
   }
   if (!listener.settings && !listener.presence && !listener.tools && !listener.duress)
     return {};
-  builder.AddListeningPort(rpc.address, grpc::InsecureServerCredentials());
-  listener.server = builder.BuildAndStart();
-  if (!listener.server) {
-    LOG_FATAL << "Guard RPC listener failed to listen on " << rpc.address;
+  const GuardRpcListenInput listenInput{.address = rpc.address,
+                                        .tlsAddress = input.tlsAddress,
+                                        .tls = input.tls,
+                                        .services = std::move(services)};
+  auto started = startGuardRpc(listenInput);
+  if (const auto failure = guardRpcFailure(listenInput, started)) {
+    LOG_FATAL << *failure;
     _exit(1);
   }
+  listener.server = std::move(started.server);
   LOG_INFO << "Guard RPC listener on " << rpc.address;
+  if (started.tlsPort > 0)
+    LOG_INFO << "Guard RPC with mutual TLS on " << input.tlsAddress;
   return listener;
 }
 
@@ -224,15 +236,17 @@ private:
   std::atomic<bool> stopped_{false};
 };
 
-void registerHealth()
+void registerHealth(tls_health::LoadedTls internalTls)
 {
   drogon::app().registerHandler(
       "/health",
-      [](const drogon::HttpRequestPtr&,
-         std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+      [internalTls = tls_health::healthExtra(std::move(internalTls))](
+          const drogon::HttpRequestPtr&,
+          std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
         Json::Value body;
         body["status"] = "ok";
         body["service"] = "argus-guard";
+        body[internalTls.first] = internalTls.second();
         callback(drogon::HttpResponse::newHttpJsonResponse(body));
       },
       {drogon::Get});
@@ -246,6 +260,16 @@ int main()
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
+  const InternalTlsConfig internalTlsConfig = InternalTlsConfig::resolve();
+  std::optional<argus::client::InternalTlsMaterial> internalTls;
+  try {
+    internalTls = argus::client::installInternalTlsFrom(internalTlsConfig.directory);
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  const auto loadedTls = internalTls.value_or(argus::client::InternalTlsMaterial{});
 
   try {
     DeviceFilter::requireFingerprintSecret();
@@ -402,9 +426,12 @@ int main()
          co_return places;
        },
        .safety = safety,
-       .actors = &safetyActors});
+       .actors = &safetyActors,
+       .tlsAddress = internalTlsConfig.address,
+       .tls = internalTls});
 
-  registerHealth();
+  registerHealth({.certificatePem = loadedTls.certificatePem,
+                  .trustBundlePem = loadedTls.trustBundlePem});
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
   drogon::app().registerFilter(std::make_shared<JwtFilter>());

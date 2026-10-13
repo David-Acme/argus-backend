@@ -994,7 +994,8 @@ composition test under its own certificate name: two ports, plaintext only,
 one handshake. A service whose main used to build its server inline gets
 such a delegate.
 
-Wired so far: tts, settings, productivity, notification, sync and auth.
+Wired so far: tts, settings, productivity, notification, sync, auth and
+guard.
 - tts and settings publish no gRPC port, so 7329 and 7247 are not published
   either.
 - settings opens its mutual TLS port on the modules RPC server, beside
@@ -1021,6 +1022,13 @@ Wired so far: tts, settings, productivity, notification, sync and auth.
   either port, auth does not start (services/auth/CONTEXT.md, "The verdict
   RPC must listen"). The plaintext verdict path answers a recorded golden
   both with and without the material loaded.
+- guard publishes no gRPC port, so 7339 is not published either. Its main
+  used to build the RPC server inline and now hands the services it serves
+  (settings, presence, tools and duress, each only when its callers are
+  configured) to startGuardRpc (services/guard/src/app/rpc/guard-rpc-server).
+  A port that cannot be bound stops the start, as it already did. Its own
+  `/health` handler, outside the shared envelope, carries `internalTls` at the
+  top level beside `status` and `service`.
 
 The clients move to `tls:` targets in step 5, and the plaintext listeners
 go only after the owner's check. For every deploy template that declares
