@@ -48,7 +48,20 @@ git status --porcelain   # prints nothing
 ./scripts/build-all.sh prod --no-tests     # Release only (image build)
 ./scripts/build-all.sh dev --only camera
 ./scripts/build-all.sh dev --install-only  # conan install only
+./scripts/build-all.sh ci --only llm       # CI only: Debug without debug info
 ```
+
+`ci` is the hosted runners' profile and nothing else's: `dev` and `prod`
+are unchanged. It builds Debug, so assertions stay on, with
+`CMAKE_C_FLAGS_DEBUG` and `CMAKE_CXX_FLAGS_DEBUG` set to `-O0 -g0`. It
+passes the same flags to the Conan dependencies through
+`tools.cmake.cmaketoolchain:extra_variables`, plus `-g0` through
+`tools.build:cflags`/`cxxflags` for the recipes that do not build with
+CMake. Debug information is most of a Debug tree's size, and a hosted
+runner has a fraction of a workstation's disk. Those confs do not enter
+the package id, so a `ci` package and a `dev` package of the same
+dependency share an id. Keep the two in separate Conan caches, as CI does
+by construction.
 
 The script resolves the root graph once — `conan install <root>
 --output-folder=build/<profile> -s build_type=<Debug|Release> --build=missing`

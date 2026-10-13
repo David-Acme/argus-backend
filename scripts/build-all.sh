@@ -33,7 +33,8 @@ MEM_RESERVE_MB=4096
 MEM_PER_JOB_MB=4096
 
 usage() {
-  echo "usage: $0 [dev|prod] [--jobs N] [--no-tests] [--install-only] [--only <project>]"
+  echo "usage: $0 [dev|prod|ci] [--jobs N] [--no-tests] [--install-only] [--only <project>]"
+  echo "  dev = Debug, prod = Release, ci = Debug without debug info (-O0 -g0), for the hosted CI runners"
 }
 
 is_job_count() {
@@ -78,7 +79,7 @@ derived_jobs() {
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    dev|prod)   PROFILE="$1" ;;
+    dev|prod|ci) PROFILE="$1" ;;
     --jobs)     [ $# -ge 2 ] || { usage; exit 1; }; JOBS="$2"; shift ;;
     --no-tests) NO_TESTS=1 ;;
     --install-only) INSTALL_ONLY=1 ;;
@@ -92,7 +93,19 @@ done
 case "$PROFILE" in
   dev)  BUILD_TYPE="Debug" ;;
   prod) BUILD_TYPE="Release" ;;
+  ci)   BUILD_TYPE="Debug" ;;
 esac
+
+CONAN_PROFILE_ARGS=()
+CMAKE_PROFILE_ARGS=()
+if [ "$PROFILE" = "ci" ]; then
+  CONAN_PROFILE_ARGS=(
+    -c 'tools.cmake.cmaketoolchain:extra_variables={"CMAKE_C_FLAGS_DEBUG": "-O0 -g0", "CMAKE_CXX_FLAGS_DEBUG": "-O0 -g0"}'
+    -c 'tools.build:cflags=["-g0"]'
+    -c 'tools.build:cxxflags=["-g0"]'
+  )
+  CMAKE_PROFILE_ARGS=(-DCMAKE_C_FLAGS_DEBUG=-O0\ -g0 -DCMAKE_CXX_FLAGS_DEBUG=-O0\ -g0)
+fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -166,7 +179,7 @@ GENERATORS="$CONAN_OUT/build/$BUILD_TYPE/generators"
 
 log "=== conan install (root manifest, $PROFILE) ==="
 conan install "$ROOT" --output-folder="$CONAN_OUT" -s "build_type=$BUILD_TYPE" --build=missing \
-  -c "tools.build:jobs=$JOBS"
+  -c "tools.build:jobs=$JOBS" "${CONAN_PROFILE_ARGS[@]}"
 
 if [ "$INSTALL_ONLY" -eq 1 ]; then
   log "Dependencies installed for all selected projects (profile: $PROFILE)."
@@ -197,7 +210,8 @@ for dir in "${PROJECTS[@]}"; do
       -DCMAKE_PREFIX_PATH="$GENERATORS" \
       -DCMAKE_CXX_STANDARD=20 \
       -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-      -DARGUS_SYSTEM_PROTOBUF="${ARGUS_SYSTEM_PROTOBUF:-OFF}"
+      -DARGUS_SYSTEM_PROTOBUF="${ARGUS_SYSTEM_PROTOBUF:-OFF}" \
+      "${CMAKE_PROFILE_ARGS[@]}"
     cmake --build "build/$PROFILE" -j "$JOBS"
     if [ "${#extra_targets[@]}" -gt 0 ]; then
       cmake --build "build/$PROFILE" -j "$JOBS" --target "${extra_targets[@]}"

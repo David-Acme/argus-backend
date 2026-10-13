@@ -112,6 +112,22 @@ if grep -q -- '--preset' "$CALL_LOG"; then
   echo "build-all still drives cmake through a per-project preset" >&2
   exit 1
 fi
+if grep -q -- '-g0' "$CALL_LOG"; then
+  echo "the dev profile builds without debug info" >&2
+  exit 1
+fi
+
+run_build_all ci --only camera --no-tests
+grep -Fq "conan install $ROOT --output-folder=$ROOT/build/ci -s build_type=Debug --build=missing -c tools.build:jobs=8 -c tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_FLAGS_DEBUG\": \"-O0 -g0\", \"CMAKE_CXX_FLAGS_DEBUG\": \"-O0 -g0\"} -c tools.build:cflags=[\"-g0\"] -c tools.build:cxxflags=[\"-g0\"]" "$CALL_LOG"
+grep -Fq "cmake -S . -B build/ci -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$ROOT/build/ci/build/Debug/generators/conan_toolchain.cmake" "$CALL_LOG"
+grep -Fq -- "-DCMAKE_C_FLAGS_DEBUG=-O0 -g0 -DCMAKE_CXX_FLAGS_DEBUG=-O0 -g0" "$CALL_LOG"
+grep -q '^cmake --build build/ci -j 8 --target argus-migrate-camera argus-vulkan-probe$' "$CALL_LOG"
+
+run_build_all prod --only cert --no-tests
+if grep -q -- '-g0' "$CALL_LOG"; then
+  echo "the prod profile carries the ci flags" >&2
+  exit 1
+fi
 
 if run_build_all dev --only does-not-exist; then
   echo "unknown --only project unexpectedly succeeded" >&2
