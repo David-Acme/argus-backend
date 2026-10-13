@@ -627,8 +627,9 @@ TEST_CASE("a remote change sends a context update to every role with a session, 
                                                   .link = routes::RemoteLink::Down,
                                                   .since = 1'790'000'200});
   const auto modules = moduleGate().snapshot();
-  userContext().deliverRemote(resident, modules);
-  userContext().deliverRemote(unknown, modules);
+  const Json::Value catalog = json_util::fromString(R"([{"id":"surveillance","job":null}])");
+  userContext().deliverRemote(resident, {.modules = modules, .ownerCatalog = catalog});
+  userContext().deliverRemote(unknown, {.modules = modules, .ownerCatalog = catalog});
 
   REQUIRE(resident->messages.size() == 1);
   const Json::Value update = resident->last();
@@ -642,4 +643,139 @@ TEST_CASE("a remote change sends a context update to every role with a session, 
   leave(unknown);
   userContext().setRemote(std::nullopt);
   moduleGate().reset();
+}
+
+TEST_CASE("two remote context updates in a row to an Owner both carry the owner catalog, and settings is asked once")
+{
+  setGate(true, true);
+  userContext().setCatalogFetch({});
+  SyncService service;
+  const auto owner = connect(service, 91, UserRole::Owner);
+  CHECK_FALSE(json_util::fromString(owner->messages.front())["info"]["context"].isMember("ownerCatalog"));
+  owner->messages.clear();
+
+  const auto asks = std::make_shared<std::atomic<int>>(0);
+  userContext().setCatalogFetch([asks] {
+    ++*asks;
+    return std::optional<std::string>(R"([{"id":"surveillance","job":null}])");
+  });
+  const auto modules = moduleGate().snapshot();
+  for (const auto link : {routes::RemoteLink::Up, routes::RemoteLink::Down}) {
+    userContext().setRemote(routes::RemoteLinkState{.homeId = "0123456789abcdef0123456789abcdef",
+                                                    .domain = "argus-tunnel.lynk.page",
+                                                    .link = link,
+                                                    .since = 1'790'000'300});
+    const Json::Value catalog = drogon::sync_wait(userContext().cachedOwnerCatalog());
+    userContext().deliverRemote(owner, {.modules = modules, .ownerCatalog = catalog});
+  }
+
+  REQUIRE(owner->messages.size() == 2);
+  for (const auto& message : owner->messages) {
+    const Json::Value update = json_util::fromString(message);
+    CHECK(update["operation"] == 13);
+    CHECK(update["info"]["ownerCatalog"][0]["id"] == "surveillance");
+  }
+  CHECK(json_util::fromString(owner->messages.front())["info"]["remote"]["link"] == "up");
+  CHECK(json_util::fromString(owner->messages.back())["info"]["remote"]["link"] == "down");
+  CHECK(asks->load() == 1);
+  leave(owner);
+  userContext().setCatalogFetch({});
+  userContext().setRemote(std::nullopt);
+  moduleGate().reset();
+}
+
+TEST_CASE("the catalog an Owner's InitialInfo reads is the one a remote update carries, without asking settings again")
+{
+  setGate(true, true);
+  const auto asks = std::make_shared<std::atomic<int>>(0);
+  const auto reply = std::make_shared<std::optional<std::string>>(R"([{"id":"surveillance","job":null}])");
+  userContext().setCatalogFetch([asks, reply] {
+    ++*asks;
+    return *reply;
+  });
+  SyncService service;
+  const auto first = connect(service, 92, UserRole::Owner);
+  *reply = R"([{"id":"productivity","job":null}])";
+  const auto second = connect(service, 93, UserRole::Owner);
+  CHECK(asks->load() == 2);
+  first->messages.clear();
+
+  userContext().setRemote(routes::RemoteLinkState{.homeId = "0123456789abcdef0123456789abcdef",
+                                                  .domain = "argus-tunnel.lynk.page",
+                                                  .link = routes::RemoteLink::Up,
+                                                  .since = 1'790'000'400});
+  const Json::Value catalog = drogon::sync_wait(userContext().cachedOwnerCatalog());
+  userContext().deliverRemote(first, {.modules = moduleGate().snapshot(), .ownerCatalog = catalog});
+  REQUIRE(first->messages.size() == 1);
+  CHECK(first->last()["info"]["ownerCatalog"][0]["id"] == "productivity");
+  CHECK(asks->load() == 2);
+  leave(first);
+  leave(second);
+  userContext().setCatalogFetch({});
+  userContext().setRemote(std::nullopt);
+  moduleGate().reset();
+}
+
+TEST_CASE("an ask settings does not answer leaves no catalog held: the next remote update asks once and goes without")
+{
+  setGate(true, true);
+  const auto asks = std::make_shared<std::atomic<int>>(0);
+  const auto reply = std::make_shared<std::optional<std::string>>(R"([{"id":"surveillance","job":null}])");
+  userContext().setCatalogFetch([asks, reply] {
+    ++*asks;
+    return *reply;
+  });
+  SyncService service;
+  const auto owner = connect(service, 94, UserRole::Owner);
+  CHECK(json_util::fromString(owner->messages.front())["info"]["context"]["ownerCatalog"][0]["id"] == "surveillance");
+  *reply = std::nullopt;
+  const auto silent = connect(service, 95, UserRole::Owner);
+  CHECK_FALSE(json_util::fromString(silent->messages.front())["info"]["context"].isMember("ownerCatalog"));
+  CHECK(asks->load() == 2);
+  owner->messages.clear();
+
+  userContext().setRemote(routes::RemoteLinkState{.homeId = "0123456789abcdef0123456789abcdef",
+                                                  .domain = "argus-tunnel.lynk.page",
+                                                  .link = routes::RemoteLink::Connecting,
+                                                  .since = 1'790'000'500});
+  const Json::Value unanswered = drogon::sync_wait(userContext().cachedOwnerCatalog());
+  userContext().deliverRemote(owner, {.modules = moduleGate().snapshot(), .ownerCatalog = unanswered});
+  CHECK(asks->load() == 3);
+  REQUIRE(owner->messages.size() == 1);
+  CHECK(owner->last()["info"]["remote"]["link"] == "connecting");
+  CHECK_FALSE(owner->last()["info"].isMember("ownerCatalog"));
+  leave(owner);
+  leave(silent);
+  userContext().setCatalogFetch({});
+  userContext().setRemote(std::nullopt);
+  moduleGate().reset();
+}
+
+TEST_CASE("the held catalog follows the newest ask: an older answer arriving late never replaces it")
+{
+  const Json::Value surveillance = json_util::fromString(R"([{"id":"surveillance"}])");
+  const Json::Value productivity = json_util::fromString(R"([{"id":"productivity"}])");
+  user_context::CatalogHold hold;
+  CHECK_FALSE(hold.held().has_value());
+
+  const uint64_t older = hold.begin();
+  const uint64_t newer = hold.begin();
+  hold.keep(newer, productivity);
+  hold.keep(older, surveillance);
+  CHECK(hold.held() == std::optional<Json::Value>(productivity));
+
+  hold.keep(hold.begin(), Json::Value(Json::nullValue));
+  CHECK_FALSE(hold.held().has_value());
+
+  hold.keep(hold.begin(), surveillance);
+  CHECK(hold.held() == std::optional<Json::Value>(surveillance));
+  hold.keep(hold.begin(), json_util::fromString(R"({"id":"core"})"));
+  CHECK_FALSE(hold.held().has_value());
+
+  const uint64_t inFlight = hold.begin();
+  hold.forget();
+  hold.keep(inFlight, productivity);
+  CHECK_FALSE(hold.held().has_value());
+  hold.keep(inFlight + 7, productivity);
+  CHECK_FALSE(hold.held().has_value());
 }

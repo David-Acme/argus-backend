@@ -1112,9 +1112,15 @@ would keep its read loop polling instead of falling through. The thread idles
 and drains with the rest, and nothing in production has that shape; whoever
 next touches the read loop closes the condition.
 
-**The Owner's catalog** is not kept here: argus-sync asks `Modules/OwnerCatalog`
-(1.5 s) when an Owner connects and once per change, and leaves `ownerCatalog`
-out when settings does not answer; the app keeps its last one.
+**The Owner's catalog** belongs to argus-settings: argus-sync asks
+`Modules/OwnerCatalog` (1.5 s) when an Owner connects, on a module change and on
+an Owner's role change, and leaves `ownerCatalog` out when settings does not
+answer; the app then rebuilds the Owner's catalog from `modules`
+(`catalogOfContext` in the frontend). argus-sync keeps the last answer in
+memory (`UserContextService`, `user_context::CatalogHold`) for the frames that
+do not ask (the remote link's, below): every ask replaces it, an ask that gets
+no answer leaves nothing held, and a late answer never replaces the answer to a
+later ask. A restart starts with nothing held.
 
 **Only this module speaks it.** `parseEvent` refuses operation 13 on every
 feed and over the control RPC, like 12.
@@ -1164,15 +1170,21 @@ never reads the tunnel's config.
   ends the wait (the feed checks once a second) carries the latest state. When
   the state is back where the last frame left it (up, down, up inside the
   window), nothing is sent. The frame goes to every connected socket but
-  `unknown`'s, built like a module change's but without asking argus-settings
-  for the owner catalog: `ownerCatalog` is left out and the app keeps its last
-  one, as it already does when settings does not answer.
+  `unknown`'s, built like a module change's: a `ContextUpdate` is the complete
+  bare context, so the Owner's carries `ownerCatalog` too (without it the app
+  would rebuild the catalog from `modules` on every link change). It is the
+  catalog argus-sync holds ("The Owner's catalog" above), with no call to
+  argus-settings; only when nothing is held does the frame ask settings once,
+  for every socket, and keep the answer. When settings does not answer, the
+  frame goes without `ownerCatalog`, as every frame does then.
 - **Silence reads as down.** The client republishes every 30 seconds; when
   nothing valid has been heard for 90 seconds the link reads `down`, `since` the
   last frame heard, and the home id and domain stay, so the app can still name
-  the relay. A dropped frame does not count as heard. The next valid frame is a
-  change like any other. A restart of argus-sync starts with no state and learns
-  it within 30 seconds; until then `InitialInfo` goes without `remote`.
+  the relay. A dropped frame does not count as heard. In silence `since` is the
+  second the last valid frame was heard, not the second the 90 seconds ran out
+  (reviewed 2026-10-13). The next valid frame is a change like any other. A
+  restart of argus-sync starts with no state and learns it within 30 seconds;
+  until then `InitialInfo` goes without `remote`.
 
 Tests (they run without a stack): `tests/unit/sync-remote-test.cc` (each of the
 four checks, a failing frame leaving the last valid state, the 5-second
@@ -1180,7 +1192,10 @@ throttle, the trailing frame with the latest state, no frame when the state is
 back, a `since` alone not being a change, the 90-second rule with the id kept,
 the refusal log, the feed writing the context) and `tests/unit/sync-context-test.cc`
 (the field for every role and not for `unknown`, `InitialInfo` with and without
-it, the update reaching a Resident and not an `unknown` socket).
+it, the update reaching a Resident and not an `unknown` socket, two updates in
+a row to an Owner both carrying the catalog with one ask, the catalog an
+`InitialInfo` read being the one the update carries, an unanswered ask leaving
+nothing held, and the newest ask winning).
 
 ### Resource changes (2026-10-12, the real-time plan's 2.2)
 

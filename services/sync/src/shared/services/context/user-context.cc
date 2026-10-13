@@ -127,36 +127,88 @@ Json::Value updateFrame(const Json::Value& context)
   frame.obj = context;
   return frame.toJson();
 }
+
+uint64_t CatalogHold::begin()
+{
+  return ++asked_;
+}
+
+void CatalogHold::keep(uint64_t ticket, const Json::Value& catalog)
+{
+  if (ticket <= kept_ || ticket > asked_)
+    return;
+  kept_ = ticket;
+  if (catalog.isArray())
+    catalog_ = catalog;
+  else
+    catalog_.reset();
+}
+
+void CatalogHold::forget()
+{
+  catalog_.reset();
+  kept_ = asked_;
+}
+
+const std::optional<Json::Value>& CatalogHold::held() const
+{
+  return catalog_;
+}
 }
 
 void UserContextService::setCatalogFetch(CatalogFetch fetch)
 {
   const std::scoped_lock lock(mutex_);
   fetch_ = fetch ? std::make_shared<const CatalogFetch>(std::move(fetch)) : nullptr;
+  catalog_.forget();
 }
 
-std::shared_ptr<const UserContextService::CatalogFetch> UserContextService::fetch() const
+UserContextService::CatalogAsk UserContextService::beginCatalogAsk() const
 {
   const std::scoped_lock lock(mutex_);
-  return fetch_;
+  if (!fetch_)
+    return {.source = nullptr, .ticket = 0};
+  return {.source = fetch_, .ticket = catalog_.begin()};
+}
+
+void UserContextService::keepCatalog(uint64_t ticket, const Json::Value& catalog) const
+{
+  const std::scoped_lock lock(mutex_);
+  catalog_.keep(ticket, catalog);
+}
+
+std::optional<Json::Value> UserContextService::heldCatalog() const
+{
+  const std::scoped_lock lock(mutex_);
+  return catalog_.held();
 }
 
 drogon::Task<Json::Value> UserContextService::ownerCatalogFor(UserRole role) const
 {
-  const auto source = fetch();
-  if (role != UserRole::Owner || !source)
+  if (role != UserRole::Owner)
+    co_return Json::Value(Json::nullValue);
+  const CatalogAsk ask = beginCatalogAsk();
+  if (!ask.source)
     co_return Json::Value(Json::nullValue);
   std::optional<std::string> raw;
   try {
-    raw = co_await BlockingTask<std::optional<std::string>>([source] { return (*source)(); });
+    raw = co_await BlockingTask<std::optional<std::string>>([source = ask.source] { return (*source)(); });
   }
   catch (const std::exception& error) {
     LOG_WARN << "Context: the owner catalog could not be read (" << error.what() << ")";
   }
-  if (!raw)
-    co_return Json::Value(Json::nullValue);
-  Json::Value catalog = json_util::fromString(*raw);
-  co_return catalog.isArray() ? catalog : Json::Value(Json::nullValue);
+  Json::Value catalog = raw ? json_util::fromString(*raw) : Json::Value(Json::nullValue);
+  if (!catalog.isArray())
+    catalog = Json::Value(Json::nullValue);
+  keepCatalog(ask.ticket, catalog);
+  co_return catalog;
+}
+
+drogon::Task<Json::Value> UserContextService::cachedOwnerCatalog() const
+{
+  if (auto held = heldCatalog())
+    co_return std::move(*held);
+  co_return co_await ownerCatalogFor(UserRole::Owner);
 }
 
 void UserContextService::deliverLocal(const Conn& conn, const ContextDelivery& delivery) const
@@ -232,20 +284,24 @@ std::optional<routes::RemoteLinkState> UserContextService::remote() const
   return remote_;
 }
 
-void UserContextService::deliverRemote(const Conn& conn, const ModuleSnapshot& modules) const
+void UserContextService::deliverRemote(const Conn& conn, const ContextDelivery& delivery) const
 {
   if (!conn || !conn->hasContext() || conn->getContextRef<JwtContext>().role == UserRole::Unknown)
     return;
-  const Json::Value noCatalog(Json::nullValue);
-  deliverLocal(conn, {.modules = modules, .ownerCatalog = noCatalog});
+  deliverLocal(conn, delivery);
 }
 
 void UserContextService::remoteChanged() const
 {
   if (!drogon::app().isRunning())
     return;
-  const auto modules = std::make_shared<const ModuleSnapshot>(moduleGate().snapshot());
-  RoomManager{}.forEachConnection([this, modules](const Conn& conn) { deliverRemote(conn, *modules); });
+  drogon::async_run([this]() -> drogon::Task<> {
+    const Json::Value catalog = co_await cachedOwnerCatalog();
+    const auto modules = std::make_shared<const ModuleSnapshot>(moduleGate().snapshot());
+    RoomManager{}.forEachConnection([this, modules, catalog](const Conn& conn) {
+      deliverRemote(conn, {.modules = *modules, .ownerCatalog = catalog});
+    });
+  });
 }
 
 UserContextService& userContext()
