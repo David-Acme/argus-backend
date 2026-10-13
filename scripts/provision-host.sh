@@ -358,7 +358,9 @@ lower_hex() {
 }
 
 bucket_name() {
-  printf 'argus-%s-private\n' "$(lower_hex 10)"
+  printf 'argus-'
+  lower_hex 10 | tr -d '\n'
+  printf -- '-private\n'
 }
 
 configure_storage() {

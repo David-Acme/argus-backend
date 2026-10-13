@@ -587,9 +587,16 @@ the matching `*-init` profile is the only migration path onto a volume.
   NATS password, every RPC credential, the LiveKit and tunnel secrets, the
   pairing code, the S3 keys and the NATS seeds. `scripts/deploy-mounts-test.sh`
   runs provisioning (tunnel profile included) and the native config steps
-  twice each under `bash -x`, builds the secret inventory from what they
-  wrote, and fails if any trace carries one or if a re-run changes a config or
-  a secret.
+  twice each under `bash -x` and fails if a re-run changes a config or a
+  secret, or if any trace carries a secret by either of two checks. By name:
+  every config value whose key is `secret`, `password` or `credential` (or ends
+  in `_secret`, `_password`, `_credential`), starts with `caller_` or sits
+  under `[rpc.callers]`. By value: every value of the generated secret files,
+  whatever their names (the `rustfs/secrets/` files, the writers'
+  `rustfs/accounts/*/credentials.json` keys, each NATS seed as text and as
+  payload, the pairing code and every line of a private key), and every
+  alphanumeric run of 16 or more characters inside them, so a partial leak (a
+  bucket's random part, one line of a key) fails too.
 - `[device] identity_mode` is argus-auth's decision: provisioning copies
   `config.auth.toml`'s value (default `credential`) into every config that has
   the key, so a verifier never fingerprints differently from the issuer.

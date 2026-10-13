@@ -336,6 +336,16 @@ cp "$ROOT"/argus-deploy/*.example "$ROOT/argus-deploy/docker-compose.yml" \
 grep -v '^credentials_file = ' "$ROOT/argus-deploy/config.identity.toml.example" \
   > "$sandbox/root/argus-deploy/config.identity.toml"
 chmod 600 "$sandbox/root/argus-deploy/config.identity.toml"
+for service in identity camera guard; do
+  mkdir -p "$sandbox/data/rustfs/accounts/$service"
+  {
+    printf '{"credentials":{"accessKey":"'
+    openssl rand -hex 10 | tr 'a-f' 'A-F' | tr -d '\n'
+    printf '","secretKey":"'
+    openssl rand -hex 20 | tr -d '\n'
+    printf '"}}\n'
+  } > "$sandbox/data/rustfs/accounts/$service/credentials.json"
+done
 for stub in docker sudo; do
   printf '#!/bin/sh\nexit 1\n' > "$sandbox/bin/$stub"
   chmod 700 "$sandbox/bin/$stub"
@@ -443,6 +453,72 @@ done
   || fail "the provisioned secret inventory has fewer than 40 RPC credentials"
 check_trace "$sandbox/secrets.tsv" "$sandbox/trace-first" "the first provisioning run"
 check_trace "$sandbox/secrets.tsv" "$sandbox/trace-second" "a second provisioning run"
+
+generated_secret_files() {
+  find "$@" -type f \( -name '*.key' -o -name '*.seed' -o -name 'pairing.code' \
+    -o -path '*/rustfs/secrets/*' -o -path '*/rustfs/accounts/*' \) | sort
+}
+
+secret_file_values() {
+  local file label
+  while read -r file; do
+    label="${file#"$TEST_TMP"/}"
+    case "$file" in
+      *.json)
+        awk -v label="$label" '
+          { text = text $0 }
+          END {
+            while (match(text, /"(accessKey|secretKey)"[[:space:]]*:[[:space:]]*"[^"]+"/)) {
+              value = substr(text, RSTART, RLENGTH)
+              text = substr(text, RSTART + RLENGTH)
+              sub(/^"[A-Za-z]+"[[:space:]]*:[[:space:]]*"/, "", value)
+              sub(/"$/, "", value)
+              printf "%s\t%s\n", label, value
+            }
+          }' "$file"
+        ;;
+      *.seed)
+        printf '%s\t%s\n' "$label" "$(tr -d '[:space:]' < "$file")"
+        printf '%s payload\t%s\n' "$label" "$(nkey_seed_payload < "$file")"
+        ;;
+      *)
+        awk -v label="$label" '
+          /^-----/ { next }
+          {
+            sub(/\r$/, "")
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "")
+          }
+          length($0) >= 8 { printf "%s\t%s\n", label, $0 }' "$file"
+        ;;
+    esac
+  done
+}
+
+with_secret_parts() {
+  awk -F '\t' '
+    {
+      print
+      count = split($2, part, /[^A-Za-z0-9]+/)
+      for (i = 1; i <= count; i++)
+        if (length(part[i]) >= 16 && part[i] != $2)
+          printf "%s part\t%s\n", $1, part[i]
+    }'
+}
+
+generated_secret_files "$sandbox/data" "$sandbox/certs" | secret_file_values | with_secret_parts \
+  > "$sandbox/secret-files.tsv"
+for pattern in '/rustfs/secrets/' '/rustfs/accounts/' '/nats/seeds/' '/pairing[.]code$' '[.]key$'; do
+  awk -F '\t' -v pattern="$pattern" '$1 ~ pattern { found = 1 } END { exit !found }' "$sandbox/secret-files.tsv" \
+    || fail "the secret file values gathered nothing for $pattern"
+done
+[ "$(grep -c '/rustfs/secrets/' "$sandbox/secret-files.tsv")" -ge 6 ] \
+  || fail "the secret file values miss a RustFS secret"
+[ "$(grep -c '/rustfs/accounts/' "$sandbox/secret-files.tsv")" -eq 6 ] \
+  || fail "the secret file values miss a writer account key"
+[ "$(grep -c '/nats/seeds/' "$sandbox/secret-files.tsv")" -ge 20 ] \
+  || fail "the secret file values miss a NATS seed"
+check_trace "$sandbox/secret-files.tsv" "$sandbox/trace-first" "the first provisioning run (secret files)"
+check_trace "$sandbox/secret-files.tsv" "$sandbox/trace-second" "a second provisioning run (secret files)"
 {
   cat "$sandbox/trace-first"
   printf '+ replace_toml_value nats password %s\n' "$(awk -F '\t' '$1 ~ /\[nats\] password$/ { print $2; exit }' "$sandbox/secrets.tsv")"
@@ -489,6 +565,14 @@ for name in "native/services/auth/config.toml [jwt] secret" \
 done
 check_trace "$native/secrets.tsv" "$native/trace-first" "the native setup"
 check_trace "$native/secrets.tsv" "$native/trace-second" "a second native setup"
+{
+  generated_secret_files "$native/services" | secret_file_values | with_secret_parts
+  grep '/rustfs/secrets/' "$sandbox/secret-files.tsv"
+} > "$native/secret-files.tsv"
+awk -F '\t' '$1 ~ /link\.key$/ { found = 1 } END { exit !found }' "$native/secret-files.tsv" \
+  || fail "the native secret file values miss the link key"
+check_trace "$native/secret-files.tsv" "$native/trace-first" "the native setup (secret files)"
+check_trace "$native/secret-files.tsv" "$native/trace-second" "a second native setup (secret files)"
 for service in identity camera guard; do
   account_dir="$sandbox/data/rustfs/accounts/$service"
   [ -d "$account_dir" ] && [ "$(find "$account_dir" -maxdepth 0 -perm 700)" = "$account_dir" ] \
