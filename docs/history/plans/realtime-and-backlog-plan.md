@@ -343,6 +343,11 @@ otherwise. Order S3 → S4 → S1; every migration is additive and removes the o
   and the `eval` label do (exit 77, with a reason). The two must skip with a reason too, so a worktree
   without the models is reported as skipped, not red. Until then the gate procedure links the models
   (`docs/operations/build-and-test.md`). No fix now.
+- D14 Marking a thread read (`PATCH /notification/thread/{threadKey}/read`) has the same gap the thread
+  delete had before it moved server-side: the app marks only the notifications it has loaded, so a
+  thread with more entries than the loaded page keeps its older entries unread. The fix is the same
+  server-side thread route, scoped to the caller, in one transaction, with one audit diff per row. Not
+  now.
 
 ## 8. Decisions awaiting the owner
 
