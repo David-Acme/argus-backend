@@ -94,7 +94,12 @@ std::string pythonFloat(double value)
   const std::string_view text(buffer.data(), static_cast<std::size_t>(written.ptr - buffer.data()));
   const std::size_t e = text.find('e');
   std::string_view mantissa = text.substr(0, e);
-  const int exponent = std::atoi(std::string(text.substr(e + 1)).c_str());
+  std::string_view power = text.substr(e + 1);
+  if (!power.empty() && power.front() == '+')
+    power.remove_prefix(1);
+  int exponent = 0;
+  if (std::from_chars(power.data(), power.data() + power.size(), exponent).ec != std::errc())
+    return "0.0";
   std::string sign;
   if (!mantissa.empty() && mantissa.front() == '-') {
     sign = "-";
@@ -219,7 +224,7 @@ std::optional<LayaQuestion> choiceQuestion(LayaQuestion question, const nlohmann
     for (const nlohmann::ordered_json& label : criteria) {
       if (!label.is_string())
         return std::nullopt;
-      const std::string& text = label.get_ref<const std::string&>();
+      const auto& text = label.get_ref<const std::string&>();
       if (std::ranges::find(question.labels, text) != question.labels.end())
         return std::nullopt;
       question.labels.push_back(text);
@@ -308,7 +313,7 @@ std::optional<LayaQuestion> layaQuestionFromJson(const nlohmann::ordered_json& d
     return std::nullopt;
   LayaQuestion question;
   question.instructions = instructions.is_string() ? instructions.get<std::string>() : layaPythonJson(instructions);
-  const std::string& type = definition["type"].get_ref<const std::string&>();
+  const auto& type = definition["type"].get_ref<const std::string&>();
   static const nlohmann::ordered_json kAbsent;
   const nlohmann::ordered_json& criteria = definition.contains("criteria") ? definition["criteria"] : kAbsent;
   if (type != "noul" && definition.contains("labels"))
