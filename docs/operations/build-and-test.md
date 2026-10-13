@@ -1,5 +1,29 @@
 # Build and test
 
+## Gate commits in the gate worktree
+
+Three agents share this working tree, so a full sweep or a tidy scan run here
+measures whatever they happen to have half-written, not the commit under test.
+Gates therefore run in a worktree of their own, outside the repository so the
+comment gate never sees it:
+
+```bash
+git worktree add --detach ~/argus-gate master     # once
+git -C ~/argus-gate checkout --detach <commit>    # the exact commit being gated
+(cd ~/argus-gate && ~/.cache/argus-scratch-backup/heavy-gate.sh 8 \
+    ./scripts/build-all.sh dev)
+```
+
+Detach, never `reset` or `checkout` a branch: the worktree must not hold anyone's
+working state, and a detached HEAD cannot lose a branch's commits. The first
+build there is a full one, Conan included; later gates are incremental because
+the worktree's build trees persist.
+
+The shared tree is for editing. An edit is gated when it is committed and the
+gate worktree is pointed at that commit - which is also why an uncommitted
+change never appears in a sweep's numbers, and why a baseline must never be
+written from a sweep run in the shared tree.
+
 ## Orchestrator
 
 ```bash
