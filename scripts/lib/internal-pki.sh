@@ -77,8 +77,18 @@ internal_pki_issue_ca() {
   internal_pki_promote "$dir"
 }
 
+internal_pki_issued_seconds_ago() {
+  local start
+  start="$(openssl x509 -in "$1" -noout -startdate 2>/dev/null | sed 's/^notBefore=//')"
+  [ -n "$start" ] || return 1
+  start="$(date -u -d "$start" +%s 2>/dev/null)" || return 1
+  printf '%s\n' "$(( $(date -u +%s) - start ))"
+}
+
 internal_pki_next_ripe() {
-  [ -n "$(find "$1/ca-next.pem" -mmin +"$(( INTERNAL_PKI_PROMOTE_AFTER_DAYS * 1440 ))" 2>/dev/null)" ]
+  local age
+  age="$(internal_pki_issued_seconds_ago "$1/ca-next.pem")" || return 1
+  [ "$age" -ge "$(( INTERNAL_PKI_PROMOTE_AFTER_DAYS * 86400 ))" ]
 }
 
 internal_pki_rotate() {

@@ -850,7 +850,10 @@ loads them yet.
   certificate: restarting a service gives it the two-CA bundle, and while the
   others wait their turn every certificate in use is still from the current
   CA, which they all trust. A pass a day or more later makes the next CA
-  current and issues every certificate again, and `trust.pem` keeps the old CA
+  current and issues every certificate again; the day is counted from the
+  next CA's `notBefore`, which is written into the certificate and travels
+  with it, never from the file's time, which a copy, a restore or an rsync
+  moves. `trust.pem` keeps the old CA
   until it expires: by then every service holds the old and the new CA, so an
   old-CA certificate and a new-CA certificate verify against each other
   through the shared bundle in both directions (`internal-pki-test` pins both),
@@ -867,9 +870,12 @@ loads them yet.
   (validity, use, names, permissions, what each directory holds), that the
   list of services is the set whose deploy templates speak internal gRPC,
   renewal at 59 days and not at 61, a changed key, an older profile, both
-  passes of a CA rotation (the next CA waits a day, then takes over; old-CA
-  and new-CA certificates talk to each other in both directions under the
-  two-CA bundle), a takeover at once for a CA expiring within a day, and the
+  passes of a CA rotation (the next CA waits a day by its `notBefore`, then
+  takes over: a next CA whose file looks two days old but whose `notBefore` is
+  fresh waits, one whose file is fresh but whose `notBefore` is two days old
+  takes over; old-CA and new-CA certificates talk to each other in both
+  directions under the two-CA bundle), a takeover at once for a CA expiring
+  within a day, and the
   drop of an expired previous CA, mutual TLS between two
   services with `openssl s_server`/`s_client` (a client that expects another
   name, a client certificate from another CA and a client without one are

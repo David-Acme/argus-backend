@@ -191,6 +191,8 @@ talks_to_auth() {
     < /dev/null > "$TEST_TMP/client.out" 2>&1 && grep -q 'Verify return code: 0 (ok)' "$TEST_TMP/client.out"
 }
 
+openssl x509 -help 2>&1 | grep -q -- '-not_before' \
+  || fail "openssl $(openssl version) cannot set notBefore, which the rotation test needs (OpenSSL 3.4 or later)"
 internal_pki_issue_ca "$pki" 30
 rm -f "$pki/ca-previous.pem"
 current="$(fingerprint "$pki/ca.pem")"
@@ -207,17 +209,22 @@ for service in $INTERNAL_PKI_SERVICES; do
     || fail "during the first pass the certificate of $service does not come from the current CA"
   cmp -s "$pki/$service/ca.pem" "$pki/trust.pem" || fail "$service does not carry the two-CA bundle"
 done
-next="$(fingerprint "$pki/ca-next.pem")"
 cp -R "$pki/auth" "$TEST_TMP/old-auth"
 cp -R "$pki/camera" "$TEST_TMP/old-camera"
 
+touch -d '2 days ago' "$pki/ca-next.pem"
 waiting_state="$(state_of)"
 ensure_internal_pki "$pki" > "$TEST_TMP/rotate-wait.out" 2>&1 || fail "a pass before the next CA was a day old failed"
-[ "$(state_of)" = "$waiting_state" ] || fail "the next CA took over before it was a day old"
+[ "$(state_of)" = "$waiting_state" ] || fail "a next CA with a fresh notBefore took over because its file looked two days old"
 grep -q 'a day or more after it joined the trust bundles' "$TEST_TMP/rotate-wait.out" \
   || fail "a pass before the next CA was a day old did not say when it takes over"
 
-touch -d '2 days ago' "$pki/ca-next.pem"
+openssl x509 -in "$pki/ca-next.pem" -key "$pki/ca-next.key" \
+  -not_before "$(date -u -d '2 days ago' +%Y%m%d%H%M%SZ)" -not_after "$(date -u -d '3648 days' +%Y%m%d%H%M%SZ)" \
+  -out "$pki/ca-next.pem.aged"
+mv "$pki/ca-next.pem.aged" "$pki/ca-next.pem"
+[ -z "$(find "$pki/ca-next.pem" -mmin +5)" ] || fail "the aged next CA does not have a fresh file time"
+next="$(fingerprint "$pki/ca-next.pem")"
 ensure_internal_pki "$pki" > "$TEST_TMP/rotate-second.out" 2>&1 || fail "the second pass of the CA rotation failed"
 [ "$(fingerprint "$pki/ca.pem")" = "$next" ] || fail "the next CA did not take over on the second pass"
 [ "$(fingerprint "$pki/ca-previous.pem")" = "$current" ] || fail "the second pass did not keep the old CA as the previous one"
