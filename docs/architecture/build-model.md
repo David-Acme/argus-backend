@@ -35,12 +35,22 @@ at build time. Pins come from `.gitmodules` and `git submodule status`.
 | Dependency | Type | Pin | Compiled by |
 |---|---|---|---|
 | `sqlite-vec` | vendored | v0.1.10-alpha.4 | auth, camera, productivity, notification, guard, sync, identity, sqlite, llm |
-| `ncnn` | submodule | `4c1110c9` | camera, identity |
+| `ncnn` | submodule | `a4d2ea1d` | camera, identity |
 | `llama.cpp` | submodule | `31558dbb` | llm, vlm |
-| `sherpa-onnx` | submodule | `dc130227` | stt |
+| `sherpa-onnx` | submodule | `546df6f9` | identity, stt |
 | `fastText` | submodule | `1142dc4` | llm |
 | `stb` | vendored | `stb_image.h` | identity |
 | `go2rtc` | downloaded binary | release artifact | camera provisioning |
+
+Every submodule pin is a commit of its upstream remote, so a fresh
+`git clone --recurse-submodules` initialises each one from `.gitmodules`.
+Nothing edits a submodule: it carries no local commit and `setup.sh` only
+initialises it. What a consumer needs from one it sets from outside, before
+its `add_subdirectory`: camera and identity force `NCNN_BUILD_TOOLS` and the
+other `NCNN_*` switches as cache variables, and identity and stt give the
+nlohmann json that sherpa-onnx fetches its own target name through json's
+`NLOHMANN_JSON_TARGET_NAME`, so it never collides with Conan's
+`nlohmann_json::nlohmann_json`.
 
 ## Shared model artifacts
 

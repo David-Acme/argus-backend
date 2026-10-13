@@ -186,19 +186,6 @@ setup_submodules() {
         warn "Nested submodule init failed in $d (network?)."
     fi
   done
-
-  local F
-
-  F=third_party/ncnn/CMakeLists.txt
-  if [ -f "$F" ]; then
-    sed -i 's/^\( *\)option(NCNN_BUILD_TOOLS "build tools" OFF)/\1option(NCNN_BUILD_TOOLS "build tools" ON)/' "$F"
-    sed -i 's/^\( *\)set(NCNN_BUILD_TOOLS OFF)/\1#set(NCNN_BUILD_TOOLS OFF)/' "$F"
-  fi
-
-  F=third_party/sherpa-onnx/cmake/json.cmake
-  if [ -f "$F" ]; then
-    sed -i 's|^  add_subdirectory(${json_SOURCE_DIR} ${json_BINARY_DIR} EXCLUDE_FROM_ALL)|  # disabled: nlohmann_json provided by Conan|' "$F"
-  fi
 }
 
 build_project() {

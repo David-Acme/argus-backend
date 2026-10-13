@@ -40,7 +40,6 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
 
     if(NOT TARGET sherpa-onnx-c-api)
-        set(json_POPULATED TRUE CACHE BOOL "" FORCE)
         set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
         set(SHERPA_ONNX_ENABLE_PYTHON OFF CACHE BOOL "" FORCE)
         set(SHERPA_ONNX_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
@@ -61,8 +60,10 @@ if(PROJECT_IS_TOP_LEVEL)
         target_include_directories(onnxruntime INTERFACE
             "${ARGUS_STT_ONNX_INCLUDE_DIR}")
         target_link_libraries(onnxruntime INTERFACE onnxruntime::onnxruntime)
+        set(NLOHMANN_JSON_TARGET_NAME sherpa-onnx-json)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/sherpa-onnx
                          sherpa-onnx-build EXCLUDE_FROM_ALL)
+        unset(NLOHMANN_JSON_TARGET_NAME)
     endif()
 endif()
 
