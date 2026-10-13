@@ -43,6 +43,7 @@ argus_lib(NAME http
         src/http/listener-config.cc
         src/http/logical-routes.cc
         src/http/route-announcements.cc
+        src/http/tls-health.cc
         src/http/api-response.hxx
         src/http/certificate-reload.hxx
         src/http/cors.hxx
@@ -52,6 +53,7 @@ argus_lib(NAME http
         src/http/listener-config.hxx
         src/http/logical-routes.hxx
         src/http/route-announcements.hxx
+        src/http/tls-health.hxx
     INCLUDES src
     DEPENDS
         argus::lib::errors
@@ -115,6 +117,12 @@ target_link_libraries(certificate-reload-test PRIVATE argus::lib::http OpenSSL::
 target_compile_options(certificate-reload-test PRIVATE -Wall -Wextra)
 
 add_test(NAME certificate-reload-test COMMAND certificate-reload-test)
+
+add_executable(tls-health-test tests/unit/tls-health-test.cc)
+target_link_libraries(tls-health-test PRIVATE argus::lib::http OpenSSL::Crypto doctest::doctest)
+target_compile_options(tls-health-test PRIVATE -Wall -Wextra)
+
+add_test(NAME tls-health-test COMMAND tls-health-test)
 
 add_executable(download-url-test tests/unit/download/download-url-test.cc)
 target_link_libraries(download-url-test PRIVATE argus::lib::http-download doctest::doctest)

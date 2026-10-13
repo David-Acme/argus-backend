@@ -282,13 +282,20 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   certificate, channel credentials that present the service's own and check the server's name, and a
   client target written `tls:<host>:<port>` that `makeChannel` serves with the certificate the
   process installed, every other target staying plaintext), proven against a live loopback server by
-  `internal-tls-test`. Step 3, the health warning, needs services that read their trust bundle, so
-  it follows step 2, and its scope is three items: each service's health response reports how many
-  CAs its loaded trust bundle holds; a CA's own expiry gets the same 30-day health warning as the
+  `internal-tls-test`; a process installs its certificate once, before its first channel, and never
+  swaps it while it runs. Step 3a, 2026-10-13: `lib/http`'s `tls_health::report` turns the PEMs a
+  service loaded into its health section (the loaded bundle's CA count, the days left on the
+  certificate and on its issuing CA, a warning under 30 days for either), proven by
+  `tls-health-test`. Step 3, the health warning, needs services that read their trust bundle, so it
+  follows step 2, and its scope is three items: each service's health response reports how many CAs
+  its loaded trust bundle holds; a CA's own expiry gets the same 30-day health warning as the
   service certificates; and before a pass that would move the certificates to the next CA,
   provisioning prints a check that the two-CA bundle is live on every service, which it prints and
-  never gates on. Then the services, one commit each, and after the owner's deploy check the cleanup
-  that removes the plaintext listeners.
+  never gates on. Order approved 2026-10-13: 3a, then the services one commit each, smallest first,
+  each shown booting with `[internal_tls]` set (settings first among the mains track D shares,
+  defining the listener port pattern both tracks use; guard, llm and voice last, after track C),
+  then 3b (provisioning's pre-pass-2 print), then the clients' `tls:` targets, and after the owner's
+  deploy check the cleanup that removes the plaintext listeners.
 - S2 Tunnel home link: TLS 1.3 with a pinned relay, a MAC on every frame after AUTH, the device side
   refusing unauthenticated connections.
 - S3 Per-service NATS accounts (nkeys, subject and `$JS.API` scoping). Status 2026-10-13

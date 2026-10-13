@@ -825,7 +825,10 @@ instance CA the apps pin (ruling of 2026-10-12): a key that leaks from one signs
 nothing the other trusts. Step 1 issues the CA and the certificates; step 2
 gives `packages/lib/grpc` the credentials that load them (a client target
 written `tls:<host>:<port>` gets mutual TLS, every other target stays
-plaintext); no service loads them yet. Deploy-time check: build the images
+plaintext); step 3a gives `packages/lib/http` the health report
+(`tls_health::report`: how many CAs the loaded trust bundle holds, the days
+left on the certificate and on the CA that issued it, and a warning under 30
+days for either); no service loads them yet. Deploy-time check: build the images
 (`docker compose build`) before any config names a `tls:` target. The images
 link Debian trixie's gRPC 1.51, and the internal TLS code has so far been
 built only against the development host's 1.84; it uses only the

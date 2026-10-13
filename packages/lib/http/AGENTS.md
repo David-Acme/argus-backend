@@ -72,6 +72,21 @@ declare errors and this package formats them.
   blocks: run it on a worker thread of its own, never on an event loop (it
   refuses with `on_event_loop`) and not on a `BlockingTask` lane for minutes.
   `CONTEXT.md` holds the design and the libcurl fallback path.
+- `src/http/tls-health.hxx` — `tls_health::report({certificatePem,
+  trustBundlePem})`: what a service's `/health` says about the internal
+  certificate it loaded at start (S1). It reports `loaded`, the certificate's
+  subject and days left, `trustBundleCas` (how many CAs the loaded bundle
+  holds) with each CA's subject and days left, the issuing CA, and
+  `warnings`: one when the certificate, or the CA that issued it, has fewer
+  than 30 days left or has expired, and one when the bundle does not hold the
+  issuer. Another CA in the bundle that issued nothing loaded (the previous
+  CA during a rotation, kept until it expires) is reported and never warned
+  about, because its end is expected. The service passes the PEMs it
+  installed, so the report describes what the running process holds, not the
+  files on disk. OpenSSL, already linked here, does the parsing.
+  `tests/unit/tls-health-test.cc` builds its CAs and certificates in process
+  and pins each of those answers, the 30-day line (a warning at 29 days, none
+  at 31) for the certificate and for its issuing CA included.
 - `src/http/route-announcements.hxx` — `routeAnnouncements()`: one
   `_argus-route._tcp` `MdnsInstance` per logical route, TXT `path=<segment>` and
   `https="true"` when the listener terminates TLS. It is the join between this
