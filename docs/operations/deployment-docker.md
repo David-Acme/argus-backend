@@ -9,9 +9,12 @@ no package has its own image.
 
 `scripts/provision-host.sh` prepares a Linux or macOS host without building
 the stack: Docker + Compose v2, the instance PKI, the per-service
-`config.<service>.toml` files with unique shared secrets and the external data
-tree. It is idempotent; existing CAs, secrets and databases are reused, so an
-image update is `docker compose build && docker compose up -d` over the same
+`config.<service>.toml` files with unique shared secrets, one NATS nkey per
+service and the external data tree. It is idempotent; existing CAs, secrets,
+keys and databases are reused. Re-run `scripts/provision-host.sh` before
+`docker compose up -d` after every update: a new compose file may mount state
+that only provisioning creates (the NATS seeds are such state), and an image
+update is then `docker compose build && docker compose up -d` over the same
 state.
 
 ```bash
@@ -126,7 +129,14 @@ as this one-shot tool — `sync-init` mounts identity's directory read-only,
   step 1, because the gateway read no `storage.` key.
   Camera evidence snapshots land under `cameras/<id>/` and guard incident
   records under `guard/incidents/<id>/`.
-- Update flow: `docker compose build && docker compose up -d`. Never
+- NATS: each service connects with its own nkey; its seed is
+  `${ARGUS_DATA_DIR}/nats/seeds/<service>.seed` (0600), mounted read-only into
+  that service alone, and the broker's users and allow-lists come from
+  `${ARGUS_DATA_DIR}/nats/auth.conf` and the committed
+  `argus-deploy/nats-permissions.conf` (`argus-deploy/CONTEXT.md`, "One NATS
+  user per service").
+- Update flow: re-run `scripts/provision-host.sh`, then
+  `docker compose build && docker compose up -d`. Never
   `docker compose down -v`; it deletes the camera stream volume. One upgrade
   needs its init profile first: an install whose audit rows still live in
   `identity.db` must run `--profile sync-init` on a stopped stack before

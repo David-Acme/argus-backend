@@ -493,6 +493,8 @@ secrets are read at runtime, never printed; the refresh token lands in a
 | `${ARGUS_DATA_DIR}/rustfs/objects` | rustfs at `/data` | private S3 objects (portraits, camera evidence, guard incident records) |
 | `${ARGUS_CA_DIR}` (default `${ARGUS_DATA_DIR}/pki`) | argus-identity at `/opt/argus/ca` | `ca.key`, `ca.srl`, `pairing.code` (0600) |
 | `${ARGUS_DATA_DIR}/nats/auth.conf` | nats at `/etc/nats/auth.conf` (ro) | the broker's `authorization` block |
+| `./nats-permissions.conf` | nats at `/etc/nats/nats-permissions.conf` (ro) | each service's allow-lists, one `ARGUS_NATS_<SERVICE>` variable per row of the permission table |
+| `${ARGUS_DATA_DIR}/nats/seeds/<service>.seed` | that service alone, at `/run/secrets/nats.seed` (ro) | its NATS nkey seed (0600) |
 
 Every database directory is bind-mounted from `${ARGUS_DATA_DIR:-./data}`
 (default `argus-deploy/data/`, gitignored; `scripts/provision-host.sh` creates
@@ -672,7 +674,47 @@ service's `[nats]` carries `user`/`password` (read by `NatsBus` and passed
 with `natsOptions_SetUserInfo`, never in the URL, so it never reaches a
 log), and `provision-host.sh` generates the password once for every config
 and writes it to `.env`. Per-service subject permissions (an nkey per
-service) are the next step and are not done.
+service) are the next step; the section below records them.
+
+## One NATS user per service (S3, 2026-10)
+
+Every row of the permission table in
+`packages/lib/nats/src/nats/nats-permissions.cc` is a broker user: users with
+permissions inside the one account, not separate accounts, because JetStream
+streams belong to an account (ruling of 2026-10-12, `realtime-and-backlog-plan`
+section 5). The table is rendered into the committed `nats-permissions.conf`,
+one `ARGUS_NATS_<SERVICE>` variable per row, and `provision-host.sh` writes
+`${ARGUS_DATA_DIR}/nats/auth.conf` as an include of that file plus one
+`{nkey: "U…", permissions: $ARGUS_NATS_<SERVICE>}` user per variable. The shared
+`argus` user stays in the same `users` list until every service connects with
+its own key; removing it is the last step.
+
+- **Keys.** Users authenticate with an nkey, so the broker holds public keys
+  only: `auth.conf` stays 0644 inside the 0700 data tree, as before, and after
+  the shared user goes it holds no secret at all. Each service's seed is
+  `${ARGUS_DATA_DIR}/nats/seeds/<service>.seed` (0600, the directory 0700),
+  issued once and reused on every re-run, and mounted read-only into that
+  service alone at `/run/secrets/nats.seed`; the broker never sees it.
+- **How a seed is made.** OpenSSL, which provisioning already requires for the
+  PKI, generates 32 random bytes and derives the Ed25519 public key from them;
+  the seed reaches OpenSSL on its standard input, never as an argument. The
+  nkey text framing (the user and seed prefix bytes, the CRC-16/XMODEM
+  checksum, unpadded base32) is done in `scripts/lib/nats-users.sh` with shell
+  arithmetic, `od` and `base32`, which the PKI step already needs. The `nk` tool
+  would be a new host dependency, nats-server has no generator, and a generator
+  linked against cnats would need a build on the deployment host. The
+  derivation is pinned to the seed and public key pair the cnats tests and the
+  NATS documentation use (`SUACSSL3…` / `UDXU4RCS…`), in
+  `scripts/deploy-mounts-test.sh`.
+- **Every row gets a user.** nats-server refuses a config variable nothing
+  uses ("unknown field"), so the rendering iterates the variables of
+  `nats-permissions.conf`; the `recorder` row therefore has a user and a seed on
+  the host before its service exists, and nothing mounts that seed.
+- **Deploying this change.** The broker now includes `nats-permissions.conf`
+  and every NATS client mounts its seed with `create_host_path: false`, so
+  re-run `scripts/provision-host.sh` before `docker compose up -d`: without the
+  seeds those services fail to start, and without the new `auth.conf` the
+  broker does.
 
 ## Container hardening (2026-10)
 
@@ -767,13 +809,12 @@ in order:
    travelling in clear, and frames after AUTH are integrity-protected. The
    OPEN frame gains a target byte at the same time, so one client can reach
    auth's and identity's remote listeners.
-3. **Per-service NATS accounts.** One nkey per service in `auth.conf`, each
-   with `publish` limited to its own `argus.<domain>.v1.*` subjects and
-   `subscribe` to what it consumes (the table is
-   `docs/architecture/wire-nats-subjects.md`); `$JS.API` permissions scoped to
-   each service's streams and durables. argus-sync then also refuses the
-   control actions (`disconnect`, `replace_role_rooms`) from any feed but
-   auth's session feed (a services/sync change).
+3. **Per-service NATS users.** In progress as users inside the one account,
+   not accounts (see "One NATS user per service" above): one nkey per service
+   in `auth.conf`, each with the publish and subscribe allow-lists and the
+   `$JS.API` subjects of its row in the permission table. argus-sync then also
+   refuses the control actions (`disconnect`, `replace_role_rooms`) from any
+   feed but auth's session feed (a services/sync change, not done).
 4. **Per-service S3 credentials.** `rustfs-init` creates one service account
    per writer (identity: `portraits/`, camera: `evidence/`, guard:
    `incidents/`) with a prefix-scoped policy, and provisioning writes each pair

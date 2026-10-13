@@ -44,6 +44,12 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/auth.seed
+        target: /run/secrets/nats.seed
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: ${ARGUS_CERTS_DIR:-../certs}
         target: /opt/argus/certs
         read_only: true
@@ -98,6 +104,12 @@ services:
       - type: bind
         source: ./config.identity.toml
         target: /opt/argus/config.toml
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/identity.seed
+        target: /run/secrets/nats.seed
+        read_only: true
         bind:
           create_host_path: false
       - type: bind
@@ -173,6 +185,12 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/camera.seed
+        target: /run/secrets/nats.seed
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: ${ARGUS_CERTS_DIR:-../certs}
         target: /opt/argus/certs
         read_only: true
@@ -241,6 +259,12 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/productivity.seed
+        target: /run/secrets/nats.seed
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: ${ARGUS_CERTS_DIR:-../certs}
         target: /opt/argus/certs
         read_only: true
@@ -293,6 +317,12 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/notification.seed
+        target: /run/secrets/nats.seed
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: ${ARGUS_CERTS_DIR:-../certs}
         target: /opt/argus/certs
         read_only: true
@@ -342,6 +372,12 @@ services:
       - type: bind
         source: ./config.sync.toml
         target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/sync.seed
+        target: /run/secrets/nats.seed
         read_only: true
         bind:
           create_host_path: false
@@ -401,6 +437,12 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/guard.seed
+        target: /run/secrets/nats.seed
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: ${ARGUS_CERTS_DIR:-../certs}
         target: /opt/argus/certs
         read_only: true
@@ -453,6 +495,12 @@ services:
       - type: bind
         source: ./config.settings.toml
         target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/settings.seed
+        target: /run/secrets/nats.seed
         read_only: true
         bind:
           create_host_path: false
@@ -650,6 +698,12 @@ services:
         bind:
           create_host_path: false
       - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/llm.seed
+        target: /run/secrets/nats.seed
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
         source: ${ARGUS_MODELS_DIR:-../models}/llm
         target: /opt/argus/models/llm
         read_only: true
@@ -765,6 +819,12 @@ services:
       - type: bind
         source: ./config.relay.toml
         target: /opt/argus/config.toml
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/relay.seed
+        target: /run/secrets/nats.seed
         read_only: true
         bind:
           create_host_path: false
@@ -957,6 +1017,12 @@ services:
       - type: bind
         source: ${ARGUS_DATA_DIR:-./data}/nats/auth.conf
         target: /etc/nats/auth.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./nats-permissions.conf
+        target: /etc/nats/nats-permissions.conf
         read_only: true
         bind:
           create_host_path: false

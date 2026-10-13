@@ -60,11 +60,13 @@ artifacts only), `--no-docker` (skip the Docker check) and `-y`/`--yes`
 
 `scripts/provision-host.sh` prepares a Linux or macOS deployment host without
 compiling: it installs/validates Docker + Compose v2, creates the external
-data tree and `argus-deploy/.env`, generates the instance PKI and fills the
-per-service deploy configs with unique shared secrets. `--with-models`
-downloads the weights through the same owner `provision.sh` scripts, and
-`--start` builds and starts the stack. Re-running it is safe: existing certs,
-secrets and databases are reused.
+data tree and `argus-deploy/.env`, generates the instance PKI, fills the
+per-service deploy configs with unique shared secrets and issues one NATS nkey
+per service. `--with-models` downloads the weights through the same owner
+`provision.sh` scripts, and `--start` builds and starts the stack. Re-running
+it is safe: existing certs, secrets, keys and databases are reused. Re-run it
+before `docker compose up -d` after every update, so the state a new compose
+file mounts exists.
 
 ## Model provisioning per owner
 

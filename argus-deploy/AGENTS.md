@@ -13,6 +13,10 @@ any change; the cutover shape and its exceptions are documented there.
 - `nats.conf` (the broker config; its `auth.conf` include is generated per
   installation) and `livekit-tls.conf` + `livekit-tls-entrypoint.sh` (the
   TLS front and the loop that reloads it when the leaf rotates).
+- `nats-permissions.conf` — each service's NATS publish and subscribe
+  allow-lists, rendered from the table in
+  `packages/lib/nats/src/nats/nats-permissions.cc`; never edited by hand
+  (`nats-permissions-test` fails while it differs from the table).
 - One `config.<service>.toml.example` template per service —
   per-installation copies (`config.auth.toml`, ...) are gitignored and hold
   the instance secrets.
@@ -25,6 +29,12 @@ any change; the cutover shape and its exceptions are documented there.
   DB volume and schema.
 - Never bake secrets into images. Instance secrets live in the gitignored
   config files.
+- A service that connects to NATS mounts its own nkey seed, and no other,
+  read-only at `/run/secrets/nats.seed`
+  (`${ARGUS_DATA_DIR}/nats/seeds/<service>.seed`, 0600, issued by
+  `provision-host.sh`); `scripts/deploy-mounts-test.sh` fails otherwise. A
+  compose change that mounts new provisioned state needs
+  `scripts/provision-host.sh` re-run before `docker compose up -d`.
 - `identity-init` is opt-in (`--profile identity-init`): it runs
   `argus-migrate-identity` (source argus.db → target identity.db) on the
   argus-identity image and is idempotent. `sync-init` is opt-in the same way

@@ -611,10 +611,10 @@ Raw pointers only for non-owning access (`.get()`).
 - `scripts/provision-host.sh` prepares a deployment host (Docker + Compose,
   PKI, per-service deploy configs with one credential per internal RPC
   caller and server: `[rpc.callers]` on identity 7040, sync control 7041 and
-  auth 7043, never a fleet-wide secret) and writes the
-  gitignored `argus-deploy/.env`. State (`ARGUS_DATA_DIR`, certs, models,
-  go2rtc) lives on the host and is bind-mounted, so updating is a rebuild plus
-  `docker compose up -d`; never `down -v`.
+  auth 7043, never a fleet-wide secret; one NATS nkey per service) and writes
+  the gitignored `argus-deploy/.env`. State (`ARGUS_DATA_DIR`, certs, models,
+  go2rtc) lives on the host and is bind-mounted, so updating is a re-run of
+  `provision-host.sh`, a rebuild and `docker compose up -d`; never `down -v`.
 - Object storage is the RustFS service in `argus-deploy/docker-compose.yml`
   (`rustfs` + one-shot `rustfs-init`), consumed through `S3StorageService`
   (`storage.mode = "s3"` plus the `[storage.s3]` keys in each service's

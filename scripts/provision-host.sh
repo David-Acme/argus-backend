@@ -4,6 +4,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/common.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/pki.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/docker.sh"
 source "$(dirname "${BASH_SOURCE[0]}")/lib/privacy.sh"
+source "$(dirname "${BASH_SOURCE[0]}")/lib/nats-users.sh"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEPLOY_DIR="$ROOT/argus-deploy"
@@ -23,9 +24,11 @@ Argus host provisioning for the argus-deploy stack.
 
 Prepares a Linux or macOS host with the state the deployment needs but never
 bakes into images: Docker + Compose v2, the instance PKI, the per-service
-config files with unique shared secrets and the external data tree the
-compose file links into the containers. Idempotent: an existing CA, secret or
-database is reused untouched, so an image update is pull/build plus `up -d`.
+config files with unique shared secrets, one NATS nkey per service and the
+external data tree the compose file links into the containers. Idempotent: an
+existing CA, secret, key or database is reused untouched. Re-run it before
+`docker compose up -d` after every update, so the state a new compose file
+mounts exists.
 The Argus privacy notice and terms are shown first; nothing is configured
 until the owner accepts them for the household.
 
@@ -265,6 +268,8 @@ configure_tunnel() {
 
 write_nats_auth() {
   local dir="$DATA_DIR/nats"
+  local seeds="$DATA_DIR/nats/seeds"
+  local permissions="$DEPLOY_DIR/nats-permissions.conf"
   local password temp
 
   password="$(toml_value "$DEPLOY_DIR/config.auth.toml" nats password)"
@@ -274,12 +279,19 @@ write_nats_auth() {
   case "$password" in
     *[!A-Za-z0-9]*) err "the NATS password must be alphanumeric"; return 1 ;;
   esac
-  mkdir -p "$dir"
-  chmod 700 "$dir"
+  [ -f "$permissions" ] || { err "missing NATS permissions: $permissions"; return 1; }
+  need_cmd base32
+  mkdir -p "$seeds"
+  chmod 700 "$dir" "$seeds"
   temp="$(mktemp "$dir/auth.conf.XXXXXX")"
-  printf 'authorization {\n  user: argus\n  password: "%s"\n}\n' "$password" > "$temp"
+  if ! nats_auth_conf "$permissions" "$seeds" "$password" > "$temp"; then
+    rm -f "$temp"
+    err "could not issue the NATS service keys in $seeds (OpenSSL with Ed25519 is required)"
+    return 1
+  fi
   chmod 644 "$temp"
   mv "$temp" "$dir/auth.conf"
+  log "NATS users ready: one nkey per service, seeds in $seeds (0600)"
 }
 
 detect_lan_address() {
@@ -449,7 +461,7 @@ print_summary() {
   printf '  pairing code   : %s\n' "$pairing"
   echo
   log "Start : (cd argus-deploy && docker compose up -d)"
-  log "Update: docker compose build && docker compose up -d"
+  log "Update: re-run scripts/provision-host.sh, then docker compose build && docker compose up -d"
   log "Logs  : docker compose logs -f"
   log "Never run 'docker compose down -v': it deletes the camera stream volume."
 }
