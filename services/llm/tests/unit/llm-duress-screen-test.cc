@@ -20,6 +20,7 @@
 #include <text/sha256.hxx>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <deque>
 #include <filesystem>
@@ -298,6 +299,29 @@ std::vector<OutboxRow> outboxRows(const std::string& db)
   return rows;
 }
 
+void backdate(const std::string& db, int64_t saidAt)
+{
+  sqlite3* handle = nullptr;
+  REQUIRE(sqlite3_open_v2(db.c_str(), &handle, SQLITE_OPEN_READWRITE, nullptr) == SQLITE_OK);
+  sqlite3_stmt* statement = nullptr;
+  REQUIRE(sqlite3_prepare_v2(handle, "UPDATE duress_raise_outbox SET said_at = ?", -1, &statement, nullptr) ==
+          SQLITE_OK);
+  sqlite3_bind_int64(statement, 1, saidAt);
+  CHECK(sqlite3_step(statement) == SQLITE_DONE);
+  sqlite3_finalize(statement);
+  sqlite3_close(handle);
+}
+
+struct ManualClock
+{
+  std::atomic<int64_t> seconds{1'790'000'000};
+
+  [[nodiscard]] std::function<int64_t()> source()
+  {
+    return [this] { return seconds.load(); };
+  }
+};
+
 std::shared_ptr<DuressOutbox> outboxOver(SqliteGraph& graph)
 {
   return std::make_shared<SqliteDuressOutbox>(
@@ -508,7 +532,9 @@ TEST_CASE("a match is written down before the turn goes on, as the key's digest 
   const std::string key = sealed(kPhrase);
   const auto link = std::make_shared<ScriptedLink>(key);
   link->setUnreachable(true);
-  DuressScreen screen({.link = link, .eligible = disarmer, .outbox = outboxOver(graph)}, quick());
+  ManualClock clock;
+  DuressScreen screen({.link = link, .eligible = disarmer, .outbox = outboxOver(graph), .clock = clock.source()},
+                      quick());
   screen.start();
   REQUIRE(eventually([&link, &screen] { return link->asked() > 0 && screen.idle(); }));
 
@@ -519,7 +545,7 @@ TEST_CASE("a match is written down before the turn goes on, as the key's digest 
   CHECK(written.front().role == "resident");
   CHECK(written.front().keyDigest == argus::hash::sha256Hex(key));
   CHECK(written.front().keyDigest != key);
-  CHECK(written.front().saidAt > 0);
+  CHECK(written.front().saidAt == 1'790'000'000);
   for (const std::string_view word : {"gato", "tejado", "oye"}) {
     CHECK(written.front().role.find(word) == std::string::npos);
     CHECK(written.front().keyDigest.find(word) == std::string::npos);
@@ -554,6 +580,7 @@ TEST_CASE("a raise written down survives a restart of argus-llm and reaches guar
   REQUIRE(carried.size() == 1);
   CHECK(carried.front().userId == 3);
   CHECK(carried.front().role == "owner");
+  backdate(db, 1'700'000'000);
 
   SqliteGraph graph;
   REQUIRE(graph.open(db));
@@ -565,7 +592,41 @@ TEST_CASE("a raise written down survives a restart of argus-llm and reaches guar
   CHECK(raised.userId == 3);
   CHECK(raised.role == UserRole::Owner);
   CHECK(raised.key == key);
+  CHECK(raised.saidAt == 1'700'000'000);
   after.requestStop();
+}
+
+TEST_CASE("the raise carries the instant the words reached the screen, and every retry carries the same")
+{
+  const auto link = std::make_shared<ScriptedLink>(sealed(kPhrase));
+  link->reply({DuressDelivery::Retry, DuressDelivery::Retry});
+  ManualClock clock;
+  DuressScreen screen({.link = link, .eligible = disarmer, .outbox = nullptr, .clock = clock.source()}, quick());
+  screen.start();
+  REQUIRE(eventually([&link, &screen] { return link->asked() > 0 && screen.idle(); }));
+  clock.seconds = 1'790'000'100;
+  CHECK(screen.screen({.userId = 2, .role = UserRole::Resident, .text = "el gato está en el tejado"}).withheld);
+  clock.seconds = 1'790'009'999;
+  REQUIRE(eventually([&link, &screen] { return link->attempts().size() == 3 && screen.idle(); }));
+  for (const DuressRaise& attempt : link->attempts())
+    CHECK(attempt.saidAt == 1'790'000'100);
+  screen.requestStop();
+}
+
+TEST_CASE("words matched once guard answers carry the time they were heard, not the time they matched")
+{
+  const auto link = std::make_shared<ScriptedLink>(std::nullopt);
+  ManualClock clock;
+  DuressScreen screen({.link = link, .eligible = disarmer, .outbox = nullptr, .clock = clock.source()}, quick());
+  screen.start();
+  REQUIRE(eventually([&link] { return link->asked() > 0; }));
+  clock.seconds = 1'790'000'200;
+  CHECK_FALSE(screen.screen({.userId = 2, .role = UserRole::Owner, .text = "el gato está en el tejado"}).withheld);
+  clock.seconds = 1'790'000'900;
+  link->setKey(sealed(kPhrase));
+  REQUIRE(eventually([&link] { return link->attempts().size() == 1; }));
+  CHECK(link->attempts().front().saidAt == 1'790'000'200);
+  screen.requestStop();
 }
 
 TEST_CASE("a raise whose phrase changed while argus-llm was down is crossed out without asking guard")

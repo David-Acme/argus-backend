@@ -16,6 +16,7 @@ message SpokenDuressRequest
   int64 user_id = 1;
   string role = 2;
   string key = 3;
+  int64 said_at = 4;
 }
 
 enum SpokenDuressOutcome

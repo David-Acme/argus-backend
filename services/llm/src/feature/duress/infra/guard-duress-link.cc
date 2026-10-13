@@ -13,7 +13,8 @@ std::optional<std::string> GuardDuressLink::phraseKey() const
 
 DuressDelivery GuardDuressLink::raise(const DuressRaise& raise) const
 {
-  switch (client_->raiseSpoken({.userId = raise.userId, .role = userRoleToString(raise.role), .key = raise.key})) {
+  switch (client_->raiseSpoken(
+      {.userId = raise.userId, .role = userRoleToString(raise.role), .key = raise.key, .saidAt = raise.saidAt})) {
     case SpokenDuressReply::Raised:
     case SpokenDuressReply::Repeated:
       return DuressDelivery::Delivered;

@@ -170,6 +170,15 @@ constexpr const char* kLegacyState =
     "CREATE TABLE guard_state (key TEXT NOT NULL PRIMARY KEY, "
     "value TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL DEFAULT 0)";
 
+constexpr const char* kLegacySafetyAlert =
+    "CREATE TABLE guard_safety_alert ("
+    "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+    "kind TEXT NOT NULL CHECK (kind IN ('panic', 'duress')), "
+    "user_id INTEGER NOT NULL, "
+    "environment_id INTEGER NOT NULL DEFAULT 0, "
+    "created_at INTEGER NOT NULL, "
+    "notified_at INTEGER NOT NULL DEFAULT 0)";
+
 void seedLegacyDb(const std::string& path)
 {
   sqlite3* raw = nullptr;
@@ -192,6 +201,10 @@ void seedLegacyDb(const std::string& path)
        "('mode', 'night', 60), ('digest_daily_day', '2026-10-3', 61), "
        "('digest_daily_until', '1790000000', 61), "
        "('digest_quiet_day', '2026-10-3', 62)");
+  exec(db.get(), kLegacySafetyAlert);
+  exec(db.get(),
+       "INSERT INTO guard_safety_alert (id, kind, user_id, environment_id, created_at, notified_at) VALUES "
+       "(1, 'duress', 4, 0, 500, 510)");
   exec(db.get(), kLegacyAction);
   exec(db.get(), kLegacyInbox);
   exec(db.get(), kLegacyGuest);
@@ -292,6 +305,10 @@ TEST_CASE("a legacy guard database migrates in place without data loss")
                "'agent\\_%' ESCAPE '\\'") == "0");
   CHECK(scalar("SELECT status FROM guard_observation_inbox "
                "WHERE event_id = 'old-event'") == "processing");
+  CHECK(scalar("SELECT COUNT(*) FROM pragma_table_info('guard_safety_alert') WHERE name IN "
+               "('notify_sequence', 'escalated_at', 'closed_at', 'actor_name', 'spoken', 'said_at')") == "6");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert WHERE id = 1 AND said_at IS NULL AND "
+               "created_at = 500 AND notified_at = 510 AND spoken = 0") == "1");
 
   REQUIRE(DbService::runScriptFile(ARGUS_GUARD_SCHEMA_PATH));
 

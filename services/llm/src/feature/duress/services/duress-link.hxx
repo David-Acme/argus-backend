@@ -18,6 +18,7 @@ struct DuressRaise
   int64_t userId{0};
   UserRole role{UserRole::Unknown};
   std::string key;
+  int64_t saidAt{0};
 };
 
 class DuressLink

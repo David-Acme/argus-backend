@@ -33,6 +33,7 @@ struct SpokenRequest
   int64_t userId{0};
   std::string role;
   std::string key;
+  int64_t saidAt{0};
 };
 
 struct SpokenContext
@@ -53,7 +54,7 @@ drogon::Task<v1::SpokenDuressOutcome> raise(const SpokenContext& context, const 
           {.role = role, .modules = moduleGate().snapshot(), .capability = "safety.duress"}))
     co_return v1::SPOKEN_DURESS_OUTCOME_NOT_ALLOWED;
   co_return wireOutcome(co_await context.safety->spokenDuress(
-      {.userId = request.userId, .userName = actor.name, .phraseKey = request.key}));
+      {.userId = request.userId, .userName = actor.name, .phraseKey = request.key, .saidAt = request.saidAt}));
 }
 
 grpc::ServerUnaryReactor* refuse(grpc::CallbackServerContext* context, const grpc::Status& status)
@@ -103,7 +104,10 @@ grpc::ServerUnaryReactor* DuressRpcService::RaiseSpoken(grpc::CallbackServerCont
   auto* reactor = context->DefaultReactor();
   drogon::app().getLoop()->queueInLoop(
       [spoken = SpokenContext{.safety = input_.safety, .actors = input_.actors},
-       call = SpokenRequest{.userId = request->user_id(), .role = request->role(), .key = request->key()},
+       call = SpokenRequest{.userId = request->user_id(),
+                            .role = request->role(),
+                            .key = request->key(),
+                            .saidAt = request->said_at()},
        reactor,
        response]() {
         drogon::async_run([spoken, call, reactor, response]() -> drogon::Task<void> {

@@ -38,6 +38,7 @@ public:
       const std::scoped_lock lock(mutex_);
       userId_ = request->user_id();
       role_ = request->role();
+      saidAt_ = request->said_at();
     }
     out->set_outcome(request->key() == "phrase-key" ? v1::SPOKEN_DURESS_OUTCOME_RAISED
                                                     : v1::SPOKEN_DURESS_OUTCOME_STALE);
@@ -64,6 +65,12 @@ public:
     return role_;
   }
 
+  [[nodiscard]] int64_t saidAt() const
+  {
+    const std::scoped_lock lock(mutex_);
+    return saidAt_;
+  }
+
 private:
   void remember(const grpc::CallbackServerContext* context)
   {
@@ -75,6 +82,7 @@ private:
   std::string credential_;
   int64_t userId_{0};
   std::string role_;
+  int64_t saidAt_{0};
 };
 
 struct ScriptedServer
@@ -119,16 +127,29 @@ TEST_CASE("the duress client raises a spoken alert for the speaker it names")
   ScriptedServer scripted;
   REQUIRE(scripted.server);
   const GuardDuressClient client({.target = scripted.target(), .credential = kCredential});
-  CHECK(client.raiseSpoken({.userId = 9, .role = "resident", .key = "phrase-key"}) ==
+  CHECK(client.raiseSpoken({.userId = 9, .role = "resident", .key = "phrase-key", .saidAt = 1'790'000'000}) ==
         SpokenDuressReply::Raised);
   CHECK(scripted.service.userId() == 9);
   CHECK(scripted.service.role() == "resident");
-  CHECK(client.raiseSpoken({.userId = 9, .role = "resident", .key = "old-key"}) == SpokenDuressReply::Stale);
+  CHECK(scripted.service.saidAt() == 1'790'000'000);
+  CHECK(client.raiseSpoken({.userId = 9, .role = "resident", .key = "old-key", .saidAt = 1'790'000'000}) ==
+        SpokenDuressReply::Stale);
+}
+
+TEST_CASE("a raise that names no time reaches guard with none")
+{
+  ScriptedServer scripted;
+  REQUIRE(scripted.server);
+  const GuardDuressClient client({.target = scripted.target(), .credential = kCredential});
+  CHECK(client.raiseSpoken({.userId = 9, .role = "resident", .key = "phrase-key", .saidAt = 0}) ==
+        SpokenDuressReply::Raised);
+  CHECK(scripted.service.saidAt() == 0);
 }
 
 TEST_CASE("a guard that does not answer is no key and an unavailable raise")
 {
   const GuardDuressClient client({.target = "127.0.0.1:1", .credential = kCredential});
   CHECK_FALSE(client.phraseKey().has_value());
-  CHECK(client.raiseSpoken({.userId = 9, .role = "owner", .key = "phrase-key"}) == SpokenDuressReply::Unavailable);
+  CHECK(client.raiseSpoken({.userId = 9, .role = "owner", .key = "phrase-key", .saidAt = 0}) ==
+        SpokenDuressReply::Unavailable);
 }

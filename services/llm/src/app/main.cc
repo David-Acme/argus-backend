@@ -352,7 +352,8 @@ int main()
                       {.role = role, .modules = moduleGate().snapshot(), .capability = "safety.duress"});
                 },
             .outbox = std::make_shared<SqliteDuressOutbox>(
-                SqliteDuressOutboxInput{.mutex = &graph.mutex(), .db = [&graph] { return graph.handle(); }})},
+                SqliteDuressOutboxInput{.mutex = &graph.mutex(), .db = [&graph] { return graph.handle(); }}),
+            .clock = {}},
         DuressScreenTiming{});
     llm->useScreen(*duressScreen);
     duressScreen->start();

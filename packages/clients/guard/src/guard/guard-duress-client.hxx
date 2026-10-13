@@ -28,6 +28,7 @@ struct SpokenDuressCall
   int64_t userId{0};
   std::string role;
   std::string key;
+  int64_t saidAt{0};
 };
 
 class GuardDuressClient

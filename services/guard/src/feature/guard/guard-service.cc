@@ -4493,6 +4493,8 @@ GuardService::raiseSafetyAlert(const SafetyAlertInput& input)
   data["alertId"] = static_cast<Json::Int64>(input.alertId);
   data["actorUserId"] = static_cast<Json::Int64>(input.actorUserId);
   data["actorName"] = input.actorName;
+  data["saidAt"] = input.saidAt > 0 ? Json::Value(static_cast<Json::Int64>(input.saidAt)) : Json::Value();
+  data["deliveredAt"] = static_cast<Json::Int64>(input.now);
   const EffectResult sent = co_await performEffect(
       {.kind = GuardActionKind::Notify,
        .danger = GuardDanger::Critical,

@@ -359,6 +359,63 @@ TEST_CASE("a spoken duress repeated within a minute folds into the first")
   rig.waitForNotified(2);
 }
 
+TEST_CASE("a spoken duress keeps when the words were said beside when guard received them")
+{
+  boot();
+  PhraseRig rig;
+  rig.setPhrase(kPhrase);
+  const std::string key = rig.storedKey();
+  CHECK(drogon::sync_wait(rig.safety->spokenDuress(
+            {.userId = 2, .userName = "Laura", .phraseKey = key, .saidAt = rig.clock - 600})) ==
+        SpokenDuressOutcome::Raised);
+  CHECK(scalar("SELECT said_at FROM guard_safety_alert WHERE spoken = 1 AND user_id = 2") ==
+        std::to_string(rig.clock - 600));
+  CHECK(scalar("SELECT created_at FROM guard_safety_alert WHERE spoken = 1 AND user_id = 2") ==
+        std::to_string(rig.clock));
+  rig.waitForKind("guard_duress", 2);
+  const auto alerts = rig.notifications.ofKind("guard_duress");
+  REQUIRE_FALSE(alerts.empty());
+  for (const auto& alert : alerts) {
+    CHECK(alert.data["saidAt"].asInt64() == rig.clock - 600);
+    CHECK(alert.data["deliveredAt"].asInt64() == rig.clock);
+  }
+
+  rig.clock += 30;
+  CHECK(drogon::sync_wait(rig.safety->spokenDuress(
+            {.userId = 2, .userName = "Laura", .phraseKey = key, .saidAt = rig.clock - 1})) ==
+        SpokenDuressOutcome::Repeated);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert WHERE spoken = 1") == "1");
+  CHECK(scalar("SELECT said_at FROM guard_safety_alert WHERE spoken = 1 AND user_id = 2") ==
+        std::to_string(rig.clock - 630));
+  rig.waitForNotified(1);
+}
+
+TEST_CASE("a raise that names no time, or an impossible one, records none and never the receipt time")
+{
+  boot();
+  PhraseRig rig;
+  rig.setPhrase(kPhrase);
+  const std::string key = rig.storedKey();
+  CHECK(drogon::sync_wait(rig.safety->spokenDuress(
+            {.userId = 2, .userName = "Laura", .phraseKey = key, .saidAt = 0})) == SpokenDuressOutcome::Raised);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert WHERE user_id = 2 AND said_at IS NULL") == "1");
+  rig.waitForKind("guard_duress", 2);
+  const auto alerts = rig.notifications.ofKind("guard_duress");
+  REQUIRE_FALSE(alerts.empty());
+  for (const auto& alert : alerts) {
+    CHECK(alert.data.isMember("saidAt"));
+    CHECK(alert.data["saidAt"].isNull());
+    CHECK(alert.data["deliveredAt"].asInt64() == rig.clock);
+  }
+
+  CHECK(drogon::sync_wait(rig.safety->spokenDuress(
+            {.userId = 3, .userName = "Marta", .phraseKey = key, .saidAt = rig.clock + 3600})) ==
+        SpokenDuressOutcome::Raised);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert WHERE user_id = 3 AND said_at IS NULL") == "1");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert WHERE said_at IS NOT NULL") == "0");
+  rig.waitForNotified(2);
+}
+
 TEST_CASE("a stale key, or duress switched off, raises nothing")
 {
   boot();
@@ -410,8 +467,11 @@ TEST_CASE("the duress RPC answers only the llm caller and checks the speaker's c
   CHECK(llm.raiseSpoken({.userId = 2, .role = "guest", .key = "phrase-pbkdf2-sha256$1024$6$00$00"}) ==
         SpokenDuressReply::Stale);
   CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert") == "0");
-  CHECK(llm.raiseSpoken({.userId = 2, .role = "guest", .key = key}) == SpokenDuressReply::Raised);
+  CHECK(llm.raiseSpoken({.userId = 2, .role = "guest", .key = key, .saidAt = rig.clock - 30}) ==
+        SpokenDuressReply::Raised);
   CHECK(scalar("SELECT actor_name FROM guard_safety_alert WHERE spoken = 1 AND user_id = 2") == "Laura");
+  CHECK(scalar("SELECT said_at FROM guard_safety_alert WHERE spoken = 1 AND user_id = 2") ==
+        std::to_string(rig.clock - 30));
   rig.waitForNotified(1);
   server->Shutdown();
 }

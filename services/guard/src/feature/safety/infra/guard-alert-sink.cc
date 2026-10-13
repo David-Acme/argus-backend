@@ -14,7 +14,8 @@ drogon::Task<SafetyDelivery> GuardAlertSink::raise(const SafetyAlertNotice& noti
                                         .environmentId = notice.environmentId,
                                         .now = notice.now,
                                         .sequence = notice.sequence,
-                                        .spoken = notice.spoken});
+                                        .spoken = notice.spoken,
+                                        .saidAt = notice.saidAt});
   if (outcome.accepted)
     co_return SafetyDelivery::Sent;
   if (outcome.unattended)

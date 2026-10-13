@@ -433,7 +433,8 @@ CREATE TABLE IF NOT EXISTS guard_safety_alert (
     escalated_at    INTEGER NOT NULL DEFAULT 0,
     closed_at       INTEGER NOT NULL DEFAULT 0,
     actor_name      TEXT    NOT NULL DEFAULT '',
-    spoken          INTEGER NOT NULL DEFAULT 0 CHECK (spoken IN (0, 1))
+    spoken          INTEGER NOT NULL DEFAULT 0 CHECK (spoken IN (0, 1)),
+    said_at         INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_guard_safety_alert_user_kind

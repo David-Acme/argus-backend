@@ -50,6 +50,7 @@ SpokenDuressReply GuardDuressClient::raiseSpoken(const SpokenDuressCall& call) c
   request.set_user_id(call.userId);
   request.set_role(call.role);
   request.set_key(call.key);
+  request.set_said_at(call.saidAt);
   argus::guard::v1::SpokenDuressResponse response;
   if (const grpc::Status status = stub_->RaiseSpoken(&context, request, &response); !status.ok())
     return SpokenDuressReply::Unavailable;

@@ -1299,7 +1299,7 @@ and changes nothing the speaker or an attacker can see.
   `argus::clients::guard`'s `GuardDuressClient`). Only the `llm` caller is
   admitted: the `[rpc.callers] llm` credential the tool RPC already uses, so
   no new secret is provisioned. `GetPhrase` answers the stored key (empty
-  while the switch is off). `RaiseSpoken {userId, role, key}` resolves the
+  while the switch is off). `RaiseSpoken {userId, role, key, saidAt}` resolves the
   speaker through identity (`IdentityActorDirectory`); an account identity
   reports inactive is refused, the role identity reports wins over the role
   the llm declares (the declared one is used only when identity cannot be
@@ -1321,6 +1321,31 @@ and changes nothing the speaker or an attacker can see.
   does not change. A second phrase from the same speaker within 60 s
   (`spokenRepeatWindowS`) answers `REPEATED` and adds nothing, so a retried
   turn never rings the house twice.
+- *Two times per spoken alert (reviewer ruling, 2026-10-13).* An alert
+  carries two times, kept apart on purpose:
+  - **`said_at`** is when the words were heard. The request carries it
+    (`SpokenDuressRequest.said_at = 4`, additive, epoch seconds), and the row
+    keeps it in the nullable `said_at` column.
+  - **`created_at`** is when guard received the raise: the delivery time. No
+    second column repeats it.
+  - **Before the 60 s fold.** The fold still runs on receipt time, so a raise
+    argus-llm retries after a restart is judged when it arrives, and a
+    repeat changes neither row.
+  - **No time it does not have.** An absent `said_at` (an older caller, or
+    0) is stored as `NULL`, never as the receipt time, and so is one more
+    than 300 s in the future (`kSaidAtSkewS`), which no clock can have
+    heard.
+  - **What the household notice carries.** Both reach the notice's data as
+    `saidAt` (a number, or `null`) and `deliveredAt`, on every safety alert.
+    Panic and the duress code have no separate event time, so their `saidAt`
+    is `null`. argus-notification keeps a notification's data verbatim and
+    serves it on its own routes and on `/sync`, which is where a duress
+    alert is read today. Guard has no read route of its own that lists safety
+    alerts. Showing the two times in the app is track A's unit.
+  - **Existing databases.** They gain the column through
+    `guard_schema::migrate` (`migrateSafetyAlertColumns`, one `ALTER TABLE
+    … ADD COLUMN said_at INTEGER`), the path that added `spoken` and
+    `actor_name`. Old rows read `NULL`.
 
 Code: `src/feature/safety/` (controller, DTOs, `SafetyService` as the
 `DisarmGate` that `GuardFeatureService::setMode` consults, `pin-hash`,
@@ -1329,11 +1354,14 @@ Code: `src/feature/safety/` (controller, DTOs, `SafetyService` as the
 `vocabulary/phrase-change.hxx`), `src/feature/guard/services/disarm-gate.hxx`,
 `src/app/rpc/duress-rpc-service`, tables `guard_user_pin`, `guard_pin_attempt`,
 `guard_safety_setting` (with `duress_phrase_key`), `guard_safety_alert` (with
-`spoken`); `tests/unit/guard-safety-test.cc` and
+`spoken` and `said_at`); `tests/unit/guard-safety-test.cc` and
 `tests/unit/guard-duress-phrase-test.cc` (the DTO's rules, the key at rest,
 clearing and switching off, the code asked for a change and the duress code
 still alerting, the spoken alert's recipients and words, the 60 s fold, a
-stale key, and the RPC's caller and capability checks).
+stale key, the RPC's caller and capability checks, the two times a spoken
+alert keeps and the absent or impossible `said_at` kept as `NULL`), and
+`tests/unit/guard-migration-test.cc` (an alert table from before the safety
+columns gains all of them, `said_at` included, with its row intact).
 
 ## Who is called, in what order, and how (2026-10, RESPONSE)
 

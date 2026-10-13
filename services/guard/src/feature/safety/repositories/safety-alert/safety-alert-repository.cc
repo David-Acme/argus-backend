@@ -10,7 +10,7 @@ drogon::Task<int64_t> SafetyAlertRepository::insert(const SafetyAlertInsertInput
 {
   const auto rows = co_await DbService::client()->execSqlCoro(
       std::string(INSERT_ALERT), safetyAlertKindToString(input.kind), input.userId,
-      input.environmentId, input.now, input.actorName, input.spoken ? 1 : 0);
+      input.environmentId, input.now, input.actorName, input.spoken ? 1 : 0, input.saidAt);
   co_return rows.empty() ? 0 : rows.front()["id"].as<int64_t>();
 }
 
@@ -62,7 +62,8 @@ drogon::Task<std::vector<SafetyAlertRow>> SafetyAlertRepository::pending() const
                       .escalatedAt = row["escalated_at"].as<int64_t>(),
                       .closedAt = row["closed_at"].as<int64_t>(),
                       .actorName = row["actor_name"].as<std::string>(),
-                      .spoken = row["spoken"].as<int>() != 0});
+                      .spoken = row["spoken"].as<int>() != 0,
+                      .saidAt = row["said_at"].as<int64_t>()});
   }
   co_return alerts;
 }

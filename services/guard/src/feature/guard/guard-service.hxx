@@ -59,6 +59,7 @@ public:
     int64_t now{0};
     int64_t sequence{1};
     bool spoken{false};
+    int64_t saidAt{0};
   };
 
   struct SafetyAlertOutcome

@@ -772,6 +772,9 @@ bool migrateSafetyAlertColumns()
       !exec("ALTER TABLE guard_safety_alert ADD COLUMN spoken INTEGER "
             "NOT NULL DEFAULT 0 CHECK (spoken IN (0, 1))"))
     return false;
+  if (!columnExists("guard_safety_alert", "said_at") &&
+      !exec("ALTER TABLE guard_safety_alert ADD COLUMN said_at INTEGER"))
+    return false;
   return true;
 }
 

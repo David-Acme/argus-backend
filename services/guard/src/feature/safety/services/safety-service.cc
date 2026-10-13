@@ -47,6 +47,7 @@ struct SafetyRuntime
 namespace
 {
 constexpr int64_t kPurgeIntervalS = 3600;
+constexpr int64_t kSaidAtSkewS = 300;
 
 int64_t systemNow()
 {
@@ -403,12 +404,14 @@ drogon::Task<SpokenDuressOutcome> SafetyService::spokenDuress(const SpokenDuress
   if (co_await alertRepository_.recentSpoken(
           {.userId = input.userId, .since = at - config_.spokenRepeatWindowS}))
     co_return SpokenDuressOutcome::Repeated;
+  const int64_t saidAt = input.saidAt > 0 && input.saidAt <= at + kSaidAtSkewS ? input.saidAt : 0;
   const int64_t alertId = co_await alertRepository_.insert({.kind = SafetyAlertKind::Duress,
                                                             .userId = input.userId,
                                                             .environmentId = 0,
                                                             .now = at,
                                                             .actorName = input.userName,
-                                                            .spoken = true});
+                                                            .spoken = true,
+                                                            .saidAt = saidAt});
   deliverLater({.kind = SafetyAlertKind::Duress,
                 .alertId = alertId,
                 .actorUserId = input.userId,
@@ -416,7 +419,8 @@ drogon::Task<SpokenDuressOutcome> SafetyService::spokenDuress(const SpokenDuress
                 .environmentId = 0,
                 .now = at,
                 .sequence = 1,
-                .spoken = true});
+                .spoken = true,
+                .saidAt = saidAt});
   co_return SpokenDuressOutcome::Raised;
 }
 
@@ -488,7 +492,8 @@ void SafetyService::duress(const DisarmRequest& request) const
            .environmentId = request.environmentId.value_or(0),
            .now = at,
            .actorName = request.userName,
-           .spoken = false});
+           .spoken = false,
+           .saidAt = 0});
       co_await deliver({.kind = SafetyAlertKind::Duress,
                         .alertId = alertId,
                         .actorUserId = request.userId,
@@ -496,7 +501,8 @@ void SafetyService::duress(const DisarmRequest& request) const
                         .environmentId = request.environmentId.value_or(0),
                         .now = at,
                         .sequence = 1,
-                        .spoken = false});
+                        .spoken = false,
+                        .saidAt = 0});
     }
     catch (const std::exception& error) {
       LOG_ERROR << "Guard safety: an alert could not be recorded: " << error.what();
@@ -525,7 +531,8 @@ drogon::Task<PanicResult> SafetyService::panic(const PanicInput& input) const
                                         .environmentId = input.environmentId.value_or(0),
                                         .now = at,
                                         .actorName = input.userName,
-                                        .spoken = false});
+                                        .spoken = false,
+                                        .saidAt = 0});
   const SafetyAlertNotice notice{.kind = SafetyAlertKind::Panic,
                                  .alertId = alertId,
                                  .actorUserId = input.userId,
@@ -533,7 +540,8 @@ drogon::Task<PanicResult> SafetyService::panic(const PanicInput& input) const
                                  .environmentId = input.environmentId.value_or(0),
                                  .now = at,
                                  .sequence = 1,
-                                 .spoken = false};
+                                 .spoken = false,
+                                 .saidAt = 0};
   const SafetyDelivery delivery = co_await deliver(notice);
   if (dependencies_.actor && delivery != SafetyDelivery::NoRecipients)
     static_cast<void>(co_await dependencies_.actor->confirmPanic(notice));
@@ -630,7 +638,8 @@ drogon::Task<size_t> SafetyService::sweepPending() const
                           .environmentId = alert.environmentId,
                           .now = alert.createdAt,
                           .sequence = alert.sequence,
-                          .spoken = alert.spoken}) == SafetyDelivery::Sent)
+                          .spoken = alert.spoken,
+                          .saidAt = alert.saidAt}) == SafetyDelivery::Sent)
       ++delivered;
   }
   co_return delivered;

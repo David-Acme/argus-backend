@@ -20,6 +20,7 @@ struct DuressScreenDependencies
   std::shared_ptr<const DuressLink> link;
   std::function<bool(UserRole)> eligible;
   std::shared_ptr<DuressOutbox> outbox{};
+  std::function<int64_t()> clock{};
 };
 
 struct DuressScreenTiming
@@ -55,6 +56,7 @@ private:
   void hold(const DuressRaiseCreateInput& raise) const;
   void forget(int64_t row) const;
   [[nodiscard]] std::vector<DuressRaiseRow> stored() const;
+  [[nodiscard]] int64_t now() const;
 
   DuressScreenDependencies dependencies_;
   DuressScreenTiming timing_;

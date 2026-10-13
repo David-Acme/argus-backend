@@ -75,6 +75,7 @@ struct SpokenDuressInput
   int64_t userId{0};
   std::string userName;
   std::string phraseKey;
+  int64_t saidAt{0};
 };
 
 enum class SpokenDuressOutcome : uint8_t

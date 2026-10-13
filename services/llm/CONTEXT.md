@@ -926,12 +926,25 @@ withheld turn and an unintelligible one cannot be told apart.
   The words go on as heard, and a copy waits (at most 32) to be matched once
   the key arrives, so the alert is still raised. That boot window is the one
   place the words can travel unredacted.
-- **The raise.** A match becomes one pending `RaiseSpoken {userId, role, key}`
-  per speaker, handed to guard by the worker. `RAISED` or `REPEATED` settle it.
+- **The raise.** A match becomes one pending `RaiseSpoken {userId, role, key,
+  saidAt}` per speaker, handed to guard by the worker. `RAISED` or `REPEATED` settle it.
   `STALE` and `NOT_ALLOWED` drop it and read the key again, because words that
   are no longer the phrase are no alert. An unreachable guard is retried with
   the same backoff for as long as the process runs, and once more at stop (the
   `llm-duress` drain).
+- **When the words were said (reviewer ruling, 2026-10-13).** `saidAt` is the
+  instant the words reached this service's screen, in epoch seconds: the
+  moment `DuressScreen::screen` was called, before any hashing. That is
+  voice's `POST /llm/v1/screen` right after STT answered, or the turn itself
+  when voice did not screen it. Voice's own capture or transcript time is not
+  passed on today, so this is "llm's turn arrival" in the ruling's terms. It
+  trails the speech by the STT time, usually well under the few seconds a
+  long turn takes. Words heard before guard first answered keep the time they
+  were heard, not the time the late match found them. The outbox row stores
+  the same instant, and every retry sends it, after a restart too. Guard keeps
+  it beside the time it received the raise (`services/guard/CONTEXT.md`,
+  "Two times per spoken alert"). `DuressScreenDependencies::clock` replaces
+  the clock in tests.
 - **The raise survives a restart (the reviewer's F4 gap, closed 2026-10-13).**
   - **Written in the same turn.** The match is written down before `screen`
     answers: one row per speaker in `duress_raise_outbox` (this service's
@@ -953,7 +966,7 @@ withheld turn and an unintelligible one cannot be told apart.
   - **Never written down.** Words matched late (the boot window above) are
     written only once they match. The late queue itself is never written,
     since it holds words, so a restart inside the boot window forgets what
-    had not been matched yet.
+    had not been matched yet. That loss is accepted (reviewer, 2026-10-13).
   - **A row that may come back.** A row guard settled but argus-llm could not
     cross out may reach guard again after a restart. Guard's repeat window
     answers `REPEATED`.
@@ -984,6 +997,9 @@ withheld turn and an unintelligible one cannot be told apart.
   guard's acknowledgement, and reaches guard with the key it matched;
 - a raise whose phrase changed while argus-llm was down is crossed out without
   asking guard;
+- the raise carries the instant the words reached the screen, every retry
+  carries the same, a restart sends the time the row stored, and words matched
+  once guard answers carry the time they were heard;
 - the change notice that asks for a refresh.
 
 ## The per-turn context block (2026-10-08)
