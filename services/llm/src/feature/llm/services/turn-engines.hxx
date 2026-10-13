@@ -9,6 +9,7 @@
 #include <filesystem>
 #include <memory>
 #include <string>
+#include <vector>
 
 class LfmAdapter;
 
@@ -35,5 +36,9 @@ struct TurnEngines
 
   [[nodiscard]] std::string pipeline() const;
 };
+
+[[nodiscard]] std::vector<const turn::Decider*> productionOrder(const LfmAdapter& adapter, const turn::Decider& laya);
+
+[[nodiscard]] int layaSessionThreads(int configured);
 
 [[nodiscard]] TurnEngines installTurnEngines(const TurnEngineInput& input);

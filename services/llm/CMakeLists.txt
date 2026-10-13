@@ -378,7 +378,8 @@ add_executable(llm-turn-engines-test tests/unit/llm-turn-engines-test.cc)
 
 target_compile_definitions(llm-turn-engines-test PRIVATE
     ARGUS_TEST_BUNDLES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/bundles"
-    ARGUS_TEST_LAYA_LABELS="${CMAKE_CURRENT_SOURCE_DIR}/tools/laya-labels.tsv")
+    ARGUS_TEST_LAYA_LABELS="${CMAKE_CURRENT_SOURCE_DIR}/tools/laya-labels.tsv"
+    ARGUS_TEST_PRODUCTION_TRAFFIC="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/intent/eval-production.tsv")
 
 target_link_libraries(llm-turn-engines-test PRIVATE argus::llm doctest::doctest)
 

@@ -559,8 +559,8 @@ shared file-static behind a mutex.
   `services/llm/scripts/install-bundle.sh <decide|extract> <bundle-dir>`, which
   keeps the replaced bundle as `<slot>.previous` (`--rollback` swaps it back);
   training lives OUTSIDE this repo, in the sibling `intent-training/` project.
-  The turn decides with the rules first, then Laya; the explicit triggers
-  ("recuerda que", "remind me that") are Laya's fallback. The LLM never chooses
+  The turn decides with the rules first, then the explicit triggers
+  ("recuerda que", "remind me that"), then Laya. The LLM never chooses
   a tool: the decider picks it, the turn fills its arguments, and the model
   speaks about the result. **Degradation is a contract**: no decider bundle on
   disk and only the rule commands and the explicit triggers route; no
