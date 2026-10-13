@@ -985,9 +985,15 @@ services:
       RUSTFS_ENDPOINT: http://rustfs:9000
       RUSTFS_REGION: "${RUSTFS_REGION:-us-east-1}"
       RUSTFS_BUCKET_FILE: /run/argus/rustfs-bucket
+      RUSTFS_ACCOUNTS_DIR: /run/argus/accounts
     volumes:
       - ../scripts/lib/s3-init.sh:/opt/argus/s3-init.sh:ro
       - ${ARGUS_DATA_DIR:-./data}/rustfs/secrets/rustfs-bucket:/run/argus/rustfs-bucket:ro
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/rustfs/accounts
+        target: /run/argus/accounts
+        bind:
+          create_host_path: false
     secrets:
       - rustfs_access_key
       - rustfs_secret_key

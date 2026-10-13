@@ -89,3 +89,101 @@ if [ "$status" != 200 ]; then
 fi
 
 echo "RustFS private bucket and application service account are ready."
+
+accounts="${RUSTFS_ACCOUNTS_DIR:-}"
+[ -n "$accounts" ] || exit 0
+
+policy_for() {
+  conditions=""
+  resources=""
+  for prefix in "$@"; do
+    conditions="$conditions${conditions:+,}\"$prefix*\""
+    resources="$resources${resources:+,}\"arn:aws:s3:::$bucket/$prefix*\""
+  done
+  printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:ListBucket"],"Resource":["arn:aws:s3:::%s"],"Condition":{"StringLike":{"s3:prefix":[%s]}}},{"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject"],"Resource":[%s]}]}' \
+    "$bucket" "$conditions" "$resources" | sed 's/"/\\"/g'
+}
+
+access_key_of() {
+  awk -F'"' '{ for (i = 1; i < NF; i++) if ($i == "accessKey") { printf "%s", $(i + 2); exit } }' "$1"
+}
+
+remove_accounts_named() {
+  status=$(signed -o "$work/list.out" -w '%{http_code}' "$endpoint/rustfs/admin/v3/list-service-accounts")
+  if [ "$status" != 200 ]; then
+    echo "RustFS service accounts could not be listed (HTTP $status)" >&2
+    exit 1
+  fi
+  rm -f "$work"/orphan-*.curl
+  tr '{' '\n' < "$work/list.out" | awk -F'"' -v name="$1" -v endpoint="$endpoint" -v dir="$work" '
+    {
+      key = ""
+      named = 0
+      for (i = 1; i < NF; i++) {
+        if ($i == "accessKey")
+          key = $(i + 2)
+        if ($i == "name" && $(i + 2) == name)
+          named = 1
+      }
+      if (named && key != "") {
+        count++
+        target = dir "/orphan-" count ".curl"
+        printf "url = \"%s/rustfs/admin/v3/delete-service-accounts?accessKey=%s\"\n", endpoint, key > target
+        close(target)
+      }
+    }'
+  for orphan in "$work"/orphan-*.curl; do
+    [ -f "$orphan" ] || continue
+    status=$(signed -X DELETE -K "$orphan" -o "$work/delete.out" -w '%{http_code}')
+    if [ "$status" != 200 ]; then
+      echo "RustFS left-over account $1 could not be removed (HTTP $status)" >&2
+      exit 1
+    fi
+  done
+}
+
+ensure_account() {
+  service="$1"
+  shift
+  dir="$accounts/$service"
+  file="$dir/credentials.json"
+  if [ ! -d "$dir" ] || [ ! -w "$dir" ]; then
+    echo "RustFS account directory $dir is missing or not writable" >&2
+    exit 1
+  fi
+  if [ -s "$file" ]; then
+    {
+      printf 'url = "%s/rustfs/admin/v3/info-service-account?accessKey=' "$endpoint"
+      access_key_of "$file"
+      printf '"\n'
+    } > "$work/info-$service.curl"
+    status=$(signed -K "$work/info-$service.curl" -o "$work/info-$service.out" -w '%{http_code}')
+    case "$status" in
+      200)
+        echo "RustFS account for $service is ready."
+        return 0
+        ;;
+      404) ;;
+      *)
+        echo "RustFS account for $service could not be checked (HTTP $status)" >&2
+        exit 1
+        ;;
+    esac
+  fi
+  remove_accounts_named "argus-$service"
+  status=$(printf '{"name":"argus-%s","description":"Argus %s private objects","policy":"%s"}' \
+      "$service" "$service" "$(policy_for "$@")" \
+    | signed -X PUT -H 'content-type: application/json' --data-binary @- \
+      -o "$dir/.credentials.json.new" -w '%{http_code}' "$endpoint/rustfs/admin/v3/add-service-accounts")
+  if [ "$status" != 200 ] || ! grep -q '"secretKey"' "$dir/.credentials.json.new"; then
+    rm -f "$dir/.credentials.json.new"
+    echo "RustFS account for $service could not be created (HTTP $status)" >&2
+    exit 1
+  fi
+  mv "$dir/.credentials.json.new" "$file"
+  echo "RustFS account for $service is ready, with new keys."
+}
+
+ensure_account identity portraits/ faces/
+ensure_account camera cameras/
+ensure_account guard guard/incidents/

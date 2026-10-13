@@ -386,9 +386,14 @@ configure_storage() {
 ensure_object_store() {
   local root="$DATA_DIR/rustfs"
   local secrets="$root/secrets"
+  local service
 
   mkdir -p "$root/objects" "$secrets"
   chmod 700 "$root" "$secrets"
+  for service in identity camera guard; do
+    mkdir -p "$root/accounts/$service"
+    chmod 700 "$root/accounts" "$root/accounts/$service"
+  done
 
   ensure_secret_file "$secrets/rustfs_access_key" upper_hex 20
   ensure_secret_file "$secrets/rustfs_secret_key" lower_hex 48

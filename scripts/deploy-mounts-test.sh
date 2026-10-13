@@ -270,6 +270,28 @@ holds_key() {
 printf 'leak=$(secret argus_s3_secret_key)\n' > "$TEST_TMP/held-key.sh"
 holds_key "$TEST_TMP/held-key.sh" || fail "a key held in a shell variable was not reported"
 
+grep -qx '\${ARGUS_DATA_DIR:-./data}/rustfs/accounts /run/argus/accounts 0' <<<"$(bind_mounts "$COMPOSE" rustfs-init)" \
+  || fail "rustfs-init does not mount the writers' account directory writable"
+grep -Eq '^      RUSTFS_ACCOUNTS_DIR: /run/argus/accounts$' <<<"$(service_block "$COMPOSE" rustfs-init)" \
+  || fail "rustfs-init is not told where the writers' accounts go"
+for name in $(service_names "$COMPOSE"); do
+  [ "$name" = rustfs-init ] && continue
+  bind_mounts "$COMPOSE" "$name" | grep -q 'rustfs/accounts /' \
+    && fail "$name mounts the writers' account directory"
+done
+while read -r source prefix; do
+  grep -qF "\"$prefix" "$ROOT/$source" || fail "$source no longer writes under $prefix, which a writer's account is scoped to"
+done <<'LITERALS'
+packages/lib/storage/src/storage/s3-storage-service.cc portraits/
+services/identity/src/shared/services/face-crop/face-crop-store.cc faces/
+services/camera/src/feature/operator/services/evidence/evidence-uploader.cc cameras/
+services/guard/src/feature/guard/guard-service.cc guard/incidents/
+LITERALS
+for account in "identity portraits/ faces/" "camera cameras/" "guard guard/incidents/"; do
+  grep -qx "ensure_account $account" "$ROOT/scripts/lib/s3-init.sh" \
+    || fail "rustfs-init does not scope the ${account%% *} account to ${account#* }"
+done
+
 sandbox="$TEST_TMP/provision"
 mkdir -p "$sandbox/root/scripts" "$sandbox/root/argus-deploy" "$sandbox/bin"
 cp "$ROOT/scripts/provision-host.sh" "$sandbox/root/scripts/"
@@ -298,6 +320,9 @@ for name in rustfs_access_key rustfs_secret_key rustfs_rpc_secret argus_s3_acces
     || fail "the set -x trace of provision-host.sh carries the value of $name"
 done
 for service in identity camera guard; do
+  account_dir="$sandbox/data/rustfs/accounts/$service"
+  [ -d "$account_dir" ] && [ "$(find "$account_dir" -maxdepth 0 -perm 700)" = "$account_dir" ] \
+    || fail "provisioning did not create the 0700 account directory of $service"
   for pair in "access_key argus_s3_access_key" "secret_key argus_s3_secret_key" "bucket rustfs-bucket"; do
     set -- $pair
     [ "$(toml_value "$sandbox/root/argus-deploy/config.$service.toml" storage.s3 "$1")" \

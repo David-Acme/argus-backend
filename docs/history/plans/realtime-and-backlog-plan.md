@@ -298,6 +298,11 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   keys, the admin API's JSON answer written straight into a 0600 file. `provision-host.sh` writes
   the S3 secrets straight into their files and into the configs without a shell value, and
   `deploy-mounts-test` fails if the `set -x` trace of a dry run carries one.
+  Step 3, 2026-10-13: `rustfs-init` also creates one account per writer, scoped to the prefixes
+  its code writes, with keys the server generates; the admin API's answer goes straight into
+  `${ARGUS_DATA_DIR}/rustfs/accounts/<service>/credentials.json` (0600). A re-run keeps the keys; an
+  account lost on the server is created again, and a lost file gets a new account with the old one
+  removed. `scripts/rustfs-init-test.sh` proves each account's prefixes on an exported RustFS.
 - S5 Legacy refresh tokens two rotations old refused without revoking their family (accepted gap).
 
 Rulings of 2026-10-12 (reviewer, owner away and delegating): S2 is superseded by the separate Argus
