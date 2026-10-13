@@ -263,21 +263,31 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   once every installation has booted a build that carries the copy into `change_outbox`. It is no
   longer created and no longer read or written, but deleting it is a data removal and needs an
   explicit owner reset or a later release, never a side effect of a feature build.
-- D9 argus-tts's streaming route answers an empty 200 to a request that carries `Connection: close`
-  (Drogon logs "Chunking Set CloseConnection" and drops the chunked body; found 2026-10-12 while
-  measuring Pocket). The in-tree client avoids it (`tts-remote.cc` streams with `closeConnection =
-  false`), so production is not affected; any other client that closes per request gets silence.
-  Fix on the server side (ignore the close for the stream, or close after the last chunk) with a test
-  that streams audio to a closing client.
-- D10 `scripts/build-all-test.sh`, the orchestrator's own self-test, exits 1 on master (reproduced on
-  2026-10-12 at `6408cec6`), silently around its second mocked `build-all.sh dev --only camera` call,
-  after the check-vendored step that sees no git tree. Find the change that broke it and restore it
-  green; a gate's own test that fails unnoticed is no gate.
-- D11 About twenty test files across camera, guard, identity and productivity hold `AppRunner runner;`
-  as a member constructed before their constructor body; where that body calls `addDbClient`, the app
-  thread can start Drogon first and the fixture aborts (`!running_`), intermittently. Two productivity
-  fixtures were fixed with R21 (`797b70c8`); the rest follow the same shape: client setup in a member
-  declared first, or the main-owned runner pattern.
+- D9 CLOSED (`2e41b5ae`). argus-tts's streaming route answered an empty 200 to a request carrying
+  `Connection: close`. Drogon marks every response answering a non-keep-alive request as one that must
+  close, *after* the handler returns, and its send path then refuses to start an async stream on it
+  ("Chunking Set CloseConnection"), so no flag the route sets survives. The route now hands such a
+  client to the buffered synthesis the non-stream route already serves: it hears the answer, the socket
+  closes behind it, and it gets no incremental audio, which is named in `services/tts/CONTEXT.md`.
+  `tts-wire-test` pins it, and one consequence with it: a closing client takes no stream slot, so the
+  busy case asks as a streaming client.
+- D10 CLOSED (`a62a7f78`). `scripts/build-all-test.sh` exited 1, twice over: `check-vendored` exits 2
+  when a tree holds no `third_party/*/argus-patches` and `build-all.sh` ran it under `set -e`, so the
+  self-test's own no-git-tree case aborted (the orchestrator now asks the question first and skips with
+  a log line, as it already did for the comment gate), and a fixture still appended its stray label to
+  what it took for a map after the bundle's `labels.json` became a list. Self-test green; the fix
+  touched no project.
+- D11 CLOSED as measured, no change needed. The race needs the runner to be a *member*, because member
+  initialization runs before the constructor body that adds the database client; a local declared after
+  `addDbClient` is safe by source order. Classifying all 47 `AppRunner runner;` sites that way leaves
+  exactly two racing fixtures, both productivity's (reminder and mcp), fixed with R21 (`797b70c8`);
+  camera, guard, identity and the rest declare their runner as a local inside the case, added after the
+  client. The earlier "about twenty files" count came from the grep shape rather than that distinction.
+- D12 The unary `POST /tts/v1/synthesize` takes no admission slot of its own: only the stream route
+  checks `streams_`, so a closing client now reaches synthesis without a slot and so does any unary
+  caller. The engine still serialises on its mutex, so nothing breaks, but the waiting is unbounded;
+  argus-tts listens internally, which is what keeps the risk low. The fix is the unary path taking the
+  same admission as the stream, answering 429 when full, with a test.
 
 ## 8. Decisions awaiting the owner
 

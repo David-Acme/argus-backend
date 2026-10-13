@@ -1094,11 +1094,10 @@ quick.
 ## Key Files Reference
 
 The group prefixes (`lib/`, `contracts/`, `clients/`) and the dropped
-`-contract`/`-client` suffixes have landed (rule 25), and the `lib/` rows below
-already carry §2.3's interior (`src/<name>/`) — Phase 2 step 2 applied it to
-every lib. The contract, client and service rows still show the spellings of
-the pre-layout tree, which steps 2b-2d replace. A path below can therefore move
-for two different reasons, and says which when it does.
+`-contract`/`-client` suffixes have landed (rule 25), and every row below
+carries the layout Phase 2 steps 2 and 2b-2d applied: the `lib/` rows with
+§2.3's interior (`src/<name>/`), the contract, client and service rows with
+their post-move spellings.
 
 **Any owner**
 

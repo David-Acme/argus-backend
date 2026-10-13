@@ -84,7 +84,8 @@ protocol could not regress by accident in the commit that changed the endpoint.
   `docs/architecture/wire-sync-tables.md`.
 - **The fan-out.** One NATS **durable JetStream consumer per change stream**
   (`change_feed::defaults()`: `argus-sync-camera` on `ARGUS_CAMERA`,
-  `argus-sync-notification`, `argus-sync-productivity`, `argus-sync-identity`
+  `argus-sync-notification`, `argus-sync-productivity`,
+  `argus-sync-productivity-action` on `ARGUS_PRODUCTIVITY_ACTION`, `argus-sync-identity`
   and `argus-sync-identity-action`, the last two both on
   `ARGUS_IDENTITY_CHANGE`, `argus-sync-auth-action` on
   `ARGUS_AUTH_CHANGE`, `argus-sync-auth-session` on
@@ -436,11 +437,13 @@ role's tables per page and per `findLast`), `user_audit_log` pages through
 `(user_id, id)` and `user_action_log` through `(created_at, id)`; the indexes
 are additive and appear at the next boot.
 
-**NATS is load-bearing for audit and journal persistence.** A deployment with
-no `[nats] url` loses live fan-out *and* the audit writes, because the writes
-are the fan-out's first act. The producers' durable outbox that removes this
-dependency is row 2's; until it lands the dependency is documented rather than
-hidden.
+**NATS is load-bearing for audit and journal persistence, and the producers'
+outbox is what keeps that from meaning loss.** A deployment with no `[nats]
+url` loses live fan-out *and* the audit and journal writes, because this
+service's writes are the fan-out's first act - but every producer now appends
+its change to its own `change_outbox` inside the domain transaction, so the
+rows wait there and relay when the broker returns. Nothing is lost, only
+delayed, and the delay is visible in each producer's pending rows.
 
 The delivery leg kept the gateway's shape with one deliberate change: the
 durable name is `argus-sync-delivery`, not `argus-gateway-delivery`, so the new
@@ -976,6 +979,23 @@ by time. Three additive changes carry it:
   publishes its module actions on `argus.settings.v1.user-action` (stream
   `ARGUS_SETTINGS_ACTION`), consumed by the durable `argus-sync-settings-action`
   and written by the same `handleActionPayload` as the identity and auth ones.
+- **Productivity journals too, and keeps what is private private** (R19b,
+  2026-10-12). argus-productivity publishes every user-initiated create, update
+  and delete of `project`, `project_task`, `project_member`, `calendar_event`,
+  `calendar_event_share` and `reminder` on
+  `argus.productivity.v1.user-action` (stream `ARGUS_PRODUCTIVITY_ACTION`, a
+  stream of its own because `reconcileStream` refuses to widen
+  `ARGUS_PRODUCTIVITY_CHANGE` on a host that has it), consumed by
+  `argus-sync-productivity-action`. A row journals who, the action, the table,
+  the record id and the time; `contracts/sync`'s `action-journal-fields.hxx` is
+  the allowlist: `old_data` is always empty for those tables, and `new_data` may
+  hold only `title`, and only for `project`, `project_task` and `calendar_event`,
+  which the producer sends only while the row is shared (a project with members,
+  a task of such a project, an event with shares). `insertAction` applies the
+  same allowlist to every event before it stores it, so a producer cannot
+  smuggle content past it (`action-journal-fields-test`, `sync-activity-test`).
+  Notification mark-as-read is not journaled (owner ruling). The identity rename
+  journals an `update` of `user` with no data either.
 - **Three composite indexes** for the filters, each ending in `(created_at, id)`
   so the newest-first order never needs a temporary b-tree:
   `(module, created_at, id)`, `(user_id, created_at, id)` and
