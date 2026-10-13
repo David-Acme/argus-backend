@@ -1,5 +1,6 @@
 #pragma once
 
+#include <feature/guard/vocabulary/safety-reach.hxx>
 #include <feature/safety/vocabulary/safety-alert-kind.hxx>
 
 #include <cstdint>
@@ -32,6 +33,8 @@ public:
   virtual ~SafetyAlertSink() = default;
 
   [[nodiscard]] virtual drogon::Task<SafetyDelivery> raise(const SafetyAlertNotice& notice) const = 0;
+
+  [[nodiscard]] virtual drogon::Task<SafetyReach> reach(int64_t actorUserId) const = 0;
 };
 
 class SafetyActorNotifier

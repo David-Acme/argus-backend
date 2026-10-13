@@ -1209,6 +1209,54 @@ no one to hand them to without the coerced phone). `SafetyService::deliver`
 carries the terminal verdict as `SafetyDelivery::NoRecipients`, which stops
 the sweep instead of minting the fresh correlation a refusal takes.
 
+**A household of one (2026-10-13, F4).** Every path was read for an
+assumption that someone else is there:
+- the panic, the duress code and the duress phrase;
+- the response plan's strategies (`everyone`, `night_quiet`,
+  `inside_first`, `ordered`), the siren offer, presence's "everyone
+  home";
+- the legacy roster and the directory snapshot;
+- identity's last-Owner rule and the purge's Owner PIN.
+
+Only the safety alerts assume a second person. They exclude the actor by
+design, so the only member's alert has an empty plan. Everything else works
+with one member: an intrusion calls that member, and the strategies,
+presence and the siren offer read one row as they read many.
+
+What a household of one gets:
+- *A panic* falls back to the environment's emergency contacts, listed
+  in the actor's own notice, or, with none, to the one urgent
+  "No hay nadie más a quién avisar" notice (above).
+- *A duress code or the duress phrase* still does exactly what it does
+  anywhere: the disarm or the turn goes through as usual, and the alert row
+  is written. It reaches nobody, because the actor's phone must not change,
+  and the contacts cannot be dialled. The alert closes terminal with its
+  `LOG_ERROR` and its `no_recipients` action row, as before.
+- *What changed is that this is no longer a silent surprise.*
+  `GET /guard/safety`, and every safety answer that shares it, now
+  carries `alertsReach` for the caller, so the app can say it before
+  anyone relies on it:
+  - `others`: a panic or duress from this user reaches at least one other
+    member;
+  - `contacts`: nobody else in the household, but the environment's
+    emergency contacts are listed to a panicking actor;
+  - `nobody`;
+  - `unknown`: neither the directory nor the roster answered.
+
+  `GuardService::safetyReach` answers it by planning a critical panic with
+  the caller excluded, the same `recipientsFor` the real alert uses.
+  `SafetyAlertSink::reach` carries it to `SafetyService::status`. A duress
+  alert has the same plan as a panic (`everyone`, the actor excluded), so one
+  answer covers both.
+
+DESIGN FORK, left to the owner: a duress alert with nobody to receive it. (a)
+Keep it terminal and say so beforehand (`alertsReach`), which is what is built.
+(b) Tell the actor afterwards, discreetly, once they next disarm with their
+real code, that a silent alert reached nobody. (c) Refuse to enable duress
+codes or a phrase while `alertsReach` is `nobody`. (a) is the conservative
+choice: (b) risks telling an attacker who still holds the phone, and (c)
+would block a household that is about to add members.
+
 **The duress phrase (voice, 2026-10-13, F4).** The household's spoken twin
 of the duress code: a phrase that, said to Argus, raises the same silent alert
 and changes nothing the speaker or an attacker can see.

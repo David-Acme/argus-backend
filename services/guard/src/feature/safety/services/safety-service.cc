@@ -146,7 +146,21 @@ drogon::Task<SafetyStatus> SafetyService::status(int64_t userId) const
   const auto pin = co_await pinRepository_.find(userId);
   co_return SafetyStatus{.duressEnabled = setting.duressEnabled,
                          .hasPin = setting.duressEnabled && pin.has_value(),
-                         .hasPhrase = setting.duressEnabled && !setting.phraseKey.empty()};
+                         .hasPhrase = setting.duressEnabled && !setting.phraseKey.empty(),
+                         .reach = co_await reach(userId)};
+}
+
+drogon::Task<SafetyReach> SafetyService::reach(int64_t userId) const
+{
+  if (dependencies_.sink == nullptr)
+    co_return SafetyReach::Unknown;
+  try {
+    co_return co_await dependencies_.sink->reach(userId);
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Guard safety: who an alert would reach is unknown: " << error.what();
+  }
+  co_return SafetyReach::Unknown;
 }
 
 drogon::Task<DisarmVerdict> SafetyService::verifyPin(const PinCheck& check) const
@@ -236,7 +250,10 @@ drogon::Task<SafetyStatus> SafetyService::setPin(const PinSetInput& input) const
     throw;
   }
   co_await attempts_->clear(input.userId);
-  co_return SafetyStatus{.duressEnabled = true, .hasPin = true, .hasPhrase = !setting.phraseKey.empty()};
+  co_return SafetyStatus{.duressEnabled = true,
+                         .hasPin = true,
+                         .hasPhrase = !setting.phraseKey.empty(),
+                         .reach = co_await reach(input.userId)};
 }
 
 drogon::Task<SafetyStatus> SafetyService::removePin(const PinRemoveInput& input) const
@@ -267,7 +284,8 @@ drogon::Task<SafetyStatus> SafetyService::removePin(const PinRemoveInput& input)
   const SafetySetting setting = co_await settingRepository_.find();
   co_return SafetyStatus{.duressEnabled = setting.duressEnabled,
                          .hasPin = false,
-                         .hasPhrase = setting.duressEnabled && !setting.phraseKey.empty()};
+                         .hasPhrase = setting.duressEnabled && !setting.phraseKey.empty(),
+                         .reach = co_await reach(input.userId)};
 }
 
 drogon::Task<void> SafetyService::forgetUser(int64_t userId) const

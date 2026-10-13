@@ -30,7 +30,8 @@ Json::Value statusJson(const SafetyStatus& status, const JwtContext& caller)
       {.role = caller.role, .modules = moduleGate().snapshot(), .capability = "safety.duress"});
   return ResponseSafetyStatusDto{.duressEnabled = status.duressEnabled,
                                  .hasPin = status.hasPin,
-                                 .hasPhrase = phraseHolder && status.hasPhrase}
+                                 .hasPhrase = phraseHolder && status.hasPhrase,
+                                 .alertsReach = status.reach}
       .toJson();
 }
 }

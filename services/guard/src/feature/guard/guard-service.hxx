@@ -16,6 +16,7 @@
 #include <feature/guard/services/delivery-keepalive.hxx>
 #include <feature/guard/services/episode-change-gate.hxx>
 #include <feature/guard/services/response-plan.hxx>
+#include <feature/guard/vocabulary/safety-reach.hxx>
 #include <shared/repositories/presence/presence-repository.hxx>
 
 #include <atomic>
@@ -68,6 +69,8 @@ public:
   };
 
   [[nodiscard]] drogon::Task<SafetyAlertOutcome> raiseSafetyAlert(const SafetyAlertInput& input);
+
+  [[nodiscard]] drogon::Task<SafetyReach> safetyReach(int64_t actorUserId);
 
   struct Dependencies
   {

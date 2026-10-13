@@ -1,5 +1,7 @@
 #pragma once
 
+#include <feature/guard/vocabulary/safety-reach.hxx>
+
 #include <cstdint>
 #include <json/value.h>
 
@@ -8,6 +10,7 @@ struct ResponseSafetyStatusDto
   bool duressEnabled{false};
   bool hasPin{false};
   bool hasPhrase{false};
+  SafetyReach alertsReach{SafetyReach::Unknown};
 
   [[nodiscard]] Json::Value toJson() const;
 };

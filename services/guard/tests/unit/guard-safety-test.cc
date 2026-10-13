@@ -573,6 +573,61 @@ TEST_CASE("a single-member panic with nobody at all is terminal and tells the ac
   CHECK(rig.ofKind("guard_panic_unattended").size() == 1);
 }
 
+TEST_CASE("the safety status says who an alert would reach, a household of one included")
+{
+  boot();
+  SafetyRig household;
+  CHECK(drogon::sync_wait(household.safety.status(2)).reach == SafetyReach::Others);
+
+  SafetyRig alone(std::map<int64_t, std::string>{{1, "es"}}, singleMemberDirectory());
+  CHECK(drogon::sync_wait(alone.safety.status(1)).reach == SafetyReach::Nobody);
+  scalar("INSERT INTO guard_response_contact (environment_id, position, name, phone, note, "
+         "updated_at) SELECT id, 0, 'Vecina Ana', '+51987654321', '', 0 "
+         "FROM guard_environment WHERE is_default = 1");
+  CHECK(drogon::sync_wait(alone.safety.status(1)).reach == SafetyReach::Contacts);
+  CHECK(alone.notifications.sent().empty());
+}
+
+TEST_CASE("a duress code from the only member disarms as usual and tells nobody")
+{
+  boot();
+  SafetyRig rig(std::map<int64_t, std::string>{{1, "es"}}, singleMemberDirectory());
+  drogon::sync_wait(rig.safety.toggle({.duressEnabled = true, .actorUserId = 1, .actorName = "Ana", .currentPin = std::nullopt}));
+  const SafetyStatus status = drogon::sync_wait(rig.safety.setPin(
+      {.userId = 1, .userName = "Ana", .disarmPin = "4721", .duressPin = "9386", .currentPin = std::nullopt}));
+  CHECK(status.reach == SafetyReach::Nobody);
+  const Json::Value forced = rig.setMode("home", std::string("9386"), 1);
+  CHECK(forced[0]["mode"].asString() == "home");
+  for (int attempt = 0; attempt < 300 &&
+                        scalar("SELECT COUNT(*) FROM guard_safety_alert WHERE closed_at > 0") != "1";
+       ++attempt)
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert WHERE kind = 'duress' AND user_id = 1 AND "
+               "closed_at > 0 AND notified_at = 0") == "1");
+  CHECK(rig.notifications.sent().empty());
+  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
+}
+
+TEST_CASE("the duress phrase of the only member is recorded and reaches nobody")
+{
+  boot();
+  SafetyRig rig(std::map<int64_t, std::string>{{1, "es"}}, singleMemberDirectory());
+  static_cast<void>(drogon::sync_wait(rig.safety.update(
+      {.toggle = {.duressEnabled = true, .actorUserId = 1, .actorName = "Ana", .currentPin = std::nullopt},
+       .phraseChange = PhraseChange::Set,
+       .phrase = "el gato está en el tejado"})));
+  const std::string key = drogon::sync_wait(rig.safety.phraseKey());
+  CHECK(drogon::sync_wait(rig.safety.status(1)).reach == SafetyReach::Nobody);
+  CHECK(drogon::sync_wait(rig.safety.spokenDuress({.userId = 1, .userName = "Ana", .phraseKey = key})) ==
+        SpokenDuressOutcome::Raised);
+  for (int attempt = 0; attempt < 300 &&
+                        scalar("SELECT COUNT(*) FROM guard_safety_alert WHERE closed_at > 0") != "1";
+       ++attempt)
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert WHERE spoken = 1 AND closed_at > 0") == "1");
+  CHECK(rig.notifications.sent().empty());
+}
+
 TEST_CASE("an unattended panic stays open until the actor notice is delivered")
 {
   boot();

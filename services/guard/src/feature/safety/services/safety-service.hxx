@@ -22,6 +22,7 @@ struct SafetyStatus
   bool duressEnabled{false};
   bool hasPin{false};
   bool hasPhrase{false};
+  SafetyReach reach{SafetyReach::Unknown};
 };
 
 struct PinSetInput
@@ -134,6 +135,7 @@ public:
   [[nodiscard]] bool drained() const;
 
   [[nodiscard]] drogon::Task<SafetyStatus> status(int64_t userId) const;
+  [[nodiscard]] drogon::Task<SafetyReach> reach(int64_t userId) const;
   [[nodiscard]] drogon::Task<SafetyStatus> setPin(const PinSetInput& input) const;
   [[nodiscard]] drogon::Task<SafetyStatus> removePin(const PinRemoveInput& input) const;
   [[nodiscard]] drogon::Task<SafetySetting> setting() const;

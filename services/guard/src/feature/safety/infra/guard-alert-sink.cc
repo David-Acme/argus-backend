@@ -21,3 +21,8 @@ drogon::Task<SafetyDelivery> GuardAlertSink::raise(const SafetyAlertNotice& noti
     co_return SafetyDelivery::NoRecipients;
   co_return outcome.terminal ? SafetyDelivery::Refused : SafetyDelivery::Pending;
 }
+
+drogon::Task<SafetyReach> GuardAlertSink::reach(int64_t actorUserId) const
+{
+  co_return co_await guard_.safetyReach(actorUserId);
+}

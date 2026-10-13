@@ -11,6 +11,8 @@ public:
 
   [[nodiscard]] drogon::Task<SafetyDelivery> raise(const SafetyAlertNotice& notice) const override;
 
+  [[nodiscard]] drogon::Task<SafetyReach> reach(int64_t actorUserId) const override;
+
 private:
   GuardService& guard_;
 };

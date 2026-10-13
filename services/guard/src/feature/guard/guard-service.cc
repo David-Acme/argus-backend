@@ -4427,6 +4427,27 @@ GuardService::notify(const NotifyInput& input)
   co_return EffectStatus::Succeeded;
 }
 
+drogon::Task<SafetyReach> GuardService::safetyReach(int64_t actorUserId)
+{
+  Json::Value data(Json::objectValue);
+  data["kind"] = noticeKindToString(NoticeKind::Panic);
+  data["urgency"] = "critical";
+  data["environmentId"] = 0;
+  const std::vector<int64_t> excluded{actorUserId};
+  const RecipientResolution resolution = co_await recipientsFor(
+      {.data = data, .excluded = excluded, .now = static_cast<int64_t>(std::time(nullptr))});
+  switch (resolution.outcome) {
+    case RecipientOutcome::Planned:
+      co_return SafetyReach::Others;
+    case RecipientOutcome::Unavailable:
+      co_return SafetyReach::Unknown;
+    case RecipientOutcome::Empty:
+      break;
+  }
+  const Json::Value& contacts = resolution.plan["contacts"];
+  co_return contacts.isArray() && !contacts.empty() ? SafetyReach::Contacts : SafetyReach::Nobody;
+}
+
 drogon::Task<GuardService::SafetyAlertOutcome>
 GuardService::raiseSafetyAlert(const SafetyAlertInput& input)
 {

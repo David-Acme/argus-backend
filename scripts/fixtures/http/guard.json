@@ -3629,6 +3629,7 @@
         "json": {
           "errors": null,
           "info": {
+            "alertsReach": "others",
             "duressEnabled": false,
             "hasPhrase": false,
             "hasPin": false
@@ -3656,6 +3657,7 @@
         "json": {
           "errors": null,
           "info": {
+            "alertsReach": "others",
             "duressEnabled": false,
             "hasPhrase": false,
             "hasPin": false
@@ -3683,6 +3685,7 @@
         "json": {
           "errors": null,
           "info": {
+            "alertsReach": "others",
             "duressEnabled": false,
             "hasPhrase": false,
             "hasPin": false
@@ -3923,6 +3926,7 @@
         "json": {
           "errors": null,
           "info": {
+            "alertsReach": "others",
             "duressEnabled": false,
             "hasPhrase": false,
             "hasPin": false
@@ -3976,6 +3980,7 @@
         "json": {
           "errors": null,
           "info": {
+            "alertsReach": "others",
             "duressEnabled": false,
             "hasPhrase": false,
             "hasPin": false
