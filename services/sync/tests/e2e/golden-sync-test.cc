@@ -5,7 +5,9 @@
 #include <drogon/WebSocketClient.h>
 #include <drogon/WebSocketConnection.h>
 #include <json/json.h>
+#include <nats/nats-bus.hxx>
 #include <openssl/evp.h>
+#include <routes/remote-link.hxx>
 #include <trantor/net/EventLoopThread.h>
 
 #include <algorithm>
@@ -281,6 +283,14 @@ void dropHostFields(Json::Value& frame)
   }
 }
 
+void dropRemoteField(Json::Value& frame)
+{
+  if (!frame.isObject() || !frame.isMember("info") || !frame["info"].isObject() ||
+      !frame["info"].isMember("context") || !frame["info"]["context"].isObject())
+    return;
+  frame["info"]["context"].removeMember("remote");
+}
+
 std::optional<Json::Value> normalizedFrameJson(const Frame& frame)
 {
   const auto json = parseJson(frame.text);
@@ -289,6 +299,7 @@ std::optional<Json::Value> normalizedFrameJson(const Frame& frame)
   Json::Value copy = *json;
   normalizeInPlace(copy);
   dropHostFields(copy);
+  dropRemoteField(copy);
   return copy;
 }
 
@@ -738,6 +749,172 @@ bool openSocket(SocketSession& session, const OpenSocketInput& input,
   return true;
 }
 
+std::string compactJson(const Json::Value& json)
+{
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  return Json::writeString(builder, json);
+}
+
+struct RemoteUpdate
+{
+  Json::Value frame;
+  std::chrono::steady_clock::time_point arrivedAt;
+};
+
+std::optional<RemoteUpdate> takeRemoteUpdate(SocketSession& session, std::chrono::seconds timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (true) {
+    const auto now = std::chrono::steady_clock::now();
+    if (now >= deadline)
+      return std::nullopt;
+    auto frame =
+        session.collector.take(std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now));
+    if (!frame)
+      return std::nullopt;
+    if (frame->binary || messageTypeOf(*frame) != "context_update")
+      continue;
+    auto json = parseJson(frame->text);
+    if (!json || !json->isMember("info") || !(*json)["info"].isObject() ||
+        !(*json)["info"].isMember("remote"))
+      continue;
+    return RemoteUpdate{.frame = std::move(*json), .arrivedAt = std::chrono::steady_clock::now()};
+  }
+}
+
+struct RemoteContract
+{
+  std::string subject;
+  std::string homeId;
+  std::string domain;
+};
+
+bool publishRemoteFrames(NatsBus& bus, const RemoteContract& contract, const Json::Value& frames)
+{
+  for (const auto& published : frames) {
+    const auto link = routes::remoteLinkFromString(published.get("link", "").asString());
+    if (!link || !published["since"].isIntegral())
+      return false;
+    const routes::RemoteLinkState state{.homeId = contract.homeId,
+                                        .domain = contract.domain,
+                                        .link = *link,
+                                        .since = published["since"].asInt64()};
+    if (!bus.publish(contract.subject, compactJson(routes::remoteLinkToJson(state))))
+      return false;
+  }
+  return true;
+}
+
+struct RemoteStepInput
+{
+  SocketSession& session;
+  const Json::Value& step;
+  std::optional<std::chrono::steady_clock::time_point>& lastArrival;
+};
+
+bool checkRemoteStep(const RemoteStepInput& input)
+{
+  const std::string name = input.step.get("name", "step").asString();
+  const auto wait = std::chrono::seconds(input.step.get("waitSeconds", kFrameTimeoutSeconds).asInt());
+  const Json::Value& expect = input.step["expect"];
+  if (expect.isString() && expect.asString() == "any") {
+    int drained = 0;
+    while (auto update = takeRemoteUpdate(input.session, wait)) {
+      ++drained;
+      input.lastArrival = update->arrivedAt;
+    }
+    std::cout << "  OK remote-link " << name << " (" << drained << " update(s) while the window passed)\n";
+    return true;
+  }
+  const auto update = takeRemoteUpdate(input.session, wait);
+  if (expect.isNull()) {
+    if (!update) {
+      std::cout << "  OK remote-link " << name << " (no update in " << wait.count() << " s)\n";
+      return true;
+    }
+    std::cout << "  MISMATCH remote-link " << name << ": an update arrived where none is due: "
+              << canonicalJson(update->frame["info"]["remote"]) << "\n";
+    return false;
+  }
+  if (!update) {
+    std::cout << "  MISMATCH remote-link " << name << ": no context_update with remote in " << wait.count()
+              << " s\n";
+    return false;
+  }
+  bool ok = true;
+  if (update->frame["operation"] != expect["operation"] || update->frame["option"] != expect["option"]) {
+    std::cout << "  MISMATCH remote-link " << name << ": the frame is " << canonicalJson(update->frame["operation"])
+              << "/" << canonicalJson(update->frame["option"]) << "\n";
+    ok = false;
+  }
+  if (canonicalJson(update->frame["info"]["remote"]) != canonicalJson(expect["remote"])) {
+    std::cout << "  MISMATCH remote-link " << name << ": remote is "
+              << canonicalJson(update->frame["info"]["remote"]) << ", the contract says "
+              << canonicalJson(expect["remote"]) << "\n";
+    ok = false;
+  }
+  if (input.step.isMember("minGapSeconds") && input.lastArrival) {
+    const auto gap = std::chrono::duration_cast<std::chrono::milliseconds>(update->arrivedAt - *input.lastArrival);
+    if (gap < std::chrono::seconds(input.step["minGapSeconds"].asInt())) {
+      std::cout << "  MISMATCH remote-link " << name << ": the update came " << gap.count()
+                << " ms after the previous one\n";
+      ok = false;
+    }
+  }
+  input.lastArrival = update->arrivedAt;
+  if (ok)
+    std::cout << "  OK remote-link " << name << "\n";
+  return ok;
+}
+
+std::optional<bool> runRemoteLinkScenario(SocketSession& session, const std::string& fixturesDir)
+{
+  const std::string natsUrl = envValue("ARGUS_TEST_NATS_URL");
+  const std::string nkey = envValue("ARGUS_TEST_TUNNEL_NKEY");
+  const std::string seedFile = envValue("ARGUS_TEST_TUNNEL_SEED_FILE");
+  if (natsUrl.empty() || nkey.empty() || seedFile.empty()) {
+    std::cout << "  SKIPPED remote-link: set ARGUS_TEST_NATS_URL, ARGUS_TEST_TUNNEL_NKEY and "
+                 "ARGUS_TEST_TUNNEL_SEED_FILE to publish as the home's tunnel client\n";
+    return std::nullopt;
+  }
+  const Json::Value fixture = readJsonFile(fixturesDir + "/remote-link.json");
+  if (!fixture.isObject() || !fixture["steps"].isArray() || !fixture["subject"].isString() ||
+      !fixture["homeId"].isString() || !fixture["domain"].isString()) {
+    std::cout << "  MISMATCH remote-link: cannot read " << fixturesDir << "/remote-link.json\n";
+    return false;
+  }
+  const RemoteContract contract{.subject = fixture["subject"].asString(),
+                                .homeId = fixture["homeId"].asString(),
+                                .domain = fixture["domain"].asString()};
+  NatsBus bus;
+  if (!bus.connect({.url = natsUrl,
+                    .user = {},
+                    .password = {},
+                    .nkey = nkey,
+                    .seedFile = seedFile,
+                    .inboxPrefix = "_INBOX.tunnel",
+                    .reconnectWaitMs = 2000,
+                    .maxReconnects = 0})) {
+    std::cout << "  MISMATCH remote-link: cannot connect to " << natsUrl << " as the tunnel client\n";
+    bus.drain();
+    return false;
+  }
+  bool ok = true;
+  std::optional<std::chrono::steady_clock::time_point> lastArrival;
+  for (const auto& step : fixture["steps"]) {
+    if (!publishRemoteFrames(bus, contract, step["publish"])) {
+      std::cout << "  MISMATCH remote-link " << step.get("name", "step").asString()
+                << ": the frames could not be published\n";
+      ok = false;
+      break;
+    }
+    ok = checkRemoteStep({.session = session, .step = step, .lastArrival = lastArrival}) && ok;
+  }
+  bus.drain();
+  return ok;
+}
+
 void closeSocket(SocketSession& session)
 {
   if (session.connection)
@@ -1052,6 +1229,8 @@ int main(int argc, char* argv[])
       std::cout << "  voice-start-stop captured no frames\n";
   }
 
+  const std::optional<bool> remoteLink = runRemoteLinkScenario(syncSocket, fixturesDir);
+
   closeSocket(syncSocket);
   closeSocket(mediaSocket);
 
@@ -1105,6 +1284,8 @@ int main(int argc, char* argv[])
       }
     }
 
+    if (remoteLink && !*remoteLink)
+      ok = false;
     if (!ok) {
       std::cout << "FAIL: golden /sync contract drifted from fixtures\n";
       return 1;
@@ -1154,6 +1335,10 @@ int main(int argc, char* argv[])
       "normalized files record kind only; raw files record byteLength, sha256 "
       "and the first 256 bytes hex; the first 64 KiB of a binary frame is also "
       "stored as .bin";
+  rules["remoteField"] =
+      "info.context.remote is the home's remote link state, present only where a tunnel "
+      "client reports one, so it is removed from the normalized comparison; the "
+      "remote-link scenario pins it from the contract instead (remote-link.json)";
   rules["cameraClosedFrames"] =
       "camera:closed is emitted by the go2rtc relay on its own retry "
       "schedule, so its arrival is timing-dependent; it is kept in the raw "

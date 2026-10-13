@@ -79,12 +79,61 @@ need: `kill <service>` stops one service, `restart <service>` brings it
 back, `logs <service>` tails its log, `status` shows the fleet and `down`
 stops everything the sandbox started.
 
+## The remote link scenario
+
+`info.context.remote` (the home's cloud link, `services/sync/CONTEXT.md`,
+"Remote access in the context") is present only on a stack where a tunnel
+client reports one, so the normalized comparison drops it from every frame's
+context (`remoteField` in the manifest's `normalization` block) and the
+recorded `initial-info` stays valid on a stack with or without remote access.
+
+The field is pinned by a scenario of its own instead, `remote-link.json`. Its
+expected frames were not recorded: each one is the shape the contract
+(`packages/contracts/routes/src/routes/remote-link.hxx`) gives the state the
+step publishes. After the eight scenarios, with the `/sync` socket still open,
+the harness connects to the broker as the home's tunnel client, publishes each
+step's frames on `argus.tunnel.v1.link` and reads the `ContextUpdate` frames
+(operation 13, option `user`) that carry `remote`:
+
+- `reset` publishes `down` and drains whatever argus-sync sends for 7 seconds,
+  so the steps after it start outside the 5-second window;
+- `up` expects one frame with the published state at once;
+- `back-inside-the-window` publishes `down` and then `up` within the window and
+  expects no frame, because the state is back where the last frame left it;
+- `down` expects one frame;
+- `trailing` publishes `connecting` and then `up` within the window and expects
+  one frame with the latest state, `up`, at least 4 seconds after the previous
+  one: the 5-second throttle.
+
+It runs only when `ARGUS_TEST_NATS_URL`, `ARGUS_TEST_TUNNEL_NKEY` and
+`ARGUS_TEST_TUNNEL_SEED_FILE` are all set: the broker lets only the `tunnel`
+row publish that subject. The seed is `${ARGUS_DATA_DIR}/nats/seeds/tunnel.seed`
+on a provisioned host, and the nkey is the public key `provision-host.sh`
+derives from it. Otherwise it prints `SKIPPED remote-link:` and the run goes on
+with the other scenarios and the same exit code. In `verify` a step that
+differs prints a `MISMATCH remote-link` line and fails the run. In `record` it
+prints its lines and writes nothing.
+
+Point it at the sandbox broker only. Its frames reach every app connected to
+that stack's argus-sync. A tunnel client running on the same stack publishes
+its own state every 30 seconds with its own home id and breaks the steps, so
+stop it first. The scenario takes about 20 seconds. It leaves argus-sync
+holding its home id with the link `up`. Every new `InitialInfo` carries that
+until a real tunnel client reports or argus-sync restarts; 90 seconds later
+the link reads `down`. A later replay is not affected, because the field is
+out of the normalized comparison. Unit tests that run on every build, with no
+stack, cover the rest of the contract: the 90-second rule, the four checks on
+a frame, the refusal log, `unknown` getting nothing and the Owner's catalog on
+these frames (`services/sync/tests/unit/sync-remote-test.cc` and
+`sync-context-test.cc`).
+
 ## Skipping
 
-Without `ARGUS_TEST_REFRESH_TOKEN` the harness prints `SKIP:` and exits 0,
-so the suite stays green on a machine with no fleet running. `ctest`
-therefore never fails for a missing backend — only for a contract that
-moved.
+Without `ARGUS_TEST_REFRESH_TOKEN` the harness prints `SKIPPED:` and exits 77,
+which ctest reports as Skipped, so the suite stays green on a machine with no
+fleet running. `ctest` therefore never fails for a missing backend, only for
+a contract that moved. The remote link scenario skips on its own (above)
+without changing the exit code.
 
 ## Recording a new set
 

@@ -168,7 +168,10 @@ add_test(NAME sync-migration-test COMMAND sync-migration-test)
 add_executable(golden-sync-test e2e/golden-sync-test.cc)
 target_compile_definitions(golden-sync-test PRIVATE
     ARGUS_TEST_SYNC_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/sync")
-target_link_libraries(golden-sync-test PRIVATE Drogon::Drogon)
+target_link_libraries(golden-sync-test PRIVATE
+    argus::lib::nats
+    argus::contracts::routes
+    Drogon::Drogon)
 target_compile_options(golden-sync-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(golden-sync-test)
 add_test(NAME golden-sync-test COMMAND golden-sync-test)

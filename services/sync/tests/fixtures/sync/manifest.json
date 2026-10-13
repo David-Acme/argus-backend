@@ -168,7 +168,8 @@
     "maskedSecrets" : "key containing token/hash/secret/nonce/password/credential (string) -> '<masked>'",
     "maskedTimestamps" : "key ending in 'At'/'_at'/'Date', containing 'timestamp', or exactly 'created'/'deleted'/'at' (integer) -> 0",
     "maskedZone" : "key == timeZone (string, the zone the household runs in) -> '<zone>'",
-    "ownerCatalogHostFields" : "the Owner's context.ownerCatalog is the module list the settings service answers; each module's hardware verdict, installedBytes, components and hasData (a count its engine refreshes on its own schedule, false until the first refresh after a boot) come from the host that answers, so they are removed from the normalized comparison; the catalog, lifecycle, roles, intro and jobs beside them stay pinned"
+    "ownerCatalogHostFields" : "the Owner's context.ownerCatalog is the module list the settings service answers; each module's hardware verdict, installedBytes, components and hasData (a count its engine refreshes on its own schedule, false until the first refresh after a boot) come from the host that answers, so they are removed from the normalized comparison; the catalog, lifecycle, roles, intro and jobs beside them stay pinned",
+    "remoteField" : "info.context.remote is the home's remote link state, present only where a tunnel client reports one, so it is removed from the normalized comparison; the remote-link scenario pins it from the contract instead (remote-link.json)"
   },
   "recordedAtUtc" : "2026-10-06T23:06:43Z",
   "userAgent" : "argus-golden-recorder/1.0"
