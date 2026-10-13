@@ -341,16 +341,21 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   Step 3 delivery, 2026-10-13: each writer signs with its own account first. `S3StorageService`
   reads `[storage.s3] credentials_file`, the writer's account directory mounted read-only into it
   alone at `/run/secrets/s3`, and falls back to `access_key`/`secret_key` only while that file is
-  missing or unreadable (`s3-credentials-test` checks both paths down to the request's
-  signature). The config fallback is transitional, like the shared NATS user above: the owner
+  missing, unreadable or malformed (not JSON, or without a non-empty `credentials.accessKey` and
+  `credentials.secretKey`). `s3-credentials-test` checks both paths down to the request's signature,
+  and pins the warning that names those three causes. The config fallback is transitional, like the
+  shared NATS user above: the owner
   deploy step that removes the shared credential also removes the S3 keys from the configs, in
   this order: re-run `scripts/provision-host.sh` (it creates the account directories the writers
   mount and names the file in their configs); bring the stack up (`docker compose build` and
   `docker compose up -d`; `rustfs-init` issues the accounts before the writers start); check that
-  the identity, camera and guard logs say their keys come from `/run/secrets/s3/credentials.json`
-  and that none warns the file cannot be used (the notice comes with each writer's first storage
-  call: identity's object-deletion sweep within a minute, camera's first detection evidence,
-  guard's first incident evidence); only then the cleanup that removes the shared
+  the latest S3 credentials line in each of the identity, camera and guard logs is the notice that
+  its keys come from `/run/secrets/s3/credentials.json`. It must not be the warning that the file
+  is missing, unreadable or malformed. The log writes one line per change, so a writer that found
+  its file unusable and later usable shows the warning and then the notice, and signs with its own
+  account. The notice comes with each writer's first storage call: identity's object-deletion
+  sweep within a minute, camera's first detection evidence, guard's first incident evidence.
+  Only then the cleanup that removes the shared
   account (from RustFS and from `rustfs-init`, which would create it again) and the
   `access_key`/`secret_key` keys (from those three configs and from the provisioning that writes
   them). Native runs still take the shared keys from `scripts/setup.sh`, so the cleanup's

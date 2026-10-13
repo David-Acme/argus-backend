@@ -8,10 +8,12 @@
 #include <chrono>
 #include <config/config-service.hxx>
 #include <cstdint>
+#include <cstdio>
 #include <drogon/drogon.h>
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <netinet/in.h>
 #include <poll.h>
 #include <stdexcept>
@@ -22,6 +24,7 @@
 #include <string_view>
 #include <sys/socket.h>
 #include <thread>
+#include <trantor/utils/Logger.h>
 #include <unistd.h>
 #include <utility>
 #include <vector>
@@ -257,6 +260,47 @@ private:
   std::thread thread_;
 };
 
+class LogCapture
+{
+public:
+  LogCapture()
+  {
+    trantor::Logger::setOutputFunction(
+        [this](const char* message, uint64_t length) {
+          const std::scoped_lock lock(mutex_);
+          lines_.emplace_back(message, static_cast<std::size_t>(length));
+        },
+        [] {});
+  }
+
+  ~LogCapture()
+  {
+    trantor::Logger::setOutputFunction(
+        [](const char* message, uint64_t length) {
+          std::fwrite(message, 1, static_cast<std::size_t>(length), stdout);
+        },
+        [] { std::fflush(stdout); });
+  }
+
+  LogCapture(const LogCapture&) = delete;
+  LogCapture& operator=(const LogCapture&) = delete;
+  LogCapture(LogCapture&&) = delete;
+  LogCapture& operator=(LogCapture&&) = delete;
+
+  [[nodiscard]] std::size_t count(std::string_view needle) const
+  {
+    const std::scoped_lock lock(mutex_);
+    return static_cast<std::size_t>(
+        std::ranges::count_if(lines_, [needle](const std::string& line) {
+          return line.find(needle) != std::string::npos;
+        }));
+  }
+
+private:
+  mutable std::mutex mutex_;
+  std::vector<std::string> lines_;
+};
+
 CapturedCall fetchThrough(const CaptureServer& server)
 {
   std::string head;
@@ -409,4 +453,34 @@ TEST_CASE("a request is signed with the credentials file's keys, and with the "
       signedWithoutFile.starts_with("AWS4-HMAC-SHA256 Credential=SHAREDKEY/"));
   CHECK(signedWithoutFile == authorizationFor(withoutFile, configuredKeys()));
   CHECK(signedWithoutFile != authorizationFor(withoutFile, writerKeys()));
+}
+
+TEST_CASE("the log names the file when its keys are used, and the three "
+          "reasons once per change when they cannot be")
+{
+  const auto usable =
+      writeFile({.name = "log-usable.json", .body = credentialsJson(writerKeys())});
+  const auto malformed =
+      writeFile({.name = "log-malformed.json", .body = "not json"});
+  const s3_credentials::Source usableSource{.credentialsFile = usable,
+                                            .fallback = configuredKeys()};
+  const s3_credentials::Source malformedSource{.credentialsFile = malformed,
+                                               .fallback = configuredKeys()};
+  const std::string notice = "S3 keys come from the credentials file " + usable;
+  const std::string warning =
+      "S3 credentials file " + malformed +
+      " is missing, unreadable or malformed; the configured keys are used";
+
+  const LogCapture log;
+  static_cast<void>(s3_credentials::resolve(malformedSource));
+  static_cast<void>(s3_credentials::resolve(usableSource));
+  const std::size_t before = log.count(warning);
+  static_cast<void>(s3_credentials::resolve(malformedSource));
+  static_cast<void>(s3_credentials::resolve(malformedSource));
+
+  CHECK(log.count(notice) == 1);
+  CHECK(log.count(warning) == before + 1);
+
+  std::filesystem::remove(usable);
+  std::filesystem::remove(malformed);
 }

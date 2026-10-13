@@ -27,7 +27,7 @@ void noteFileState(const std::string& path, FileState state)
     LOG_INFO << "S3 keys come from the credentials file " << path;
   else
     LOG_WARN << "S3 credentials file " << path
-             << " is missing or unreadable; the configured keys are used";
+             << " is missing, unreadable or malformed; the configured keys are used";
 }
 
 }

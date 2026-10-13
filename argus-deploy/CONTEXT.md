@@ -1002,11 +1002,16 @@ in order:
    answer written straight into a 0600 file, because the admin API generates
    and confines them when the request names none. `S3StorageService` reads that
    file on every operation and falls back to `access_key`/`secret_key`, the
-   shared account, only while the file is missing or unreadable; the log says
-   which, once per change: a notice names the file when the keys come from it,
-   a warning when they cannot, at a writer's first storage call (identity's
-   object-deletion sweep runs every minute; camera and guard call storage when
-   they first store evidence). That fallback is transitional: the owner deploy
+   shared account, only while the file is missing, unreadable or malformed
+   (not JSON, or without a non-empty `credentials.accessKey` and
+   `credentials.secretKey`). The log says which, once per change: a notice
+   names the file when the keys come from it, and a warning names the three
+   causes when they cannot. It comes at a writer's first storage call
+   (identity's object-deletion sweep runs every minute; camera and guard call
+   storage when they first store evidence). The owner's check reads each
+   writer's latest such line, because a writer whose file became usable later
+   logged the warning before the notice. That fallback is transitional: the
+   owner deploy
    step that removes the shared account also removes those two keys from the
    identity, camera and guard configs (`realtime-and-backlog-plan`, S4).
    Deploying this change needs `scripts/provision-host.sh` re-run before
