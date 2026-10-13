@@ -2,10 +2,13 @@
 #include <doctest/doctest.h>
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <drogon/HttpTypes.h>
 #include <auth/role-access.hxx>
 #include <sync/table-name.hxx>
 #include <auth/user-role.hxx>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -590,6 +593,93 @@ TEST_CASE("every role reads the responses that reached it and gives a verdict by
     CHECK(role_access::hasHttpAccess({.role = role, .path = "/notification/responses/4", .method = drogon::Get}));
     CHECK(role_access::hasHttpAccess({.role = role, .path = "/notification/responses/4", .method = drogon::Patch}));
     CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/notification/responses/4", .method = drogon::Delete}));
+  }
+}
+
+TEST_CASE("every route of the notification table answers each role as pinned, in every method")
+{
+  constexpr auto kAllow = role_access::RouteVerdict::Allowed;
+  constexpr auto kDeny = role_access::RouteVerdict::Denied;
+  struct PinnedRoute
+  {
+    std::string_view route;
+    drogon::HttpMethod method;
+    bool declared;
+    std::array<role_access::RouteVerdict, 4> verdicts;
+  };
+  const std::array<PinnedRoute, 40> pinned{{
+      {.route = "/notification/ack", .method = drogon::Get, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/ack", .method = drogon::Post, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/ack", .method = drogon::Put, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/ack", .method = drogon::Patch, .declared = true, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/ack", .method = drogon::Delete, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/call-preferences", .method = drogon::Get, .declared = true, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/call-preferences", .method = drogon::Post, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/call-preferences", .method = drogon::Put, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/call-preferences", .method = drogon::Patch, .declared = true, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/call-preferences", .method = drogon::Delete, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/delivery-summary", .method = drogon::Get, .declared = true, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/delivery-summary", .method = drogon::Post, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/delivery-summary", .method = drogon::Put, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/delivery-summary", .method = drogon::Patch, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/delivery-summary", .method = drogon::Delete, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/read", .method = drogon::Get, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/read", .method = drogon::Post, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/read", .method = drogon::Put, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/read", .method = drogon::Patch, .declared = true, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/read", .method = drogon::Delete, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/responses", .method = drogon::Get, .declared = true, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/responses", .method = drogon::Post, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/responses", .method = drogon::Put, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/responses", .method = drogon::Patch, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/responses", .method = drogon::Delete, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/responses/{1}", .method = drogon::Get, .declared = true, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/responses/{1}", .method = drogon::Post, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/responses/{1}", .method = drogon::Put, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/responses/{1}", .method = drogon::Patch, .declared = true, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/responses/{1}", .method = drogon::Delete, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/thread/{1}", .method = drogon::Get, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/thread/{1}", .method = drogon::Post, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/thread/{1}", .method = drogon::Put, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/thread/{1}", .method = drogon::Patch, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/thread/{1}", .method = drogon::Delete, .declared = true, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/{1}", .method = drogon::Get, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/{1}", .method = drogon::Post, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/{1}", .method = drogon::Put, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/{1}", .method = drogon::Patch, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/{1}", .method = drogon::Delete, .declared = true, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+  }};
+  const std::array<UserRole, 4> roles{UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest};
+  const ModuleSnapshot modules{};
+  const auto verbOf = [](drogon::HttpMethod method) -> std::string_view {
+    switch (method) {
+    case drogon::Get:
+      return "GET";
+    case drogon::Post:
+      return "POST";
+    case drogon::Put:
+      return "PUT";
+    case drogon::Patch:
+      return "PATCH";
+    case drogon::Delete:
+      return "DELETE";
+    default:
+      return "OTHER";
+    }
+  };
+  for (const PinnedRoute& row : pinned) {
+    std::string sample(row.route);
+    if (const auto open = sample.find("{1}"); open != std::string::npos)
+      sample.replace(open, 3, "5");
+    CAPTURE(row.route);
+    CAPTURE(verbOf(row.method));
+    CAPTURE(row.declared);
+    REQUIRE(role_access::tableFromPath(sample) == TableName::Notification);
+    for (std::size_t index = 0; index < roles.size(); ++index) {
+      CAPTURE(userRoleToString(roles.at(index)));
+      CHECK(role_access::routeVerdict({.role = roles.at(index), .path = sample, .method = row.method, .modules = modules}) ==
+            row.verdicts.at(index));
+    }
   }
 }
 

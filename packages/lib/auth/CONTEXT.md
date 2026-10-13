@@ -95,7 +95,8 @@ and let a guest through. Since the audit:
 - Dispatch is by whole first segment (`firstSegment`): `auth`, `rtc`,
   `privacy`, `visitor`/`visitor-crop`, `sync` and `guard` each answer from
   their route table; then `kRouteOverrides` (rows that narrow a table, today
-  `GET /notification/delivery-summary`, owner-only); then the camera actions;
+  `GET /notification/delivery-summary` and `DELETE /notification/responses` and
+  `/notification/responses/{id}`, all owner-only); then the camera actions;
   then `tableFromPath`, which also matches a whole first segment, so `/user`
   no longer answers for `/users-x`.
 - `permissionForMethod` returns `std::nullopt` for every method it does not
@@ -108,6 +109,35 @@ and let a guest through. Since the audit:
   `POST /guard/mode` row the HTTP route uses, so the tool descriptor and the
   route cannot drift; argus-llm and argus-voice are meant to ask it instead of
   carrying their own table/permission pair.
+
+## A table permission that widens pins every route of its table (2026-10-13)
+
+**The rule.** When a change widens a table's permission in `kTableAccess`, that
+same change pins the verdict of every route of the table in `role-access-test`.
+- Every route: every row of `scripts/lib/route-baseline.txt` whose path
+  `tableFromPath` resolves to the table. Resolve each one through the real
+  function; never guess from the path name.
+- Every method: GET, POST, PUT, PATCH and DELETE, whether the baseline declares it
+  or not.
+- Every role: the Owner, Resident, Guard and Guest.
+- A new route on such a table adds its rows to the pin. A refusal the table no
+  longer gives goes in as a narrowing row in `kRouteOverrides`, never by
+  shrinking the table that other routes and the app's mirror rely on.
+
+**Why.** A table permission answers for every path whose first segment is the
+table and for every method that maps to the permission, including the
+combinations the controllers never declare. The notification delete (be555b43)
+gave every role Delete on `notification`. That widening also opened `DELETE
+/notification/responses/{id}` to every role in `role_access`, which an older
+assertion refused, and it only surfaced in a later build of the project. Two
+Owner-only `kRouteOverrides` rows restored the refusal.
+
+**The notification pin** is the test case "every route of the notification table
+answers each role as pinned, in every method". It covers 8 paths × 5 methods, one
+row per route and method, with a flag for the 10 routes the baseline declares. An
+undeclared combination never reaches a filter, because Drogon answers 404 or 405
+first, but its verdict follows the table. The pin keeps it in view, so a later
+widening changes visible rows instead of slipping through.
 
 ## The filters after the audit
 
