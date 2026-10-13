@@ -429,3 +429,15 @@ if(DOCTEST_INCLUDE_DIRS)
     set_target_properties(doctest::doctest PROPERTIES
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
+
+add_executable(notification-rpc-server-test tests/unit/notification-rpc-server-test.cc)
+set_target_properties(notification-rpc-server-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(notification-rpc-server-test PRIVATE
+    argus::notification-rpc
+    argus::lib::grpc-test-support
+    doctest::doctest)
+target_compile_options(notification-rpc-server-test PRIVATE -Wall -Wextra)
+add_test(NAME notification-rpc-server-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:notification-rpc-server-test> 3)
+set_tests_properties(notification-rpc-server-test PROPERTIES SKIP_RETURN_CODE 77)

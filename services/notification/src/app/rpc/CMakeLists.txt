@@ -2,6 +2,7 @@ argus_module(NAME notification-rpc
     SOURCES
         call-rpc-service.cc
         notification-rpc-service.cc
+        notification-rpc-server.cc
     INCLUDES ../..
     DEPENDS
         argus::notification-shared

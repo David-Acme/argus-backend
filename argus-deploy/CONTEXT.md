@@ -994,7 +994,7 @@ composition test under its own certificate name: two ports, plaintext only,
 one handshake. A service whose main used to build its server inline gets
 such a delegate.
 
-Wired so far: tts, settings and productivity.
+Wired so far: tts, settings, productivity and notification.
 - tts and settings publish no gRPC port, so 7329 and 7247 are not published
   either.
 - settings opens its mutual TLS port on the modules RPC server, beside
@@ -1004,6 +1004,10 @@ Wired so far: tts, settings and productivity.
   published there too (`PRODUCTIVITY_GRPC_TLS_PORT`). Its
   ProductivityRpcServer opens both ports through startProductivityRpc,
   which also refuses an empty or null service.
+- notification publishes its plaintext 7038 on 127.0.0.1, so 7238 is
+  published there too (`NOTIFICATION_GRPC_TLS_PORT`). Its main used to
+  build the gRPC server inline and now calls startNotificationRpc
+  (services/notification/src/app/rpc/notification-rpc-server).
 
 The clients move to `tls:` targets in step 5, and the plaintext listeners
 go only after the owner's check. For every deploy template that declares

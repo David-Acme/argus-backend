@@ -18,7 +18,9 @@
 #include <auth/module-feed.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
+#include <app/rpc/notification-rpc-server.hxx>
 #include <grpc/grpc-server-drain.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
 #include <http/certificate-reload.hxx>
@@ -26,6 +28,7 @@
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
+#include <http/tls-health.hxx>
 #include <identity/identity-client.hxx>
 #include <mdns/mdns-service.hxx>
 #include <shared/repositories/notification/notification-repository.hxx>
@@ -48,6 +51,7 @@
 
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -97,6 +101,16 @@ int main()
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
+  const InternalTlsConfig internalTlsConfig = InternalTlsConfig::resolve();
+  std::optional<argus::client::InternalTlsMaterial> internalTls;
+  try {
+    internalTls = argus::client::installInternalTlsFrom(internalTlsConfig.directory);
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  const auto loadedTls = internalTls.value_or(argus::client::InternalTlsMaterial{});
 
   try {
     DeviceFilter::requireFingerprintSecret();
@@ -331,7 +345,10 @@ int main()
                         status["dropped_short_dwell"] =
                             static_cast<Json::Int64>(counts.droppedShortDwell);
                         return status;
-                      }}}}));
+                      }},
+                     tls_health::healthExtra(
+                         {.certificatePem = loadedTls.certificatePem,
+                          .trustBundlePem = loadedTls.trustBundlePem})}}));
 
   drogon::app().registerBeginningAdvice([&notificationDb, &changeSink]() {
     if (!DbService::runScriptFile(notificationDb.schemaPath)) {
@@ -447,20 +464,25 @@ int main()
     settingsRpc->attachModuleRequest(moduleRequest);
   }
 
-  grpc::ServerBuilder grpcBuilder;
   const std::string grpcAddress =
       grpcListener.host + ":" + std::to_string(grpcListener.port);
-  grpcBuilder.AddListeningPort(grpcAddress, grpc::InsecureServerCredentials());
-  grpcBuilder.RegisterService(&notificationRpc);
-  grpcBuilder.RegisterService(&callRpc);
+  std::vector<grpc::Service*> grpcServices{&notificationRpc, &callRpc};
   if (settingsRpc)
-    grpcBuilder.RegisterService(settingsRpc.get());
-  std::unique_ptr<grpc::Server> grpcServer(grpcBuilder.BuildAndStart());
-  if (!grpcServer) {
-    LOG_FATAL << "gRPC server failed to listen on " << grpcAddress;
+    grpcServices.push_back(settingsRpc.get());
+  auto grpcListening = startNotificationRpc({.address = grpcAddress,
+                                             .tlsAddress = internalTlsConfig.address,
+                                             .tls = internalTls,
+                                             .services = std::move(grpcServices)});
+  if (!grpcListening.server) {
+    LOG_FATAL << "gRPC server failed to listen on " << grpcAddress
+              << (internalTls && !internalTlsConfig.address.empty()
+                      ? " and " + internalTlsConfig.address
+                      : std::string{});
     return 1;
   }
-  argus::client::GrpcServerDrain grpcDrain(std::move(grpcServer), kGrpcDrainDeadline);
+  if (grpcListening.tlsPort > 0)
+    LOG_INFO << "gRPC with mutual TLS on " << internalTlsConfig.address;
+  argus::client::GrpcServerDrain grpcDrain(std::move(grpcListening.server), kGrpcDrainDeadline);
 
   notificationRpc.startDeliveryReconciler();
   notificationRpc.startSelfTestProber();

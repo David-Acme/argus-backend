@@ -2,6 +2,10 @@
 host = "0.0.0.0"
 grpc_port = 7038
 
+[internal_tls]
+dir = "/run/secrets/internal-tls"
+address = "0.0.0.0:7238"
+
 [drogon.app]
 number_of_threads = 0
 enable_session = false

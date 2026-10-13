@@ -328,6 +328,7 @@ services:
     ports:
       - "${NOTIFICATION_PORT:-7028}:7028"
       - "127.0.0.1:${NOTIFICATION_GRPC_PORT:-7038}:7038"
+      - "127.0.0.1:${NOTIFICATION_GRPC_TLS_PORT:-7238}:7238"
     entrypoint: ["/opt/argus/argus-notification"]
     volumes:
       - type: bind
@@ -338,6 +339,12 @@ services:
       - type: bind
         source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/notification.seed
         target: /run/secrets/nats.seed
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/certs/internal/notification
+        target: /run/secrets/internal-tls
         read_only: true
         bind:
           create_host_path: false
