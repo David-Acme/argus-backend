@@ -3,13 +3,11 @@
 
 #include <app/rpc/modules-rpc-server.hxx>
 #include <chrono>
-#include <cstdlib>
-#include <grpc/health/v1/health.grpc.pb.h>
+#include <grpc-test-support/internal-tls-probe.hxx>
 #include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <optional>
-#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -17,65 +15,19 @@ namespace
 {
 
 using argus::client::InternalTlsMaterial;
-
-class AlwaysServing final : public grpc::health::v1::Health::CallbackService
-{
-public:
-  grpc::ServerUnaryReactor*
-  Check(grpc::CallbackServerContext* context,
-        const grpc::health::v1::HealthCheckRequest*,
-        grpc::health::v1::HealthCheckResponse* response) override
-  {
-    response->set_status(grpc::health::v1::HealthCheckResponse::SERVING);
-    auto* reactor = context->DefaultReactor();
-    reactor->Finish(grpc::Status::OK);
-    return reactor;
-  }
-};
-
-std::string environment(const char* name)
-{
-  const char* value = std::getenv(name);
-  if (value == nullptr || *value == '\0')
-    throw std::runtime_error(
-        std::string(name) +
-        " is not set; run this test through scripts/internal-tls-test.sh");
-  return value;
-}
-
-InternalTlsMaterial materialOf(const std::string& directory)
-{
-  auto material = argus::client::readInternalTls(
-      argus::client::internalTlsFilesIn(directory));
-  if (!material)
-    throw std::runtime_error("no internal TLS material in " + directory);
-  return *std::move(material);
-}
-
-InternalTlsMaterial serviceMaterial(const std::string& service)
-{
-  return materialOf(environment("ARGUS_INTERNAL_TLS_PKI") + "/" + service);
-}
-
-grpc::StatusCode healthOver(const std::shared_ptr<grpc::Channel>& channel)
-{
-  auto stub = grpc::health::v1::Health::NewStub(channel);
-  grpc::ClientContext context;
-  context.set_deadline(std::chrono::system_clock::now() +
-                       std::chrono::seconds(5));
-  const grpc::health::v1::HealthCheckRequest request;
-  grpc::health::v1::HealthCheckResponse response;
-  return stub->Check(&context, request, &response).error_code();
-}
+using argus::client::test_support::AlwaysServing;
+using argus::client::test_support::foreignMaterial;
+using argus::client::test_support::healthOver;
+using argus::client::test_support::pkiMaterial;
 
 std::shared_ptr<grpc::Channel>
 channelTo(int port,
           const std::shared_ptr<grpc::ChannelCredentials>& credentials)
 {
-  grpc::ChannelArguments arguments;
-  arguments.SetSslTargetNameOverride("argus-settings");
-  return grpc::CreateCustomChannel("127.0.0.1:" + std::to_string(port),
-                                   credentials, arguments);
+  return argus::client::test_support::loopbackChannel(
+      {.port = port,
+       .credentials = credentials,
+       .serverName = "argus-settings"});
 }
 
 ModulesRpcListenInput listenInput(std::optional<InternalTlsMaterial> tls,
@@ -91,8 +43,8 @@ ModulesRpcListenInput listenInput(std::optional<InternalTlsMaterial> tls,
 
 TEST_CASE("material and an address give a plaintext port and a mutual TLS port")
 {
-  const auto ports = modulesRpcPorts(
-      listenInput(serviceMaterial("settings"), "127.0.0.1:7247"));
+  const auto ports =
+      modulesRpcPorts(listenInput(pkiMaterial("settings"), "127.0.0.1:7247"));
   REQUIRE(ports.size() == 2);
   CHECK(ports[0].address == "127.0.0.1:0");
   CHECK_FALSE(ports[0].mutualTls);
@@ -123,15 +75,14 @@ TEST_CASE(
 TEST_CASE(
     "material without an address loads it for clients and opens no second port")
 {
-  const auto ports =
-      modulesRpcPorts(listenInput(serviceMaterial("settings"), ""));
+  const auto ports = modulesRpcPorts(listenInput(pkiMaterial("settings"), ""));
   REQUIRE(ports.size() == 1);
   CHECK_FALSE(ports[0].mutualTls);
 }
 
 TEST_CASE("no plaintext address opens nothing, mutual TLS included")
 {
-  auto input = listenInput(serviceMaterial("settings"), "127.0.0.1:0");
+  auto input = listenInput(pkiMaterial("settings"), "127.0.0.1:0");
   input.address.clear();
   CHECK(modulesRpcPorts(input).empty());
   const auto listener = startModulesRpc(input);
@@ -144,7 +95,7 @@ TEST_CASE("the mutual TLS port serves a peer of the internal CA and refuses "
           "every other")
 {
   AlwaysServing health;
-  auto input = listenInput(serviceMaterial("settings"), "127.0.0.1:0");
+  auto input = listenInput(pkiMaterial("settings"), "127.0.0.1:0");
   input.services = {&health};
   auto listener = startModulesRpc(input);
   REQUIRE(listener.server != nullptr);
@@ -157,20 +108,16 @@ TEST_CASE("the mutual TLS port serves a peer of the internal CA and refuses "
         grpc::StatusCode::OK);
   CHECK(healthOver(channelTo(listener.tlsPort,
                              argus::client::internalChannelCredentials(
-                                 serviceMaterial("camera")))) ==
+                                 pkiMaterial("camera")))) ==
         grpc::StatusCode::OK);
-  CHECK(
-      healthOver(channelTo(listener.tlsPort,
-                           argus::client::internalChannelCredentials(materialOf(
-                               environment("ARGUS_INTERNAL_TLS_FOREIGN"))))) ==
-      grpc::StatusCode::UNAVAILABLE);
-  const auto camera = serviceMaterial("camera");
   CHECK(healthOver(channelTo(listener.tlsPort,
-                             grpc::SslCredentials(
-                                 {.pem_root_certs = camera.trustBundlePem,
-                                  .pem_private_key = "",
-                                  .pem_cert_chain = ""}))) ==
+                             argus::client::internalChannelCredentials(
+                                 foreignMaterial()))) ==
         grpc::StatusCode::UNAVAILABLE);
+  const auto camera = pkiMaterial("camera");
+  CHECK(healthOver(channelTo(listener.tlsPort,
+                             argus::client::test_support::anonymousTls(
+                                 camera))) == grpc::StatusCode::UNAVAILABLE);
   CHECK(healthOver(
             channelTo(listener.tlsPort, grpc::InsecureChannelCredentials())) ==
         grpc::StatusCode::UNAVAILABLE);
@@ -181,7 +128,7 @@ TEST_CASE("the mutual TLS port serves a peer of the internal CA and refuses "
 TEST_CASE("a mutual TLS address that cannot be bound starts nothing")
 {
   AlwaysServing health;
-  auto input = listenInput(serviceMaterial("settings"), "192.0.2.1:0");
+  auto input = listenInput(pkiMaterial("settings"), "192.0.2.1:0");
   input.services = {&health};
   const auto listener = startModulesRpc(input);
   CHECK(listener.server == nullptr);

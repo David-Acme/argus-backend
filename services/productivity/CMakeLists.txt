@@ -442,7 +442,7 @@ add_executable(productivity-rpc-server-test tests/unit/productivity-rpc-server-t
 set_target_properties(productivity-rpc-server-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(productivity-rpc-server-test PRIVATE
     argus::productivity-rpc-server
-    argus::lib::grpc-health
+    argus::lib::grpc-test-support
     doctest::doctest)
 target_compile_options(productivity-rpc-server-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-rpc-server-test

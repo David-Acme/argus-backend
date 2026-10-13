@@ -28,6 +28,12 @@ if(NOT TARGET argus::lib::grpc-health)
   set_target_properties(argus_lib_grpc-health PROPERTIES EXCLUDE_FROM_ALL TRUE)
 endif()
 
+if(NOT TARGET argus::lib::grpc-test-support)
+  argus_lib(NAME grpc-test-support HEADER_ONLY
+      INCLUDES tests/support
+      DEPENDS argus::lib::grpc-health)
+endif()
+
 enable_testing()
 find_package(doctest REQUIRED)
 
