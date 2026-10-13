@@ -9,6 +9,7 @@
 #include <runtime/blocking-pool.hxx>
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstring>
 #include <memory>
@@ -18,6 +19,17 @@
 namespace
 {
 constexpr const char* kPcmMime = "audio/x-argus-pcm-f32";
+
+bool asksToClose(const drogon::HttpRequestPtr& req)
+{
+  std::string connection = req->getHeader("connection");
+  std::ranges::transform(connection, connection.begin(),
+                         [](unsigned char c) { return std::tolower(c); });
+  if (connection.find("close") != std::string::npos)
+    return true;
+  return req->getVersion() == drogon::Version::kHttp10 &&
+         connection.find("keep-alive") == std::string::npos;
+}
 
 std::string pcmBytes(const std::vector<float>& pcm)
 {
@@ -115,6 +127,9 @@ TtsController::synthesizeStream(drogon::HttpRequestPtr req)
   auto& tts = TtsService::instance();
   if (!tts.isLoaded())
     throw ResponseException(503, TtsErrors::TtsNotLoaded);
+
+  if (asksToClose(req))
+    co_return co_await synthesize(req);
 
   auto lease = streams_.tryAcquire();
   if (!lease)

@@ -452,7 +452,23 @@ threads busy, and the whole test 5 s instead of 38 s. The test also checks that
 silently stop applying. The Pocket path through the service keeps its own
 coverage in `tts-pocket-test`.
 
-## Voice previews (`tools/tts-preview/`)
+## A closing client still hears the answer
+
+`POST /tts/v1/synthesize-stream` answered a client that sends
+`Connection: close` with headers and no audio. Drogon marks every response that
+answers such a request as one that must close the connection, and it marks it
+*after* the handler returns (`HttpServer.cc`, `resp->setCloseConnection(!req->
+keepAlive())`, on the response path itself), so a handler cannot undo it; its
+send path then refuses to start an async stream on a response marked that way -
+it logs "Chunking Set CloseConnection !!!" and sends the header alone, so the
+callback that would have produced the PCM never runs. No flag the route sets
+survives that line, which is why the route does the one thing left: a request
+that will not keep the connection is answered in full by the buffered synthesis
+`/tts/v1/synthesize` already serves, so the caller hears the answer and the
+socket closes behind it. The cost is named - such a client gets no incremental
+audio - and it is the honest trade, because an async stream is not deliverable
+to it at all. `tts-wire-test` pins it: a stream request with `Connection: close`
+must come back with audio, exactly like the keep-alive one beside it.
 
 The app plays a bundled clip for every engine, variant and voice option, so
 the owner can hear an option before installing it, offline and instantly.
@@ -502,11 +518,10 @@ the long one, and the first PCM byte 38.8 -> 38.1 ms and 22.1 -> 21.1 ms, so the
 one-frame contract costs nothing measurable - the batched path was the slower
 one, decoding frames against a state it advanced once. Every other row is the
 original measurement and was not re-taken. The client used for the comparison
-speaks HTTP/1.1 with the connection kept alive and reads the chunked framing:
-a client that asks for `Connection: close` is answered with an empty body
-(`curl -H 'Connection: close'` reproduces it against `/tts/v1/synthesize-stream`
-in one command), a defect of the streaming path that this measurement surfaced
-and that is reported rather than fixed here.
+speaks HTTP/1.1 with the connection kept alive and reads the chunked framing -
+a client that asks for `Connection: close` used to be answered with an empty
+body, and the streaming route now refuses to let that happen (see "A closing
+client still hears the answer").
 
 Reference points: upstream PyTorch on the same machine reaches RTF 0.33 (es 6
 layers), 0.83 (es 24 layers) and 0.31 (en). The standalone PocketTTS.cpp

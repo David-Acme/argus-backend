@@ -352,6 +352,15 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
   CHECK(pcm.size() % sizeof(float) == 0);
   CHECK_FALSE(pcm.empty());
 
+  const auto closing = request({.port = port,
+                                .method = "POST",
+                                .path = "/tts/v1/synthesize-stream",
+                                .body = R"({"text":"Hola argus","lang":"es"})",
+                                .closeConnection = true});
+  CHECK(closing.status == 200);
+  CHECK(closing.body.size() % sizeof(float) == 0);
+  CHECK_FALSE(closing.body.empty());
+
   {
     const auto settleBy = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     while (!controller->streams().drained() && std::chrono::steady_clock::now() < settleBy)
@@ -365,7 +374,7 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
                                .method = "POST",
                                .path = "/tts/v1/synthesize-stream",
                                .body = R"({"text":"Hola argus","lang":"es"})",
-                               .closeConnection = true});
+                               .closeConnection = false});
     CHECK(busy.status == 429);
     CHECK(envelope(busy)["errors"]["code"] == "TOO_MANY_REQUESTS");
   }
