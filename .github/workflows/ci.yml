@@ -43,12 +43,6 @@ jobs:
       - name: Detect Conan profile
         run: conan profile detect
 
-      - name: Generate runtime configs
-        run: |
-          for f in services/*/config.toml.example packages/*/config.toml.example; do
-            cp "$f" "${f%.example}"
-          done
-
       - name: Install the pinned nats-server for the live suites
         run: |
           pin="$GITHUB_WORKSPACE/.github/nats-server.sha256"
