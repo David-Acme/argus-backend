@@ -871,7 +871,9 @@ in order:
    file on every operation and falls back to `access_key`/`secret_key`, the
    shared account, only while the file is missing or unreadable; the log says
    which, once per change: a notice names the file when the keys come from it,
-   a warning when they cannot. That fallback is transitional: the owner deploy
+   a warning when they cannot, at a writer's first storage call (identity's
+   object-deletion sweep runs every minute; camera and guard call storage when
+   they first store evidence). That fallback is transitional: the owner deploy
    step that removes the shared account also removes those two keys from the
    identity, camera and guard configs (`realtime-and-backlog-plan`, S4).
    Deploying this change needs `scripts/provision-host.sh` re-run before

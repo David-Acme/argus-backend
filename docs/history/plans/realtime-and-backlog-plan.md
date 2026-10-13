@@ -313,7 +313,9 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   mount and names the file in their configs); bring the stack up (`docker compose build` and
   `docker compose up -d`; `rustfs-init` issues the accounts before the writers start); check that
   the identity, camera and guard logs say their keys come from `/run/secrets/s3/credentials.json`
-  and that none warns the file cannot be used; only then the cleanup that removes the shared
+  and that none warns the file cannot be used (the notice comes with each writer's first storage
+  call: identity's object-deletion sweep within a minute, camera's first detection evidence,
+  guard's first incident evidence); only then the cleanup that removes the shared
   account (from RustFS and from `rustfs-init`, which would create it again) and the
   `access_key`/`secret_key` keys (from those three configs and from the provisioning that writes
   them). Native runs still take the shared keys from `scripts/setup.sh`; the cleanup gives them
