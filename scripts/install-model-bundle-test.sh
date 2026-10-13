@@ -95,7 +95,7 @@ python3 -I -c '
 import json, pathlib, sys
 path = pathlib.Path(sys.argv[1], "labels.json")
 labels = json.loads(path.read_text())["labels"]
-labels["holiday_planning"] = "plan a holiday"
+labels.append("holiday_planning")
 path.write_text(json.dumps({"labels": labels}, indent=1) + "\n")
 ' "$BUNDLES/straylabel"
 resign "$BUNDLES/straylabel"

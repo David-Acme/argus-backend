@@ -155,7 +155,11 @@ log "=== routes ==="
 "$ROOT/scripts/check-routes.sh"
 
 log "=== vendored patches ==="
-"$ROOT/scripts/check-vendored.sh"
+if compgen -G "$ROOT/third_party/*/argus-patches" >/dev/null; then
+  "$ROOT/scripts/check-vendored.sh"
+else
+  log "vendored: $ROOT holds no third_party/*/argus-patches, so no patch is pinned here; the gate runs where the vendored trees are"
+fi
 
 CONAN_OUT="$ROOT/build/$PROFILE"
 GENERATORS="$CONAN_OUT/build/$BUILD_TYPE/generators"
