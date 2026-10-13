@@ -15,16 +15,19 @@
 #include <feature/camera/services/camera-probe-service.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/services/camera-driver/stream-only-driver.hxx>
+#include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 #include <feature/zone/controllers/zone-controller.hxx>
 #include <feature/zone/dtos/create-zone-dto.hxx>
 #include <auth/jwt-filter.hxx>
+#include <config/config-service.hxx>
 #include <text/json-util.hxx>
 #include <validation/validator.hxx>
 
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <mutex>
 #include <optional>
 #include <sqlite3.h>
 #include <stdexcept>
@@ -34,6 +37,54 @@
 namespace
 {
 constexpr const char* kCameraDb = "camera-controller-test.db";
+constexpr const char* kMainStill = "main-stream-still";
+
+struct FrameRequestSeen
+{
+  std::string source;
+  bool cached{false};
+  int count{0};
+};
+
+class FakeGo2rtcFrames
+{
+public:
+  void install()
+  {
+    drogon::app().registerHandler(
+        "/api/frame.jpeg",
+        [this](const drogon::HttpRequestPtr& request,
+               std::function<void(const drogon::HttpResponsePtr&)>&& callback) {
+          {
+            const std::scoped_lock lock(mutex_);
+            seen_.source = request->getParameter("src");
+            seen_.cached = !request->getParameter("cache").empty();
+            ++seen_.count;
+          }
+          auto response = drogon::HttpResponse::newHttpResponse();
+          response->setContentTypeCode(drogon::CT_IMAGE_JPG);
+          response->setBody(kMainStill);
+          callback(response);
+        },
+        {drogon::Get});
+  }
+
+  [[nodiscard]] FrameRequestSeen seen() const
+  {
+    const std::scoped_lock lock(mutex_);
+    return seen_;
+  }
+
+private:
+  mutable std::mutex mutex_;
+  FrameRequestSeen seen_;
+};
+
+FakeGo2rtcFrames& fakeGo2rtc()
+{
+  static FakeGo2rtcFrames frames;
+  return frames;
+}
 
 using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
 
@@ -230,9 +281,16 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().addDbClient(
       drogon::orm::Sqlite3Config{1, kCameraDb, "default", -1});
+  fakeGo2rtc().install();
+  drogon::app().addListener("127.0.0.1", 0);
 
   AppRunner runner;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
+  const auto listeners = drogon::app().getListeners();
+  REQUIRE_FALSE(listeners.empty());
+  ConfigService::setRuntimeString("streaming.go2rtc_api",
+                                  "127.0.0.1:" + std::to_string(listeners.front().toPort()));
+  Go2rtcManager::instance().configure();
 
   CameraController cameraController;
 
@@ -512,11 +570,33 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
                          std::chrono::system_clock::now().time_since_epoch())
                          .count();
   SnapshotStore::instance().putFrame({.cameraId = cameraId2, .jpeg = "jpeg", .atMs = stamp});
-  const auto snapshot = drogon::sync_wait(controlController.snapshot(nullptr, cameraId2));
+  const auto snapshot =
+      drogon::sync_wait(controlController.snapshot(drogon::HttpRequest::newHttpRequest(), cameraId2));
   const Json::Value picture = body(snapshot)["info"];
   CHECK(picture["image"].asString() == "data:image/jpeg;base64,anBlZw==");
   CHECK(picture["capturedAt"].asInt64() == stamp);
-  const auto missingSnapshot = refusalOf(controlController.snapshot(nullptr, 999));
+  const auto subRequest = drogon::HttpRequest::newHttpRequest();
+  subRequest->setParameter("quality", "sub");
+  CHECK(body(drogon::sync_wait(controlController.snapshot(subRequest, cameraId2)))["info"]["image"].asString() ==
+        "data:image/jpeg;base64,anBlZw==");
+  CHECK(fakeGo2rtc().seen().count == 0);
+
+  const auto mainRequest = drogon::HttpRequest::newHttpRequest();
+  mainRequest->setParameter("quality", "main");
+  const Json::Value full = body(drogon::sync_wait(controlController.snapshot(mainRequest, cameraId2)))["info"];
+  CHECK(full["image"].asString() == "data:image/jpeg;base64," + drogon::utils::base64Encode(kMainStill));
+  CHECK(full["capturedAt"].asInt64() >= stamp);
+  const FrameRequestSeen grabbed = fakeGo2rtc().seen();
+  CHECK(grabbed.count == 1);
+  CHECK(grabbed.source == Go2rtcManager::sourceName(cameraId2, CameraStream::Main));
+  CHECK_FALSE(grabbed.cached);
+
+  const auto unknownQuality = drogon::HttpRequest::newHttpRequest();
+  unknownQuality->setParameter("quality", "ultra");
+  CHECK_THROWS_AS(drogon::sync_wait(controlController.snapshot(unknownQuality, cameraId2)), ValidationException);
+  CHECK(fakeGo2rtc().seen().count == 1);
+  const auto missingSnapshot =
+      refusalOf(controlController.snapshot(drogon::HttpRequest::newHttpRequest(), 999));
   if (!missingSnapshot) {
     FAIL("expected a value in missingSnapshot");
     return;

@@ -4,6 +4,7 @@ argus_module(NAME camera-control
         dtos/camera-preset-dto.cc
         dtos/camera-ptz-dto.cc
         dtos/camera-settings-dto.cc
+        dtos/camera-snapshot-dto.cc
         dtos/camera-talk-dto.cc
         services/camera-control-feature-service.cc
     INCLUDES

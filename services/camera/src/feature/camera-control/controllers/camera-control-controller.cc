@@ -76,7 +76,8 @@ CameraControlController::talk(drogon::HttpRequestPtr req, int64_t id)
 }
 
 drogon::Task<drogon::HttpResponsePtr>
-CameraControlController::snapshot(drogon::HttpRequestPtr, int64_t id)
+CameraControlController::snapshot(drogon::HttpRequestPtr req, int64_t id)
 {
-  co_return respond(co_await service_.snapshot(id));
+  const auto query = CameraSnapshotDto::fromRequest(req);
+  co_return respond(co_await service_.snapshot(id, query.stream()));
 }

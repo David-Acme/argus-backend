@@ -8,6 +8,7 @@
 #include <shared/services/stream/snapshot-store.hxx>
 
 #include <chrono>
+#include <utility>
 
 namespace
 {
@@ -164,7 +165,7 @@ CameraControlFeatureService::speak(int64_t cameraId, const CameraTalkDto& body) 
 }
 
 drogon::Task<CameraControlResult>
-CameraControlFeatureService::snapshot(int64_t cameraId) const
+CameraControlFeatureService::snapshot(int64_t cameraId, CameraStream stream) const
 {
   const auto camera = co_await repository_.findById(cameraId);
   if (!camera)
@@ -173,13 +174,13 @@ CameraControlFeatureService::snapshot(int64_t cameraId) const
     co_return DriverResult::failed("This camera is disabled");
 
   CameraSnapshot picture;
-  if (auto stored = SnapshotStore::instance().frame(cameraId);
-      stored && nowMs() - stored->atMs <= kFreshSnapshotMs) {
+  auto stored = camera_stream_role::isWarm(stream) ? SnapshotStore::instance().frame(cameraId) : std::nullopt;
+  if (stored && nowMs() - stored->atMs <= kFreshSnapshotMs) {
     picture = std::move(*stored);
   }
   else {
-    const auto frame =
-        co_await frames_.grab({.cameraId = cameraId, .cameraName = camera->name, .maxAgeMs = 0});
+    const auto frame = co_await frames_.grab(
+        {.cameraId = cameraId, .cameraName = camera->name, .maxAgeMs = 0, .stream = stream});
     if (!frame || frame->jpeg.empty())
       co_return DriverResult::failed("The camera sent no picture");
     picture = {.jpeg = std::string(frame->jpeg.begin(), frame->jpeg.end()),

@@ -5,6 +5,7 @@
 #include <feature/camera-control/dtos/camera-preset-dto.hxx>
 #include <feature/camera-control/dtos/camera-ptz-dto.hxx>
 #include <feature/camera-control/dtos/camera-settings-dto.hxx>
+#include <feature/camera-control/dtos/camera-snapshot-dto.hxx>
 #include <feature/camera-control/dtos/camera-talk-dto.hxx>
 #include <json/value.h>
 #include <optional>
@@ -29,7 +30,7 @@ public:
   drogon::Task<CameraControlResult> speak(int64_t cameraId,
                                           const CameraTalkDto& body) const;
   drogon::Task<CameraControlResult> capabilities(int64_t cameraId) const;
-  drogon::Task<CameraControlResult> snapshot(int64_t cameraId) const;
+  drogon::Task<CameraControlResult> snapshot(int64_t cameraId, CameraStream stream) const;
 
 private:
   drogon::Task<CameraControlResult>

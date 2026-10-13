@@ -1030,6 +1030,29 @@ them in memory only. Measured on the sandbox: a 640×360 sub-stream frame is
 18 KB of JPEG (24 KB as base64) and the call answered in about 1.4 s
 end to end, including the token refresh and go2rtc's decode.
 
+### A still to save (2026-10-13, F1 "snapshot to file")
+
+The grid still is too small to keep, and it is the analysis frame, so it
+is the masked one. `GET /camera/{id}/snapshot?quality=main` answers the
+same `{ image, capturedAt }` with one frame decoded from the **main** stream
+(2688×1520 on the C225), the picture the live view shows.
+
+- **Fresh every time.** It never comes from `SnapshotStore` and never sends
+  go2rtc a `cache`.
+- **Its own grab.** It is not paced by the analysis grab backoff. A failure
+  there neither feeds that backoff nor waits on it, and its HTTP lane is its
+  own (`frame:<id>:main`).
+- **A longer timeout.** It waits 8 s instead of 5 s, because go2rtc may have
+  to open the main stream and wait for its next keyframe.
+- **Unmasked, like the live view.** The privacy masks do not cover it: a
+  person who may watch the live view already sees this picture. The
+  permission is the snapshot's own, camera read.
+- **The default is unchanged.** `quality=sub`, or no `quality`, is the grid
+  still exactly as before. Any other value is a 422 (`CameraSnapshotDto`).
+- **The file is the app's.** Saving or sharing the JPEG, and naming it, are
+  the app's half of F1. Grabs choose a stream through `FrameGrabRequest`'s
+  `stream`, which defaults to the analysis one.
+
 `Go2rtcFrameSource` and `IFrameSource` moved from `feature/operator` to
 `shared/services/stream`: the operator, the monitor and camera-control read
 them now, and the monitor no longer links the operator module to reach them.
@@ -1219,8 +1242,9 @@ on cameras without PTZ, SD card state in the device panel, snapshot per camera.
 
 Not done yet, in the order they pay off:
 
-1. **Snapshot to file**: the still exists (`GET /camera/{id}/snapshot`); the app needs a save/
-   share action per platform (Tauri dialog, Android/iOS share sheet).
+1. **Snapshot to file**: the backend half landed (2026-10-13): `GET /camera/{id}/snapshot?quality=main`
+   is a full-resolution still from the main stream ("A still to save"); the app needs a save/share
+   action per platform (Tauri dialog, Android/iOS share sheet).
 2. **SD-card recordings and a timeline**: `searchDateWithVideo` / `searchVideoOfDay` are read-only
    pytapo calls Argus can add to the driver for a day list; playback is the 8800 media stream in
    `sdvod` mode with encrypted parts (pytapo's `Downloader`), a second media client, and it uses
@@ -1253,6 +1277,7 @@ source name, and no consumer spells `-sub` or `cam<N>` any more:
 | `/media` viewer with no `quality` (the default view) | LiveView | main |
 | detector, guard frames, health monitor (`Go2rtcFrameSource`) | Analysis | sub |
 | `GET /camera/{id}/snapshot`, thumbnails, the guard's VLM crops (they come from `SnapshotStore`, filled by the operator's frames) | Analysis | sub |
+| `GET /camera/{id}/snapshot?quality=main`, a still to save (one fresh frame, never cached, outside the analysis backoff) | — | main |
 | `GET /camera/overview` stream stats | Analysis | sub |
 | the voice loop's microphone capture (`audio_capture`, guard listen) | Listening | sub |
 | recording (not built yet: `record_mode` is stored, nothing records) | — | main, by the owner's decision; it adds `Recording → Main` to the table when it lands |

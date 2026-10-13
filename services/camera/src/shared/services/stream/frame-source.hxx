@@ -1,6 +1,7 @@
 #pragma once
 
 #include <drogon/utils/coroutine.h>
+#include <shared/vocabulary/camera-stream-role.hxx>
 
 #include <cstdint>
 #include <optional>
@@ -21,6 +22,7 @@ struct FrameGrabRequest
   int64_t cameraId{0};
   std::string cameraName;
   int64_t maxAgeMs{0};
+  CameraStream stream{camera_stream_role::streamFor(CameraStreamRole::Analysis)};
 };
 
 class IFrameSource
