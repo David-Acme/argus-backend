@@ -23,6 +23,8 @@ argus_lib(NAME nats
         src/nats/nats-bus.cc
         src/nats/nats-bus.hxx
         src/nats/nats-subject.hxx
+        src/nats/nats-permissions.cc
+        src/nats/nats-permissions.hxx
         src/nats/live-broker.hxx
         src/nats/nats-push-intent-sink.hxx
         src/nats/push-intent-sink.hxx
@@ -42,6 +44,16 @@ add_executable(nats-wrapper-test tests/unit/nats-wrapper-test.cc)
 target_link_libraries(nats-wrapper-test PRIVATE argus::lib::nats doctest::doctest)
 target_compile_options(nats-wrapper-test PRIVATE -Wall -Wextra)
 add_test(NAME nats-wrapper-test COMMAND nats-wrapper-test)
+
+get_filename_component(ARGUS_NATS_DEPLOY_DIR
+                       ${CMAKE_CURRENT_SOURCE_DIR}/../../../argus-deploy ABSOLUTE)
+add_executable(nats-permissions-test tests/unit/nats-permissions-test.cc)
+target_link_libraries(nats-permissions-test PRIVATE argus::lib::nats doctest::doctest)
+target_compile_options(nats-permissions-test PRIVATE -Wall -Wextra)
+target_compile_definitions(nats-permissions-test PRIVATE
+    ARGUS_DEPLOY_DIR="${ARGUS_NATS_DEPLOY_DIR}"
+    ARGUS_NATS_RENDER_OUT="${CMAKE_CURRENT_BINARY_DIR}/nats-permissions.conf")
+add_test(NAME nats-permissions-test COMMAND nats-permissions-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

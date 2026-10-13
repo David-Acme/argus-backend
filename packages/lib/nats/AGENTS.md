@@ -32,6 +32,13 @@ argus-guard binds its own feed with, not a spelling anything publishes on.
   `/sync` event.
 - `src/nats/nats-push-intent-sink.hxx` — the publisher both intent producers
   install, over the bus and `push_intent::toJson`.
+- `src/nats/nats-permissions.{cc,hxx}` — the permission table: one row per
+  NATS user (one per service), naming what it publishes, what it stores
+  through JetStream, what it subscribes to, the streams it inspects, creates
+  or ensures, and its consumers. `grantsFor` expands a row into the broker's
+  publish and subscribe allow-lists and `render()` writes them as one config
+  variable per service, `ARGUS_NATS_<SERVICE>`, which is the checked-in
+  `argus-deploy/nats-permissions.conf`.
 
 ## Rules
 
@@ -42,6 +49,23 @@ argus-guard binds its own feed with, not a spelling anything publishes on.
   literal for a subject is the duplication that breaks the stream the first
   time the two copies disagree, and it hides the subject from the wire
   document.
+- Every NATS connection of the stack has its row in `nats-permissions.cc`, and
+  a row grants what its service does and nothing else. A new subject, stream,
+  durable or core subscription in a service is a change to its row in the
+  same unit, followed by the regenerated `argus-deploy/nats-permissions.conf`:
+  `nats-permissions-test` fails while the two disagree and writes the table's
+  rendering into its build directory for the copy. A new service is one new
+  row. The durable names in the rows repeat the literals of the services that
+  bind them, so renaming a durable in a service is a row change too, or the
+  broker refuses the bind.
+- A row names literal subjects. A wildcard is granted only where a ruling put
+  it (`argus.recorder.v1.>` today), and the test lists those rulings; sync's
+  row is an explicit list. The grants the expansion adds are the only other
+  `>` tails: `$JS.ACK.<stream>.<durable>.>`, a pull consumer's
+  `$JS.API.CONSUMER.CREATE.<stream>.<name>.>` and the service's own inbox,
+  `_INBOX.<service>.>`.
+- A direction with nothing to grant renders `deny: [">"]`, never an empty
+  `allow` list: nats-server reads an empty `allow` as no restriction at all.
 - A core publish is fire-and-forget by design: a publish that fails logs and
   returns false, it never throws into the caller's request path. A caller that
   must know the message landed asks for a reply subject, it does not read a
@@ -154,6 +178,15 @@ names a broker. Every live suite of the tree reads that one variable through
 `skipped` in the summary, never as passed), and with `CI=true` and no variable
 the case runs and fails on its first `REQUIRE`, so CI cannot go green without
 a broker. `.github/workflows/ci.yml` starts `nats:2 -js` for that reason.
+
+`tests/unit/nats-permissions-test.cc` — the checked-in permission config is the
+table's rendering, byte for byte, and every grant in it is one the table names;
+every `argus-deploy/config.*.toml.example` with a `[nats]` section has its row;
+a service subscribes inside no inbox but its own; the only wildcards are the
+ruled ones and sync names none; every change and action feed has a sync
+durable; a consumer binds to a stream some row creates, under a name no other
+row claims; a core subscription names a subject some row publishes; and no
+direction renders an empty `allow` list. It needs no broker.
 
 `[nats] user` and `[nats] password`, when both are set, are passed to the
 broker with `natsOptions_SetUserInfo`; credentials never go into the URL,
