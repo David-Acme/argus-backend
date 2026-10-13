@@ -223,6 +223,39 @@ printf 'SUAMK2FG4MI6UE3ACF3FK3OIQBCEIEZV7NSWFFEW63UXMRLFM2XLAXK4AA\n' > "$TEST_T
 grep -Eq '^  if ! nats_auth_conf "\$permissions" "\$seeds" "\$password" > "\$temp"; then$' "$ROOT/scripts/provision-host.sh" \
   || fail "provision-host.sh does not render the NATS users from the permission config"
 
+source "$ROOT/scripts/lib/common.sh"
+for service in $(nats_clients); do
+  template="$ROOT/argus-deploy/config.$service.toml.example"
+  [ "$(toml_value "$template" nats seed_file)" = "/run/secrets/nats.seed" ] \
+    || fail "config.$service.toml.example does not name the seed its compose mount provides"
+  toml_key_exists "$template" nats nkey \
+    || fail "config.$service.toml.example has no [nats] nkey for provisioning to fill"
+done
+
+mkdir -p "$TEST_TMP/users/deploy" "$TEST_TMP/users/data/nats/seeds"
+for service in $(nats_clients); do
+  cp "$ROOT/argus-deploy/config.$service.toml.example" "$TEST_TMP/users/deploy/config.$service.toml"
+done
+cp "$ROOT/argus-deploy/config.tts.toml.example" "$TEST_TMP/users/deploy/config.tts.toml"
+nats_auth_conf "$permissions" "$TEST_TMP/users/data/nats/seeds" legacy >/dev/null \
+  || fail "the NATS users could not be rendered for the key check"
+{
+  printf 'source %q\nsource %q\n' "$ROOT/scripts/lib/common.sh" "$ROOT/scripts/lib/nats-users.sh"
+  printf 'DATA_DIR=%q\nDEPLOY_DIR=%q\n' "$TEST_TMP/users/data" "$TEST_TMP/users/deploy"
+  awk '/^configure_nats_users\(\) \{$/ { on = 1 } on { print } on && /^}$/ { on = 0 }' "$ROOT/scripts/provision-host.sh"
+  printf 'configure_nats_users\n'
+} > "$TEST_TMP/users/run.sh"
+bash "$TEST_TMP/users/run.sh" || fail "configure_nats_users failed"
+for service in $(nats_clients); do
+  [ "$(toml_value "$TEST_TMP/users/deploy/config.$service.toml" nats nkey)" \
+      = "$(nkey_public_of "$TEST_TMP/users/data/nats/seeds/$service.seed")" ] \
+    || fail "provisioning did not give config.$service.toml the public key of its own seed"
+done
+! toml_key_exists "$TEST_TMP/users/deploy/config.tts.toml" nats nkey \
+  || fail "provisioning gave a NATS key to a service that does not connect to NATS"
+grep -Eq '^  configure_nats_users$' "$ROOT/scripts/provision-host.sh" \
+  || fail "provision-host.sh does not write each service's NATS key into its config"
+
 if [ -n "${ARGUS_NATS_SERVER_BIN:-}" ]; then
   mkdir -p "$TEST_TMP/broker/js"
   cp "$permissions" "$TEST_TMP/broker/"

@@ -109,6 +109,9 @@ enabled = false
 url = "nats://nats:4222"
 user = "argus"
 password = "CHANGE_ME_NATS"
+nkey = ""
+seed_file = "/run/secrets/nats.seed"
+inbox_prefix = "_INBOX.sync"
 reconnect_wait_ms = 2000
 max_reconnects = 60
 

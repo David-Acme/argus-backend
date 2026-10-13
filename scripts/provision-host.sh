@@ -294,6 +294,22 @@ write_nats_auth() {
   log "NATS users ready: one nkey per service, seeds in $seeds (0600)"
 }
 
+configure_nats_users() {
+  local seeds="$DATA_DIR/nats/seeds"
+  local config service public
+
+  for config in "$DEPLOY_DIR"/config.*.toml; do
+    [ -f "$config" ] || continue
+    toml_key_exists "$config" nats nkey || continue
+    service="${config##*/config.}"
+    service="${service%.toml}"
+    [ -s "$seeds/$service.seed" ] || continue
+    public="$(nkey_public_of "$seeds/$service.seed")" \
+      || { err "the NATS seed of $service does not decode"; return 1; }
+    replace_toml_value nats nkey "$public" "$config"
+  done
+}
+
 detect_lan_address() {
   local address="${MDNS_ADDRESS_IN:-${ARGUS_MDNS_ADDRESS:-}}"
 
@@ -477,6 +493,7 @@ main() {
   write_env
   ensure_deploy_configs "$DEPLOY_DIR"
   write_nats_auth
+  configure_nats_users
   configure_identity_signer
   if [ "$WITH_TUNNEL" -eq 1 ]; then
     configure_tunnel

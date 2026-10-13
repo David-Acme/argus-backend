@@ -370,6 +370,9 @@ modules credential
 nats url
 nats user
 nats password
+nats nkey
+nats seed_file
+nats inbox_prefix
 rpc address
 owners.llm target
 owners.llm credential

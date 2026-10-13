@@ -709,6 +709,15 @@ its own key; removing it is the last step.
 - **Every row gets a user.** nats-server refuses a config variable nothing
   uses ("unknown field"), so the rendering iterates the variables of
   `nats-permissions.conf` and issues a seed and a user for each of them.
+- **Services switch by configuration.** Each NATS client's template carries
+  `seed_file = "/run/secrets/nats.seed"` (its compose mount),
+  `inbox_prefix = "_INBOX.<service>"` and an empty `nkey`; provisioning adopts
+  those keys into the existing `config.<service>.toml` and writes the public key
+  of that service's own seed into `nkey`. `NatsBus` connects with the key when
+  `nkey` and `seed_file` are both set and with the shared user otherwise, so a
+  service switches at its first start with an image that carries the client and
+  a config that carries its key; the shared user is removed only after every
+  service has.
 - **Deploying this change.** The broker now includes `nats-permissions.conf`
   and every NATS client mounts its seed with `create_host_path: false`, so
   re-run `scripts/provision-host.sh` before `docker compose up -d`: without the

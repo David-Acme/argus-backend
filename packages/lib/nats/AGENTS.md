@@ -168,8 +168,11 @@ without the broker hook, a durable feed refusing a mismatched stream or subject
 (and refusing to attach while disconnected), and, against a live broker, a feed
 keeping what core publishes sent while its consumer was away; also: publish subjects take plain dotted tokens
 while subscribe subjects take `>`-only wildcards, the frozen subject
-spellings, the option defaults without config, a handler registered without a
-server, and a connect to a closed endpoint that fails instead of crashing. The
+spellings, the option defaults without config, the service's key, seed and
+inbox read from config, an inbox and a deliver subject placed under the
+service's own prefix, a handler registered without a server, and a connect to
+a closed endpoint, with or without the service's own key, that fails instead
+of crashing. The
 live roundtrip and the stream reconcile run only when `ARGUS_NATS_URL`
 names a broker. Every live suite of the tree reads that one variable through
 `nats/live-broker.hxx`: without it the case is a doctest skip (counted as
@@ -180,11 +183,36 @@ a broker. `.github/workflows/ci.yml` starts `nats:2 -js` for that reason.
 `tests/unit/nats-permissions-test.cc` — the checked-in permission config is the
 table's rendering, byte for byte, and every grant in it is one the table names;
 every `argus-deploy/config.*.toml.example` with a `[nats]` section has its row;
-a service subscribes inside no inbox but its own; no row names a wildcard;
-every change and action feed has a sync durable; a consumer binds to a stream some row creates, under a name no other
-row claims; a core subscription names a subject some row publishes; and no
-direction renders an empty `allow` list. It needs no broker.
+every deploy template names its own inbox prefix; a service subscribes inside
+no inbox but its own; no row names a wildcard; every change and action feed
+has a sync durable; a consumer binds to a stream some row creates, under a
+name no other row claims; a core subscription names a subject some row
+publishes; and no direction renders an empty `allow` list. It needs no broker.
+
+`tests/unit/nats-permissions-live-test.cc` — against a broker provisioned the
+way `provision-host.sh` provisions the stack's, every row connects with its own
+nkey, ensures and reconciles its streams, stores and publishes its subjects,
+subscribes to its subjects, binds every durable through its own inbox, receives
+and acks a message on it and recreates its module feed, and no permission
+violation is logged; every row is refused inside another service's inbox and
+outside its row, the relay is refused an inbox, a stream and a durable of
+another service are refused, an unknown nkey is refused at connect, and the
+shared user still works. `scripts/nats-permissions-live-test.sh <binary>` builds
+that broker from the nats-server binary `ARGUS_NATS_SERVER_BIN` names (a
+loopback port that is never 4222, JetStream in a temporary directory) and runs
+the binary against it; without `ARGUS_NATS_SERVER_BIN` the script exits 77 and
+the binary's cases are doctest skips. It reads its own variables, never
+`ARGUS_NATS_URL`, because CI's broker carries no permissions.
 
 `[nats] user` and `[nats] password`, when both are set, are passed to the
 broker with `natsOptions_SetUserInfo`; credentials never go into the URL,
-which services log.
+which services log. `[nats] nkey` and `[nats] seed_file`, when both are set,
+take their place: `natsOptions_SetNKeyFromSeed` reads the seed from the file
+at every connect and signs the broker's nonce with it, so no signing code of
+ours exists and the seed never enters a config value. `[nats] inbox_prefix`
+sets the connection's inbox prefix and the deliver subject of every durable
+the bus creates (`NatsBus::inboxSubject`), so the service's replies and
+deliveries stay under the one inbox its user may read. Asynchronous broker
+errors are logged with the broker's own text ("Permissions Violation for
+Subscription to ..."), because a refused subscription otherwise just receives
+nothing.

@@ -169,6 +169,9 @@ credential = "CHANGE_ME_GUARD_IDENTITY"
 url = "nats://nats:4222"
 user = "argus"
 password = "CHANGE_ME_NATS"
+nkey = ""
+seed_file = "/run/secrets/nats.seed"
+inbox_prefix = "_INBOX.guard"
 
 [storage]
 mode = "s3"

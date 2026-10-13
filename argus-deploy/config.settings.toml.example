@@ -37,6 +37,9 @@ llm = ""
 url = "nats://nats:4222"
 user = "argus"
 password = "CHANGE_ME_NATS"
+nkey = ""
+seed_file = "/run/secrets/nats.seed"
+inbox_prefix = "_INBOX.settings"
 
 [drogon.app]
 number_of_threads = 0

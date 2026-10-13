@@ -74,6 +74,9 @@ remote_timeout_ms = 30000
 url = "nats://nats:4222"
 user = "argus"
 password = "CHANGE_ME_NATS"
+nkey = ""
+seed_file = "/run/secrets/nats.seed"
+inbox_prefix = "_INBOX.camera"
 reconnect_wait_ms = 2000
 max_reconnects = 60
 

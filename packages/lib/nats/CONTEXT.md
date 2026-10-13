@@ -37,6 +37,36 @@ it, and so do push deliveries. The inbox is `_INBOX.<service>`, never the
 shared `_INBOX.>`, because a service allowed `_INBOX.>` reads every other
 service's deliveries and replies.
 
+## The client: its own key, its own inbox
+
+A service whose `[nats]` names `nkey` and `seed_file` connects as its own
+user; one that names neither keeps the shared user and password. Both ways
+stay valid until every service has switched, and the shared user is removed
+last, so a service that still runs an older image or an older config keeps
+working through the change.
+
+- **Keys.** The reviewer ruled nkeys over passwords (2026-10-13): the broker
+  holds public keys only and each service holds its own seed. cnats
+  (`natsOptions_SetNKeyFromSeed`) reads the seed file at every connect, signs
+  the broker's nonce and wipes the seed from memory, so the package has no
+  signing code and the seed is never a config value.
+- **Inbox.** `natsOptions_SetCustomInboxPrefix` moves the connection's request
+  replies (JetStream API answers, publish acknowledgements) under
+  `[nats] inbox_prefix`. It does not move the deliver subject of a push
+  durable: `NatsBus` creates that subject itself, and `natsInbox_Create` knows
+  no connection, so `NatsBus::inboxSubject` puts the same prefix on it. A
+  durable's deliver subject is editable while nothing is bound, so a durable
+  created under `_INBOX` moves to the service's prefix at its next attach.
+- **Errors.** A refused publish or subscription reaches the client only as an
+  asynchronous `-ERR`; without an error handler a refused subscription just
+  receives nothing and a refused JetStream request times out. `NatsBus` logs
+  every asynchronous error with the broker's text, which names the subject.
+
+The table, the provisioning and the client were proved together against
+nats-server 2.11.14 (`tests/unit/nats-permissions-live-test.cc`, run through
+`scripts/nats-permissions-live-test.sh`): every row's own operations pass with
+no violation logged, and each refusal the rows imply is logged by the broker.
+
 ## Why the rendering is checked in
 
 The broker reads a config file, and provisioning is a shell script on a host

@@ -26,6 +26,9 @@ public:
     std::string url{"nats://127.0.0.1:4222"};
     std::string user;
     std::string password;
+    std::string nkey;
+    std::string seedFile;
+    std::string inboxPrefix;
     int reconnectWaitMs{2000};
     int maxReconnects{60};
   };
@@ -36,6 +39,7 @@ public:
   NatsBus& operator=(const NatsBus&) = delete;
 
   static Options optionsFromConfig();
+  static std::optional<std::string> inboxSubject(std::string_view prefix);
 
   bool connect(const Options& options);
   bool connect() { return connect(optionsFromConfig()); }
@@ -202,6 +206,9 @@ private:
   static void onDisconnected(natsConnection* connection, void* closure);
   static void onReconnected(natsConnection* connection, void* closure);
   static void onClosed(natsConnection* connection, void* closure);
+  static void onAsyncError(natsConnection* connection,
+                           natsSubscription* subscription, natsStatus error,
+                           void* closure);
   static void onMessage(natsConnection* connection, natsSubscription* sub,
                         natsMsg* msg, void* closure);
   static void onDurableMessage(natsConnection* connection,

@@ -55,6 +55,11 @@ target_compile_definitions(nats-permissions-test PRIVATE
     ARGUS_NATS_RENDER_OUT="${CMAKE_CURRENT_BINARY_DIR}/nats-permissions.conf")
 add_test(NAME nats-permissions-test COMMAND nats-permissions-test)
 
+add_executable(nats-permissions-live-test tests/unit/nats-permissions-live-test.cc)
+target_link_libraries(nats-permissions-live-test PRIVATE argus::lib::nats doctest::doctest)
+target_compile_options(nats-permissions-live-test PRIVATE -Wall -Wextra)
+add_test(NAME nats-permissions-live-test COMMAND nats-permissions-live-test)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)

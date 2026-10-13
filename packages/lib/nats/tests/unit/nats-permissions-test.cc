@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
-#include <algorithm>
 #include <doctest/doctest.h>
+
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -83,6 +84,41 @@ const ServicePermissions& rowOf(std::string_view service)
       std::ranges::find(table, service, &ServicePermissions::service);
   REQUIRE_MESSAGE(it != table.end(), "no row for " << service);
   return *it;
+}
+
+std::string unquoted(std::string_view value)
+{
+  if (value.size() >= 2 && value.front() == '"' && value.back() == '"')
+    return std::string(value.substr(1, value.size() - 2));
+  return std::string(value);
+}
+
+std::map<std::string, std::map<std::string, std::string>> deployedClients()
+{
+  std::map<std::string, std::map<std::string, std::string>> clients;
+  for (const auto& entry : std::filesystem::directory_iterator(deployDir())) {
+    const std::string file = entry.path().filename().string();
+    if (!file.starts_with("config.") || !file.ends_with(".toml.example"))
+      continue;
+    std::istringstream in(readFile(entry.path()));
+    std::string line;
+    bool inNats = false;
+    bool hasNats = false;
+    std::map<std::string, std::string> keys;
+    while (std::getline(in, line)) {
+      if (line.starts_with('[')) {
+        inNats = line == "[nats]";
+        hasNats = hasNats || inNats;
+        continue;
+      }
+      const size_t equals = line.find(" = ");
+      if (inNats && equals != std::string::npos)
+        keys[line.substr(0, equals)] = unquoted(line.substr(equals + 3));
+    }
+    if (hasNats)
+      clients.emplace(file.substr(7, file.size() - 7 - 13), std::move(keys));
+  }
+  return clients;
 }
 
 struct ParsedDirection
@@ -216,27 +252,28 @@ TEST_CASE("every grant in the checked-in config is one the table names")
 
 TEST_CASE("every deployed NATS client has its own row")
 {
-  std::vector<std::string> deployed;
-  for (const auto& entry : std::filesystem::directory_iterator(deployDir())) {
-    const std::string file = entry.path().filename().string();
-    if (!file.starts_with("config.") || !file.ends_with(".toml.example"))
-      continue;
-    std::istringstream in(readFile(entry.path()));
-    std::string line;
-    bool nats = false;
-    while (std::getline(in, line))
-      nats = nats || line == "[nats]";
-    if (nats)
-      deployed.push_back(file.substr(7, file.size() - 7 - 13));
-  }
+  const auto deployed = deployedClients();
   CHECK(deployed.size() >= 10);
-  for (const auto& service : deployed)
+  for (const auto& [service, keys] : deployed)
     CHECK_MESSAGE(std::ranges::any_of(nats_permissions::table(),
                                       [&](const ServicePermissions& row) {
                                         return row.service == service;
                                       }),
                   "config." << service << ".toml.example connects to NATS but "
                             << service << " has no row");
+}
+
+TEST_CASE("every deployed NATS client names its own inbox prefix")
+{
+  for (const auto& [service, keys] : deployedClients()) {
+    const auto prefix = keys.find("inbox_prefix");
+    REQUIRE_MESSAGE(prefix != keys.end(),
+                    "config." << service
+                              << ".toml.example names no inbox_prefix");
+    CHECK_MESSAGE(prefix->second == nats_permissions::inboxPrefix(service),
+                  "config." << service << ".toml.example uses the inbox "
+                            << prefix->second << ", not its own");
+  }
 }
 
 TEST_CASE("a service has one row, and its inbox is its own")

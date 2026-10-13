@@ -74,6 +74,9 @@ credential = "CHANGE_ME_NOTIFICATION_VOICE"
 url = "nats://nats:4222"
 user = "argus"
 password = "CHANGE_ME_NATS"
+nkey = ""
+seed_file = "/run/secrets/nats.seed"
+inbox_prefix = "_INBOX.notification"
 reconnect_wait_ms = 2000
 max_reconnects = 60
 

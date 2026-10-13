@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <config/config-service.hxx>
 #include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
@@ -176,6 +177,55 @@ TEST_CASE("options fall back to sane defaults without config")
   CHECK(options.url == "nats://127.0.0.1:4222");
   CHECK(options.reconnectWaitMs == 2000);
   CHECK(options.maxReconnects == 60);
+}
+
+TEST_CASE("options read the service's own key, seed and inbox from config")
+{
+  ConfigService::setRuntimeString("nats.nkey", "UPUBLICKEY");
+  ConfigService::setRuntimeString("nats.seed_file", "/run/secrets/nats.seed");
+  ConfigService::setRuntimeString("nats.inbox_prefix", "_INBOX.sync");
+  const auto options = NatsBus::optionsFromConfig();
+  CHECK(options.nkey == "UPUBLICKEY");
+  CHECK(options.seedFile == "/run/secrets/nats.seed");
+  CHECK(options.inboxPrefix == "_INBOX.sync");
+  for (const char* key : {"nats.nkey", "nats.seed_file", "nats.inbox_prefix"})
+    ConfigService::setRuntimeString(key, "");
+  const auto cleared = NatsBus::optionsFromConfig();
+  CHECK(cleared.nkey.empty());
+  CHECK(cleared.inboxPrefix.empty());
+}
+
+TEST_CASE("an inbox lives under the service's own prefix")
+{
+  const auto first = NatsBus::inboxSubject("_INBOX.sync");
+  const auto second = NatsBus::inboxSubject("_INBOX.sync");
+  REQUIRE(first.has_value());
+  REQUIRE(second.has_value());
+  CHECK(requireValue(first).starts_with("_INBOX.sync."));
+  CHECK(requireValue(first).find('.', 12) == std::string::npos);
+  CHECK(requireValue(first).size() > 12);
+  CHECK(requireValue(first) != requireValue(second));
+  CHECK(isValidSubject(requireValue(first), SubjectKind::Publish));
+
+  const auto shared = NatsBus::inboxSubject("");
+  REQUIRE(shared.has_value());
+  CHECK(requireValue(shared).starts_with("_INBOX."));
+  CHECK_FALSE(requireValue(shared).starts_with("_INBOX.sync."));
+}
+
+TEST_CASE("a connect with the service's own key to a closed endpoint fails without crashing")
+{
+  NatsBus bus;
+  NatsBus::Options options;
+  options.url = "nats://127.0.0.1:59999";
+  options.nkey = "UDXU4RCSJNZOIQHZNWXHXORDPRTGNJAHAHFRGZNEEJCPQTT2M7NLCNF4";
+  options.seedFile = "/nonexistent/nats.seed";
+  options.inboxPrefix = "_INBOX.probe";
+  options.reconnectWaitMs = 10;
+  options.maxReconnects = 1;
+  CHECK_FALSE(bus.connect(options));
+  CHECK_FALSE(bus.isConnected());
+  bus.drain();
 }
 
 TEST_CASE("handler registration without a server stays pending")

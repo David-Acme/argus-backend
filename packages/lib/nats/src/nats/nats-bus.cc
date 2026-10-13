@@ -16,6 +16,7 @@ namespace
 {
 constexpr const char* kMsgIdHeader = "Nats-Msg-Id";
 constexpr const char* kImmutableConfigText = "can not be updated";
+constexpr std::string_view kDefaultInboxPrefix = "_INBOX.";
 
 const char* lastErrorText()
 {
@@ -85,6 +86,9 @@ NatsBus::Options NatsBus::optionsFromConfig()
     options.url = url;
   options.user = ConfigService::getString("nats.user");
   options.password = ConfigService::getString("nats.password");
+  options.nkey = ConfigService::getString("nats.nkey");
+  options.seedFile = ConfigService::getString("nats.seed_file");
+  options.inboxPrefix = ConfigService::getString("nats.inbox_prefix");
 
   const int reconnectWait = ConfigService::getInt("nats.reconnect_wait_ms");
   if (reconnectWait > 0)
@@ -95,6 +99,38 @@ NatsBus::Options NatsBus::optionsFromConfig()
     options.maxReconnects = maxReconnects;
 
   return options;
+}
+
+std::optional<std::string> NatsBus::inboxSubject(std::string_view prefix)
+{
+  natsInbox* raw = nullptr;
+  if (natsInbox_Create(&raw) != NATS_OK || raw == nullptr)
+    return std::nullopt;
+  const InboxPtr inbox(raw);
+  const std::string_view created(inbox.get());
+  if (prefix.empty() || !created.starts_with(kDefaultInboxPrefix))
+    return std::string(created);
+  std::string subject(prefix);
+  subject += '.';
+  subject += created.substr(kDefaultInboxPrefix.size());
+  return subject;
+}
+
+void NatsBus::onAsyncError(natsConnection* connection,
+                           natsSubscription* subscription, natsStatus error,
+                           void* closure)
+{
+  (void)subscription;
+  (void)closure;
+  const char* text = nullptr;
+  std::string detail;
+  if (connection != nullptr &&
+      natsConnection_GetLastError(connection, &text) != NATS_OK &&
+      text != nullptr)
+    detail = text;
+  LOG_ERROR << "NATS asynchronous error: " << natsStatus_GetText(error)
+            << (detail.empty() ? "" : " (") << detail
+            << (detail.empty() ? "" : ")");
 }
 
 void NatsBus::onDisconnected(natsConnection* connection, void* closure)
@@ -307,9 +343,19 @@ bool NatsBus::connectOnce()
   OptionsPtr opts(rawOptions);
 
   natsStatus status = natsOptions_SetURL(opts.get(), options.url.c_str());
-  if (status == NATS_OK && !options.user.empty() && !options.password.empty())
+  const bool ownKey = !options.nkey.empty() && !options.seedFile.empty();
+  if (status == NATS_OK && ownKey)
+    status = natsOptions_SetNKeyFromSeed(opts.get(), options.nkey.c_str(),
+                                         options.seedFile.c_str());
+  if (status == NATS_OK && !ownKey && !options.user.empty() &&
+      !options.password.empty())
     status = natsOptions_SetUserInfo(opts.get(), options.user.c_str(),
                                      options.password.c_str());
+  if (status == NATS_OK && !options.inboxPrefix.empty())
+    status = natsOptions_SetCustomInboxPrefix(opts.get(),
+                                              options.inboxPrefix.c_str());
+  if (status == NATS_OK)
+    status = natsOptions_SetErrorHandler(opts.get(), onAsyncError, nullptr);
   if (status == NATS_OK)
     status = natsOptions_SetReconnectWait(
         opts.get(), static_cast<int64_t>(options.reconnectWaitMs));
@@ -401,17 +447,16 @@ bool NatsBus::attach(const PendingSubscription& pending, uint64_t id)
 
 bool NatsBus::ensureDurable(const DurableInput& input)
 {
-  natsInbox* rawInbox = nullptr;
-  if (natsInbox_Create(&rawInbox) != NATS_OK || rawInbox == nullptr)
+  const auto deliverSubject = inboxSubject(options_.inboxPrefix);
+  if (!deliverSubject)
     return false;
-  const InboxPtr inbox(rawInbox);
 
   jsOptions options;
   jsOptions_Init(&options);
   jsConsumerConfig config;
   jsConsumerConfig_Init(&config);
   config.Durable = input.durable.c_str();
-  config.DeliverSubject = inbox.get();
+  config.DeliverSubject = deliverSubject->c_str();
   config.DeliverPolicy = input.deliverLastPerSubject ? js_DeliverLastPerSubject
                          : input.deliverAll          ? js_DeliverAll
                                                      : js_DeliverNew;

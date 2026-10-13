@@ -260,7 +260,10 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 - S1 mTLS on internal gRPC with an internal CA (voice and others are cleartext today).
 - S2 Tunnel home link: TLS 1.3 with a pinned relay, a MAC on every frame after AUTH, the device side
   refusing unauthenticated connections.
-- S3 Per-service NATS accounts (nkeys, subject and `$JS.API` scoping).
+- S3 Per-service NATS accounts (nkeys, subject and `$JS.API` scoping). Status 2026-10-13
+  (track B): the permission table with its checked-in rendering, one nkey per service issued by
+  provisioning, and the client that connects with its own key and inbox are done; removing the
+  shared user is the last step and waits for every service to switch.
 - S4 Per-service S3 credentials scoped by prefix; `rc` keys out of command arguments.
 - S5 Legacy refresh tokens two rotations old refused without revoking their family (accepted gap).
 
