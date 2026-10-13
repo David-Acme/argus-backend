@@ -41,3 +41,10 @@ What would change the decision: a new route that runs a light-lane job
 without `JwtFilter` (an unauthenticated endpoint doing blocking IO per
 request) must take `RejectWhenFull` the same way; a gRPC handler maps
 `BlockingLaneFull` to `RESOURCE_EXHAUSTED`.
+
+## A fatal exit loses no log line (2026-10-13)
+
+A fatal exit is synchronous: LOG_FATAL writes to stdout with fwrite and
+trantor flushes it before _exit(1), and log_output::flushEachLine() keeps
+stdout line-buffered. No service configures an async or file logger, so the
+line is not lost, and no separate flush is needed before _exit.
