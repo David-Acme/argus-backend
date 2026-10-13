@@ -135,7 +135,7 @@ std::vector<ServicePermissions> rows()
       {.service = "sync",
        .publishes = {kNotificationPushIntent},
        .stores = {},
-       .subscribes = {kGuardHeartbeat, kGuardPresenceChanged},
+       .subscribes = {kGuardHeartbeat, kGuardPresenceChanged, kTunnelLink},
        .streams = {},
        .consumers = {{.stream = kCameraStream,
                       .name = "argus-sync-camera",
@@ -190,6 +190,12 @@ std::vector<ServicePermissions> rows()
                       .subject = kNotificationDelivery,
                       .recreates = false},
                      modulesOf("argus-sync-modules")}},
+      {.service = "tunnel",
+       .publishes = {kTunnelLink},
+       .stores = {},
+       .subscribes = {},
+       .streams = {},
+       .consumers = {}},
   };
 }
 

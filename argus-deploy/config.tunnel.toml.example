@@ -19,6 +19,12 @@ gateway_port = 7142
 health_host = "127.0.0.1"
 health_port = 7104
 
+[nats]
+url = "nats://127.0.0.1:4222"
+nkey = ""
+seed_file = "/run/secrets/nats.seed"
+inbox_prefix = "_INBOX.tunnel"
+
 [drogon.app]
 number_of_threads = 0
 enable_session = false

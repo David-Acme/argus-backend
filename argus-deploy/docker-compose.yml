@@ -875,9 +875,17 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/tunnel.seed
+        target: /run/secrets/nats.seed
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       argus-relay:
         condition: service_started
+      nats:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7104/health >/dev/null"]
       interval: 10s

@@ -156,7 +156,13 @@ against a real client.
   overridable via `NATS_CLIENT_PORT`). The monitor binds 127.0.0.1:8222 inside
   its own container (`nats.conf`), where only the healthcheck reaches it; it is
   no longer published, since `/connz` and `/subsz` name every client and
-  subject.
+  subject. On a deploy host, 127.0.0.1:4222 is the production broker: no test
+  ever points there, and a test that needs a broker starts its own on a random
+  port. The publish stays on 127.0.0.1 alone, and the broker has a single
+  client listener whose users all come from `auth.conf`, so every connection
+  through it authenticates the way the bridge's do. `deploy-mounts-test` pins
+  the bind address, the single listener, the `auth.conf` include and the
+  absence of `no_auth_user`.
 - **argus-camera** (Fase 2) serves its whole domain itself: `/camera` and
   `/zone` at every segment depth, and the client-facing `/media` socket
   (`services/camera/src/feature/media/camera-media-socket.cc`) that carries
@@ -411,7 +417,15 @@ The `tunnel` profile carries the byte-transparent remote transport:
 - `argus-tunnel-client` runs on the home topology and dials OUT: the relay's
   home listener, then the home service's remote listener per stream. It is
   host-networked (the transitional Ruling O exception the gateway held before
-  it) so the loopback publishes reach it; it publishes nothing.
+  it) so the loopback publishes reach it; it publishes no port. It publishes
+  its link state on `argus.tunnel.v1.link` (the `tunnel` row of
+  `nats-permissions.conf`, which argus-sync's row subscribes to). Being
+  host-networked, it cannot resolve the `nats` alias, so its `[nats] url` is
+  `nats://127.0.0.1:4222`, the broker's loopback publish. It connects there
+  with its own nkey (`seeds/tunnel.seed`, mounted read-only at
+  `/run/secrets/nats.seed`) on the same listener and the same `auth.conf` as
+  every other client, and never with the shared user. It waits for a healthy
+  `nats`. If an owner moves `NATS_CLIENT_PORT`, this url has to follow.
 - Both binaries refuse to start with an empty `[tunnel] secret`, which is
   what keeps the pair inert until the instance configs are filled — that, and
   the profile, is the default-off shape.

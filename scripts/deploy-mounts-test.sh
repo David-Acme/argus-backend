@@ -159,6 +159,7 @@ misplaced_seeds() {
   clients="$(nats_clients)"
   for name in $(service_names "$compose"); do
     service="${name#argus-}"
+    service="${service%-client}"
     expected=""
     if grep -qx "$service" <<<"$clients"; then
       expected="\${ARGUS_DATA_DIR:-./data}/nats/seeds/$service.seed /run/secrets/nats.seed 1"
@@ -166,8 +167,13 @@ misplaced_seeds() {
     [ "$(bind_mounts "$compose" "$name" | grep '/nats/seeds/' || true)" = "$expected" ] || echo "$name"
   done
   for service in $clients; do
-    [ -n "$(service_block "$compose" "argus-$service")" ] || echo "argus-$service"
+    [ -n "$(service_block "$compose" "argus-$service")" ] \
+      || [ -n "$(service_block "$compose" "argus-$service-client")" ] || echo "argus-$service"
   done
+}
+
+published_ports() {
+  service_block "$COMPOSE" "$1" | awk '/^    ports:$/ { on = 1; next } on && /^      - / { print; next } { on = 0 }'
 }
 
 [ "$(nats_clients | wc -l)" -ge 10 ] || fail "the NATS clients are too few to be the stack"
@@ -184,6 +190,26 @@ sed 's#nats/seeds/camera.seed#nats/seeds/guard.seed#' "$COMPOSE" > "$TEST_TMP/co
 grep -v 'nats/seeds/sync.seed' "$COMPOSE" > "$TEST_TMP/compose-no-seed.yml"
 [ "$(misplaced_seeds "$TEST_TMP/compose-no-seed.yml")" = "argus-sync" ] \
   || fail "a NATS client without its seed mount was not reported"
+grep -v 'nats/seeds/tunnel.seed' "$COMPOSE" > "$TEST_TMP/compose-no-tunnel-seed.yml"
+[ "$(misplaced_seeds "$TEST_TMP/compose-no-tunnel-seed.yml")" = "argus-tunnel-client" ] \
+  || fail "the tunnel client without its seed mount was not reported"
+
+[ "$(published_ports nats)" = '      - "127.0.0.1:${NATS_CLIENT_PORT:-4222}:4222"' ] \
+  || fail "nats publishes its client port other than on 127.0.0.1 alone: $(published_ports nats | tr '\n' ' ')"
+nats_conf="$ROOT/argus-deploy/nats.conf"
+[ "$(grep -c '^port: 4222$' "$nats_conf")" = 1 ] \
+  && ! grep -Eq '^[[:space:]]*(listen|leafnodes|websocket|mqtt|gateway|cluster)[[:space:]:{]' "$nats_conf" \
+  || fail "nats.conf opens a client listener besides port 4222"
+grep -qx 'http: "127.0.0.1:8222"' "$nats_conf" || fail "the broker's monitor listens beyond its own loopback"
+grep -qx 'include ./auth.conf' "$nats_conf" || fail "nats.conf does not take its users from auth.conf"
+! grep -q 'no_auth_user' "$nats_conf" || fail "nats.conf admits a client without credentials"
+tunnel_client="$(service_block "$COMPOSE" argus-tunnel-client)"
+grep -qx '    network_mode: host' <<<"$tunnel_client" || fail "argus-tunnel-client is no longer host-networked"
+grep -A1 -x '      nats:' <<<"$tunnel_client" | grep -qx '        condition: service_healthy' \
+  || fail "argus-tunnel-client does not wait for a healthy broker"
+sed 's#"127.0.0.1:${NATS_CLIENT_PORT:-4222}:4222"#"${NATS_CLIENT_PORT:-4222}:4222"#' "$COMPOSE" > "$TEST_TMP/compose-open-nats.yml"
+[ "$(COMPOSE="$TEST_TMP/compose-open-nats.yml" published_ports nats)" != "$(published_ports nats)" ] \
+  || fail "a nats publish on every interface looked like the loopback one"
 
 source "$ROOT/scripts/lib/nats-users.sh"
 documented_seed="SUACSSL3UAHUDXKFSNVUZRF5UHPMWZ6BFDTJ7M6USDXIEDNPPQYYYCU3VY"
@@ -208,6 +234,8 @@ nats_auth_conf "$permissions" "$TEST_TMP/seeds" "$legacy" > "$TEST_TMP/auth-agai
   || fail "the NATS users could not be rendered a second time"
 cmp -s "$TEST_TMP/auth.conf" "$TEST_TMP/auth-again.conf" || fail "a second provisioning run changed the NATS users"
 grep -qx 'include ./nats-permissions.conf' "$TEST_TMP/auth.conf" || fail "auth.conf does not include the permission config"
+grep -qx 'authorization {' "$TEST_TMP/auth.conf" && ! grep -q 'no_auth_user' "$TEST_TMP/auth.conf" \
+  || fail "auth.conf admits a client without credentials"
 grep -qx '    {user: "argus", password: "legacy"}' "$TEST_TMP/auth.conf" || fail "the shared NATS user is gone before every service switched"
 ! grep -Eq 'SU[A-Z2-7]{56}' "$TEST_TMP/auth.conf" || fail "auth.conf carries a seed"
 for variable in $(sed -n 's/^\(ARGUS_NATS_[A-Z0-9_]*\): {$/\1/p' "$permissions"); do
@@ -239,6 +267,10 @@ for service in $(nats_clients); do
   toml_key_exists "$template" nats nkey \
     || fail "config.$service.toml.example has no [nats] nkey for provisioning to fill"
 done
+[ "$(toml_value "$ROOT/argus-deploy/config.tunnel.toml.example" nats url)" = "nats://127.0.0.1:4222" ] \
+  || fail "the host-networked tunnel client does not reach the broker through its loopback publish"
+! toml_key_exists "$ROOT/argus-deploy/config.tunnel.toml.example" nats password \
+  || fail "the tunnel client carries the shared NATS password; it connects with its own key alone"
 
 mkdir -p "$TEST_TMP/users/deploy" "$TEST_TMP/users/data/nats/seeds"
 for service in $(nats_clients); do
