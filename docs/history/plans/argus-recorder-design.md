@@ -10,8 +10,9 @@ needs the reviewer.
 **Rulings (reviewer, 2026-10-13).** The shape is approved: a separate `argus-recorder` with no public
 listener, ffmpeg stream copy over go2rtc's RTSP restream, guard's episode and safety_alert subjects to
 the durable consumer `argus-recorder-guard`, and HLS through argus-camera with 10-minute view tokens.
-The six forks are ruled in place: 1 (b), 2 (a), 3 (a) behind a playback gate, 4 (a) with a 7-day
-deletion seal, 5 (a) with the viewed range written at session end, 6 (a).
+The six forks are ruled in place: 1 (b), 2 (a), 3 AAC-LC 64 kb/s mono by default (revised 2026-10-13;
+FLAC is an optional later upgrade behind a four-player gate), 4 (a) with a 7-day deletion seal, 5 (a)
+with the viewed range written at session end, 6 (a).
 
 ## 0. Measurement: stream1 per camera
 
@@ -132,7 +133,7 @@ interaction outranks a backfill that can happen later.
 **Reuse, evaluated honestly.** argus-camera's stream code holds the right knowledge, but none of it
 is a recorder.
 - `Fmp4Reader` is the valuable piece. It finds the video track in `moov` and classifies each
-  fragment by the track its `traf` carries. That matters for go2rtc's fMP4, where every FLAC sample
+  fragment by the track its `traf` carries. That matters for go2rtc's fMP4, where every audio sample
   is flagged as a sync sample, so a naive cutter would split on audio. It lives in
   `services/camera/src/shared/services/stream/`, so a separate service could use it only after a
   move into a package (`packages/lib/fmp4`, tier 1) and a re-link of camera.
@@ -157,18 +158,22 @@ is a recorder.
   4 s segments and a 5 s GOP gives 5 s segments.
 
 **Audio.** The C225 sends PCMA 8 kHz, which ISO BMFF (and so fMP4 and HLS) cannot carry. The video
-stays a byte-exact stream copy; the audio becomes FLAC or AAC in the same ffmpeg pass. A "no audio"
+stays a byte-exact stream copy; the audio becomes AAC-LC at 64 kb/s, mono, in the same ffmpeg pass,
+transcoded from the 8 kHz A-law (ruling 3, revised 2026-10-13). A "no audio"
 camera gets `-an`.
 
-**DESIGN FORK 3: the audio codec. RULED: (a), behind a playback gate.**
+**DESIGN FORK 3: the audio codec. RULED: AAC-LC by default; FLAC an optional later upgrade.** The first
+ruling (FLAC behind a playback gate) is revised below; the options stay as they were written.
 - (a) FLAC (recommended): lossless over the decoded A-law, so every sample is the camera's, and the
   codec the live view already plays on web and Android. iOS playback of FLAC in fMP4 HLS stays
   unverified until the app ships there.
 - (b) AAC: plays everywhere, but lossy.
 
-**Ruling: (a), behind a playback gate.** FLAC is the default only if the gate passes. The gate is an
-fMP4 HLS clip with FLAC audio that must play on all four targets below. If any one of them fails, the
-recorder uses AAC-LC at 64 kb/s instead. The video is never transcoded either way.
+**Revised ruling (2026-10-13): AAC-LC is the default.** AAC-LC at 64 kb/s, mono, plays everywhere without
+a device check, and the audio is transcoded in both cases from 8 kHz A-law, so FLAC's losslessness buys
+little evidence value. The video is never transcoded. FLAC becomes an optional later upgrade, behind the
+same four-player gate below, run in the device-validation pass listed in the frontend CONTEXT.md device
+checklist (item 8). Chromium and WebKitGTK are smoke-checked in the e2e harness for whichever codec ships.
 
 | Target | Player | Result |
 |---|---|---|
@@ -177,15 +182,15 @@ recorder uses AAC-LC at 64 kb/s instead. The video is never transcoded either wa
 | Desktop webview | WebKitGTK | PENDING |
 | Chromium | Chromium | PENDING |
 
-The verification has not run. Each row is filled in when it runs, with the player version and the clip
-used. Until every row passes, FLAC is provisional.
+The gate has not run, and it gates only the optional FLAC upgrade. Each row is filled in when the device
+pass runs, with the player version and the clip used. FLAC stays off until every row passes.
 
 ## 3. Where the ring lives: tmpfs or SSD
 
 **The budget per camera**, at the working assumption (2 Mbps, 2 s GOP, 4 s segments, 5 min
 pre-roll):
-- A 4 s segment carries 1.00 MB of video, about 35 kB of FLAC audio (8 kHz mono, about 70 kbps)
-  and about 2 kB of fMP4 overhead: **1.04 MB**.
+- A 4 s segment carries 1.00 MB of video, about 32 kB of AAC-LC audio (mono, 64 kb/s) and about 2 kB
+  of fMP4 overhead: **1.03 MB**.
 - The pre-roll is 75 segments, 78 MB. The ring also holds the segment being written, one completed
   and not yet hashed, and one of slack for a late keyframe: **81 MB**.
 - Until the bitrate is measured, a VBR peak factor of 1.5 covers motion and night IR noise, which
