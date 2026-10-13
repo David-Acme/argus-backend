@@ -68,6 +68,8 @@ struct DuressScreenState
   bool refreshRequested{true};
   Clock::time_point nextRefresh{};
   int refreshFailures{0};
+  bool carriedRead{false};
+  Clock::time_point carriedRetryAt{};
   bool busy{false};
   std::atomic<bool> stopped{false};
   std::atomic<bool> finished{true};
@@ -286,9 +288,11 @@ void DuressScreen::forget(int64_t row) const
     dependencies_.outbox->remove(row);
 }
 
-std::vector<DuressRaiseRow> DuressScreen::stored() const
+std::optional<std::vector<DuressRaiseRow>> DuressScreen::stored() const
 {
-  return dependencies_.outbox ? dependencies_.outbox->pending() : std::vector<DuressRaiseRow>{};
+  if (!dependencies_.outbox)
+    return std::vector<DuressRaiseRow>{};
+  return dependencies_.outbox->pending();
 }
 
 int64_t DuressScreen::now() const
@@ -320,31 +324,44 @@ bool DuressScreen::drained() const
 bool DuressScreen::idle() const
 {
   const std::scoped_lock lock(state_->mutex);
-  return !state_->busy && !state_->refreshRequested && state_->pending.empty() &&
+  return !state_->busy && !state_->refreshRequested && state_->carriedRead && state_->pending.empty() &&
          (state_->late.empty() || state_->keyState == KeyState::Unknown);
 }
 
 void DuressScreen::run(const std::stop_token& stop) const
 {
   DuressScreenState& state = *state_;
-  const std::vector<DuressRaiseRow> carried = stored();
   std::unique_lock lock(state.mutex);
-  if (!carried.empty()) {
-    const int64_t oldest = std::ranges::min(carried, {}, &DuressRaiseRow::saidAt).saidAt;
-    LOG_WARN << "Safety relay: " << carried.size() << " alert(s) written down before this start wait for guard, "
-             << "the oldest for " << std::max<int64_t>(0, now() - oldest) << " s";
-  }
-  for (const DuressRaiseRow& row : carried)
-    queueRaise(state,
-               {.row = row.id,
-                .userId = row.userId,
-                .role = row.role,
-                .keyDigest = row.keyDigest,
-                .saidAt = row.saidAt,
-                .failures = 0,
-                .nextAt = Clock::now()});
   while (!stop.stop_requested()) {
     const Clock::time_point now = Clock::now();
+    if (!state.carriedRead && now >= state.carriedRetryAt) {
+      state.busy = true;
+      lock.unlock();
+      const std::optional<std::vector<DuressRaiseRow>> carried = stored();
+      lock.lock();
+      state.busy = false;
+      if (!carried) {
+        state.carriedRetryAt = now + timing_.retryBase;
+        continue;
+      }
+      state.carriedRead = true;
+      if (!carried->empty()) {
+        const int64_t oldest = std::ranges::min(*carried, {}, &DuressRaiseRow::saidAt).saidAt;
+        LOG_WARN << "Safety relay: " << carried->size()
+                 << " alert(s) written down before this start wait for guard, the oldest for "
+                 << std::max<int64_t>(0, this->now() - oldest) << " s";
+      }
+      for (const DuressRaiseRow& row : *carried)
+        queueRaise(state,
+                   {.row = row.id,
+                    .userId = row.userId,
+                    .role = row.role,
+                    .keyDigest = row.keyDigest,
+                    .saidAt = row.saidAt,
+                    .failures = 0,
+                    .nextAt = Clock::now()});
+      continue;
+    }
     if (state.refreshRequested || now >= state.nextRefresh) {
       state.refreshRequested = false;
       state.busy = true;
@@ -401,6 +418,8 @@ void DuressScreen::run(const std::stop_token& stop) const
       continue;
     }
     Clock::time_point wakeAt = state.nextRefresh;
+    if (!state.carriedRead)
+      wakeAt = std::min(wakeAt, state.carriedRetryAt);
     if (state.keyState != KeyState::Unknown)
       for (const auto& entry : state.pending)
         wakeAt = std::min(wakeAt, entry.nextAt);

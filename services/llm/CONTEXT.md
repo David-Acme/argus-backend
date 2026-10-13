@@ -956,7 +956,10 @@ withheld turn and an unintelligible one cannot be told apart.
     crosses its row out. A guard that does not answer leaves the row as it is.
   - **Read back at start.** The worker reads the rows back and waits for
     guard's key. When the digest still matches, it hands the raise over with
-    that key. A row whose digest no longer matches (the phrase changed or was
+    that key. The memory store opens only when the event loop starts
+    (`memory.init({.deferStore = true})`), after the worker, so the worker
+    asks again every `retryBase` until the store can be read, and only then
+    counts as idle. A row whose digest no longer matches (the phrase changed or was
     removed while argus-llm was down) is crossed out without asking guard,
     since guard would answer `STALE`.
   - **Durability.** The write shares the memory graph's connection and lock.
@@ -995,6 +998,8 @@ withheld turn and an unintelligible one cannot be told apart.
   key's digest and never the words, and a settled raise is crossed out;
 - a raise written down survives a restart of argus-llm between the match and
   guard's acknowledgement, and reaches guard with the key it matched;
+- raises written down before a restart are read once the memory store opens,
+  even when the worker started first, as `main.cc` starts it;
 - a raise whose phrase changed while argus-llm was down is crossed out without
   asking guard;
 - the raise carries the instant the words reached the screen, every retry

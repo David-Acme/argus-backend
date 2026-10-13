@@ -55,7 +55,7 @@ private:
   void run(const std::stop_token& stop) const;
   void hold(const DuressRaiseCreateInput& raise) const;
   void forget(int64_t row) const;
-  [[nodiscard]] std::vector<DuressRaiseRow> stored() const;
+  [[nodiscard]] std::optional<std::vector<DuressRaiseRow>> stored() const;
   [[nodiscard]] int64_t now() const;
 
   DuressScreenDependencies dependencies_;

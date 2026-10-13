@@ -21,7 +21,7 @@ public:
 
   [[nodiscard]] std::optional<int64_t> add(const DuressRaiseCreateInput& input) override;
 
-  [[nodiscard]] std::vector<DuressRaiseRow> pending() override;
+  [[nodiscard]] std::optional<std::vector<DuressRaiseRow>> pending() override;
 
   void remove(int64_t id) override;
 

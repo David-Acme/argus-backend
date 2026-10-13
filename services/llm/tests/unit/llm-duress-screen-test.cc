@@ -629,6 +629,39 @@ TEST_CASE("words matched once guard answers carry the time they were heard, not 
   screen.requestStop();
 }
 
+TEST_CASE("raises written down before a restart are read once the memory store opens, even after the worker started")
+{
+  const std::string db = scratchDb("outbox-late-store.db");
+  const std::string key = sealed(kPhrase);
+  {
+    SqliteGraph graph;
+    REQUIRE(graph.open(db));
+    const auto unreachable = std::make_shared<ScriptedLink>(key);
+    unreachable->setUnreachable(true);
+    DuressScreen before({.link = unreachable, .eligible = disarmer, .outbox = outboxOver(graph), .clock = {}},
+                        quick());
+    before.start();
+    REQUIRE(eventually([&unreachable, &before] { return unreachable->asked() > 0 && before.idle(); }));
+    CHECK(before.screen({.userId = 3, .role = UserRole::Owner, .text = "el gato está en el tejado"}).withheld);
+  }
+  REQUIRE(outboxRows(db).size() == 1);
+
+  SqliteGraph graph;
+  const auto guard = std::make_shared<ScriptedLink>(key);
+  DuressScreen after({.link = guard, .eligible = disarmer, .outbox = outboxOver(graph), .clock = {}}, quick());
+  after.start();
+  REQUIRE(eventually([&guard] { return guard->asked() > 0; }));
+  std::this_thread::sleep_for(std::chrono::milliseconds(60));
+  CHECK(guard->attempts().empty());
+  CHECK_FALSE(after.idle());
+
+  REQUIRE(graph.open(db));
+  REQUIRE(eventually([&guard, &after, &db] { return guard->attempts().size() == 1 && after.idle() && outboxRows(db).empty(); }));
+  CHECK(guard->attempts().front().userId == 3);
+  CHECK(guard->attempts().front().key == key);
+  after.requestStop();
+}
+
 TEST_CASE("a raise whose phrase changed while argus-llm was down is crossed out without asking guard")
 {
   const std::string db = scratchDb("outbox-stale.db");

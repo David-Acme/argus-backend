@@ -21,13 +21,15 @@ std::optional<int64_t> SqliteDuressOutbox::add(const DuressRaiseCreateInput& inp
   return id;
 }
 
-std::vector<DuressRaiseRow> SqliteDuressOutbox::pending()
+std::optional<std::vector<DuressRaiseRow>> SqliteDuressOutbox::pending()
 {
   if (mutex_ == nullptr || !db_)
-    return {};
+    return std::vector<DuressRaiseRow>{};
   const std::scoped_lock lock(*mutex_);
   sqlite3* const handle = db_();
-  return handle != nullptr ? repository_.pending(handle) : std::vector<DuressRaiseRow>{};
+  if (handle == nullptr)
+    return std::nullopt;
+  return repository_.pending(handle);
 }
 
 void SqliteDuressOutbox::remove(int64_t id)

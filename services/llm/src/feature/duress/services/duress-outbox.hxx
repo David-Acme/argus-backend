@@ -13,7 +13,7 @@ public:
 
   [[nodiscard]] virtual std::optional<int64_t> add(const DuressRaiseCreateInput& input) = 0;
 
-  [[nodiscard]] virtual std::vector<DuressRaiseRow> pending() = 0;
+  [[nodiscard]] virtual std::optional<std::vector<DuressRaiseRow>> pending() = 0;
 
   virtual void remove(int64_t id) = 0;
 };
