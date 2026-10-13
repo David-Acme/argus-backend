@@ -20,6 +20,8 @@ endif()
 
 argus_lib(NAME storage
     SOURCES
+        src/storage/details/s3-credentials.cc
+        src/storage/details/s3-credentials.hxx
         src/storage/details/s3-signing.hxx
         src/storage/s3-storage-service.cc
         src/storage/s3-storage-service.hxx
@@ -42,6 +44,12 @@ target_link_libraries(storage-vocabulary-test PRIVATE
     argus::lib::storage doctest::doctest)
 target_compile_options(storage-vocabulary-test PRIVATE -Wall -Wextra)
 add_test(NAME storage-vocabulary-test COMMAND storage-vocabulary-test)
+
+add_executable(s3-credentials-test tests/unit/s3-credentials-test.cc)
+target_link_libraries(s3-credentials-test PRIVATE
+    argus::lib::storage OpenSSL::Crypto doctest::doctest)
+target_compile_options(s3-credentials-test PRIVATE -Wall -Wextra)
+add_test(NAME s3-credentials-test COMMAND s3-credentials-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

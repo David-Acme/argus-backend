@@ -303,6 +303,21 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   `${ARGUS_DATA_DIR}/rustfs/accounts/<service>/credentials.json` (0600). A re-run keeps the keys; an
   account lost on the server is created again, and a lost file gets a new account with the old one
   removed. `scripts/rustfs-init-test.sh` proves each account's prefixes on an exported RustFS.
+  Step 3 delivery, 2026-10-13: each writer signs with its own account first. `S3StorageService`
+  reads `[storage.s3] credentials_file`, the writer's account directory mounted read-only into it
+  alone at `/run/secrets/s3`, and falls back to `access_key`/`secret_key` only while that file is
+  missing or unreadable (`s3-credentials-test` checks both paths down to the request's
+  signature). The config fallback is transitional, like the shared NATS user above: the owner
+  deploy step that removes the shared credential also removes the S3 keys from the configs, in
+  this order: re-run `scripts/provision-host.sh` (it creates the account directories the writers
+  mount and names the file in their configs); bring the stack up (`docker compose build` and
+  `docker compose up -d`; `rustfs-init` issues the accounts before the writers start); check that
+  the identity, camera and guard logs say their keys come from `/run/secrets/s3/credentials.json`
+  and that none warns the file cannot be used; only then the cleanup that removes the shared
+  account (from RustFS and from `rustfs-init`, which would create it again) and the
+  `access_key`/`secret_key` keys (from those three configs and from the provisioning that writes
+  them). Native runs still take the shared keys from `scripts/setup.sh`; the cleanup gives them
+  their account's file first. Both credentials stay valid until that check passes.
 - S5 Legacy refresh tokens two rotations old refused without revoking their family (accepted gap).
 
 Rulings of 2026-10-12 (reviewer, owner away and delegating): S2 is superseded by the separate Argus

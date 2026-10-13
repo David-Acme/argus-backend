@@ -231,7 +231,7 @@ argus-identity configuration. Copy to config.toml (gitignored) to run.
 - **`[cert]`** — The instance CA and server certificate; the HTTPS surface needs both.
 - **`[face]`** — The face engine runs in this process: the vec0 index lives in identity.db and no crop leaves the host.
 - **`[voiceprint]`** — The speaker-identification engine runs in this process too and learns each holder's voice passively from their calls: only 192-value embeddings are stored (the `voice_profile` centroid, one `voice_sample` per teaching call, the `voice_vec` vec0 index), never the audio.
-- **`[storage]`** — Private object storage for the portraits; `mode = "s3"` with the `[storage.s3]` keys.
+- **`[storage]`** — Private object storage for the portraits; `mode = "s3"` with the `[storage.s3]` keys. `credentials_file` names the writer's own prefix-scoped account (`/run/secrets/s3/credentials.json` in the deploy stack, written by `rustfs-init`) and wins over `access_key`/`secret_key`, the shared account, which are used only while that file is missing or unreadable; camera and guard read the same keys.
 
 | Key | Notes |
 |---|---|

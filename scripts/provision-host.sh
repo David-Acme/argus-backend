@@ -381,6 +381,7 @@ configure_storage() {
   replace_toml_value_from_file storage.s3 bucket "$secrets/rustfs-bucket" "$config"
   replace_toml_value_from_file storage.s3 access_key "$secrets/argus_s3_access_key" "$config"
   replace_toml_value_from_file storage.s3 secret_key "$secrets/argus_s3_secret_key" "$config"
+  replace_toml_value storage.s3 credentials_file "/run/secrets/s3/credentials.json" "$config"
 }
 
 ensure_object_store() {

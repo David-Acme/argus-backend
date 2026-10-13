@@ -274,11 +274,38 @@ grep -qx '\${ARGUS_DATA_DIR:-./data}/rustfs/accounts /run/argus/accounts 0' <<<"
   || fail "rustfs-init does not mount the writers' account directory writable"
 grep -Eq '^      RUSTFS_ACCOUNTS_DIR: /run/argus/accounts$' <<<"$(service_block "$COMPOSE" rustfs-init)" \
   || fail "rustfs-init is not told where the writers' accounts go"
-for name in $(service_names "$COMPOSE"); do
-  [ "$name" = rustfs-init ] && continue
-  bind_mounts "$COMPOSE" "$name" | grep -q 'rustfs/accounts /' \
-    && fail "$name mounts the writers' account directory"
+s3_writers="identity camera guard"
+misplaced_accounts() {
+  local compose="$1" name service expected
+  for name in $(service_names "$compose"); do
+    [ "$name" = rustfs-init ] && continue
+    service="${name#argus-}"
+    expected=""
+    case " $s3_writers " in
+      *" $service "*) expected="\${ARGUS_DATA_DIR:-./data}/rustfs/accounts/$service /run/secrets/s3 1" ;;
+    esac
+    [ "$(bind_mounts "$compose" "$name" | grep '/rustfs/accounts' || true)" = "$expected" ] || echo "$name"
+  done
+}
+[ -z "$(misplaced_accounts "$COMPOSE")" ] \
+  || fail "services whose S3 account mount is missing, writable or not their own: $(misplaced_accounts "$COMPOSE" | tr '\n' ' ')"
+sed 's#rustfs/accounts/camera#rustfs/accounts/guard#' "$COMPOSE" > "$TEST_TMP/compose-borrowed-account.yml"
+[ "$(misplaced_accounts "$TEST_TMP/compose-borrowed-account.yml")" = "argus-camera" ] \
+  || fail "a writer mounting another writer's account was not reported"
+grep -v 'rustfs/accounts/identity' "$COMPOSE" > "$TEST_TMP/compose-no-account.yml"
+[ "$(misplaced_accounts "$TEST_TMP/compose-no-account.yml")" = "argus-identity" ] \
+  || fail "a writer without its account mount was not reported"
+awk '/^  argus-guard:$/ { guard = 1 } guard && /rustfs\/accounts\/guard$/ { seen = 1 } seen && /^        read_only: true$/ { seen = 0; guard = 0; next } { print }' \
+  "$COMPOSE" > "$TEST_TMP/compose-writable-account.yml"
+[ "$(misplaced_accounts "$TEST_TMP/compose-writable-account.yml")" = "argus-guard" ] \
+  || fail "a writer mounting its account writable was not reported"
+for service in $s3_writers; do
+  [ "$(toml_value "$ROOT/argus-deploy/config.$service.toml.example" storage.s3 credentials_file)" \
+      = "/run/secrets/s3/credentials.json" ] \
+    || fail "config.$service.toml.example does not name the credentials file its account mount provides"
 done
+grep -qx '  file="$dir/credentials.json"' "$ROOT/scripts/lib/s3-init.sh" \
+  || fail "rustfs-init no longer writes the credentials file the writers read"
 while read -r source prefix; do
   grep -qF "\"$prefix" "$ROOT/$source" || fail "$source no longer writes under $prefix, which a writer's account is scoped to"
 done <<'LITERALS'
@@ -298,6 +325,9 @@ cp "$ROOT/scripts/provision-host.sh" "$sandbox/root/scripts/"
 cp -R "$ROOT/scripts/lib" "$ROOT/scripts/privacy" "$sandbox/root/scripts/"
 cp "$ROOT"/argus-deploy/*.example "$ROOT/argus-deploy/docker-compose.yml" \
   "$ROOT/argus-deploy/nats.conf" "$ROOT/argus-deploy/nats-permissions.conf" "$sandbox/root/argus-deploy/"
+grep -v '^credentials_file = ' "$ROOT/argus-deploy/config.identity.toml.example" \
+  > "$sandbox/root/argus-deploy/config.identity.toml"
+chmod 600 "$sandbox/root/argus-deploy/config.identity.toml"
 for stub in docker sudo; do
   printf '#!/bin/sh\nexit 1\n' > "$sandbox/bin/$stub"
   chmod 700 "$sandbox/bin/$stub"
@@ -329,6 +359,9 @@ for service in identity camera guard; do
         = "$(tr -d '\r\n' < "$sandbox/data/rustfs/secrets/$2")" ] \
       || fail "provisioning did not write $1 into config.$service.toml"
   done
+  [ "$(toml_value "$sandbox/root/argus-deploy/config.$service.toml" storage.s3 credentials_file)" \
+      = "/run/secrets/s3/credentials.json" ] \
+    || fail "provisioning did not name the account's credentials file in config.$service.toml"
 done
 grep -Eq '^ensure_secret_file "\$secrets/argus_s3_secret_key" lower_hex 16$|^  ensure_secret_file "\$secrets/argus_s3_secret_key" lower_hex 16$' \
   "$ROOT/scripts/provision-host.sh" || fail "provision-host.sh no longer generates the application secret into its file"

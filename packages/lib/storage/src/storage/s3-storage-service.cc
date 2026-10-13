@@ -1,5 +1,6 @@
 #include "s3-storage-service.hxx"
 
+#include <storage/details/s3-credentials.hxx>
 #include <storage/details/s3-signing.hxx>
 #include "storage-errors.hxx"
 
@@ -12,6 +13,7 @@
 #include <openssl/rand.h>
 #include <config/config-service.hxx>
 #include <stdexcept>
+#include <utility>
 
 namespace
 {
@@ -49,12 +51,20 @@ S3Config loadConfig()
   if (ConfigService::getString("storage.mode") != "s3")
     throw std::runtime_error("Private object storage is disabled");
 
+  auto credentials = s3_credentials::resolve({
+      .credentialsFile =
+          ConfigService::getString("storage.s3.credentials_file"),
+      .fallback = {.accessKey =
+                       ConfigService::getString("storage.s3.access_key"),
+                   .secretKey =
+                       ConfigService::getString("storage.s3.secret_key")},
+  });
   S3Config config{
       .endpoint = ConfigService::getString("storage.s3.endpoint"),
       .hostHeader = "",
       .bucket = ConfigService::getString("storage.s3.bucket"),
-      .accessKey = ConfigService::getString("storage.s3.access_key"),
-      .secretKey = ConfigService::getString("storage.s3.secret_key"),
+      .accessKey = std::move(credentials.accessKey),
+      .secretKey = std::move(credentials.secretKey),
       .region = ConfigService::getString("storage.s3.region"),
   };
   if (config.endpoint.empty() || config.bucket.empty() || config.accessKey.empty() ||
