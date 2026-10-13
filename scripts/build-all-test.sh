@@ -593,7 +593,7 @@ run_script_test setup-config-only-test.sh
 run_script_test scratch-stack-test.sh
 run_script_test rpc-credentials-test.sh
 run_script_test native-tls-migrate-test.sh
-run_script_test install-model-bundle-test.sh
+run_script_test ../services/llm/scripts/install-bundle-test.sh
 run_script_test deploy-mounts-test.sh
 run_script_test port-map-test.sh
 run_script_test nats-users-check-test.sh

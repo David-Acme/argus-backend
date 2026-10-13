@@ -40,16 +40,21 @@ namespace schema = argus::mcp::schema;
 struct Pilot
 {
   fs::path dir;
-  std::string pin;
 };
 
-std::optional<Pilot> pilotOf(const char* dirVar, const char* pinVar)
+struct PilotSource
 {
-  const char* dir = std::getenv(dirVar);
-  const char* pin = std::getenv(pinVar);
-  if (dir == nullptr || pin == nullptr || !fs::exists(fs::path(dir) / "model.onnx"))
+  const char* variable;
+  const char* installed;
+};
+
+std::optional<Pilot> pilotOf(const PilotSource& source)
+{
+  const char* chosen = std::getenv(source.variable);
+  const fs::path dir = chosen != nullptr ? fs::path(chosen) : fs::path(source.installed);
+  if (!fs::exists(dir / "model.onnx"))
     return std::nullopt;
-  return Pilot{.dir = fs::path(dir), .pin = pin};
+  return Pilot{.dir = dir};
 }
 
 double since(std::chrono::steady_clock::time_point start)
@@ -238,18 +243,18 @@ ToolChatInput inputsFor(const TurnInputs& args)
 
 TEST_CASE("one turn runs the whole pipeline on both pilot bundles, from the normalised utterance to the spoken result")
 {
-  const std::optional<Pilot> layaPilot = pilotOf("ARGUS_LAYA_BUNDLE", "ARGUS_LAYA_PIN");
-  const std::optional<Pilot> glinerPilot = pilotOf("ARGUS_GLINER_BUNDLE", "ARGUS_GLINER_PIN");
+  const std::optional<Pilot> layaPilot = pilotOf({.variable = "ARGUS_LAYA_BUNDLE", .installed = ARGUS_TEST_LAYA_BUNDLE});
+  const std::optional<Pilot> glinerPilot = pilotOf({.variable = "ARGUS_GLINER_BUNDLE", .installed = ARGUS_TEST_GLINER_BUNDLE});
   if (!layaPilot || !glinerPilot) {
     MESSAGE("no pilot bundles at ARGUS_LAYA_BUNDLE and ARGUS_GLINER_BUNDLE; the end-to-end turn did not run");
     return;
   }
-  const turn::BundleLoader layaBundle({.dir = layaPilot->dir, .pin = layaPilot->pin, .kind = turn::BundleKind::Decider});
+  const turn::BundleLoader layaBundle({.dir = layaPilot->dir, .kind = turn::BundleKind::Decider});
   REQUIRE(layaBundle.valid());
-  const turn::BundleLoader glinerBundle({.dir = glinerPilot->dir, .pin = glinerPilot->pin, .kind = turn::BundleKind::Extractor});
+  const turn::BundleLoader glinerBundle({.dir = glinerPilot->dir, .kind = turn::BundleKind::Extractor});
   REQUIRE(glinerBundle.valid());
 
-  const turn::BundleLoader stray({.dir = layaPilot->dir, .pin = std::string(64, '0'), .kind = turn::BundleKind::Decider});
+  const turn::BundleLoader stray({.dir = layaPilot->dir, .kind = turn::BundleKind::Extractor});
   CHECK_FALSE(stray.valid());
   CHECK_FALSE(stray.error().empty());
 

@@ -15,7 +15,6 @@ class LfmAdapter;
 struct TurnBundle
 {
   std::filesystem::path dir;
-  std::string pin;
   turn::OnnxOptions options;
 };
 

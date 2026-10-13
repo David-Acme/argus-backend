@@ -7,12 +7,9 @@
 #include <feature/llm/services/turn/laya-decider.hxx>
 
 #include <json/json.h>
-#include <text/sha256.hxx>
 
 #include <filesystem>
-#include <fstream>
 #include <iostream>
-#include <iterator>
 #include <memory>
 #include <optional>
 #include <set>
@@ -50,9 +47,7 @@ int main(int argc, char** argv)
     std::cerr << "usage: production-decider --bundle <decider bundle directory>\n";
     return 2;
   }
-  std::ifstream listing(bundleDir / "sha256", std::ios::binary);
-  const std::string listed((std::istreambuf_iterator<char>(listing)), std::istreambuf_iterator<char>());
-  const turn::BundleLoader bundle({.dir = bundleDir, .pin = argus::hash::sha256Hex(listed)});
+  const turn::BundleLoader bundle({.dir = bundleDir});
   if (!bundle.valid()) {
     std::cerr << "the decider bundle did not load: " << bundle.error() << "\n";
     return 1;

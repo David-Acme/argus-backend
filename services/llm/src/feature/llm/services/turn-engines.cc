@@ -11,7 +11,7 @@ namespace
 {
 void installDecider(const TurnEngineInput& input, TurnEngines& engines)
 {
-  const turn::BundleLoader bundle({.dir = input.decide.dir, .pin = input.decide.pin});
+  const turn::BundleLoader bundle({.dir = input.decide.dir});
   if (!bundle.valid()) {
     engines.decideError = bundle.error();
     LOG_WARN << "argus-llm: the Laya decider is off: " << engines.decideError
@@ -37,7 +37,7 @@ void installDecider(const TurnEngineInput& input, TurnEngines& engines)
 
 void installExtractor(const TurnEngineInput& input, TurnEngines& engines)
 {
-  const turn::BundleLoader bundle({.dir = input.extract.dir, .pin = input.extract.pin, .kind = turn::BundleKind::Extractor});
+  const turn::BundleLoader bundle({.dir = input.extract.dir, .kind = turn::BundleKind::Extractor});
   if (!bundle.valid()) {
     engines.extractError = bundle.error();
     LOG_WARN << "argus-llm: the GLiNER extractor is off: " << engines.extractError

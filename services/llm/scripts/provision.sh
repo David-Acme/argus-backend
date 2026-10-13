@@ -168,69 +168,31 @@ MEMORY_NOTICE_EOF
   log "Memory embedding model ready."
 }
 
-setup_extract_model() {
-  log "Setting up NuExtract-1.5-tiny structured-extraction model (Q4_K_M, 469 MB)..."
-  log "License: MIT (see models/extract/LICENSE)"
-  log "Optional: skipping it degrades memory extraction to the lexicon tier."
-
+setup_turn_bundle() {
+  local kind="$1" name="$2" variable="$3"
+  local source="${!variable:-}"
   local ROOT
   ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
-  local MODEL_DIR="$ROOT/models/extract"
-  local BASE_URL="https://huggingface.co/numind/NuExtract-1.5-tiny/resolve/main"
-  local MODEL_FILE="NuExtract-1.5-tiny-Q4_K_M.gguf"
-  local EXPECTED_BYTES=491400416
-  local DL=""
+  local INSTALL="$ROOT/services/llm/scripts/install-bundle.sh"
+  local SLOT="$ROOT/models/$kind/$name"
 
-  if command -v curl >/dev/null 2>&1; then
-    DL="curl -L --http1.1 --retry 5 --retry-delay 2 -C - --progress-bar -o"
-  elif command -v wget >/dev/null 2>&1; then
-    DL="wget --continue --retry-connrefused --waitretry=3 --show-progress -O"
-  else
-    warn "Neither curl nor wget found; skipping extraction model download."
+  if [ -d "$SLOT" ]; then
+    log "The $kind bundle is present at models/$kind/$name."
     return 0
   fi
-
-  if [ ! -d "$MODEL_DIR" ]; then
-    mkdir -p "$MODEL_DIR" || return 0
-  fi
-
-  local TARGET="$MODEL_DIR/$MODEL_FILE"
-  if [ -f "$TARGET" ]; then
-    local HAVE
-    HAVE="$(wc -c < "$TARGET" | tr -d ' ')"
-    if [ "$HAVE" = "$EXPECTED_BYTES" ]; then
-      log "Extraction model already present, skipping download."
-      return 0
-    fi
-    warn "Extraction model is truncated ($HAVE bytes), resuming."
-  fi
-
-  $DL "$TARGET" "$BASE_URL/$MODEL_FILE" || {
-    warn "Extraction model download failed; continuing without it."
-    return 0
-  }
-
-  local GOT
-  GOT="$(wc -c < "$TARGET" | tr -d ' ')"
-  if [ "$GOT" != "$EXPECTED_BYTES" ]; then
-    warn "Extraction model size mismatch (got $GOT, expected $EXPECTED_BYTES)."
-    warn "Re-run scripts/setup.sh to resume the download."
+  if [ -n "$source" ]; then
+    log "Installing the $kind bundle from $source..."
+    "$INSTALL" "$kind" "$source" --slot "$SLOT" || warn "The $kind bundle at $source was refused."
     return 0
   fi
-
-  cat > "$MODEL_DIR/LICENSE" << 'MIT_EOF'
-MIT License
-Copyright (c) 2024 numind
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-MIT_EOF
-  log "Extraction model ready."
+  warn "No $kind bundle at models/$kind/$name. The pilot bundles are exported by the intent-training"
+  warn "project (scripts/kit_bundle.py) and are not downloadable; copy one in with"
+  warn "  services/llm/scripts/install-bundle.sh $kind <bundle-dir>"
+  warn "or set $variable to the bundle directory and run this script again."
+  warn "Until then the turn runs on the rule tier alone."
 }
 
 setup_llm_model
 setup_memory_model
-setup_extract_model
+setup_turn_bundle decide bundle-laya-pilot ARGUS_DECIDE_BUNDLE_SOURCE
+setup_turn_bundle extract pilot-bundle ARGUS_EXTRACT_BUNDLE_SOURCE

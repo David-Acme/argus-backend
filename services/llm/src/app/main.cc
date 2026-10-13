@@ -194,7 +194,7 @@ turn::OnnxOptions onnxOptions(const LlmOnnxConfig& config)
 
 TurnBundle turnBundle(const LlmBundleConfig& bundle, std::string_view section)
 {
-  return {.dir = bundle.dir, .pin = bundle.pin, .options = onnxOptions(LlmConfig::resolveOnnx(section))};
+  return {.dir = bundle.dir, .options = onnxOptions(LlmConfig::resolveOnnx(section))};
 }
 
 }

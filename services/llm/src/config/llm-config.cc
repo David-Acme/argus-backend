@@ -79,15 +79,13 @@ bool LlmConfig::resolveWitnessOnly(std::string_view decider)
 LlmBundleConfig LlmConfig::resolveDecideBundle()
 {
   const std::string dir = ConfigService::getString("decide.bundle_dir");
-  return {.dir = dir.empty() ? std::filesystem::path(kDecideBundle) : std::filesystem::path(dir),
-          .pin = ConfigService::getString("decide.sha256")};
+  return {.dir = dir.empty() ? std::filesystem::path(kDecideBundle) : std::filesystem::path(dir)};
 }
 
 LlmBundleConfig LlmConfig::resolveExtractBundle()
 {
   const std::string dir = ConfigService::getString("extract.bundle_dir");
-  return {.dir = dir.empty() ? std::filesystem::path(kExtractBundle) : std::filesystem::path(dir),
-          .pin = ConfigService::getString("extract.sha256")};
+  return {.dir = dir.empty() ? std::filesystem::path(kExtractBundle) : std::filesystem::path(dir)};
 }
 
 LlmOnnxConfig LlmConfig::resolveOnnx(std::string_view section)
