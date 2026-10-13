@@ -533,6 +533,7 @@ run_script_test deploy-mounts-test.sh
 run_script_test port-map-test.sh
 run_script_test nats-users-check-test.sh
 run_script_test golden-http-test.py
+run_script_test boot-proof-test.sh
 
 echo "build-all tests passed"
 if [ "${#skipped[@]}" -gt 0 ]; then
