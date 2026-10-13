@@ -44,8 +44,10 @@ private:
     bool secured{true};
   };
 
+  static Call presetsCall(const std::string& profile);
   OnvifOutcome<OnvifReply> call(const Call& request);
   OnvifOutcome<OnvifReply> ptzCall(const Call& request);
+  void forget();
   [[nodiscard]] std::string pathFor(OnvifService service) const;
   [[nodiscard]] int64_t now() const;
   [[nodiscard]] std::optional<OnvifSecurity> securityFor(const Call& request) const;

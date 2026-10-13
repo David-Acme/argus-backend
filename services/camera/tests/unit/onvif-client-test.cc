@@ -469,6 +469,59 @@ TEST_CASE("a refused account, a missing feature and an answer that is not SOAP a
   }
 }
 
+TEST_CASE("a lost camera or a refused account is reconnected from its clock on the next call")
+{
+  const auto camera = ptzCamera();
+  OnvifDriver driver(onvifCamera("{}"), camera);
+  REQUIRE(driver.presets().ok);
+  camera->once("GotoPreset",
+               {.status = 0, .body = {}, .challenge = {}, .error = "no ONVIF answer from 192.168.1.64:80 (Timeout)"});
+  const DriverResult lost = driver.preset({.action = "goto", .id = "1", .name = {}});
+  CHECK_FALSE(lost.ok);
+  CHECK(lost.error.find("no ONVIF answer") != std::string::npos);
+  camera->sent.clear();
+  REQUIRE(driver.preset({.action = "goto", .id = "1", .name = {}}).ok);
+  CHECK(camera->operations() == std::vector<std::string>{"GetSystemDateAndTime", "GetCapabilities",
+                                                         "GetDeviceInformation", "GetProfiles", "GetPresets",
+                                                         "GotoPreset"});
+
+  camera->once("Stop", {.status = 401, .body = {}, .challenge = {}, .error = {}});
+  const DriverResult refused =
+      driver.move({.x = std::nullopt, .y = std::nullopt, .angle = std::nullopt, .stop = true});
+  CHECK_FALSE(refused.ok);
+  CHECK(refused.failure == "credential_refused");
+  camera->sent.clear();
+  REQUIRE(driver.move({.x = std::nullopt, .y = std::nullopt, .angle = std::nullopt, .stop = true}).ok);
+  REQUIRE_FALSE(camera->sent.empty());
+  CHECK(camera->operations().front() == "GetSystemDateAndTime");
+  CHECK(camera->operations().back() == "Stop");
+
+  camera->once("RelativeMove", answer("fault-action-not-supported.xml", 500));
+  CHECK_FALSE(driver.move({.x = 10, .y = 0, .angle = std::nullopt, .stop = false}).ok);
+  camera->sent.clear();
+  REQUIRE(driver.move({.x = std::nullopt, .y = std::nullopt, .angle = std::nullopt, .stop = true}).ok);
+  CHECK(camera->operations() == std::vector<std::string>{"Stop"});
+}
+
+TEST_CASE("a forgotten session forgets the camera's digest challenge too")
+{
+  const auto camera = ptzCamera();
+  camera->once("GetCapabilities",
+               {.status = 401, .body = {}, .challenge = R"(Digest realm="r", nonce="n1", qop="auth")", .error = {}});
+  OnvifClient client = clientOver(camera);
+  REQUIRE(client.connect().ok());
+  CHECK_FALSE(camera->sent.back().authorization.empty());
+  camera->once("Stop", {.status = 0, .body = {}, .challenge = {}, .error = "no answer"});
+  CHECK(client.stop().failure == OnvifFailure::Transport);
+  CHECK_FALSE(client.device().has_value());
+  CHECK(client.stop().failure == OnvifFailure::Unsupported);
+  camera->sent.clear();
+  REQUIRE(client.connect().ok());
+  CHECK(camera->operations().front() == "GetSystemDateAndTime");
+  for (const auto& request : camera->sent)
+    CHECK(request.authorization.empty());
+}
+
 TEST_CASE("a camera without pan and tilt still connects, and every PTZ call says so without asking it")
 {
   const auto camera = fixedCamera();

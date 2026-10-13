@@ -81,6 +81,11 @@ OnvifOutcome<T> carried(const OnvifOutcome<From>& from)
 {
   return OnvifOutcome<T>::failed(from.failure, from.error);
 }
+
+bool losesSession(OnvifFailure failure)
+{
+  return failure == OnvifFailure::Transport || failure == OnvifFailure::Unauthorized;
+}
 }
 
 OnvifClient::OnvifClient(OnvifClientConfig config) : config_(std::move(config)) {}
@@ -183,11 +188,32 @@ OnvifOutcome<OnvifReply> OnvifClient::call(const Call& request)
                                           "The camera refused the ONVIF user name or password");
 }
 
+void OnvifClient::forget()
+{
+  device_.reset();
+  services_ = OnvifServices{};
+  challenge_.reset();
+  nonceCount_ = 0;
+}
+
 OnvifOutcome<OnvifReply> OnvifClient::ptzCall(const Call& request)
 {
   if (!device_ || !device_->ptz)
     return OnvifOutcome<OnvifReply>::failed(OnvifFailure::Unsupported, kNoPtz);
-  return call(request);
+  auto answer = call(request);
+  if (losesSession(answer.failure))
+    forget();
+  return answer;
+}
+
+OnvifClient::Call OnvifClient::presetsCall(const std::string& profile)
+{
+  return {.service = OnvifService::Ptz,
+          .operation = "GetPresets",
+          .body = [profile](pugi::xml_node& operation) {
+            appendText(operation, "tptz:ProfileToken", profile);
+          },
+          .secured = true};
 }
 
 OnvifOutcome<OnvifDevice> OnvifClient::connect()
@@ -195,13 +221,18 @@ OnvifOutcome<OnvifDevice> OnvifClient::connect()
   device_.reset();
   services_ = OnvifServices{};
   OnvifDevice device;
+  const auto abandon = [this](const auto& outcome) {
+    if (losesSession(outcome.failure))
+      forget();
+    return carried<OnvifDevice>(outcome);
+  };
 
   const auto deviceClock = call({.service = OnvifService::Device,
                                  .operation = "GetSystemDateAndTime",
                                  .body = {},
                                  .secured = false});
   if (deviceClock.failure == OnvifFailure::Transport)
-    return carried<OnvifDevice>(deviceClock);
+    return abandon(deviceClock);
   if (deviceClock.ok()) {
     if (const auto epoch = onvif_parse::deviceEpoch(deviceClock.value.response))
       clockOffsetSeconds_ = *epoch - now();
@@ -215,7 +246,7 @@ OnvifOutcome<OnvifDevice> OnvifClient::connect()
                                   },
                                   .secured = true});
   if (!capabilities.ok())
-    return carried<OnvifDevice>(capabilities);
+    return abandon(capabilities);
   services_ = onvif_parse::services(capabilities.value.response);
   device.services = services_;
 
@@ -224,7 +255,7 @@ OnvifOutcome<OnvifDevice> OnvifClient::connect()
                                  .body = {},
                                  .secured = true});
   if (!information.ok())
-    return carried<OnvifDevice>(information);
+    return abandon(information);
   device.info = onvif_parse::deviceInfo(information.value.response);
 
   if (!services_.media.empty()) {
@@ -232,8 +263,8 @@ OnvifOutcome<OnvifDevice> OnvifClient::connect()
                               .operation = "GetProfiles",
                               .body = {},
                               .secured = true});
-    if (answer.failure == OnvifFailure::Transport || answer.failure == OnvifFailure::Unauthorized)
-      return carried<OnvifDevice>(answer);
+    if (losesSession(answer.failure))
+      return abandon(answer);
     const auto profiles = answer.ok() ? onvif_parse::profiles(answer.value.response)
                                       : std::vector<OnvifProfile>{};
     const auto steerable = std::ranges::find_if(
@@ -245,28 +276,19 @@ OnvifOutcome<OnvifDevice> OnvifClient::connect()
     device.ptz = !services_.ptz.empty() && steerable != profiles.end();
   }
 
-  device_ = device;
   if (device.ptz) {
-    const auto stored = presets();
-    if (stored.failure == OnvifFailure::Transport) {
-      device_.reset();
-      return carried<OnvifDevice>(stored);
-    }
+    const auto stored = call(presetsCall(device.profileToken));
+    if (stored.failure == OnvifFailure::Transport)
+      return abandon(stored);
     device.presets = stored.ok();
-    device_ = device;
   }
+  device_ = device;
   return {.value = std::move(device)};
 }
 
 OnvifOutcome<std::vector<OnvifPreset>> OnvifClient::presets()
 {
-  const std::string profile = device_ ? device_->profileToken : std::string();
-  const auto answer = ptzCall({.service = OnvifService::Ptz,
-                               .operation = "GetPresets",
-                               .body = [profile](pugi::xml_node& operation) {
-                                 appendText(operation, "tptz:ProfileToken", profile);
-                               },
-                               .secured = true});
+  const auto answer = ptzCall(presetsCall(device_ ? device_->profileToken : std::string()));
   if (!answer.ok())
     return carried<std::vector<OnvifPreset>>(answer);
   return {.value = onvif_parse::presets(answer.value.response)};

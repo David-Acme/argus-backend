@@ -2063,6 +2063,12 @@ go2rtc (no PTZ), gSOAP (GPL or commercial) and a Python sidecar.
 - **Failures.** A WS-Security or HTTP refusal is `credential_refused`, a 409
   as for Tapo. A SOAP fault keeps the camera's reason and code. An answer
   that is not SOAP, or no answer, is the usual 502.
+- **A lost session is dropped** (reviewer ruling, 2026-10-13). A call that
+  gets no answer, or whose account is refused, forgets the session: the
+  device, the service paths and the digest challenge. The next call
+  connects again from the camera's clock, so a camera that rebooted, or
+  whose password changed, recovers without a restart of argus-camera. A
+  SOAP fault (an unsupported action, an unknown preset) keeps the session.
 - **Capabilities never wait on the network.** `capabilities()` answers what
   the driver has learned so far, which is stream only until it has connected.
   `discoverCapabilities()` connects first; `GET /camera/{id}/capabilities`
