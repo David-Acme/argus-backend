@@ -22,6 +22,8 @@ namespace
 {
 
 constexpr std::string_view kBundleFlag = "--bundle";
+constexpr std::string_view kTriggersFirstFlag = "--triggers-first";
+constexpr std::string_view kThreadsFlag = "--threads";
 
 std::vector<tools::ToolHandle> offeredOf(const std::vector<tools::ToolHandle>& all, const Json::Value& names)
 {
@@ -40,11 +42,18 @@ std::vector<tools::ToolHandle> offeredOf(const std::vector<tools::ToolHandle>& a
 int main(int argc, char** argv)
 {
   std::filesystem::path bundleDir;
-  for (int i = 1; i + 1 < argc; ++i)
-    if (std::string_view(argv[i]) == kBundleFlag)
+  bool triggersFirst = false;
+  turn::OnnxOptions options;
+  for (int i = 1; i < argc; ++i) {
+    if (std::string_view(argv[i]) == kBundleFlag && i + 1 < argc)
       bundleDir = argv[i + 1];
+    if (std::string_view(argv[i]) == kTriggersFirstFlag)
+      triggersFirst = true;
+    if (std::string_view(argv[i]) == kThreadsFlag && i + 1 < argc)
+      options.threads = std::stoi(argv[i + 1]);
+  }
   if (bundleDir.empty()) {
-    std::cerr << "usage: production-decider --bundle <decider bundle directory>\n";
+    std::cerr << "usage: production-decider --bundle <decider bundle directory> [--triggers-first] [--threads N]\n";
     return 2;
   }
   const turn::BundleLoader bundle({.dir = bundleDir});
@@ -59,7 +68,7 @@ int main(int argc, char** argv)
   const std::vector<tools::ToolHandle> all = registry.all();
   const turn::RuleDecider rules;
   const turn::TriggerDecider triggers;
-  const turn::LayaDecider laya({.model = turn::openLayaModel({.bundle = bundle, .options = {}, .decode = bundle.decode()}),
+  const turn::LayaDecider laya({.model = turn::openLayaModel({.bundle = bundle, .options = options, .decode = bundle.decode()}),
                                 .fallback = &triggers,
                                 .policy = bundle.policy(),
                                 .confidence = bundle.confidenceCalibration(),
@@ -68,7 +77,8 @@ int main(int argc, char** argv)
     std::cerr << "the Laya model in " << bundleDir.string() << " did not open\n";
     return 1;
   }
-  const turn::FirstOf stack({&rules, &laya});
+  const turn::FirstOf stack(triggersFirst ? std::vector<const turn::Decider*>{&rules, &triggers, &laya}
+                                          : std::vector<const turn::Decider*>{&rules, &laya});
   const ModuleSnapshot modules;
   Json::CharReaderBuilder reader;
   Json::StreamWriterBuilder writer;
