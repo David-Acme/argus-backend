@@ -2,6 +2,10 @@
 host = "0.0.0.0"
 grpc_port = 7041
 
+[internal_tls]
+dir = "/run/secrets/internal-tls"
+address = "0.0.0.0:7241"
+
 [rpc.callers]
 identity = "CHANGE_ME_IDENTITY_SYNC"
 notification = "CHANGE_ME_NOTIFICATION_SYNC"

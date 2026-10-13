@@ -1,4 +1,5 @@
 #include <app/rpc/sync-control-callers.hxx>
+#include <app/rpc/sync-control-rpc-server.hxx>
 #include <app/rpc/sync-control-rpc-service.hxx>
 #include <config/config-service.hxx>
 #include <config/sync-config.hxx>
@@ -36,6 +37,7 @@
 #include <chrono>
 #include <grpc/fleet-caller-gate.hxx>
 #include <grpc/grpc-server-drain.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
@@ -43,9 +45,11 @@
 #include <http/certificate-reload.hxx>
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
+#include <http/tls-health.hxx>
 #include <json/value.h>
 #include <mdns/mdns-service.hxx>
 #include <memory>
+#include <optional>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-push-intent-sink.hxx>
 #include <nats/nats-subject.hxx>
@@ -127,6 +131,16 @@ int main()
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
+  const InternalTlsConfig internalTlsConfig = InternalTlsConfig::resolve();
+  std::optional<argus::client::InternalTlsMaterial> internalTls;
+  try {
+    internalTls = argus::client::installInternalTlsFrom(internalTlsConfig.directory);
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  const auto loadedTls = internalTls.value_or(argus::client::InternalTlsMaterial{});
 
   try {
     DeviceFilter::requireFingerprintSecret();
@@ -344,7 +358,10 @@ int main()
                                  status["enabled"] = true;
                                  status["connected"] = bus->isConnected();
                                  return status;
-                               }}}}));
+                               }},
+                              tls_health::healthExtra(
+                                  {.certificatePem = loadedTls.certificatePem,
+                                   .trustBundlePem = loadedTls.trustBundlePem})}}));
 
   const auto controlGate = std::make_shared<const argus::client::FleetCallerGate>(
       argus::client::FleetGateConfig{
@@ -371,11 +388,7 @@ int main()
   SyncModuleData moduleData;
   SettingsRegistry noSettings({});
   std::unique_ptr<SettingsRpcService> settingsRpc;
-  grpc::ServerBuilder controlBuilder;
-  controlBuilder.AddListeningPort(control.listener.host + ":" +
-                                      std::to_string(control.listener.port),
-                                  grpc::InsecureServerCredentials());
-  controlBuilder.RegisterService(&controlRpc);
+  std::vector<grpc::Service*> controlServices{&controlRpc};
   if (settingsCredentials.empty()) {
     LOG_INFO << "Module data RPC not served: [rpc.callers] settings is empty";
   }
@@ -383,9 +396,16 @@ int main()
     settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
         .service = "sync", .registry = &noSettings, .credentials = std::move(settingsCredentials)});
     settingsRpc->attachModuleData(moduleData);
-    controlBuilder.RegisterService(settingsRpc.get());
+    controlServices.push_back(settingsRpc.get());
   }
-  std::unique_ptr<grpc::Server> controlServer(controlBuilder.BuildAndStart());
+  auto controlListener = startSyncControlRpc(
+      {.address = control.listener.host + ":" + std::to_string(control.listener.port),
+       .tlsAddress = internalTlsConfig.address,
+       .tls = internalTls,
+       .services = std::move(controlServices)});
+  std::unique_ptr<grpc::Server> controlServer = std::move(controlListener.server);
+  if (controlServer && controlListener.tlsPort > 0)
+    LOG_INFO << "Sync control RPC with mutual TLS on " << internalTlsConfig.address;
   if (controlServer)
     LOG_INFO << "Sync control RPC listening on " << control.listener.host << ":"
              << control.listener.port << " (cleartext, "
@@ -400,6 +420,9 @@ int main()
   else
     LOG_WARN << "Sync control RPC failed to listen on " << control.listener.host
              << ":" << control.listener.port
+             << (internalTls && !internalTlsConfig.address.empty()
+                     ? " and " + internalTlsConfig.address
+                     : std::string{})
              << "; role changes and disconnects cannot reach this service";
   argus::client::GrpcServerDrain controlDrain(std::move(controlServer), kControlShutdownDeadline);
 

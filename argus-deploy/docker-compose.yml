@@ -393,6 +393,7 @@ services:
     ports:
       - "${SYNC_PORT:-7025}:7025"
       - "127.0.0.1:${SYNC_CONTROL_PORT:-7041}:7041"
+      - "127.0.0.1:${SYNC_CONTROL_TLS_PORT:-7241}:7241"
     entrypoint: ["/opt/argus/argus-sync"]
     volumes:
       - type: bind
@@ -404,6 +405,12 @@ services:
       - type: bind
         source: ${ARGUS_DATA_DIR:-./data}/nats/seeds/sync.seed
         target: /run/secrets/nats.seed
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/certs/internal/sync
+        target: /run/secrets/internal-tls
         read_only: true
         bind:
           create_host_path: false

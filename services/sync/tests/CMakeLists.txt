@@ -250,3 +250,15 @@ target_link_libraries(sync-module-data-test PRIVATE
 target_compile_options(sync-module-data-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-module-data-test)
 add_test(NAME sync-module-data-test COMMAND sync-module-data-test)
+
+add_executable(sync-control-rpc-server-test unit/sync-control-rpc-server-test.cc)
+target_link_libraries(sync-control-rpc-server-test PRIVATE
+    argus::sync-control-rpc
+    argus::lib::grpc-test-support
+    doctest::doctest)
+target_compile_options(sync-control-rpc-server-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(sync-control-rpc-server-test)
+add_test(NAME sync-control-rpc-server-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:sync-control-rpc-server-test> 3)
+set_tests_properties(sync-control-rpc-server-test PROPERTIES SKIP_RETURN_CODE 77)
