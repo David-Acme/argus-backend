@@ -718,6 +718,16 @@ its own key; removing it is the last step.
   service switches at its first start with an image that carries the client and
   a config that carries its key; the shared user is removed only after every
   service has.
+- **Reloading the broker.** Compose does not see a change in the content of a
+  mounted file, so a later change to `nats-permissions.conf` (a new grant, a
+  new row) reaches the running broker only through a reload: re-run
+  `provision-host.sh`, then `docker compose kill -s HUP nats` (nats-server
+  re-reads `auth.conf` and its include and keeps its connections), and only then
+  start the services that need the new grants.
+- **Removing the shared user.** `scripts/nats-users-check.sh` lists every
+  broker connection with the service whose key it presented, or `SHARED`; it
+  reads the monitor from inside the nats container and changes nothing. The
+  shared user is removed only after it exits 0 on the running stack.
 - **Deploying this change.** The broker now includes `nats-permissions.conf`
   and every NATS client mounts its seed with `create_host_path: false`, so
   re-run `scripts/provision-host.sh` before `docker compose up -d`: without the

@@ -266,7 +266,15 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 - S3 Per-service NATS accounts (nkeys, subject and `$JS.API` scoping). Status 2026-10-13
   (track B): the permission table with its checked-in rendering, one nkey per service issued by
   provisioning, and the client that connects with its own key and inbox are done; removing the
-  shared user is the last step and waits for every service to switch.
+  shared user is the last step and waits for every service to switch. That last step is an owner
+  deploy step, in this order: re-run `scripts/provision-host.sh` (it issues the seeds and writes
+  each service's key into its config); bring the stack up (`docker compose build` and
+  `docker compose up -d`; the first deploy recreates the broker, whose mounts changed); run
+  `scripts/nats-users-check.sh`, which must list every connection under its service and none as
+  `SHARED` (exit 0); only then the cleanup that removes the shared user. Both credentials stay
+  valid until that check passes. Any later change to `argus-deploy/nats-permissions.conf` reaches
+  the running broker only through a reload, `docker compose kill -s HUP nats`, after provisioning
+  and before the services that need the new grants start.
 - S4 Per-service S3 credentials scoped by prefix; `rc` keys out of command arguments.
 - S5 Legacy refresh tokens two rotations old refused without revoking their family (accepted gap).
 
