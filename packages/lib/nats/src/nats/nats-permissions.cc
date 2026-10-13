@@ -214,8 +214,8 @@ void addStreamGrants(std::string_view stream, std::vector<std::string>& publish)
 void addConsumerGrants(const Consumer& consumer,
                        std::vector<std::string>& publish)
 {
-  publish.push_back(dotted(
-      {"$JS.API.CONSUMER.DURABLE.CREATE", consumer.stream, consumer.name}));
+  publish.push_back(dotted({"$JS.API.CONSUMER.CREATE", consumer.stream,
+                            consumer.name, consumer.subject}));
   publish.push_back(
       dotted({"$JS.API.CONSUMER.INFO", consumer.stream, consumer.name}));
   publish.push_back(dotted({"$JS.ACK", consumer.stream, consumer.name, ">"}));

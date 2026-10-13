@@ -356,6 +356,28 @@ TEST_CASE("a consumer binds to a stream some row creates, under its own name")
   }
 }
 
+TEST_CASE("a row may create exactly its own durables, each bound to its filter")
+{
+  for (const auto& row : nats_permissions::table()) {
+    const Grants grants = nats_permissions::grantsFor(row);
+    std::vector<std::string> creates;
+    for (const auto& subject : grants.publish) {
+      CHECK_MESSAGE(subject.find("DURABLE.CREATE") == std::string::npos,
+                    row.service << " is granted " << subject);
+      if (subject.starts_with("$JS.API.CONSUMER.CREATE."))
+        creates.push_back(subject);
+    }
+    std::vector<std::string> expected;
+    expected.reserve(row.consumers.size());
+    for (const auto& consumer : row.consumers)
+      expected.push_back(
+          "$JS.API.CONSUMER.CREATE." + std::string(consumer.stream) + "." +
+          std::string(consumer.name) + "." + std::string(consumer.subject));
+    CHECK_MESSAGE(sorted(creates) == sorted(expected),
+                  row.service << " may create durables its row does not list");
+  }
+}
+
 TEST_CASE("a core subscription names a subject some row publishes")
 {
   std::vector<std::string_view> published;
@@ -404,15 +426,16 @@ TEST_CASE("the JetStream grants follow from the streams and durables of a row")
                                                   "argus.probe.v1.change",
                                               .recreates = true}}};
   const Grants grants = nats_permissions::grantsFor(row);
-  CHECK(grants.publish ==
-        sorted({"$JS.ACK.S_PROBE.kept.>", "$JS.ACK.S_PROBE.recreated.>",
-                "$JS.API.CONSUMER.DELETE.S_PROBE.recreated",
-                "$JS.API.CONSUMER.DURABLE.CREATE.S_PROBE.kept",
-                "$JS.API.CONSUMER.DURABLE.CREATE.S_PROBE.recreated",
-                "$JS.API.CONSUMER.INFO.S_PROBE.kept",
-                "$JS.API.CONSUMER.INFO.S_PROBE.recreated",
-                "$JS.API.STREAM.CREATE.S_PROBE", "$JS.API.STREAM.INFO.S_PROBE",
-                "$JS.API.STREAM.UPDATE.S_PROBE", "argus.probe.v1.change"}));
+  CHECK(
+      grants.publish ==
+      sorted({"$JS.ACK.S_PROBE.kept.>", "$JS.ACK.S_PROBE.recreated.>",
+              "$JS.API.CONSUMER.DELETE.S_PROBE.recreated",
+              "$JS.API.CONSUMER.CREATE.S_PROBE.kept.argus.probe.v1.change",
+              "$JS.API.CONSUMER.CREATE.S_PROBE.recreated.argus.probe.v1.change",
+              "$JS.API.CONSUMER.INFO.S_PROBE.kept",
+              "$JS.API.CONSUMER.INFO.S_PROBE.recreated",
+              "$JS.API.STREAM.CREATE.S_PROBE", "$JS.API.STREAM.INFO.S_PROBE",
+              "$JS.API.STREAM.UPDATE.S_PROBE", "argus.probe.v1.change"}));
   CHECK(grants.subscribe == std::vector<std::string>{"_INBOX.probe.>"});
   CHECK(nats_permissions::variableName("probe") == "ARGUS_NATS_PROBE");
 }

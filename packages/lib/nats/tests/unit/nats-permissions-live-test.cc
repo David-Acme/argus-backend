@@ -11,10 +11,11 @@
 #include <map>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-permissions.hxx>
 #include <nats/nats-subject.hxx>
+#include <nats/nats.h>
+#include <optional>
 #include <ranges>
 #include <sstream>
 #include <string>
@@ -416,5 +417,132 @@ TEST_CASE(
   CHECK(logLinesWith("Permissions Violation") == violationsBefore);
   sync.unsubscribe(switched.value_or(0));
   sync.drain();
+  shared.drain();
+}
+
+TEST_CASE("a service cannot re-create its own durable with another filter, nor "
+          "create one its row does not list" *
+          doctest::skip(unconfigured()))
+{
+  captureLogs();
+  NatsBus shared;
+  REQUIRE(shared.connect(sharedOptions()));
+  REQUIRE(shared.ensureStream(streamInput(nats_subject::kCameraStream, 60)));
+  NatsBus sync;
+  REQUIRE(sync.connect(optionsFor("sync")));
+
+  auto refused = std::make_shared<Counter>();
+  CHECK_FALSE(
+      sync.subscribeDurable(
+              durableFor({.stream = nats_subject::kCameraStream,
+                          .name = "argus-sync-camera",
+                          .subject = nats_subject::kCameraObjectDetected,
+                          .recreates = false},
+                         refused))
+          .has_value());
+  CHECK_MESSAGE(awaitLogLine(
+                    "Publish to \"$JS.API.CONSUMER.CREATE.ARGUS_CAMERA."
+                    "argus-sync-camera.argus.camera.v1.object_detected\""),
+                "sync could re-create argus-sync-camera with another filter");
+  CHECK_FALSE(
+      sync.subscribeDurable(durableFor({.stream = nats_subject::kCameraStream,
+                                        .name = "argus-sync-camera-extra",
+                                        .subject = nats_subject::kCameraChange,
+                                        .recreates = false},
+                                       refused))
+          .has_value());
+  CHECK_MESSAGE(awaitLogLine(
+                    "Publish to \"$JS.API.CONSUMER.CREATE.ARGUS_CAMERA."
+                    "argus-sync-camera-extra.argus.camera.v1.change\""),
+                "sync could create a durable its row does not list");
+
+  auto own = std::make_shared<Counter>();
+  std::optional<uint64_t> bound;
+  for (int attempt = 0; attempt < 40 && !bound; ++attempt) {
+    bound = sync.subscribeDurable(
+        durableFor({.stream = nats_subject::kCameraStream,
+                    .name = "argus-sync-camera",
+                    .subject = nats_subject::kCameraChange,
+                    .recreates = false},
+                   own));
+    if (!bound)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  CHECK_MESSAGE(bound.has_value(),
+                "sync could not bind its own durable with its own filter");
+  sync.unsubscribe(bound.value_or(0));
+  sync.drain();
+  shared.drain();
+}
+
+TEST_CASE("a durable an older client created with DURABLE.CREATE is taken over "
+          "through the filter-bound create" *
+          doctest::skip(unconfigured()))
+{
+  captureLogs();
+  const int violationsBefore = logLinesWith("Permissions Violation");
+  NatsBus shared;
+  REQUIRE(shared.connect(sharedOptions()));
+  REQUIRE(shared.ensureStream(streamInput(nats_subject::kCameraStream, 60)));
+
+  natsOptions* rawOptions = nullptr;
+  REQUIRE(natsOptions_Create(&rawOptions) == NATS_OK);
+  const std::unique_ptr<natsOptions, decltype(&natsOptions_Destroy)>
+      options(rawOptions, &natsOptions_Destroy);
+  const std::string url = env("ARGUS_NATS_PERMISSIONS_URL");
+  const std::string password = env("ARGUS_NATS_PERMISSIONS_LEGACY");
+  REQUIRE(natsOptions_SetURL(options.get(), url.c_str()) == NATS_OK);
+  REQUIRE(natsOptions_SetUserInfo(options.get(), "argus", password.c_str()) ==
+          NATS_OK);
+  natsConnection* rawConnection = nullptr;
+  REQUIRE(natsConnection_Connect(&rawConnection, options.get()) == NATS_OK);
+  const std::unique_ptr<natsConnection, decltype(&natsConnection_Destroy)>
+      connection(rawConnection, &natsConnection_Destroy);
+  jsCtx* rawJs = nullptr;
+  REQUIRE(natsConnection_JetStream(&rawJs, connection.get(), nullptr) ==
+          NATS_OK);
+  const std::unique_ptr<jsCtx, decltype(&jsCtx_Destroy)> js(rawJs,
+                                                            &jsCtx_Destroy);
+
+  const std::string stream(nats_subject::kCameraStream);
+  const std::string durable = "argus-llm-catalog-camera";
+  const std::string filter(nats_subject::kCameraChange);
+  auto errorCode = jsErrCode(0);
+  static_cast<void>(js_DeleteConsumer(js.get(), stream.c_str(), durable.c_str(),
+                                      nullptr, &errorCode));
+  jsConsumerConfig config;
+  jsConsumerConfig_Init(&config);
+  config.Durable = durable.c_str();
+  config.DeliverSubject = "_INBOX.older-client";
+  config.DeliverPolicy = js_DeliverAll;
+  config.AckPolicy = js_AckExplicit;
+  config.FilterSubject = filter.c_str();
+  jsConsumerInfo* rawInfo = nullptr;
+  REQUIRE(js_AddConsumer(&rawInfo, js.get(), stream.c_str(), &config, nullptr,
+                         &errorCode) == NATS_OK);
+  jsConsumerInfo_Destroy(rawInfo);
+  REQUIRE(shared.publishWithMsgId(
+      {.subject = filter, .payload = "{}", .msgId = "older-client-probe"}));
+
+  NatsBus llm;
+  REQUIRE(llm.connect(optionsFor("llm")));
+  auto deliveries = std::make_shared<Counter>();
+  std::optional<uint64_t> bound;
+  for (int attempt = 0; attempt < 40 && !bound; ++attempt) {
+    bound =
+        llm.subscribeDurable(durableFor({.stream = nats_subject::kCameraStream,
+                                         .name = "argus-llm-catalog-camera",
+                                         .subject = nats_subject::kCameraChange,
+                                         .recreates = false},
+                                        deliveries));
+    if (!bound)
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  REQUIRE(bound.has_value());
+  CHECK(awaitCount(*deliveries, 1));
+  settle();
+  CHECK(logLinesWith("Permissions Violation") == violationsBefore);
+  llm.unsubscribe(bound.value_or(0));
+  llm.drain();
   shared.drain();
 }

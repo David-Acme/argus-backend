@@ -455,6 +455,7 @@ bool NatsBus::ensureDurable(const DurableInput& input)
   jsOptions_Init(&options);
   jsConsumerConfig config;
   jsConsumerConfig_Init(&config);
+  config.Name = input.durable.c_str();
   config.Durable = input.durable.c_str();
   config.DeliverSubject = deliverSubject->c_str();
   config.DeliverPolicy = input.deliverLastPerSubject ? js_DeliverLastPerSubject

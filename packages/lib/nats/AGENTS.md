@@ -83,7 +83,9 @@ argus-guard binds its own feed with, not a spelling anything publishes on.
   not queue behind a broker round trip, nor must another outbox's publish.
 - A durable consumer is created with `js_AddConsumer` and then bound
   (`jsSubOptions.Stream` + `.Consumer`), never left to the subscribe call to
-  create. cnats deletes the consumer its own `js_Subscribe` created as soon as
+  create. The config names it twice, `Name` and `Durable`, with its one filter,
+  so cnats sends `$JS.API.CONSUMER.CREATE.<stream>.<name>.<filter>`: the subject
+  the table grants, which binds the filter to the permission. cnats deletes the consumer its own `js_Subscribe` created as soon as
   the subscription is unsubscribed or drained — durables included — which would
   reset the cursor to the stream head on every restart and lose exactly the
   backlog a durable exists to retain. Created-then-bound, the consumer outlives

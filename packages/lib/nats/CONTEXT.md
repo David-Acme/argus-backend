@@ -28,7 +28,7 @@ The expansion follows what cnats 3.13 sends for each call of `NatsBus`:
 |---|---|
 | a subject published or stored | the subject itself |
 | stream ensured (`NatsBus::ensureStream`, which creates the stream or reconciles an existing one's retention) | `$JS.API.STREAM.CREATE.<stream>`, `$JS.API.STREAM.INFO.<stream>`, `$JS.API.STREAM.UPDATE.<stream>` |
-| push durable (`NatsBus::subscribeDurable`: `js_AddConsumer` with `Durable` set, then a bound `js_Subscribe`) | `$JS.API.CONSUMER.DURABLE.CREATE.<stream>.<name>`, `$JS.API.CONSUMER.INFO.<stream>.<name>`, `$JS.ACK.<stream>.<name>.>` (ack, nak, term and in-progress all answer the delivery's reply subject) |
+| push durable (`NatsBus::subscribeDurable`: `js_AddConsumer` with `Name` and `Durable` both the durable's name and its one filter, then a bound `js_Subscribe`) | `$JS.API.CONSUMER.CREATE.<stream>.<name>.<filter>`, `$JS.API.CONSUMER.INFO.<stream>.<name>`, `$JS.ACK.<stream>.<name>.>` (ack, nak, term and in-progress all answer the delivery's reply subject) |
 | a durable that is recreated on a policy change (the module feeds) | the above plus `$JS.API.CONSUMER.DELETE.<stream>.<name>` |
 
 A service that stores, ensures a stream or reads a durable also subscribes to
@@ -81,12 +81,23 @@ which only subscribes, is the case today.
 
 ## Limits of subject permissions
 
-The broker checks the subject of a request, not its body. A service allowed
-`$JS.API.STREAM.UPDATE.<stream>` can change that stream's subjects, and the
-`DURABLE.CREATE` form carries a durable's filter in the body, so a service can
-re-create its own named durable with another filter inside a stream it may
-read. Neither reaches another service's stream or durable name, which is what
-the table bounds.
+The broker checks the subject of a request, not its body. A durable is
+therefore created through the subject that names its filter (ruled
+2026-10-13): cnats 3.13 sends `$JS.API.CONSUMER.CREATE.<stream>.<name>.<filter>`
+when the config carries a `Name` and one filter subject (and the older
+`$JS.API.CONSUMER.DURABLE.CREATE.<stream>.<durable>`, filter in the body, when
+it carries only `Durable`), so `NatsBus` sets both and the table grants exactly
+that subject per durable, never `DURABLE.CREATE`. A service can create or
+re-create only the durables its row lists, each with its own filter. Its
+request carries no `action`, so the broker treats it as create-or-update, and a
+durable created through `DURABLE.CREATE` by an older client is taken over in
+place. Every durable has one filter: `NatsBus::DurableInput` carries one
+subject, and no code outside the bus builds a consumer config.
+
+What remains in a body is a stream's configuration: a service allowed
+`$JS.API.STREAM.UPDATE.<stream>` can change the subjects of its own stream.
+It reaches no other service's stream or durable name, which is what the table
+bounds.
 
 ## The guard advisory grant
 
