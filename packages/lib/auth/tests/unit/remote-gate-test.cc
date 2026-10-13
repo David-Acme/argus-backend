@@ -1,4 +1,5 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <auth/jwt-filter.hxx>
 #include <auth/remote-config.hxx>
 #include <auth/remote-gate.hxx>
 #include <config/config-service.hxx>
@@ -412,4 +413,41 @@ TEST_CASE("a sealed gate refuses every tunnelled request that carries no session
 
   RemoteGate publicGate(config, RemoteSurface::Public);
   CHECK_FALSE(publicGate.check(testRequest(drogon::Get, "/health"), true));
+}
+
+TEST_CASE("a sealed gate reads the session where JwtFilter reads it, and leaves the LAN alone")
+{
+  RemoteConfig config;
+  config.tunnelPort = 17443;
+  const RemoteGate sealed(config, RemoteSurface::Sealed);
+
+  auto header = testRequest(drogon::Get, "/camera");
+  header->addHeader("Authorization", "Bearer header-token");
+  CHECK(JwtFilter::extractToken(header) == "header-token");
+  CHECK_FALSE(sealed.check(header, true));
+
+  auto socket = testRequest(drogon::Get, "/sync");
+  socket->addHeader("Upgrade", "websocket");
+  socket->setParameter("token", "query-token");
+  CHECK(JwtFilter::extractToken(socket) == "query-token");
+  CHECK_FALSE(sealed.check(socket, true));
+
+  auto cookie = testRequest(drogon::Get, "/camera");
+  cookie->addCookie("token", "cookie-token");
+  cookie->addCookie("access_token", "cookie-token");
+  CHECK(JwtFilter::extractToken(cookie).empty());
+  const auto cookieRefusal = sealed.check(cookie, true);
+  REQUIRE(cookieRefusal);
+  CHECK(parseBody(cookieRefusal)["errors"]["code"] == "REMOTE_NOT_ALLOWED");
+
+  auto cookieSocket = testRequest(drogon::Get, "/sync");
+  cookieSocket->addHeader("Upgrade", "websocket");
+  cookieSocket->addCookie("token", "cookie-token");
+  CHECK(sealed.check(cookieSocket, true));
+
+  const auto bare = testRequest(drogon::Get, "/camera");
+  for (const auto& request : {header, socket, cookie, cookieSocket, bare}) {
+    CHECK_FALSE(sealed.check(request, false));
+    CHECK_FALSE(sealed.checkRequest(request));
+  }
 }
