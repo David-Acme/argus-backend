@@ -768,6 +768,21 @@ bool migrateSafetyAlertColumns()
       !exec("ALTER TABLE guard_safety_alert ADD COLUMN actor_name TEXT "
             "NOT NULL DEFAULT ''"))
     return false;
+  if (!columnExists("guard_safety_alert", "spoken") &&
+      !exec("ALTER TABLE guard_safety_alert ADD COLUMN spoken INTEGER "
+            "NOT NULL DEFAULT 0 CHECK (spoken IN (0, 1))"))
+    return false;
+  return true;
+}
+
+bool migrateSafetySettingColumns()
+{
+  if (!tableExists("guard_safety_setting"))
+    return true;
+  if (!columnExists("guard_safety_setting", "duress_phrase_key") &&
+      !exec("ALTER TABLE guard_safety_setting ADD COLUMN duress_phrase_key "
+            "TEXT NOT NULL DEFAULT ''"))
+    return false;
   return true;
 }
 
@@ -787,6 +802,7 @@ bool guard_schema::migrate(const std::string& schemaPath)
     return false;
   if (!migrateGuestColumns() || !migrateEnvironmentColumns() ||
       !migrateLanPresenceColumn() || !migrateSafetyAlertColumns() ||
+      !migrateSafetySettingColumns() ||
       !migrateInboxColumns() ||
       !migrateIncidentColumns() || !migrateActionColumns() ||
       !migrateEncounterDialogueColumns() || !migrateAssessmentColumns() ||

@@ -7,6 +7,7 @@ argus_module(NAME guard-safety
         dtos/set-pin-dto.cc
         dtos/update-safety-dto.cc
         infra/guard-alert-sink.cc
+        infra/identity-actor-directory.cc
         infra/notification-actor-notifier.cc
         repositories/safety-alert/safety-alert-repository.cc
         repositories/safety-setting/safety-setting-repository.cc

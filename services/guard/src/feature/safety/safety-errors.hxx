@@ -23,4 +23,8 @@ inline constexpr ErrorDefinition MalformedBody{.code = ErrorCode::BadRequest,
 inline constexpr ErrorDefinition PinsMustDiffer{.code = ErrorCode::ValidationError,
                                                 .status = 422,
                                                 .message = "The two PINs must be different"};
+inline constexpr ErrorDefinition PhraseInvalid{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "The duress phrase must be 3 to 12 words without digits"};
 }

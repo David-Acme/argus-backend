@@ -406,10 +406,11 @@ CREATE TABLE IF NOT EXISTS guard_user_pin (
 );
 
 CREATE TABLE IF NOT EXISTS guard_safety_setting (
-    id              INTEGER PRIMARY KEY CHECK (id = 1),
-    duress_enabled  INTEGER NOT NULL DEFAULT 0 CHECK (duress_enabled IN (0, 1)),
-    updated_at      INTEGER NOT NULL DEFAULT 0,
-    updated_by      INTEGER NOT NULL DEFAULT 0
+    id                 INTEGER PRIMARY KEY CHECK (id = 1),
+    duress_enabled     INTEGER NOT NULL DEFAULT 0 CHECK (duress_enabled IN (0, 1)),
+    updated_at         INTEGER NOT NULL DEFAULT 0,
+    updated_by         INTEGER NOT NULL DEFAULT 0,
+    duress_phrase_key  TEXT    NOT NULL DEFAULT ''
 );
 
 CREATE TABLE IF NOT EXISTS guard_safety_alert (
@@ -422,7 +423,8 @@ CREATE TABLE IF NOT EXISTS guard_safety_alert (
     notify_sequence INTEGER NOT NULL DEFAULT 1,
     escalated_at    INTEGER NOT NULL DEFAULT 0,
     closed_at       INTEGER NOT NULL DEFAULT 0,
-    actor_name      TEXT    NOT NULL DEFAULT ''
+    actor_name      TEXT    NOT NULL DEFAULT '',
+    spoken          INTEGER NOT NULL DEFAULT 0 CHECK (spoken IN (0, 1))
 );
 
 CREATE INDEX IF NOT EXISTS idx_guard_safety_alert_user_kind

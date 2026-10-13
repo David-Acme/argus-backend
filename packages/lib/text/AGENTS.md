@@ -50,8 +50,23 @@ absorption.
   the host's local zone is meant; anything else is `nullopt`) and `format`
   (epoch to ISO-8601 with its offset in the host's zone, the form a clock line
   shows the model and a tool argument carries).
+- `src/text/secret-phrase.{cc,hxx}` — `secret_phrase`: a secret phrase kept as a
+  key, never as text, and found again inside an utterance. `words` folds the way
+  both ends must agree on (Unicode NFC, case folding and accent stripping through
+  utf8proc, then letters and digits only, every other code point a separator),
+  `seal` turns 3 to 12 folded words and a 16-byte salt into PBKDF2-HMAC-SHA256
+  over the single-spaced words, `encode`/`decode` carry it as
+  `phrase-pbkdf2-sha256$<iterations>$<words>$<salt hex>$<digest hex>`, and
+  `spokenIn` derives every window of that many words in an utterance (the last
+  96 words at most) and compares it with the digest. It does not reuse
+  `text_norm::folded`, which keeps only ASCII letters and maps any other byte to
+  a space: a key is an exact equality and must fold every script the same way on
+  the side that seals it and the side that screens. Guard seals the household's
+  duress phrase with it and argus-llm screens a turn with it
+  (`services/guard/CONTEXT.md`, "The duress phrase").
 - `src/text/sha256.hxx` — `argus::hash::Sha256`, self-contained so no service
-  needs a crypto dependency to hash a payload.
+  needs a crypto dependency to hash a payload. `secret_phrase` builds its
+  HMAC and PBKDF2 on it for the same reason.
 - `src/text/fnv-hash.hxx` — `Fnv1a`, the content checksum the migration tools
   compare.
 - `src/text/base64.{cc,hxx}` — `base64::encode`/`decode`, the latter
@@ -80,6 +95,15 @@ chunked updates against a single update, and the length-prefixed field
 encode. `name-match-test` (folding, exact, one-word, ambiguous and missing
 names) and `iso-time-test` (with and without an offset or seconds, the local zone,
 malformed text, the write-back round trip).
+
+`tests/unit/secret-phrase-test.cc` — PBKDF2-HMAC-SHA256 against the RFC 7914
+vector and further vectors computed with Python's `hashlib`, including a key
+longer than one block; the folding of case, accents, punctuation, `ß` and
+invalid UTF-8; a sealed phrase against its reference digest; the refusals (word
+count, salt size, iterations); the encoding round trip and every malformed key;
+and the phrase found inside an utterance whatever the transcript's spelling,
+not found with a word missing or out of order, and screened only in the tail of
+a long utterance.
 
 `tests/unit/json-diff-test.cc` — the wire form of a diff: every entry carries
 both `previous` and `current`, null included, because a replica applies a

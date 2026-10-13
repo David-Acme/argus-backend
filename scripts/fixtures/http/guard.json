@@ -3630,6 +3630,7 @@
           "errors": null,
           "info": {
             "duressEnabled": false,
+            "hasPhrase": false,
             "hasPin": false
           },
           "status": 200
@@ -3656,6 +3657,7 @@
           "errors": null,
           "info": {
             "duressEnabled": false,
+            "hasPhrase": false,
             "hasPin": false
           },
           "status": 200
@@ -3682,6 +3684,7 @@
           "errors": null,
           "info": {
             "duressEnabled": false,
+            "hasPhrase": false,
             "hasPin": false
           },
           "status": 200
@@ -3921,6 +3924,7 @@
           "errors": null,
           "info": {
             "duressEnabled": false,
+            "hasPhrase": false,
             "hasPin": false
           },
           "status": 200
@@ -3973,6 +3977,7 @@
           "errors": null,
           "info": {
             "duressEnabled": false,
+            "hasPhrase": false,
             "hasPin": false
           },
           "status": 200

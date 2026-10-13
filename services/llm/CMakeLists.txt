@@ -117,6 +117,10 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera
                          ${CMAKE_BINARY_DIR}/clients/camera EXCLUDE_FROM_ALL)
     endif()
+    if(NOT TARGET argus::clients::guard)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/guard
+                         ${CMAKE_BINARY_DIR}/clients/guard EXCLUDE_FROM_ALL)
+    endif()
 
     if(NOT TARGET llama)
         set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
@@ -178,6 +182,7 @@ argus_service(NAME argus-llm
         argus::llm-rpc
         argus::llm
         argus::pending-intent
+        argus::duress
         argus::llm-settings
         argus::contracts::settings-wire
         argus::llm-shared
@@ -305,6 +310,12 @@ target_compile_options(llm-module-command-test PRIVATE -Wall -Wextra)
 set_target_properties(llm-module-command-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-module-command-test COMMAND llm-module-command-test)
+
+add_executable(llm-duress-screen-test tests/unit/llm-duress-screen-test.cc)
+target_link_libraries(llm-duress-screen-test PRIVATE argus::duress argus::llm doctest::doctest)
+target_compile_options(llm-duress-screen-test PRIVATE -Wall -Wextra)
+set_target_properties(llm-duress-screen-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME llm-duress-screen-test COMMAND llm-duress-screen-test)
 
 add_executable(llm-turn-flow-test tests/unit/llm-turn-flow-test.cc)
 

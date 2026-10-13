@@ -11,7 +11,9 @@ if(NOT TARGET argus::clients::guard)
   argus_clients(NAME guard
       PROTO_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../contracts/proto
       PROTO argus/guard/v1/presence.proto
+            argus/guard/v1/duress.proto
       SOURCES src/guard/guard-presence-client.cc
+              src/guard/guard-duress-client.cc
       INCLUDES src)
 endif()
 
@@ -31,4 +33,19 @@ if(NOT TARGET guard-presence-client-test)
   target_compile_options(guard-presence-client-test PRIVATE -Wall -Wextra)
 
   add_test(NAME guard-presence-client-test COMMAND guard-presence-client-test)
+endif()
+
+if(NOT TARGET guard-duress-client-test)
+  add_executable(guard-duress-client-test
+      tests/unit/guard-duress-client-test.cc)
+
+  set_target_properties(guard-duress-client-test PROPERTIES
+      EXCLUDE_FROM_ALL FALSE)
+
+  target_link_libraries(guard-duress-client-test PRIVATE
+      argus::clients::guard doctest::doctest)
+
+  target_compile_options(guard-duress-client-test PRIVATE -Wall -Wextra)
+
+  add_test(NAME guard-duress-client-test COMMAND guard-duress-client-test)
 endif()

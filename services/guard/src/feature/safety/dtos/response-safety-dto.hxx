@@ -7,6 +7,7 @@ struct ResponseSafetyStatusDto
 {
   bool duressEnabled{false};
   bool hasPin{false};
+  bool hasPhrase{false};
 
   [[nodiscard]] Json::Value toJson() const;
 };

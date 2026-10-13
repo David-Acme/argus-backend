@@ -10,12 +10,16 @@ namespace safety_alert_query
 {
 
 inline constexpr std::string_view INSERT_ALERT =
-    "INSERT INTO guard_safety_alert (kind, user_id, environment_id, created_at, actor_name) "
-    "VALUES (?, ?, ?, ?, ?) RETURNING id";
+    "INSERT INTO guard_safety_alert (kind, user_id, environment_id, created_at, actor_name, spoken) "
+    "VALUES (?, ?, ?, ?, ?, ?) RETURNING id";
 
 inline constexpr std::string_view RECENT_ALERT =
     "SELECT id, notified_at FROM guard_safety_alert WHERE kind = ? AND "
     "user_id = ? AND created_at >= ? ORDER BY id DESC LIMIT 1";
+
+inline constexpr std::string_view RECENT_SPOKEN =
+    "SELECT id, notified_at FROM guard_safety_alert WHERE kind = 'duress' AND "
+    "spoken = 1 AND user_id = ? AND created_at >= ? ORDER BY id DESC LIMIT 1";
 
 inline constexpr std::string_view COUNT_SINCE =
     "SELECT COUNT(*) AS total FROM guard_safety_alert WHERE kind = ? AND "
@@ -23,7 +27,7 @@ inline constexpr std::string_view COUNT_SINCE =
 
 inline constexpr std::string_view PENDING_ALERTS =
     "SELECT id, kind, user_id, environment_id, created_at, notify_sequence, escalated_at, "
-    "actor_name, closed_at "
+    "actor_name, closed_at, spoken "
     "FROM guard_safety_alert WHERE notified_at = 0 AND closed_at = 0 ORDER BY id DESC LIMIT 200";
 
 inline constexpr std::string_view ADVANCE_SEQUENCE =
@@ -51,6 +55,7 @@ struct SafetyAlertInsertInput
   int64_t environmentId{0};
   int64_t now{0};
   std::string actorName;
+  bool spoken{false};
 };
 
 struct SafetyAlertRow
@@ -64,6 +69,7 @@ struct SafetyAlertRow
   int64_t escalatedAt{0};
   int64_t closedAt{0};
   std::string actorName;
+  bool spoken{false};
 };
 
 struct SafetyAlertSequence
@@ -81,6 +87,12 @@ struct SafetyAlertRecent
 struct SafetyAlertRecentInput
 {
   SafetyAlertKind kind{SafetyAlertKind::Panic};
+  int64_t userId{0};
+  int64_t since{0};
+};
+
+struct SpokenAlertRecentInput
+{
   int64_t userId{0};
   int64_t since{0};
 };

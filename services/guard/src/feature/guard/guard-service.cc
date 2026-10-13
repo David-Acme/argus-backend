@@ -299,6 +299,7 @@ Json::Value noticeData(const NoticeDataInput& input)
       data["threadKey"] = "guard:panic:" + std::to_string(input.encounterId);
       break;
     case NoticeKind::Duress:
+    case NoticeKind::SpokenDuress:
       data["threadKey"] = "guard:duress:" + std::to_string(input.encounterId);
       break;
   }
@@ -4434,7 +4435,10 @@ GuardService::raiseSafetyAlert(const SafetyAlertInput& input)
                                     : co_await environmentRepository_.defaultId();
   const auto environment = co_await environmentRepository_.find(environmentId);
   const bool several = co_await environmentRepository_.count() > 1;
-  const GuardNotice notice{.kind = input.duress ? NoticeKind::Duress : NoticeKind::Panic,
+  const NoticeKind kind = !input.duress ? NoticeKind::Panic
+                          : input.spoken ? NoticeKind::SpokenDuress
+                                         : NoticeKind::Duress;
+  const GuardNotice notice{.kind = kind,
                            .subject = NoticeSubject::Stranger,
                            .people = 0,
                            .cameraId = 0,

@@ -15,6 +15,9 @@ public:
   [[nodiscard]] drogon::Task<std::optional<SafetyAlertRecent>>
   recent(const SafetyAlertRecentInput& input) const;
 
+  [[nodiscard]] drogon::Task<std::optional<SafetyAlertRecent>>
+  recentSpoken(const SpokenAlertRecentInput& input) const;
+
   [[nodiscard]] drogon::Task<int64_t> countSince(const SafetyAlertRecentInput& input) const;
 
   [[nodiscard]] drogon::Task<std::vector<SafetyAlertRow>> pending() const;

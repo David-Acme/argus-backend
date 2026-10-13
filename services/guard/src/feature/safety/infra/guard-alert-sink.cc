@@ -13,7 +13,8 @@ drogon::Task<SafetyDelivery> GuardAlertSink::raise(const SafetyAlertNotice& noti
                                         .actorName = notice.actorName,
                                         .environmentId = notice.environmentId,
                                         .now = notice.now,
-                                        .sequence = notice.sequence});
+                                        .sequence = notice.sequence,
+                                        .spoken = notice.spoken});
   if (outcome.accepted)
     co_return SafetyDelivery::Sent;
   if (outcome.unattended)

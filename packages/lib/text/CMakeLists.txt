@@ -20,6 +20,8 @@ argus_lib(NAME text
         src/text/json-util.hxx
         src/text/name-match.cc
         src/text/name-match.hxx
+        src/text/secret-phrase.cc
+        src/text/secret-phrase.hxx
         src/text/sha256.hxx
         src/text/spoken-time.cc
         src/text/spoken-time.hxx
@@ -63,6 +65,11 @@ add_executable(spoken-time-test tests/unit/spoken-time-test.cc)
 target_link_libraries(spoken-time-test PRIVATE argus::lib::text doctest::doctest)
 target_compile_options(spoken-time-test PRIVATE -Wall -Wextra)
 add_test(NAME spoken-time-test COMMAND spoken-time-test)
+
+add_executable(secret-phrase-test tests/unit/secret-phrase-test.cc)
+target_link_libraries(secret-phrase-test PRIVATE argus::lib::text doctest::doctest)
+target_compile_options(secret-phrase-test PRIVATE -Wall -Wextra)
+add_test(NAME secret-phrase-test COMMAND secret-phrase-test)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

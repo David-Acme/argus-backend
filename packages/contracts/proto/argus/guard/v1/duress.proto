@@ -1,0 +1,39 @@
+syntax = "proto3";
+
+package argus.guard.v1;
+
+message DuressPhraseRequest
+{
+}
+
+message DuressPhraseResponse
+{
+  string key = 1;
+}
+
+message SpokenDuressRequest
+{
+  int64 user_id = 1;
+  string role = 2;
+  string key = 3;
+}
+
+enum SpokenDuressOutcome
+{
+  SPOKEN_DURESS_OUTCOME_UNSPECIFIED = 0;
+  SPOKEN_DURESS_OUTCOME_RAISED = 1;
+  SPOKEN_DURESS_OUTCOME_REPEATED = 2;
+  SPOKEN_DURESS_OUTCOME_STALE = 3;
+  SPOKEN_DURESS_OUTCOME_NOT_ALLOWED = 4;
+}
+
+message SpokenDuressResponse
+{
+  SpokenDuressOutcome outcome = 1;
+}
+
+service DuressService
+{
+  rpc GetPhrase(DuressPhraseRequest) returns (DuressPhraseResponse) {}
+  rpc RaiseSpoken(SpokenDuressRequest) returns (SpokenDuressResponse) {}
+}

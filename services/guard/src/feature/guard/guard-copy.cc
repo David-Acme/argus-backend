@@ -380,6 +380,13 @@ NoticeText renderSafety(const GuardNotice& notice, bool english)
     return text;
   }
   text.title = (english ? "Silent alert · " : "Alerta silenciosa · ") + who + place;
+  if (notice.kind == NoticeKind::SpokenDuress) {
+    text.body = who + (english ? " said the duress phrase to Argus: someone may be forcing them. "
+                                 "Don't call them; check carefully or get help."
+                               : " le ha dicho a Argus la frase de coacción: puede que alguien le "
+                                 "obligue. No le llames; compruébalo con cuidado o pide ayuda.");
+    return text;
+  }
   text.body = who + (english ? " turned guarding off with their duress code: someone may be "
                                "forcing them. Don't call them; check carefully or get help."
                              : " ha desactivado la vigilancia con su código de coacción: puede "
@@ -469,6 +476,7 @@ std::string noticeKindToString(NoticeKind kind)
     case NoticeKind::Panic:
       return "guard_panic";
     case NoticeKind::Duress:
+    case NoticeKind::SpokenDuress:
       return "guard_duress";
   }
   return "guard_episode";
@@ -537,6 +545,7 @@ NoticeText guard_copy::render(const GuardNotice& notice, std::string_view lang)
       return renderDigest(notice, english);
     case NoticeKind::Panic:
     case NoticeKind::Duress:
+    case NoticeKind::SpokenDuress:
       return renderSafety(notice, english);
   }
   return renderEpisode(notice, english);
@@ -587,6 +596,7 @@ std::string guard_copy::urgency(const GuardNotice& notice)
       return notice.danger == GuardDanger::Critical ? "critical" : "active";
     case NoticeKind::Panic:
     case NoticeKind::Duress:
+    case NoticeKind::SpokenDuress:
       return "critical";
     case NoticeKind::Episode:
     case NoticeKind::Escalation:

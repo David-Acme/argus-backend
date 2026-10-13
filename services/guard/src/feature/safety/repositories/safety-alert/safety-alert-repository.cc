@@ -10,7 +10,7 @@ drogon::Task<int64_t> SafetyAlertRepository::insert(const SafetyAlertInsertInput
 {
   const auto rows = co_await DbService::client()->execSqlCoro(
       std::string(INSERT_ALERT), safetyAlertKindToString(input.kind), input.userId,
-      input.environmentId, input.now, input.actorName);
+      input.environmentId, input.now, input.actorName, input.spoken ? 1 : 0);
   co_return rows.empty() ? 0 : rows.front()["id"].as<int64_t>();
 }
 
@@ -20,6 +20,17 @@ SafetyAlertRepository::recent(const SafetyAlertRecentInput& input) const
   const auto rows = co_await DbService::client()->execSqlCoro(
       std::string(RECENT_ALERT), safetyAlertKindToString(input.kind), input.userId,
       input.since);
+  if (rows.empty())
+    co_return std::nullopt;
+  co_return SafetyAlertRecent{.id = rows.front()["id"].as<int64_t>(),
+                              .notified = rows.front()["notified_at"].as<int64_t>() > 0};
+}
+
+drogon::Task<std::optional<SafetyAlertRecent>>
+SafetyAlertRepository::recentSpoken(const SpokenAlertRecentInput& input) const
+{
+  const auto rows = co_await DbService::client()->execSqlCoro(std::string(RECENT_SPOKEN),
+                                                              input.userId, input.since);
   if (rows.empty())
     co_return std::nullopt;
   co_return SafetyAlertRecent{.id = rows.front()["id"].as<int64_t>(),
@@ -50,7 +61,8 @@ drogon::Task<std::vector<SafetyAlertRow>> SafetyAlertRepository::pending() const
                       .sequence = row["notify_sequence"].as<int64_t>(),
                       .escalatedAt = row["escalated_at"].as<int64_t>(),
                       .closedAt = row["closed_at"].as<int64_t>(),
-                      .actorName = row["actor_name"].as<std::string>()});
+                      .actorName = row["actor_name"].as<std::string>(),
+                      .spoken = row["spoken"].as<int>() != 0});
   }
   co_return alerts;
 }

@@ -1118,11 +1118,10 @@ people see are those of an ordinary disarm. Raising the mode never asks. Switchi
   that is an accepted gap.
 - *Not covered:* a household with a single member has nobody else to alert;
   a panic there falls back to the environment's emergency contacts or, with
-  none configured, ends terminal (below). A duress
-  phrase over voice is not built (an STT transcript cannot be matched
-  against a hash reliably, and the voice tool cannot disarm a user who has
-  codes, it gets `PIN_REQUIRED`); an attacker who knows the household uses
-  codes can demand the "other" one.
+  none configured, ends terminal (below). The voice tool cannot disarm a user
+  who has codes (it gets `PIN_REQUIRED`); the spoken path is the duress phrase
+  below, which raises the alert and changes nothing else. An attacker who knows
+  the household uses codes can demand the "other" one.
 
 **Hardening after the 2026-10-05 audit** (findings 4, 5, 42-44, 51, 92, 94):
 - *Attempts.* `PinAttempts::reserve` counts the attempt as a failure before
@@ -1196,12 +1195,83 @@ no one to hand them to without the coerced phone). `SafetyService::deliver`
 carries the terminal verdict as `SafetyDelivery::NoRecipients`, which stops
 the sweep instead of minting the fresh correlation a refusal takes.
 
+**The duress phrase (voice, 2026-10-13, F4).** The household's spoken twin
+of the duress code: a phrase that, said to Argus, raises the same silent alert
+and changes nothing the speaker or an attacker can see.
+
+- *Who sets it.* The Owner, on the duress switch's own route: `PATCH
+  /guard/safety {duressEnabled: true, duressPhrase}`. A string sets it, `null`
+  or a blank string clears it, and a body without the key leaves it as it is.
+  It is validated like the switch's other fields, by the DTO's DSL: 3 to 12
+  words once folded, no digits (a transcript writes "tres" or "3" as it likes),
+  no control characters, at most 200 bytes, and only with `duressEnabled: true`
+  (422 otherwise). Changing or clearing it while the switch is on asks the
+  caller's own current code exactly as switching off does: missing 403, wrong
+  403 and counted toward the lockout, and the duress code succeeds and raises
+  the silent alert. Switching duress off deletes the phrase with every code.
+  There is no default and nothing hard-coded: without a phrase, nothing is
+  screened.
+- *What is stored: a key, never the words.* `secret_phrase::seal`
+  (`packages/lib/text`) folds the phrase (Unicode NFC, case folding, accents
+  stripped, letters and digits only) and keeps PBKDF2-HMAC-SHA256 over the
+  single-spaced words with a 16-byte random salt and 4096 iterations, in
+  `guard_safety_setting.duress_phrase_key` as
+  `phrase-pbkdf2-sha256$4096$<words>$<salt>$<digest>`. The word count is part
+  of the key, because the screen derives one window of exactly that many
+  words. The phrase is never logged, journaled, synced or returned:
+  `GET /guard/safety` answers `hasPhrase`, and only to a caller who holds
+  `safety.duress` (false for anyone else), and the `duress` resource notice
+  carries no value. A stolen `guard.db` can still be dictionary-attacked, as
+  the codes can; the iterations slow that down, they do not prevent it.
+- *Why a key and not the text.* The earlier objection — a transcript cannot be
+  matched against a hash — holds for a single opaque code, not for words.
+  The transcript is folded the same way the phrase was (the one function both
+  ends link), so case, accents and punctuation do not matter. An exact match
+  over the folded words is the deliberate bar: a transcription mistake in one
+  of the words misses the alert, and a fuzzy match would ring the whole
+  household on a near miss. The household should choose plain words the
+  speech recogniser gets right, in an order nobody says by accident.
+- *Who hears it.* argus-llm screens the turn (`services/llm/CONTEXT.md`, "The
+  duress screen"), and guard's internal listener serves it
+  `argus.guard.v1.DuressService` (`packages/contracts/proto/argus/guard/v1/duress.proto`,
+  `argus::clients::guard`'s `GuardDuressClient`). Only the `llm` caller is
+  admitted: the `[rpc.callers] llm` credential the tool RPC already uses, so
+  no new secret is provisioned. `GetPhrase` answers the stored key (empty
+  while the switch is off). `RaiseSpoken {userId, role, key}` resolves the
+  speaker through identity (`IdentityActorDirectory`); an account identity
+  reports inactive is refused, the role identity reports wins over the role
+  the llm declares (the declared one is used only when identity cannot be
+  reached, as `tool_gate` trusts it), and the speaker must hold
+  `safety.duress` under the current module gate: Owner and Resident, with
+  surveillance on. A key that is not the current one is `STALE`: the phrase
+  changed after the llm read it, and words that are no longer the phrase are
+  not an alert.
+- *The alert.* `SafetyService::spokenDuress` writes a `guard_safety_alert` row
+  of kind `duress` with `spoken = 1` (an additive column) and the actor's
+  name, then delivers it on the loop through the same sink, sweep, backoff and
+  terminal rules as the code path. Guard renders it as
+  `NoticeKind::SpokenDuress`: the same `guard_duress` kind, critical urgency,
+  thread and `everyone` response strategy, with its own words ("Laura le ha
+  dicho a Argus la frase de coacción: puede que alguien le obligue. No le
+  llames…" / "…said the duress phrase to Argus…"), because "turned guarding
+  off with their duress code" would be false here. The speaker is excluded
+  from the plan and gets no notice, no ring and no confirmation, and the mode
+  does not change. A second phrase from the same speaker within 60 s
+  (`spokenRepeatWindowS`) answers `REPEATED` and adds nothing, so a retried
+  turn never rings the house twice.
+
 Code: `src/feature/safety/` (controller, DTOs, `SafetyService` as the
 `DisarmGate` that `GuardFeatureService::setMode` consults, `pin-hash`,
 `pin-attempts`, three repositories, `GuardAlertSink`,
-`NotificationActorNotifier`), `src/feature/guard/services/disarm-gate.hxx`,
-tables `guard_user_pin`, `guard_safety_setting`, `guard_safety_alert`;
-`tests/unit/guard-safety-test.cc`.
+`NotificationActorNotifier`, `IdentityActorDirectory`,
+`vocabulary/phrase-change.hxx`), `src/feature/guard/services/disarm-gate.hxx`,
+`src/app/rpc/duress-rpc-service`, tables `guard_user_pin`,
+`guard_safety_setting` (with `duress_phrase_key`), `guard_safety_alert` (with
+`spoken`); `tests/unit/guard-safety-test.cc` and
+`tests/unit/guard-duress-phrase-test.cc` (the DTO's rules, the key at rest,
+clearing and switching off, the code asked for a change and the duress code
+still alerting, the spoken alert's recipients and words, the 60 s fold, a
+stale key, and the RPC's caller and capability checks).
 
 ## Who is called, in what order, and how (2026-10, RESPONSE)
 

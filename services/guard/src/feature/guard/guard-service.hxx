@@ -57,6 +57,7 @@ public:
     int64_t environmentId{0};
     int64_t now{0};
     int64_t sequence{1};
+    bool spoken{false};
   };
 
   struct SafetyAlertOutcome

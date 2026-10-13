@@ -349,6 +349,21 @@ target_compile_definitions(guard-safety-test PRIVATE
     ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 add_test(NAME guard-safety-test COMMAND guard-safety-test)
 
+add_executable(guard-duress-phrase-test tests/unit/guard-duress-phrase-test.cc)
+set_target_properties(guard-duress-phrase-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(guard-duress-phrase-test PRIVATE
+    argus::guard
+    argus::guard-safety
+    argus::guard-rpc
+    argus::clients::guard
+    doctest::doctest)
+target_include_directories(guard-duress-phrase-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+target_compile_options(guard-duress-phrase-test PRIVATE -Wall -Wextra)
+target_compile_definitions(guard-duress-phrase-test PRIVATE
+    ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+add_test(NAME guard-duress-phrase-test COMMAND guard-duress-phrase-test)
+
 add_executable(guard-module-data-test tests/unit/guard-module-data-test.cc)
 set_target_properties(guard-module-data-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(guard-module-data-test PRIVATE

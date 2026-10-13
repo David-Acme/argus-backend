@@ -18,7 +18,8 @@ enum class NoticeKind : uint8_t
   Tamper,
   Digest,
   Panic,
-  Duress
+  Duress,
+  SpokenDuress
 };
 
 enum class NoticeSubject : uint8_t

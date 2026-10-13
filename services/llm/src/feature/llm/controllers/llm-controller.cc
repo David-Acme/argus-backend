@@ -250,8 +250,23 @@ ChatRequest boundToCredential(ChatRequest request, const CallerCredential& crede
   return boundToCaller(std::move(request), identified ? kIdentityCaller : std::string_view{});
 }
 
+void LlmController::useScreen(const turn::UtteranceScreen& screen)
+{
+  screen_ = &screen;
+}
+
+void screenTurn(const turn::UtteranceScreen* screen, const ChatRequest& request)
+{
+  if (screen == nullptr || request.prefillOnly || request.userId <= 0 || !userRoleKnown(request.role))
+    return;
+  const std::string utterance = LfmAdapter::lastUtterance(request.messages);
+  if (!utterance.empty())
+    screen->screen({.userId = request.userId, .role = request.role, .text = utterance});
+}
+
 LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
 {
+  screenTurn(screen_, request);
   LlmChatOutcome outcome;
   const auto tools = requestTools(adapter_.executor(), request);
   if (tools.empty()) {
@@ -287,6 +302,7 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& request)
 
 void LlmController::chatStreamSync(const LlmStreamInput& input)
 {
+  screenTurn(screen_, input.request);
   LlmPrefillStats* stats = input.stats;
   const TokenCallback emit = [this, stats,
                               forward = input.onToken](const std::string& token,

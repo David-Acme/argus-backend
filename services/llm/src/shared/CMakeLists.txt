@@ -2,6 +2,7 @@ argus_module(NAME llm-shared
     HEADER_ONLY
     SOURCES
         vocabulary/tool-contracts.hxx
+        vocabulary/utterance-screen.hxx
     INCLUDES
         ..
     DEPENDS

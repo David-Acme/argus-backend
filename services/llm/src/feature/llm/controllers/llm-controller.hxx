@@ -9,6 +9,7 @@
 #include <llm/llm-service.hxx>
 #include <runtime/stream-slots.hxx>
 #include <shared/vocabulary/tool-contracts.hxx>
+#include <shared/vocabulary/utterance-screen.hxx>
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -47,6 +48,8 @@ struct CallerCredential
 
 [[nodiscard]] ChatRequest boundToCredential(ChatRequest request, const CallerCredential& credential);
 
+void screenTurn(const turn::UtteranceScreen* screen, const ChatRequest& request);
+
 class LlmController : public drogon::HttpController<LlmController, false>
 {
 public:
@@ -72,6 +75,8 @@ public:
 
   const IntentRouter& router() const { return intentGate_.router(); }
 
+  void useScreen(const turn::UtteranceScreen& screen);
+
   LlmChatOutcome chatSync(const ChatRequest& request);
   void chatStreamSync(const LlmStreamInput& input);
 
@@ -85,4 +90,5 @@ private:
   LfmAdapter adapter_;
   StreamSlots streams_;
   std::string identityCredential_;
+  const turn::UtteranceScreen* screen_{nullptr};
 };

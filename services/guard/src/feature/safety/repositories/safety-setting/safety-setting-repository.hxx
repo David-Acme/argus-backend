@@ -10,4 +10,6 @@ public:
   [[nodiscard]] drogon::Task<SafetySetting> find() const;
 
   drogon::Task<void> update(const SafetySettingUpdateInput& input) const;
+
+  drogon::Task<void> setPhrase(const SafetyPhraseUpdateInput& input) const;
 };

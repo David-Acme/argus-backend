@@ -7,6 +7,8 @@
 #include <feature/safety/repositories/safety-setting/safety-setting-repository.hxx>
 #include <feature/safety/repositories/user-pin/user-pin-repository.hxx>
 #include <feature/safety/services/pin-attempts.hxx>
+#include <feature/safety/vocabulary/phrase-change.hxx>
+#include <text/secret-phrase.hxx>
 
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
@@ -19,6 +21,7 @@ struct SafetyStatus
 {
   bool duressEnabled{false};
   bool hasPin{false};
+  bool hasPhrase{false};
 };
 
 struct PinSetInput
@@ -59,6 +62,27 @@ struct SafetyToggleInput
   std::optional<std::string> currentPin;
 };
 
+struct SafetyUpdateInput
+{
+  SafetyToggleInput toggle;
+  PhraseChange phraseChange{PhraseChange::Keep};
+  std::string phrase;
+};
+
+struct SpokenDuressInput
+{
+  int64_t userId{0};
+  std::string userName;
+  std::string phraseKey;
+};
+
+enum class SpokenDuressOutcome : uint8_t
+{
+  Raised,
+  Repeated,
+  Stale
+};
+
 enum class OwnerPinOutcome : uint8_t
 {
   NoPin,
@@ -95,6 +119,8 @@ public:
     double sweepIntervalS{5.0};
     int64_t retentionS{30LL * 86400};
     PinAttempts::Limits attempts{};
+    int phraseIterations{secret_phrase::kIterations};
+    int64_t spokenRepeatWindowS{60};
   };
 
   SafetyService(Dependencies dependencies, Config config);
@@ -112,6 +138,9 @@ public:
   [[nodiscard]] drogon::Task<SafetyStatus> removePin(const PinRemoveInput& input) const;
   [[nodiscard]] drogon::Task<SafetySetting> setting() const;
   [[nodiscard]] drogon::Task<SafetySetting> toggle(const SafetyToggleInput& input) const;
+  [[nodiscard]] drogon::Task<SafetySetting> update(const SafetyUpdateInput& input) const;
+  [[nodiscard]] drogon::Task<std::string> phraseKey() const;
+  [[nodiscard]] drogon::Task<SpokenDuressOutcome> spokenDuress(const SpokenDuressInput& input) const;
   [[nodiscard]] drogon::Task<PanicResult> panic(const PanicInput& input) const;
 
   [[nodiscard]] drogon::Task<DisarmVerdict>
@@ -133,6 +162,8 @@ private:
 
   [[nodiscard]] drogon::Task<DisarmVerdict> verifyPin(const PinCheck& check) const;
   [[nodiscard]] drogon::Task<void> requireCurrentPin(const DisarmRequest& request) const;
+  [[nodiscard]] drogon::Task<std::string> sealPhrase(const std::string& phrase) const;
+  void deliverLater(const SafetyAlertNotice& notice) const;
   [[nodiscard]] int64_t now() const;
   [[nodiscard]] int64_t retryDelay(int failures) const;
   void recordOutcome(int64_t alertId, bool sent) const;

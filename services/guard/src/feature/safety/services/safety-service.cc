@@ -8,7 +8,11 @@
 #include <runtime/blocking-task.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
+#include <text/secret-phrase.hxx>
 #include <trantor/utils/Logger.h>
+
+#include <openssl/crypto.h>
+#include <openssl/rand.h>
 
 #include <algorithm>
 #include <atomic>
@@ -16,6 +20,9 @@
 #include <drogon/drogon.h>
 #include <map>
 #include <mutex>
+#include <optional>
+#include <stdexcept>
+#include <string>
 #include <unordered_set>
 #include <utility>
 
@@ -53,6 +60,12 @@ struct PinMatch
   bool disarm{false};
   bool duress{false};
 };
+
+bool samePhraseKey(const SafetySetting& setting, const std::string& presented)
+{
+  return !setting.phraseKey.empty() && setting.phraseKey.size() == presented.size() &&
+         CRYPTO_memcmp(setting.phraseKey.data(), presented.data(), presented.size()) == 0;
+}
 
 class RuntimeScope
 {
@@ -150,7 +163,8 @@ drogon::Task<SafetyStatus> SafetyService::status(int64_t userId) const
   const SafetySetting setting = co_await settingRepository_.find();
   const auto pin = co_await pinRepository_.find(userId);
   co_return SafetyStatus{.duressEnabled = setting.duressEnabled,
-                         .hasPin = setting.duressEnabled && pin.has_value()};
+                         .hasPin = setting.duressEnabled && pin.has_value(),
+                         .hasPhrase = setting.duressEnabled && !setting.phraseKey.empty()};
 }
 
 drogon::Task<DisarmVerdict> SafetyService::verifyPin(const PinCheck& check) const
@@ -235,7 +249,7 @@ drogon::Task<SafetyStatus> SafetyService::setPin(const PinSetInput& input) const
     throw;
   }
   attempts_->clear(input.userId);
-  co_return SafetyStatus{.duressEnabled = true, .hasPin = true};
+  co_return SafetyStatus{.duressEnabled = true, .hasPin = true, .hasPhrase = !setting.phraseKey.empty()};
 }
 
 drogon::Task<SafetyStatus> SafetyService::removePin(const PinRemoveInput& input) const
@@ -264,7 +278,9 @@ drogon::Task<SafetyStatus> SafetyService::removePin(const PinRemoveInput& input)
   }
   attempts_->clear(input.userId);
   const SafetySetting setting = co_await settingRepository_.find();
-  co_return SafetyStatus{.duressEnabled = setting.duressEnabled, .hasPin = false};
+  co_return SafetyStatus{.duressEnabled = setting.duressEnabled,
+                         .hasPin = false,
+                         .hasPhrase = setting.duressEnabled && !setting.phraseKey.empty()};
 }
 
 drogon::Task<void> SafetyService::forgetUser(int64_t userId) const
@@ -295,19 +311,59 @@ drogon::Task<SafetySetting> SafetyService::setting() const
 
 drogon::Task<SafetySetting> SafetyService::toggle(const SafetyToggleInput& input) const
 {
-  if (!input.duressEnabled && (co_await settingRepository_.find()).duressEnabled)
-    co_await requireCurrentPin({.userId = input.actorUserId,
-                                .userName = input.actorName,
-                                .pin = input.currentPin,
+  co_return co_await update({.toggle = input, .phraseChange = PhraseChange::Keep, .phrase = {}});
+}
+
+drogon::Task<std::string> SafetyService::sealPhrase(const std::string& phrase) const
+{
+  const int iterations = config_.phraseIterations;
+  auto sealed = co_await BlockingTask<std::optional<std::string>>{
+      [phrase, iterations]() -> std::optional<std::string> {
+        std::string salt(secret_phrase::kSaltBytes, '\0');
+        if (RAND_bytes(reinterpret_cast<unsigned char*>(salt.data()), static_cast<int>(salt.size())) != 1)
+          throw std::runtime_error("phrase salt generation failed");
+        const auto key = secret_phrase::seal({.phrase = phrase, .salt = salt, .iterations = iterations});
+        if (!key)
+          return std::nullopt;
+        return secret_phrase::encode(*key);
+      },
+      BlockingLane::Heavy};
+  if (!sealed)
+    throw ResponseException(SafetyErrors::PhraseInvalid);
+  co_return std::move(*sealed);
+}
+
+drogon::Task<SafetySetting> SafetyService::update(const SafetyUpdateInput& input) const
+{
+  const SafetyToggleInput& toggle = input.toggle;
+  const SafetySetting current = co_await settingRepository_.find();
+  if (!toggle.duressEnabled && input.phraseChange == PhraseChange::Set)
+    throw ResponseException(SafetyErrors::DuressDisabled);
+  const bool turningOff = !toggle.duressEnabled && current.duressEnabled;
+  const bool phraseChanges = input.phraseChange != PhraseChange::Keep && current.duressEnabled;
+  if (turningOff || phraseChanges)
+    co_await requireCurrentPin({.userId = toggle.actorUserId,
+                                .userName = toggle.actorName,
+                                .pin = toggle.currentPin,
                                 .environmentId = std::nullopt});
+  std::string phraseKey = current.phraseKey;
+  if (!toggle.duressEnabled || input.phraseChange == PhraseChange::Clear)
+    phraseKey.clear();
+  else if (input.phraseChange == PhraseChange::Set)
+    phraseKey = co_await sealPhrase(input.phrase);
   const int64_t at = now();
   auto transaction = co_await db_transaction::begin(DbService::client());
   try {
-    co_await settingRepository_.update({.duressEnabled = input.duressEnabled,
-                                        .updatedBy = input.actorUserId,
+    co_await settingRepository_.update({.duressEnabled = toggle.duressEnabled,
+                                        .updatedBy = toggle.actorUserId,
                                         .now = at,
                                         .client = transaction.get()});
-    if (!input.duressEnabled)
+    if (phraseKey != current.phraseKey)
+      co_await settingRepository_.setPhrase({.phraseKey = phraseKey,
+                                             .updatedBy = toggle.actorUserId,
+                                             .now = at,
+                                             .client = transaction.get()});
+    if (!toggle.duressEnabled)
       co_await pinRepository_.removeAll(transaction.get());
     if (dependencies_.changes != nullptr) {
       co_await dependencies_.changes->record({.scope = ResourceScope::Duress,
@@ -321,8 +377,58 @@ drogon::Task<SafetySetting> SafetyService::toggle(const SafetyToggleInput& input
     db_transaction::rollback(transaction);
     throw;
   }
-  co_return SafetySetting{
-      .duressEnabled = input.duressEnabled, .updatedAt = at, .updatedBy = input.actorUserId};
+  co_return SafetySetting{.duressEnabled = toggle.duressEnabled,
+                          .updatedAt = at,
+                          .updatedBy = toggle.actorUserId,
+                          .phraseKey = std::move(phraseKey)};
+}
+
+drogon::Task<std::string> SafetyService::phraseKey() const
+{
+  const SafetySetting setting = co_await settingRepository_.find();
+  co_return setting.duressEnabled ? setting.phraseKey : std::string{};
+}
+
+drogon::Task<SpokenDuressOutcome> SafetyService::spokenDuress(const SpokenDuressInput& input) const
+{
+  const SafetySetting setting = co_await settingRepository_.find();
+  if (!setting.duressEnabled || !samePhraseKey(setting, input.phraseKey))
+    co_return SpokenDuressOutcome::Stale;
+  const int64_t at = now();
+  if (co_await alertRepository_.recentSpoken(
+          {.userId = input.userId, .since = at - config_.spokenRepeatWindowS}))
+    co_return SpokenDuressOutcome::Repeated;
+  const int64_t alertId = co_await alertRepository_.insert({.kind = SafetyAlertKind::Duress,
+                                                            .userId = input.userId,
+                                                            .environmentId = 0,
+                                                            .now = at,
+                                                            .actorName = input.userName,
+                                                            .spoken = true});
+  deliverLater({.kind = SafetyAlertKind::Duress,
+                .alertId = alertId,
+                .actorUserId = input.userId,
+                .actorName = input.userName,
+                .environmentId = 0,
+                .now = at,
+                .sequence = 1,
+                .spoken = true});
+  co_return SpokenDuressOutcome::Raised;
+}
+
+void SafetyService::deliverLater(const SafetyAlertNotice& notice) const
+{
+  if (!runtime_->alive.load(std::memory_order_acquire))
+    return;
+  runtime_->active.fetch_add(1, std::memory_order_acq_rel);
+  drogon::async_run([this, runtime = runtime_, notice]() -> drogon::Task<> {
+    const RuntimeScope scope(runtime);
+    try {
+      static_cast<void>(co_await deliver(notice));
+    }
+    catch (const std::exception& error) {
+      LOG_WARN << "Guard safety: alert " << notice.alertId << " delivery attempt failed: " << error.what();
+    }
+  });
 }
 
 drogon::Task<DisarmVerdict> SafetyService::authorize(const DisarmRequest& request) const
@@ -376,14 +482,16 @@ void SafetyService::duress(const DisarmRequest& request) const
            .userId = request.userId,
            .environmentId = request.environmentId.value_or(0),
            .now = at,
-           .actorName = request.userName});
+           .actorName = request.userName,
+           .spoken = false});
       co_await deliver({.kind = SafetyAlertKind::Duress,
                         .alertId = alertId,
                         .actorUserId = request.userId,
                         .actorName = request.userName,
                         .environmentId = request.environmentId.value_or(0),
                         .now = at,
-                        .sequence = 1});
+                        .sequence = 1,
+                        .spoken = false});
     }
     catch (const std::exception& error) {
       LOG_ERROR << "Guard safety: an alert could not be recorded: " << error.what();
@@ -411,14 +519,16 @@ drogon::Task<PanicResult> SafetyService::panic(const PanicInput& input) const
                                         .userId = input.userId,
                                         .environmentId = input.environmentId.value_or(0),
                                         .now = at,
-                                        .actorName = input.userName});
+                                        .actorName = input.userName,
+                                        .spoken = false});
   const SafetyAlertNotice notice{.kind = SafetyAlertKind::Panic,
                                  .alertId = alertId,
                                  .actorUserId = input.userId,
                                  .actorName = input.userName,
                                  .environmentId = input.environmentId.value_or(0),
                                  .now = at,
-                                 .sequence = 1};
+                                 .sequence = 1,
+                                 .spoken = false};
   const SafetyDelivery delivery = co_await deliver(notice);
   if (dependencies_.actor && delivery != SafetyDelivery::NoRecipients)
     static_cast<void>(co_await dependencies_.actor->confirmPanic(notice));
@@ -514,7 +624,8 @@ drogon::Task<size_t> SafetyService::sweepPending() const
                           .actorName = alert.actorName,
                           .environmentId = alert.environmentId,
                           .now = alert.createdAt,
-                          .sequence = alert.sequence}) == SafetyDelivery::Sent)
+                          .sequence = alert.sequence,
+                          .spoken = alert.spoken}) == SafetyDelivery::Sent)
       ++delivered;
   }
   co_return delivered;

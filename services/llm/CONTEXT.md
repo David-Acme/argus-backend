@@ -854,6 +854,63 @@ streamed), the claim guard after a failed tool, a preview and a read, and the pr
 `llm-module-command-test.cc` pins the rule tier (tuning numbers, not a held-out result); the sealed
 set is judged by `tests/eval/decider-eval.py`.
 
+## The duress screen (2026-10-13, F4)
+
+The household can set a duress phrase in guard (`services/guard/CONTEXT.md`,
+"The duress phrase"). When a household member says it to Argus, guard raises
+the same silent alert its duress code raises, and the speaker hears an ordinary
+answer. The detection lives here, at the turn, and it is not a tool. The LLM
+never chooses a tool, is never told this exists, and no route or MCP tool for
+it is declared. The phrase decides nothing about what the turn says or does.
+
+- **Where.** `LlmController::chatSync` and `chatStreamSync`, the one entry both
+  legs share (HTTP and `argus.llm.v1`), call `screenTurn` before anything is
+  decided. It hands the last user message (`LfmAdapter::lastUtterance`) to
+  the `turn::UtteranceScreen` that `main.cc` installed
+  (`shared/vocabulary/utterance-screen.hxx`, read by `llm` and `duress`). It
+  screens only an identified caller: a user id and a known role from the
+  `voice` credential (`boundToCaller` strips both from anyone else), never a
+  prefill request. It returns at once.
+- **Who.** `DuressScreen` (`feature/duress`, module `argus::duress`) queues the
+  words only for a speaker who holds `safety.duress` under the current module
+  snapshot (Owner, Resident, surveillance on). Guard checks again.
+- **Off the turn's path.** One worker thread folds the utterance and derives
+  every window of the phrase's word count with `secret_phrase::spokenIn`
+  (PBKDF2, `packages/lib/text`). The turn neither waits for it nor learns its
+  answer. So the reply, its timing, the tools and the memory are exactly those
+  of the same words without a phrase configured. That is the "no spoken
+  confirmation": there is nothing to suppress, because nothing changed. At most
+  the last 96 words of an utterance are screened, and at most 32 utterances
+  wait in the queue.
+- **The key.** The worker reads guard's key (`GuardDuressClient::phraseKey`,
+  the `[guard] target` and `credential` the tool provider already uses) at
+  start and every minute. It reads it at once when guard's
+  `argus.guard.v1.change` carries the `duress` resource notice
+  (`duress_feed::changesPhrase`). An unreachable guard is asked again
+  with a backoff of 2 s doubling to 60 s, and the last key read stays in force.
+  Before any key was ever read, utterances wait in the queue rather than being
+  skipped, so a household member who speaks while guard is still booting is
+  screened once it answers. Without a phrase, nothing is queued. The worker
+  holds only the key: the phrase's words are never in this process.
+- **The raise.** A match becomes one pending `RaiseSpoken {userId, role, key}`
+  per speaker. `RAISED` or `REPEATED` settle it. `STALE` and `NOT_ALLOWED` drop
+  it and read the key again, because words that are no longer the phrase are no
+  alert. An unreachable guard is retried with the same backoff for as long as
+  the process runs, and once more at stop (the `llm-duress` drain). A restart
+  of argus-llm while guard is down loses a pending raise. That gap is accepted,
+  because guard's own row is the durable record from the moment it answers.
+- **Logs.** Never the utterance, the key or the speaker. The screen says only
+  that guard did not answer, or answers again. The relay says only that "an
+  alert" waits for guard.
+
+`tests/unit/llm-duress-screen-test.cc` covers a member who says the phrase and
+raises once with the key it matched, and nobody else raising it (other words, a
+guest, an anonymous caller, an unknown role). It also covers the retry until
+guard takes it, with one pending raise per speaker, nothing queued without a
+phrase, a refreshed phrase replacing the old one, words said while guard was
+unreachable being screened once it answers, the turn hook's caller rules, and
+the change notice that asks for a refresh.
+
 ## The per-turn context block (2026-10-08)
 
 A call used to hand the model every fact the app carried — the camera list,

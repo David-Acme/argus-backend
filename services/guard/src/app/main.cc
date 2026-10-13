@@ -1,3 +1,4 @@
+#include <app/rpc/duress-rpc-service.hxx>
 #include <app/rpc/presence-rpc-service.hxx>
 #include <feature/guard/repositories/environment/environment-repository.hxx>
 #include <feature/mcp/services/guard-tools.hxx>
@@ -24,6 +25,7 @@
 #include <feature/module-data/services/guard-owner-pin.hxx>
 #include <feature/safety/controllers/safety-controller.hxx>
 #include <feature/safety/infra/guard-alert-sink.hxx>
+#include <feature/safety/infra/identity-actor-directory.hxx>
 #include <feature/safety/infra/notification-actor-notifier.hxx>
 #include <feature/safety/services/safety-service.hxx>
 #include <feature/presence/infra/nats-presence-publisher.hxx>
@@ -96,6 +98,7 @@ struct RpcListener
   std::unique_ptr<SettingsRpcService> settings;
   std::unique_ptr<PresenceRpcService> presence;
   std::unique_ptr<argus::mcp::McpRpcService> tools;
+  std::unique_ptr<DuressRpcService> duress;
   std::unique_ptr<grpc::Server> server;
 };
 
@@ -107,6 +110,8 @@ struct RpcListenerInput
   const ModuleImpactHost& moduleImpact;
   OwnerPinHost& ownerPin;
   EnvironmentCatalog environments;
+  std::shared_ptr<const SafetyService> safety;
+  const SafetyActorDirectory* actors{nullptr};
 };
 
 std::unique_ptr<argus::mcp::McpRpcService> toolsService(const RpcListenerInput& input, const GuardRpcConfig& rpc)
@@ -159,7 +164,14 @@ RpcListener startRpcListener(const RpcListenerInput& input)
   listener.tools = toolsService(input, rpc);
   if (listener.tools)
     builder.RegisterService(listener.tools.get());
-  if (!listener.settings && !listener.presence && !listener.tools)
+  if (argus::client::FleetCallerGate::pairedSecret(rpc.toolCredential)) {
+    listener.duress = std::make_unique<DuressRpcService>(DuressRpcInput{
+        .safety = input.safety,
+        .actors = input.actors,
+        .credentials = {{.service = std::string(argus::mcp::kToolCaller), .secret = rpc.toolCredential}}});
+    builder.RegisterService(listener.duress.get());
+  }
+  if (!listener.settings && !listener.presence && !listener.tools && !listener.duress)
     return {};
   builder.AddListeningPort(rpc.address, grpc::InsecureServerCredentials());
   listener.server = builder.BuildAndStart();
@@ -376,6 +388,7 @@ int main()
   GuardModuleData moduleData;
   const GuardModuleImpact moduleImpact;
   GuardOwnerPin ownerPin(safety);
+  const IdentityActorDirectory safetyActors(identity.get());
   const RpcListener rpcListener = startRpcListener(
       {.registry = settings,
        .presence = presence,
@@ -387,7 +400,9 @@ int main()
          for (const auto& environment : co_await repository->list())
            places.push_back({.id = environment.id, .name = environment.name});
          co_return places;
-       }});
+       },
+       .safety = safety,
+       .actors = &safetyActors});
 
   registerHealth();
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());

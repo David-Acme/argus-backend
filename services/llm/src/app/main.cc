@@ -6,6 +6,11 @@
 #include <feature/pending-intent/infra/notification-intent-notifier.hxx>
 #include <feature/pending-intent/services/module-intent-feed.hxx>
 #include <feature/pending-intent/services/pending-intent-service.hxx>
+#include <feature/duress/infra/guard-duress-link.hxx>
+#include <feature/duress/services/duress-feed.hxx>
+#include <feature/duress/services/duress-screen.hxx>
+#include <guard/guard-duress-client.hxx>
+#include <auth/capability.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
 #include <feature/llm/services/tools/core-tools.hxx>
 #include <feature/llm/services/tools/tool-directory.hxx>
@@ -332,6 +337,22 @@ int main()
     }
   }
   tools.refresh("llm");
+  std::unique_ptr<DuressScreen> duressScreen;
+  if (const auto guard = std::ranges::find(providers, std::string("guard"), &LlmToolProviderConfig::id);
+      guard != providers.end()) {
+    duressScreen = std::make_unique<DuressScreen>(
+        DuressScreenDependencies{
+            .link = std::make_shared<GuardDuressLink>(std::make_shared<GuardDuressClient>(
+                GuardDuressClientConfig{.target = guard->target, .credential = guard->credential})),
+            .eligible =
+                [](UserRole role) {
+                  return role_access::hasCapability(
+                      {.role = role, .modules = moduleGate().snapshot(), .capability = "safety.duress"});
+                }},
+        DuressScreenTiming{});
+    llm->useScreen(*duressScreen);
+    duressScreen->start();
+  }
   configureDecider(*llm, engines);
   llm->adapter().flow().usePolicies(configuredPolicies(engines.laya ? &engines.laya->policy() : nullptr));
   ToolDirectory toolDirectory(tools, {});
@@ -401,6 +422,14 @@ int main()
   }
 
   const auto modules = module_gate::install({.service = "llm", .bus = bus});
+  if (bus && duressScreen) {
+    if (!bus->subscribe(nats_subject::kGuardChange,
+                        [screen = duressScreen.get()](std::string_view, std::string_view payload) {
+                          if (duress_feed::changesPhrase(payload))
+                            screen->requestRefresh();
+                        }))
+      LOG_WARN << "argus-llm: guard's change feed is not followed; the duress phrase refreshes every minute";
+  }
   moduleGate().onChange([&toolDirectory](const ModuleChange&) { toolDirectory.requestRefresh(); });
 
   const auto intents = std::make_shared<PendingIntentService>(
@@ -532,6 +561,8 @@ int main()
   shutdown_signal::onStop(shutdown_signal::drainOf(llm->streams(), "llm-streams"));
   shutdown_signal::onStop(shutdown_signal::drainOf(toolDirectory, "llm-tools"));
   shutdown_signal::onStop(shutdown_signal::drainOf(*intents, "llm-intents"));
+  if (duressScreen)
+    shutdown_signal::onStop(shutdown_signal::drainOf(*duressScreen, "llm-duress"));
   if (intentFeed)
     shutdown_signal::onStop(shutdown_signal::drainOf(*intentFeed, "llm-intent-feed"));
   if (rpc)

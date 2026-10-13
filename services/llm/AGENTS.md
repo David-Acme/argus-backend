@@ -90,11 +90,15 @@ argus-llm/
                         argus::pending-intent — requests kept while a module
                           was off (table pending_intent), the module feed that
                           completes them and the notice that tells the user
+  src/feature/duress/   argus::duress — the duress screen: the turn hands it
+                          the user's words, it matches guard's phrase key off
+                          the turn's path and raises guard's silent alert
   src/feature/settings/ argus::llm-settings — the owner-editable catalog
                           served by argus.settings.v1 on the gRPC leg
   src/shared/           argus::llm-shared — vocabulary 2+ features read
                           (vocabulary/tool-contracts.hxx,
-                          vocabulary/intent-ledger.hxx)
+                          vocabulary/intent-ledger.hxx,
+                          vocabulary/utterance-screen.hxx)
   database/schema.sql   memory.db: graph tables, memory_vec partitions,
                           catalog replicas, encounter_closed_inbox,
                           pending_intent
@@ -103,13 +107,14 @@ argus-llm/
                           providers
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
-There are six features and eight modules: `argus::llm` compiles the engine
+There are seven features and nine modules: `argus::llm` compiles the engine
 facade, the DTOs, the tool runtime and the HTTP surface together,
 `argus::memory` the memory stack the assistant turn calls in process,
 `argus::intent` the fastText router tier `argus::llm`'s gate drives,
 `argus::encounter-closed` the consumer `app/main.cc` starts on the beginning
 advice and stops before `memory.shutdown()`, `argus::pending-intent` the
 ledger and module-feed consumer `app/main.cc` starts and drains with it,
+`argus::duress` the duress screen `app/main.cc` installs on the controller,
 `argus::llm-settings` the
 owner settings catalog, `argus::llm-rpc` the gRPC
 server under `src/app/rpc/`, and `argus::llm-shared` the vocabulary two
