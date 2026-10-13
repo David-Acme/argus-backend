@@ -20,9 +20,12 @@ public:
   findOwned(const ReminderOwnedInput& input) const;
   drogon::Task<std::vector<ReminderSchema>>
   findByTargetUser(const ReminderListInput& input) const;
+  drogon::Task<std::vector<ReminderSchema>>
+  findOverdueSeries(const ReminderOverdueInput& input) const;
   drogon::Task<ReminderSchema> create(const ReminderCreateInput& input) const;
   drogon::Task<ReminderSchema> update(const ReminderUpdateInput& input) const;
   drogon::Task<bool> remove(const ReminderOwnedInput& input) const;
+  [[nodiscard]] bool migrateSchema() const;
 
   drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;

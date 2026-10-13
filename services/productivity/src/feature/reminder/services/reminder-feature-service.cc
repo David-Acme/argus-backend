@@ -4,6 +4,7 @@
 #include <ctime>
 #include <errors/response-exception.hxx>
 #include <productivity/productivity-errors.hxx>
+#include <shared/services/recurrence/recurrence.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
 #include <trantor/utils/Logger.h>
@@ -72,6 +73,9 @@ ReminderFeatureService::create(const ReminderCreateCommand& command) const
                                        .description = body.description,
                                        .scheduledAt = body.scheduledAt,
                                        .recurrenceRule = body.recurrenceRule,
+                                       .recurrenceAnchor = body.recurrenceRule
+                                           ? std::optional<int64_t>{body.scheduledAt}
+                                           : std::nullopt,
                                        .client = transaction.get()});
     co_await emit({.operation = SyncOperation::Add,
                    .row = row,
@@ -118,6 +122,14 @@ ReminderFeatureService::update(const ReminderUpdateCommand& command) const
     }
     before = existing->toJson();
 
+    const auto now = static_cast<int64_t>(std::time(nullptr));
+    const bool stopping = body.recurrenceRule && body.recurrenceRule->empty();
+    const bool ruleSet = body.recurrenceRule && !body.recurrenceRule->empty();
+    const std::optional<std::string> effectiveRule =
+        stopping ? std::nullopt : (ruleSet ? body.recurrenceRule : existing->recurrenceRule);
+    const int64_t effectiveScheduled = body.scheduledAt.value_or(existing->scheduledAt);
+    const bool scheduleChanged = body.scheduledAt && *body.scheduledAt != existing->scheduledAt;
+
     ReminderUpdateInput input{.id = command.id,
                               .targetUserId = command.userId,
                               .title = body.title,
@@ -126,15 +138,119 @@ ReminderFeatureService::update(const ReminderUpdateCommand& command) const
                               .isCompleted = body.isCompleted,
                               .completedAt = std::nullopt,
                               .clearCompletedAt = false,
+                              .recurrenceRule = std::nullopt,
+                              .recurrenceAnchor = std::nullopt,
+                              .clearRecurrence = stopping,
                               .client = transaction.get()};
-    if (body.isCompleted) {
+    if (ruleSet) {
+      input.recurrenceRule = body.recurrenceRule;
+      input.recurrenceAnchor = effectiveScheduled;
+    }
+    else if (effectiveRule && scheduleChanged) {
+      input.recurrenceAnchor = effectiveScheduled;
+    }
+
+    bool rolled = false;
+    const auto rule = effectiveRule ? parseRecurrenceRule(*effectiveRule) : std::nullopt;
+    if (body.isCompleted.value_or(false) && rule) {
+      const int64_t anchor = input.recurrenceAnchor.value_or(
+          existing->recurrenceAnchor.value_or(effectiveScheduled));
+      const auto next = firstOccurrenceAfter(
+          {.rule = *rule, .anchor = anchor, .moment = std::max(effectiveScheduled, now)});
+      if (next) {
+        input.scheduledAt = *next;
+        input.isCompleted = false;
+        input.clearCompletedAt = existing->isCompleted;
+        rolled = true;
+      }
+    }
+    if (body.isCompleted && !rolled) {
       if (*body.isCompleted && !existing->isCompleted)
-        input.completedAt = static_cast<int64_t>(std::time(nullptr));
+        input.completedAt = now;
       if (!*body.isCompleted)
         input.clearCompletedAt = true;
     }
 
     row = co_await repository_.update(input);
+    if (row.id == 0) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+
+    const Json::Value after = row.toJson();
+    if (after != before) {
+      const auto* sink = user_change::getProductivitySink();
+      if (!sink)
+        LOG_WARN << "user change sink not installed; drop reminder audit";
+      else
+        co_await sink->publishAudit({.recordId = row.id,
+                                     .tableName = TableName::Reminder,
+                                     .before = std::move(before),
+                                     .after = after,
+                                     .userIds = {row.targetUserId},
+                                     .client = transaction.get()});
+      co_await journal_.record({.actorId = command.userId,
+                                .table = TableName::Reminder,
+                                .recordId = row.id,
+                                .action = UserAction::Update,
+                                .title = "",
+                                .sharingParentId = 0,
+                                .client = transaction.get()});
+    }
+
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(ProductivityErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_return row;
+}
+
+drogon::Task<std::optional<ReminderSchema>>
+ReminderFeatureService::snooze(const ReminderSnoozeCommand& command) const
+{
+  auto transaction =
+      co_await db_transaction::begin(DbService::productivityClient());
+  ReminderSchema row;
+  Json::Value before;
+  try {
+    const auto existing = co_await repository_.findOwned(
+        {.id = command.id,
+         .targetUserId = command.userId,
+         .client = transaction.get()});
+    if (!existing) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+    if (existing->isCompleted) {
+      db_transaction::rollback(transaction);
+      throw ResponseException(ProductivityErrors::ReminderAlreadyDone);
+    }
+    before = existing->toJson();
+
+    const auto now = static_cast<int64_t>(std::time(nullptr));
+    const auto target = command.body.tomorrow
+                            ? sameTimeTomorrow(std::max(existing->scheduledAt, now))
+                            : std::optional<int64_t>{now + *command.body.minutes * 60};
+    if (!target) {
+      db_transaction::rollback(transaction);
+      throw ResponseException(ProductivityErrors::ChangeNotRecorded);
+    }
+
+    row = co_await repository_.update({.id = command.id,
+                                       .targetUserId = command.userId,
+                                       .title = std::nullopt,
+                                       .description = std::nullopt,
+                                       .scheduledAt = *target,
+                                       .isCompleted = std::nullopt,
+                                       .completedAt = std::nullopt,
+                                       .clearCompletedAt = false,
+                                       .recurrenceRule = std::nullopt,
+                                       .recurrenceAnchor = std::nullopt,
+                                       .clearRecurrence = false,
+                                       .client = transaction.get()});
     if (row.id == 0) {
       db_transaction::rollback(transaction);
       co_return std::nullopt;

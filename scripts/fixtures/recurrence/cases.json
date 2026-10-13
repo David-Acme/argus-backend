@@ -1,0 +1,92 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "weekly 08:00 in Lima keeps its wall time",
+      "zone": "America/Lima",
+      "rule": "FREQ=WEEKLY",
+      "anchor": "2026-10-05T08:00:00",
+      "count": 3,
+      "expect": ["2026-10-05T08:00:00", "2026-10-12T08:00:00", "2026-10-19T08:00:00"]
+    },
+    {
+      "name": "daily 08:00 in New York keeps 08:00 across the spring change",
+      "zone": "America/New_York",
+      "rule": "FREQ=DAILY",
+      "anchor": "2026-03-07T08:00:00",
+      "count": 4,
+      "expect": ["2026-03-07T08:00:00", "2026-03-08T08:00:00", "2026-03-09T08:00:00", "2026-03-10T08:00:00"]
+    },
+    {
+      "name": "every three days",
+      "zone": "America/Lima",
+      "rule": "FREQ=DAILY;INTERVAL=3",
+      "anchor": "2026-04-01T07:30:00",
+      "count": 3,
+      "expect": ["2026-04-01T07:30:00", "2026-04-04T07:30:00", "2026-04-07T07:30:00"]
+    },
+    {
+      "name": "every two weeks across a month boundary",
+      "zone": "America/Lima",
+      "rule": "FREQ=WEEKLY;INTERVAL=2",
+      "anchor": "2026-01-26T18:00:00",
+      "count": 4,
+      "expect": ["2026-01-26T18:00:00", "2026-02-09T18:00:00", "2026-02-23T18:00:00", "2026-03-09T18:00:00"]
+    },
+    {
+      "name": "monthly on the 31st clamps to the month end and returns to the 31st",
+      "zone": "America/Lima",
+      "rule": "FREQ=MONTHLY",
+      "anchor": "2026-01-31T09:00:00",
+      "count": 5,
+      "expect": ["2026-01-31T09:00:00", "2026-02-28T09:00:00", "2026-03-31T09:00:00", "2026-04-30T09:00:00", "2026-05-31T09:00:00"]
+    },
+    {
+      "name": "yearly on 29 February clamps in common years",
+      "zone": "America/Lima",
+      "rule": "FREQ=YEARLY",
+      "anchor": "2024-02-29T10:00:00",
+      "count": 5,
+      "expect": ["2024-02-29T10:00:00", "2025-02-28T10:00:00", "2026-02-28T10:00:00", "2027-02-28T10:00:00", "2028-02-29T10:00:00"]
+    },
+    {
+      "name": "the first occurrence after a moment is the next future one",
+      "zone": "America/New_York",
+      "rule": "FREQ=DAILY",
+      "anchor": "2026-03-07T08:00:00",
+      "after": "2026-03-08T09:00:00",
+      "expectFirst": "2026-03-09T08:00:00"
+    },
+    {
+      "name": "a series missed for days resumes at the first future occurrence, not a replay",
+      "zone": "America/Lima",
+      "rule": "FREQ=DAILY",
+      "anchor": "2026-10-01T08:00:00",
+      "after": "2026-10-10T12:00:00",
+      "expectFirst": "2026-10-11T08:00:00"
+    },
+    {
+      "name": "a Lima series keeps 08:00 Lima when it is displayed in Madrid across Madrid's spring change",
+      "zone": "America/Lima",
+      "displayZone": "Europe/Madrid",
+      "rule": "FREQ=DAILY",
+      "anchor": "2026-03-27T08:00:00",
+      "count": 3,
+      "expect": ["2026-03-27T08:00:00", "2026-03-28T08:00:00", "2026-03-29T08:00:00"],
+      "expectDisplay": ["2026-03-27T14:00:00", "2026-03-28T14:00:00", "2026-03-29T15:00:00"]
+    }
+  ],
+  "invalid": [
+    "",
+    "FREQ=HOURLY",
+    "FREQ=DAILY;BYDAY=MO",
+    "INTERVAL=2",
+    "FREQ=DAILY;INTERVAL=0",
+    "FREQ=DAILY;INTERVAL=1000",
+    "FREQ=DAILY;INTERVAL=+2",
+    "freq=daily",
+    "FREQ=DAILY;FREQ=WEEKLY",
+    "FREQ=DAILY;",
+    "FREQ=DAILY;;INTERVAL=2"
+  ]
+}

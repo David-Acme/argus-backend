@@ -2,6 +2,7 @@ argus_module(NAME productivity-reminder
     SOURCES
         controllers/reminder-controller.cc
         dtos/create-reminder-dto.cc
+        dtos/snooze-reminder-dto.cc
         dtos/update-reminder-dto.cc
         reminder-rpc-service.cc
         services/reminder-feature-service.cc
@@ -10,6 +11,7 @@ argus_module(NAME productivity-reminder
     DEPENDS
         argus::productivity-dtos
         argus::productivity-action-journal
+        argus::productivity-recurrence
         argus::productivity-repositories
         argus::clients::productivity
         argus::contracts::productivity

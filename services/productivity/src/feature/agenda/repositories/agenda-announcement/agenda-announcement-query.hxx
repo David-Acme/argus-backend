@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/DbClient.h>
 #include <string>
 #include <string_view>
 
@@ -54,4 +55,5 @@ struct AgendaRecordInput
   int64_t occurrenceAt{0};
   int leadMinutes{0};
   int64_t at{0};
+  drogon::orm::DbClient* client{nullptr};
 };

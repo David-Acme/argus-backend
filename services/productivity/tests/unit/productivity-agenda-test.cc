@@ -280,3 +280,45 @@ TEST_CASE("the agenda sweeper stops taking sweeps once a stop is requested")
   CHECK_FALSE(drogon::sync_wait(sweeper.tick()));
   CHECK(sweeper.drained());
 }
+
+TEST_CASE("a recurring reminder is announced once, then rolls to its next occurrence")
+{
+  reset();
+  auto notifier = std::make_shared<RecordingNotifier>();
+  const AgendaAnnouncer announcer(
+      {.enabled = true, .graceS = 120, .retentionS = 2592000},
+      {.notifier = notifier, .clock = []() { return kNow; }, .blockingOffLoop = false});
+  const auto client = DbService::productivityClient();
+  client->execSqlSync(
+      "INSERT INTO reminder (target_user_id, title, scheduled_at, recurrence_rule, recurrence_anchor) "
+      "VALUES (5, 'Regar', ?, 'FREQ=DAILY', ?)",
+      kNow - 10, kNow - 10);
+  CHECK(drogon::sync_wait(announcer.sweep()).reminders == 1);
+  REQUIRE(notifier->all().size() == 1);
+  const auto moved = client->execSqlSync("SELECT scheduled_at FROM reminder WHERE title = 'Regar'");
+  REQUIRE(moved.size() == 1);
+  const auto next = moved.front()["scheduled_at"].as<long long>();
+  CHECK(next > kNow);
+  CHECK(next <= kNow + 2 * 86400);
+  CHECK(drogon::sync_wait(announcer.sweep()).reminders == 0);
+  CHECK(notifier->all().size() == 1);
+}
+
+TEST_CASE("a recurring reminder overdue beyond the grace window is skipped, not replayed")
+{
+  reset();
+  auto notifier = std::make_shared<RecordingNotifier>();
+  const AgendaAnnouncer announcer(
+      {.enabled = true, .graceS = 120, .retentionS = 2592000},
+      {.notifier = notifier, .clock = []() { return kNow; }, .blockingOffLoop = false});
+  const auto client = DbService::productivityClient();
+  client->execSqlSync(
+      "INSERT INTO reminder (target_user_id, title, scheduled_at, recurrence_rule, recurrence_anchor) "
+      "VALUES (5, 'Vacunas', ?, 'FREQ=DAILY', ?)",
+      kNow - 3 * 86400, kNow - 3 * 86400);
+  CHECK(drogon::sync_wait(announcer.sweep()).reminders == 0);
+  CHECK(notifier->all().empty());
+  const auto moved = client->execSqlSync("SELECT scheduled_at FROM reminder WHERE title = 'Vacunas'");
+  REQUIRE(moved.size() == 1);
+  CHECK(moved.front()["scheduled_at"].as<long long>() > kNow);
+}

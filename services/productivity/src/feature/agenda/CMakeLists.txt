@@ -10,6 +10,8 @@ argus_module(NAME productivity-agenda
         argus::lib::runtime
         argus::lib::sqlite
         argus::lib::text
+        argus::productivity-reminder-series
+        argus::productivity-repositories
         Drogon::Drogon)
 
 target_compile_options(argus_productivity-agenda PRIVATE -Wall -Wextra)

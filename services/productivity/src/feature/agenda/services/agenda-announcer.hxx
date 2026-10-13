@@ -3,6 +3,9 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/agenda/repositories/agenda-announcement/agenda-announcement-repository.hxx>
 #include <json/value.h>
+#include <shared/repositories/reminder/reminder-repository.hxx>
+#include <shared/schemas/reminder/reminder-schema.hxx>
+#include <shared/services/reminder-series/reminder-series.hxx>
 
 #include <cstdint>
 #include <functional>
@@ -72,10 +75,14 @@ public:
 
 private:
   drogon::Task<bool> deliver(const AgendaNotice& notice) const;
+  drogon::Task<void> settleDueReminder(const DueReminderRow& reminder, int64_t at) const;
+  drogon::Task<void> skipMissedSeries(const ReminderSchema& series, int64_t at) const;
 
   [[nodiscard]] int64_t now() const;
 
   AgendaAnnouncerConfig config_;
   AgendaAnnouncerDependencies dependencies_;
   AgendaAnnouncementRepository repository_;
+  ReminderRepository reminders_;
+  ReminderSeries series_;
 };

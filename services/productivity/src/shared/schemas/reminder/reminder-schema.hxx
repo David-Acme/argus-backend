@@ -16,6 +16,7 @@ struct ReminderSchema
   std::string description;
   int64_t scheduledAt{0};
   std::optional<std::string> recurrenceRule;
+  std::optional<int64_t> recurrenceAnchor;
   bool isCompleted{false};
   std::optional<int64_t> completedAt;
   int64_t createdAt{0};

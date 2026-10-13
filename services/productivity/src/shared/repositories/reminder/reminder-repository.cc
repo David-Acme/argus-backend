@@ -31,6 +31,34 @@ ClientChoice choose(drogon::orm::DbClient* client)
 }
 }
 
+namespace
+{
+bool hasReminderColumn(drogon::orm::DbClient& client, const std::string& column)
+{
+  const auto columns = client.execSqlSync("PRAGMA table_info(reminder)");
+  for (const auto& row : columns) {
+    if (row["name"].as<std::string>() == column)
+      return true;
+  }
+  return false;
+}
+}
+
+bool ReminderRepository::migrateSchema() const
+{
+  try {
+    auto client = DbService::productivityClient();
+    if (!hasReminderColumn(*client, "recurrence_anchor"))
+      client->execSqlSync(std::string(ADD_RECURRENCE_ANCHOR_COLUMN));
+    client->execSqlSync(std::string(BACKFILL_RECURRENCE_ANCHOR));
+    return true;
+  }
+  catch (const std::exception& error) {
+    LOG_ERROR << "reminder migration failed: " << error.what();
+    return false;
+  }
+}
+
 drogon::Task<std::optional<ReminderSchema>>
 ReminderRepository::findOwned(const ReminderOwnedInput& input) const
 {
@@ -57,6 +85,20 @@ ReminderRepository::findByTargetUser(const ReminderListInput& input) const
   co_return data;
 }
 
+drogon::Task<std::vector<ReminderSchema>>
+ReminderRepository::findOverdueSeries(const ReminderOverdueInput& input) const
+{
+  auto client = DbService::productivityClient();
+  const auto result = co_await client->execSqlCoro(
+      std::string(FIND_OVERDUE_SERIES), input.before, input.limit);
+
+  std::vector<ReminderSchema> data;
+  data.reserve(result.size());
+  for (const auto& row : result)
+    data.emplace_back(row);
+  co_return data;
+}
+
 drogon::Task<ReminderSchema>
 ReminderRepository::create(const ReminderCreateInput& input) const
 {
@@ -64,7 +106,7 @@ ReminderRepository::create(const ReminderCreateInput& input) const
   const auto result = co_await choice.client->execSqlCoro(
       std::string(INSERT),
       input.createdBy, input.targetUserId, input.title, input.description,
-      input.scheduledAt, input.recurrenceRule);
+      input.scheduledAt, input.recurrenceRule, input.recurrenceAnchor);
 
   ReminderSchema schema;
   schema.id = static_cast<int64_t>(result.insertId());
@@ -74,6 +116,7 @@ ReminderRepository::create(const ReminderCreateInput& input) const
   schema.description = input.description;
   schema.scheduledAt = input.scheduledAt;
   schema.recurrenceRule = input.recurrenceRule;
+  schema.recurrenceAnchor = input.recurrenceAnchor;
   schema.isCompleted = false;
   schema.createdAt = std::time(nullptr);
   co_return schema;
@@ -110,6 +153,16 @@ ReminderRepository::update(const ReminderUpdateInput& input) const
     addFragment(UPDATE_COL_COMPLETED_AT_NULL);
   else if (input.completedAt)
     addColumn(UPDATE_COL_COMPLETED_AT, std::to_string(*input.completedAt));
+  if (input.clearRecurrence) {
+    addFragment(UPDATE_COL_RECURRENCE_RULE_NULL);
+    addFragment(UPDATE_COL_RECURRENCE_ANCHOR_NULL);
+  }
+  else {
+    if (input.recurrenceRule)
+      addColumn(UPDATE_COL_RECURRENCE_RULE, *input.recurrenceRule);
+    if (input.recurrenceAnchor)
+      addColumn(UPDATE_COL_RECURRENCE_ANCHOR, std::to_string(*input.recurrenceAnchor));
+  }
 
   if (!changed) {
     auto existing =

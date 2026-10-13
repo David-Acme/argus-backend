@@ -21,6 +21,10 @@ inline constexpr ErrorDefinition ReminderNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,
     .message = "Reminder not found"};
+inline constexpr ErrorDefinition ReminderAlreadyDone{
+    .code = ErrorCode::Conflict,
+    .status = 409,
+    .message = "The reminder is already done; it cannot be snoozed"};
 inline constexpr ErrorDefinition ShareNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,

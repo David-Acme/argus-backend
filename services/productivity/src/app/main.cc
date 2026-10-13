@@ -15,6 +15,7 @@
 #include <feature/project-task/controllers/project-task-controller.hxx>
 #include <feature/reminder/controllers/reminder-controller.hxx>
 #include <feature/reminder/reminder-rpc-service.hxx>
+#include <shared/repositories/reminder/reminder-repository.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/module-feed.hxx>
@@ -218,6 +219,11 @@ int main()
     if (!NatsProductivityChangeSink::repository().migrateSchema()) {
       LOG_FATAL
           << "Productivity change outbox migration failed — aborting startup";
+      _exit(1);
+    }
+
+    if (!ReminderRepository().migrateSchema()) {
+      LOG_FATAL << "Productivity reminder migration failed - aborting startup";
       _exit(1);
     }
 

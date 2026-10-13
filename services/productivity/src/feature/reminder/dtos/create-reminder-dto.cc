@@ -1,5 +1,6 @@
 #include "create-reminder-dto.hxx"
 
+#include <shared/services/recurrence/recurrence.hxx>
 #include <utility>
 
 CreateReminderDto CreateReminderDto::validated(CreateReminderDto dto)
@@ -9,6 +10,12 @@ CreateReminderDto CreateReminderDto::validated(CreateReminderDto dto)
   MAX_LENGTH(title, 200)
   MAX_LENGTH(description, 2000)
   MAX_LENGTH_OPTIONAL(recurrenceRule, 512)
+  CUSTOM_LAMBDA(recurrenceRule, [](const CreateReminderDto& value)
+                -> std::optional<std::string> {
+    if (value.recurrenceRule && !parseRecurrenceRule(*value.recurrenceRule))
+      return "recurrenceRule must be FREQ=DAILY, WEEKLY, MONTHLY or YEARLY, with an optional INTERVAL from 1 to 999";
+    return std::nullopt;
+  })
   IS_POSITIVE_TIMESTAMP(scheduledAt)
   END_VALIDATION()
   return dto;
@@ -21,7 +28,8 @@ CreateReminderDto CreateReminderDto::fromJson(const Json::Value& json)
   dto.description = json.get("description", "").asString();
   if (json.isMember("scheduledAt") && json["scheduledAt"].isInt64())
     dto.scheduledAt = json["scheduledAt"].asInt64();
-  if (json.isMember("recurrenceRule") && json["recurrenceRule"].isString())
+  if (json.isMember("recurrenceRule") && json["recurrenceRule"].isString() &&
+      !json["recurrenceRule"].asString().empty())
     dto.recurrenceRule = json["recurrenceRule"].asString();
   return validated(std::move(dto));
 }

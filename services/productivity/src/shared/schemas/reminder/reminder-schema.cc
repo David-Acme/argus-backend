@@ -11,6 +11,8 @@ ReminderSchema::ReminderSchema(const drogon::orm::Row& row)
   scheduledAt = static_cast<int64_t>(row["scheduled_at"].as<long long>());
   if (!row["recurrence_rule"].isNull())
     recurrenceRule = row["recurrence_rule"].as<std::string>();
+  if (!row["recurrence_anchor"].isNull())
+    recurrenceAnchor = static_cast<int64_t>(row["recurrence_anchor"].as<long long>());
   isCompleted = row["is_completed"].as<int>() != 0;
   if (!row["completed_at"].isNull())
     completedAt = static_cast<int64_t>(row["completed_at"].as<long long>());

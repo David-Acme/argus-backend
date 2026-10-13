@@ -106,6 +106,8 @@ add_subdirectory(src/shared/services/change-sink)
 add_subdirectory(src/shared/dtos)
 add_subdirectory(src/shared/repositories)
 add_subdirectory(src/shared/services/action-journal)
+add_subdirectory(src/shared/services/recurrence)
+add_subdirectory(src/shared/services/reminder-series)
 
 file(GLOB PRODUCTIVITY_FEATURE_MODULES CONFIGURE_DEPENDS
     "${PRODUCTIVITY_SRC_ROOT}/feature/*/CMakeLists.txt")
@@ -415,3 +417,12 @@ target_link_libraries(productivity-mcp-test PRIVATE
     doctest::doctest)
 target_compile_options(productivity-mcp-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-mcp-test COMMAND productivity-mcp-test)
+
+add_executable(productivity-recurrence-test tests/unit/productivity-recurrence-test.cc)
+target_compile_definitions(productivity-recurrence-test PRIVATE
+    ARGUS_RECURRENCE_CASES="${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/fixtures/recurrence/cases.json")
+target_link_libraries(productivity-recurrence-test PRIVATE
+    argus::productivity-recurrence
+    doctest::doctest)
+target_compile_options(productivity-recurrence-test PRIVATE -Wall -Wextra)
+add_test(NAME productivity-recurrence-test COMMAND productivity-recurrence-test)

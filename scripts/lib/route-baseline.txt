@@ -122,6 +122,7 @@ productivity	PATCH	/project/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilte
 productivity	POST	/reminder	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/reminder/controllers/reminder-controller.hxx
 productivity	DELETE	/reminder/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/reminder/controllers/reminder-controller.hxx
 productivity	PATCH	/reminder/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/reminder/controllers/reminder-controller.hxx
+productivity	POST	/reminder/{1}/snooze	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/productivity/src/feature/reminder/controllers/reminder-controller.hxx
 settings	GET	/modules	DeviceFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
 settings	POST	/modules/{1}/cancel	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx
 settings	GET	/modules/{1}/data	DeviceFilter,JwtFilter,RoleFilter	-	services/settings/src/feature/modules/controllers/modules-controller.hxx

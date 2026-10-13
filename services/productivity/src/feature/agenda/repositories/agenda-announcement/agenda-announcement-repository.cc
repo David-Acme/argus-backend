@@ -69,7 +69,8 @@ AgendaAnnouncementRepository::dueReminders(const AgendaWindowInput& input) const
 drogon::Task<bool>
 AgendaAnnouncementRepository::record(const AgendaRecordInput& input) const
 {
-  const auto client = DbService::productivityClient();
+  const auto pooled = input.client ? nullptr : DbService::productivityClient();
+  auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
       std::string(RECORD), input.kind, input.refId, input.occurrenceAt,
       input.leadMinutes, input.at);

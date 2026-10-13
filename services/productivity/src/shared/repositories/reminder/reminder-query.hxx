@@ -81,6 +81,11 @@ inline constexpr std::string_view FIND_LAST_DELETED =
     "AND target_user_id = ? "
     "ORDER BY deleted_at DESC, id DESC LIMIT 1";
 
+inline constexpr std::string_view FIND_OVERDUE_SERIES =
+    "SELECT * FROM reminder WHERE deleted_at IS NULL AND is_completed = 0 "
+    "AND recurrence_rule IS NOT NULL AND scheduled_at <= ? "
+    "ORDER BY scheduled_at ASC, id ASC LIMIT ?";
+
 inline constexpr std::string_view FIND_BY_TARGET =
     "SELECT * FROM reminder WHERE target_user_id = ? AND deleted_at IS NULL "
     "AND (? = 1 OR is_completed = 0) "
@@ -88,13 +93,23 @@ inline constexpr std::string_view FIND_BY_TARGET =
 
 inline constexpr std::string_view INSERT =
     "INSERT INTO reminder (created_by, target_user_id, title, description, "
-    "scheduled_at, recurrence_rule) "
-    "VALUES (?, ?, ?, ?, ?, ?)";
+    "scheduled_at, recurrence_rule, recurrence_anchor) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?)";
+
+inline constexpr std::string_view ADD_RECURRENCE_ANCHOR_COLUMN =
+    "ALTER TABLE reminder ADD COLUMN recurrence_anchor INTEGER";
+inline constexpr std::string_view BACKFILL_RECURRENCE_ANCHOR =
+    "UPDATE reminder SET recurrence_anchor = scheduled_at "
+    "WHERE recurrence_rule IS NOT NULL AND recurrence_anchor IS NULL";
 
 inline constexpr std::string_view UPDATE_PREFIX = "UPDATE reminder SET ";
 inline constexpr std::string_view UPDATE_COL_TITLE = "title = ?";
 inline constexpr std::string_view UPDATE_COL_DESCRIPTION = "description = ?";
 inline constexpr std::string_view UPDATE_COL_SCHEDULED_AT = "scheduled_at = ?";
+inline constexpr std::string_view UPDATE_COL_RECURRENCE_RULE = "recurrence_rule = ?";
+inline constexpr std::string_view UPDATE_COL_RECURRENCE_RULE_NULL = "recurrence_rule = NULL";
+inline constexpr std::string_view UPDATE_COL_RECURRENCE_ANCHOR = "recurrence_anchor = ?";
+inline constexpr std::string_view UPDATE_COL_RECURRENCE_ANCHOR_NULL = "recurrence_anchor = NULL";
 inline constexpr std::string_view UPDATE_COL_IS_COMPLETED = "is_completed = ?";
 inline constexpr std::string_view UPDATE_COL_COMPLETED_AT = "completed_at = ?";
 inline constexpr std::string_view UPDATE_COL_COMPLETED_AT_NULL =
@@ -120,6 +135,7 @@ struct ReminderCreateInput
   std::string description;
   int64_t scheduledAt{0};
   std::optional<std::string> recurrenceRule;
+  std::optional<int64_t> recurrenceAnchor;
   drogon::orm::DbClient* client{nullptr};
 };
 
@@ -140,7 +156,16 @@ struct ReminderUpdateInput
   std::optional<bool> isCompleted;
   std::optional<int64_t> completedAt;
   bool clearCompletedAt{false};
+  std::optional<std::string> recurrenceRule;
+  std::optional<int64_t> recurrenceAnchor;
+  bool clearRecurrence{false};
   drogon::orm::DbClient* client{nullptr};
+};
+
+struct ReminderOverdueInput
+{
+  int64_t before{0};
+  int64_t limit{100};
 };
 
 struct ReminderListInput

@@ -621,3 +621,22 @@ octubre a las 15:30", "Wednesday, October 7 at 3:30 PM").
 Drogon application and database: each tool for its owner, another user's rows
 never reachable, the idempotent retries, the confirmation token (one use,
 another user's token refused), both languages and the gate for each role.
+
+## Recurring reminders and snooze (F6, 2026-10-13)
+
+- A rule is `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY` with an optional `INTERVAL` from 1 to 999, parsed by
+  `src/shared/services/recurrence` and checked on create and update (422 otherwise). An empty rule on update, or
+  `null`, stops the series; the reminder stays as a one-off at its current time.
+- Occurrences are computed from the series anchor (`reminder.recurrence_anchor`, backfilled from `scheduled_at` at
+  boot for rules that predate it) by calendar arithmetic in the host's zone, never by adding seconds. A monthly
+  rule anchored on the 31st therefore returns to the 31st after a short month. The anchor stays off the sync
+  payload: the app never expands reminders, the server fires them.
+- Delivery rolls the series forward inside the same transaction as the agenda notice, so a crash cannot leave a
+  delivered occurrence without its successor. A reminder overdue beyond the grace window is skipped to its first
+  future occurrence on the next sweep, with one log line per series; missed occurrences are never replayed.
+- Completing a recurring reminder rolls it to the next occurrence and keeps it open. Snooze is `POST
+  /reminder/{id}/snooze` with `minutes` (5 to 1440) or `tomorrow` (the same wall time the next day); a completed
+  reminder refuses it with 409.
+- Shared logic: `src/shared/services/reminder-series` (the roll, used by the announcer), `src/shared/services/recurrence`
+  (rules and occurrences). The fixture `scripts/fixtures/recurrence/cases.json` is read by the C++ test and, for
+  events, by the app's expansion, so the two cannot disagree.

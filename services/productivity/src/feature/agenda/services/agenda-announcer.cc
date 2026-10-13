@@ -3,9 +3,14 @@
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
+
 #include <algorithm>
 #include <array>
 #include <ctime>
+#include <optional>
+#include <stdexcept>
 #include <utility>
 
 namespace
@@ -134,9 +139,15 @@ drogon::Task<AgendaSweepReport> AgendaAnnouncer::sweep() const
                                  .refId = event.id,
                                  .occurrenceAt = event.startsAt,
                                  .leadMinutes = event.leadMinutes,
-                                 .at = at});
+                                 .at = at,
+                                 .client = nullptr});
     ++report.events;
   }
+
+  const auto missed = co_await reminders_.findOverdueSeries(
+      {.before = at - config_.graceS, .limit = kBatch});
+  for (const auto& series : missed)
+    co_await skipMissedSeries(series, at);
 
   const auto reminders = co_await repository_.dueReminders(
       {.after = at - config_.graceS, .until = at, .limit = kBatch});
@@ -145,11 +156,7 @@ drogon::Task<AgendaSweepReport> AgendaAnnouncer::sweep() const
       ++report.failed;
       continue;
     }
-    co_await repository_.record({.kind = "reminder",
-                                 .refId = reminder.id,
-                                 .occurrenceAt = reminder.scheduledAt,
-                                 .leadMinutes = 0,
-                                 .at = at});
+    co_await settleDueReminder(reminder, at);
     ++report.reminders;
   }
 
@@ -158,4 +165,48 @@ drogon::Task<AgendaSweepReport> AgendaAnnouncer::sweep() const
     LOG_WARN << "Agenda: " << report.failed
              << " announcement(s) not delivered; retried next sweep";
   co_return report;
+}
+
+drogon::Task<void> AgendaAnnouncer::settleDueReminder(const DueReminderRow& reminder, int64_t at) const
+{
+  auto transaction = co_await db_transaction::begin(DbService::productivityClient());
+  try {
+    co_await repository_.record({.kind = "reminder",
+                                 .refId = reminder.id,
+                                 .occurrenceAt = reminder.scheduledAt,
+                                 .leadMinutes = 0,
+                                 .at = at,
+                                 .client = transaction.get()});
+    co_await series_.advance({.reminderId = reminder.id,
+                              .targetUserId = reminder.targetUserId,
+                              .moment = at,
+                              .client = transaction.get()});
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw std::runtime_error("the reminder notice was not recorded");
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+}
+
+drogon::Task<void> AgendaAnnouncer::skipMissedSeries(const ReminderSchema& series, int64_t at) const
+{
+  auto transaction = co_await db_transaction::begin(DbService::productivityClient());
+  std::optional<int64_t> next;
+  try {
+    next = co_await series_.advance({.reminderId = series.id,
+                                     .targetUserId = series.targetUserId,
+                                     .moment = at,
+                                     .client = transaction.get()});
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw std::runtime_error("the skipped series was not recorded");
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  if (next)
+    LOG_INFO << "Reminder " << series.id << ": missed occurrences skipped, next at "
+             << agenda_notice::clockTime(*next);
 }

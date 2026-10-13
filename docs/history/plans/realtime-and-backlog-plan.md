@@ -196,6 +196,11 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   clearing, recurring calendar events beyond the first occurrence, notification delete, the summary's
   active-project count (`archived` is not a backend status), the assistant's `calendar.list_events`
   including shared events.
+  - Follow-ups ruled 2026-10-13, not in the recurrence unit:
+    - F6a The assistant creates a recurring reminder ("recuérdame cada lunes..."): slot parsing in
+      services/llm. That service is frozen behind the parked Laya branch, so this lands after the cutover merge.
+    - F6b Editing one occurrence of a series (the RFC 5545 exception). Out of scope until the series
+      model is settled; the occurrence entry id `${eventId}@${occurrenceStartIso}` is already in place for it.
 - F7 The `agronomy` module (`coming_soon`).
 - F8 Argus as the household's messenger (owner, 2026-10-12, wanted for sure): "Argus, llama a David y
   dile que venga a comer". The router picks a `relay` tool (the LLM never picks tools), the slots are

@@ -20,6 +20,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <ctime>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -630,6 +631,85 @@ void rpcActsForThePairedCallersUser(Env& env)
 }
 }
 
+void recurringReminderRollsWhenCompleted(Env& env)
+{
+  ReminderFeatureService& service = env.service;
+  startScenario(env);
+
+  CreateReminderDto series = body("Regar las plantas");
+  series.recurrenceRule = "FREQ=DAILY";
+  const auto created = drogon::sync_wait(
+      service.create({.body = series, .userId = kAna, .idempotencyKey = {}}));
+  CHECK(created.recurrenceRule.value_or("") == "FREQ=DAILY");
+
+  UpdateReminderDto done;
+  done.isCompleted = true;
+  const ReminderSchema rolled =
+      drogon::sync_wait(service.update({.id = created.id, .body = done, .userId = kAna})).value_or(ReminderSchema{});
+  CHECK(rolled.id == created.id);
+  CHECK_FALSE(rolled.isCompleted);
+  CHECK_FALSE(rolled.completedAt.has_value());
+  CHECK(rolled.scheduledAt > created.scheduledAt);
+  CHECK(rolled.recurrenceRule.value_or("") == "FREQ=DAILY");
+}
+
+void stoppingTheSeriesKeepsItsTime(Env& env)
+{
+  ReminderFeatureService& service = env.service;
+  startScenario(env);
+
+  CreateReminderDto series = body("Pagar el agua");
+  series.recurrenceRule = "FREQ=WEEKLY;INTERVAL=2";
+  const auto created = drogon::sync_wait(
+      service.create({.body = series, .userId = kAna, .idempotencyKey = {}}));
+
+  UpdateReminderDto stop;
+  stop.recurrenceRule = std::string{};
+  const ReminderSchema stopped =
+      drogon::sync_wait(service.update({.id = created.id, .body = stop, .userId = kAna})).value_or(ReminderSchema{});
+  CHECK_FALSE(stopped.recurrenceRule.has_value());
+  CHECK(stopped.scheduledAt == created.scheduledAt);
+}
+
+void snoozeMovesOpenRemindersAndRefusesDoneOnes(Env& env)
+{
+  ReminderFeatureService& service = env.service;
+  startScenario(env);
+
+  const auto created = drogon::sync_wait(
+      service.create({.body = body("Llamar al tecnico"), .userId = kAna, .idempotencyKey = {}}));
+  SnoozeReminderDto tenMinutes;
+  tenMinutes.minutes = 10;
+  const auto before = static_cast<int64_t>(std::time(nullptr));
+  const ReminderSchema snoozed =
+      drogon::sync_wait(service.snooze({.id = created.id, .body = tenMinutes, .userId = kAna})).value_or(ReminderSchema{});
+  CHECK(snoozed.scheduledAt >= before + 600);
+  CHECK(snoozed.scheduledAt <= static_cast<int64_t>(std::time(nullptr)) + 600);
+
+  SnoozeReminderDto nextDay;
+  nextDay.tomorrow = true;
+  const ReminderSchema tomorrow =
+      drogon::sync_wait(service.snooze({.id = created.id, .body = nextDay, .userId = kAna})).value_or(ReminderSchema{});
+  CHECK(tomorrow.scheduledAt > snoozed.scheduledAt);
+
+  UpdateReminderDto done;
+  done.isCompleted = true;
+  drogon::sync_wait(service.update({.id = created.id, .body = done, .userId = kAna}));
+  CHECK_THROWS_AS(drogon::sync_wait(service.snooze({.id = created.id, .body = tenMinutes, .userId = kAna})),
+                  ResponseException);
+
+  SnoozeReminderDto tooShort;
+  tooShort.minutes = 4;
+  CHECK_THROWS_AS(SnoozeReminderDto::validated(tooShort), ValidationException);
+}
+
+void unknownRecurrenceIsRefused(Env&)
+{
+  CreateReminderDto hourly = body("Cada hora");
+  hourly.recurrenceRule = "FREQ=HOURLY";
+  CHECK_THROWS_AS(CreateReminderDto::validated(hourly), ValidationException);
+}
+
 TEST_CASE("reminders belong to the caller, whoever asks, and every change is published")
 {
   Fixture fixture;
@@ -648,6 +728,10 @@ TEST_CASE("reminders belong to the caller, whoever asks, and every change is pub
   repeatedKeyReturnsTheSameReminder(env);
   syncListingsCarryOnlyTheCallersRows(env);
   rpcActsForThePairedCallersUser(env);
+  recurringReminderRollsWhenCompleted(env);
+  stoppingTheSeriesKeepsItsTime(env);
+  snoozeMovesOpenRemindersAndRefusesDoneOnes(env);
+  unknownRecurrenceIsRefused(env);
   user_change::setProductivitySink(nullptr);
 }
 

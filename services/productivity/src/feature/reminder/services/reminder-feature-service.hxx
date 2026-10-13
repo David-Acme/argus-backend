@@ -5,6 +5,7 @@
 #include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <feature/reminder/dtos/create-reminder-dto.hxx>
+#include <feature/reminder/dtos/snooze-reminder-dto.hxx>
 #include <feature/reminder/dtos/update-reminder-dto.hxx>
 #include <optional>
 #include <shared/repositories/idempotency-key/idempotency-key-repository.hxx>
@@ -28,6 +29,13 @@ struct ReminderUpdateCommand
   int64_t userId{0};
 };
 
+struct ReminderSnoozeCommand
+{
+  int64_t id{0};
+  const SnoozeReminderDto& body;
+  int64_t userId{0};
+};
+
 struct ReminderRef
 {
   int64_t id{0};
@@ -47,6 +55,8 @@ public:
   drogon::Task<ReminderSchema> create(const ReminderCreateCommand& command) const;
   drogon::Task<std::optional<ReminderSchema>>
   update(const ReminderUpdateCommand& command) const;
+  drogon::Task<std::optional<ReminderSchema>>
+  snooze(const ReminderSnoozeCommand& command) const;
   drogon::Task<bool> remove(const ReminderRef& ref) const;
   drogon::Task<std::optional<ReminderSchema>> get(const ReminderRef& ref) const;
   drogon::Task<std::vector<ReminderSchema>>

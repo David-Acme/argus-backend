@@ -4,6 +4,7 @@
 #include <auth/request-context.hxx>
 #include <errors/response-exception.hxx>
 #include <feature/reminder/dtos/create-reminder-dto.hxx>
+#include <feature/reminder/dtos/snooze-reminder-dto.hxx>
 #include <feature/reminder/dtos/update-reminder-dto.hxx>
 #include <http/api-response.hxx>
 #include <productivity/productivity-errors.hxx>
@@ -29,6 +30,19 @@ ReminderController::update(drogon::HttpRequestPtr req, int64_t id)
 
   const auto row =
       co_await service_.update({.id = id, .body = body, .userId = ctx.sub});
+  if (!row)
+    throw ResponseException(ProductivityErrors::ReminderNotFound);
+  co_return ApiResponse::ok(row->toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+ReminderController::snooze(drogon::HttpRequestPtr req, int64_t id)
+{
+  const auto body = SnoozeReminderDto::fromJson(*req->getJsonObject());
+  const auto& ctx = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+
+  const auto row =
+      co_await service_.snooze({.id = id, .body = body, .userId = ctx.sub});
   if (!row)
     throw ResponseException(ProductivityErrors::ReminderNotFound);
   co_return ApiResponse::ok(row->toJson());

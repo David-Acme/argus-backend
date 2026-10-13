@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS reminder (
     description     TEXT    NOT NULL  DEFAULT '',
     scheduled_at    INTEGER NOT NULL,
     recurrence_rule TEXT,
+    recurrence_anchor INTEGER,
     is_completed    INTEGER NOT NULL  DEFAULT 0  CHECK (is_completed IN (0, 1)),
     completed_at    INTEGER,
     created_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
