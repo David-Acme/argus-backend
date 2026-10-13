@@ -7,6 +7,7 @@
 #include <feature/pending-intent/services/module-intent-feed.hxx>
 #include <feature/pending-intent/services/pending-intent-service.hxx>
 #include <feature/duress/infra/guard-duress-link.hxx>
+#include <feature/duress/infra/sqlite-duress-outbox.hxx>
 #include <feature/duress/services/duress-feed.hxx>
 #include <feature/duress/services/duress-screen.hxx>
 #include <guard/guard-duress-client.hxx>
@@ -340,6 +341,7 @@ int main()
   std::unique_ptr<DuressScreen> duressScreen;
   if (const auto guard = std::ranges::find(providers, std::string("guard"), &LlmToolProviderConfig::id);
       guard != providers.end()) {
+    auto& graph = static_cast<SqliteGraph&>(memory.graph());
     duressScreen = std::make_unique<DuressScreen>(
         DuressScreenDependencies{
             .link = std::make_shared<GuardDuressLink>(std::make_shared<GuardDuressClient>(
@@ -348,7 +350,9 @@ int main()
                 [](UserRole role) {
                   return role_access::hasCapability(
                       {.role = role, .modules = moduleGate().snapshot(), .capability = "safety.duress"});
-                }},
+                },
+            .outbox = std::make_shared<SqliteDuressOutbox>(
+                SqliteDuressOutboxInput{.mutex = &graph.mutex(), .db = [&graph] { return graph.handle(); }})},
         DuressScreenTiming{});
     llm->useScreen(*duressScreen);
     duressScreen->start();

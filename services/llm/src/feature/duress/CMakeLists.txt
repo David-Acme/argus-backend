@@ -1,6 +1,8 @@
 argus_module(NAME duress
     SOURCES
         infra/guard-duress-link.cc
+        infra/sqlite-duress-outbox.cc
+        repositories/duress-raise/duress-raise-repository.cc
         services/duress-feed.cc
         services/duress-screen.cc
     INCLUDES
@@ -11,6 +13,7 @@ argus_module(NAME duress
         argus::contracts::auth
         argus::contracts::llm
         argus::contracts::sync
+        argus::lib::sqlite
         argus::lib::text
         Drogon::Drogon)
 

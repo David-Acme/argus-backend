@@ -1,14 +1,17 @@
 #pragma once
 
 #include <feature/duress/services/duress-link.hxx>
+#include <feature/duress/services/duress-outbox.hxx>
 #include <shared/vocabulary/utterance-screen.hxx>
 
 #include <chrono>
 #include <cstddef>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <stop_token>
 #include <thread>
+#include <vector>
 
 struct DuressScreenState;
 
@@ -16,6 +19,7 @@ struct DuressScreenDependencies
 {
   std::shared_ptr<const DuressLink> link;
   std::function<bool(UserRole)> eligible;
+  std::shared_ptr<DuressOutbox> outbox{};
 };
 
 struct DuressScreenTiming
@@ -48,6 +52,9 @@ public:
 
 private:
   void run(const std::stop_token& stop) const;
+  void hold(const DuressRaiseCreateInput& raise) const;
+  void forget(int64_t row) const;
+  [[nodiscard]] std::vector<DuressRaiseRow> stored() const;
 
   DuressScreenDependencies dependencies_;
   DuressScreenTiming timing_;

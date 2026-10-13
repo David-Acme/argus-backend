@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -39,7 +40,10 @@ struct DuressScreenState
 
   struct Pending
   {
-    DuressRaise raise;
+    int64_t row{0};
+    int64_t userId{0};
+    UserRole role{UserRole::Unknown};
+    std::string keyDigest;
     int failures{0};
     Clock::time_point nextAt{};
   };
@@ -58,6 +62,7 @@ struct DuressScreenState
   KeyState keyState{KeyState::Unknown};
   std::optional<secret_phrase::PhraseKey> key;
   std::string encodedKey;
+  std::string keyDigest;
   bool refreshRequested{true};
   Clock::time_point nextRefresh{};
   int refreshFailures{0};
@@ -78,6 +83,12 @@ DuressScreenState::Fingerprint fingerprintOf(std::string_view text)
   return hasher.digest();
 }
 
+int64_t epochSeconds()
+{
+  return std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
+
 struct BackoffInput
 {
   const DuressScreenTiming& timing;
@@ -92,19 +103,30 @@ std::chrono::milliseconds backoff(const BackoffInput& input)
   return std::min(delay, input.timing.retryMax);
 }
 
-void queueRaise(DuressScreenState& state, const DuressRaise& raise)
+bool waiting(const DuressScreenState& state, int64_t userId)
 {
-  const bool waiting = std::ranges::any_of(
-      state.pending, [&raise](const DuressScreenState::Pending& entry) { return entry.raise.userId == raise.userId; });
-  if (!waiting)
-    state.pending.push_back({.raise = raise, .failures = 0, .nextAt = Clock::now()});
+  return std::ranges::any_of(state.pending,
+                             [userId](const DuressScreenState::Pending& entry) { return entry.userId == userId; });
+}
+
+void queueRaise(DuressScreenState& state, DuressScreenState::Pending entry)
+{
+  if (!waiting(state, entry.userId))
+    state.pending.push_back(std::move(entry));
 }
 
 bool raiseDue(const DuressScreenState& state)
 {
+  if (state.keyState == KeyState::Unknown)
+    return false;
   const Clock::time_point now = Clock::now();
   return std::ranges::any_of(state.pending,
                              [now](const DuressScreenState::Pending& entry) { return entry.nextAt <= now; });
+}
+
+bool sameKey(const DuressScreenState& state, const DuressScreenState::Pending& entry)
+{
+  return state.keyState == KeyState::Present && state.key && state.keyDigest == entry.keyDigest;
 }
 
 struct AdoptInput
@@ -131,6 +153,7 @@ void adoptKey(const AdoptInput& input)
   if (state.encodedKey != *input.fetched || state.keyState == KeyState::Unknown)
     state.clean.clear();
   state.encodedKey = *input.fetched;
+  state.keyDigest = input.fetched->empty() ? std::string{} : argus::hash::sha256Hex(*input.fetched);
   state.key = input.fetched->empty() ? std::nullopt : secret_phrase::decode(*input.fetched);
   if (!input.fetched->empty() && !state.key)
     LOG_WARN << "Duress screen: guard sent a phrase this build cannot read; nothing is screened";
@@ -146,23 +169,25 @@ struct SettleInput
   DuressDelivery delivery{DuressDelivery::Retry};
 };
 
-void settle(const SettleInput& input)
+std::optional<int64_t> settle(const SettleInput& input)
 {
   DuressScreenState& state = input.state;
   const auto found = std::ranges::find_if(
-      state.pending, [userId = input.userId](const DuressScreenState::Pending& entry) { return entry.raise.userId == userId; });
+      state.pending, [userId = input.userId](const DuressScreenState::Pending& entry) { return entry.userId == userId; });
   if (found == state.pending.end())
-    return;
+    return std::nullopt;
   if (input.delivery != DuressDelivery::Retry) {
+    const int64_t row = found->row;
     state.pending.erase(found);
     if (input.delivery == DuressDelivery::Dropped)
       state.refreshRequested = true;
-    return;
+    return row;
   }
   ++found->failures;
   if (found->failures == 1)
     LOG_WARN << "Safety relay: guard did not take an alert yet; it is retried";
   found->nextAt = Clock::now() + backoff({.timing = input.timing, .failures = found->failures});
+  return std::nullopt;
 }
 }
 
@@ -193,6 +218,7 @@ turn::ScreenedText DuressScreen::screen(const turn::ScreenedUtterance& utterance
   const DuressScreenState::Fingerprint fingerprint = fingerprintOf(utterance.text);
   std::optional<secret_phrase::PhraseKey> key;
   std::string encoded;
+  std::string digest;
   {
     const std::scoped_lock lock(state_->mutex);
     if (state_->stopped.load(std::memory_order_acquire) || state_->keyState == KeyState::Absent)
@@ -209,24 +235,55 @@ turn::ScreenedText DuressScreen::screen(const turn::ScreenedUtterance& utterance
         return kept;
       key = state_->key;
       encoded = state_->encodedKey;
+      digest = state_->keyDigest;
     }
   }
   if (!key) {
     state_->wake.notify_one();
     return kept;
   }
-  const bool said = secret_phrase::spokenIn(*key, utterance.text);
+  if (!secret_phrase::spokenIn(*key, utterance.text)) {
+    const std::scoped_lock lock(state_->mutex);
+    if (state_->encodedKey == encoded)
+      state_->clean[utterance.userId] = {.fingerprint = fingerprint, .at = Clock::now()};
+    return kept;
+  }
+  hold({.userId = utterance.userId, .role = utterance.role, .keyDigest = digest, .saidAt = epochSeconds()});
+  return {.text = std::string(llm_speech::kWithheldUtterance), .withheld = true};
+}
+
+void DuressScreen::hold(const DuressRaiseCreateInput& raise) const
+{
+  bool waitingAlready = false;
   {
     const std::scoped_lock lock(state_->mutex);
-    if (!said) {
-      if (state_->encodedKey == encoded)
-        state_->clean[utterance.userId] = {.fingerprint = fingerprint, .at = Clock::now()};
-      return kept;
-    }
-    queueRaise(*state_, {.userId = utterance.userId, .role = utterance.role, .key = encoded});
+    waitingAlready = waiting(*state_, raise.userId);
+  }
+  std::optional<int64_t> row;
+  if (!waitingAlready && dependencies_.outbox)
+    row = dependencies_.outbox->add(raise);
+  {
+    const std::scoped_lock lock(state_->mutex);
+    queueRaise(*state_,
+               {.row = row.value_or(0),
+                .userId = raise.userId,
+                .role = raise.role,
+                .keyDigest = raise.keyDigest,
+                .failures = 0,
+                .nextAt = Clock::now()});
   }
   state_->wake.notify_one();
-  return {.text = std::string(llm_speech::kWithheldUtterance), .withheld = true};
+}
+
+void DuressScreen::forget(int64_t row) const
+{
+  if (dependencies_.outbox && row > 0)
+    dependencies_.outbox->remove(row);
+}
+
+std::vector<DuressRaiseRow> DuressScreen::stored() const
+{
+  return dependencies_.outbox ? dependencies_.outbox->pending() : std::vector<DuressRaiseRow>{};
 }
 
 void DuressScreen::requestRefresh() const
@@ -260,7 +317,21 @@ bool DuressScreen::idle() const
 void DuressScreen::run(const std::stop_token& stop) const
 {
   DuressScreenState& state = *state_;
+  const std::vector<DuressRaiseRow> carried = stored();
   std::unique_lock lock(state.mutex);
+  if (!carried.empty()) {
+    const int64_t oldest = std::ranges::min(carried, {}, &DuressRaiseRow::saidAt).saidAt;
+    LOG_WARN << "Safety relay: " << carried.size() << " alert(s) written down before this start wait for guard, "
+             << "the oldest for " << std::max<int64_t>(0, epochSeconds() - oldest) << " s";
+  }
+  for (const DuressRaiseRow& row : carried)
+    queueRaise(state,
+               {.row = row.id,
+                .userId = row.userId,
+                .role = row.role,
+                .keyDigest = row.keyDigest,
+                .failures = 0,
+                .nextAt = Clock::now()});
   while (!stop.stop_requested()) {
     const Clock::time_point now = Clock::now();
     if (state.refreshRequested || now >= state.nextRefresh) {
@@ -279,31 +350,48 @@ void DuressScreen::run(const std::stop_token& stop) const
       if (state.keyState != KeyState::Present || !state.key)
         continue;
       const secret_phrase::PhraseKey key = *state.key;
-      const std::string encoded = state.encodedKey;
+      const std::string digest = state.keyDigest;
       state.busy = true;
       lock.unlock();
-      const bool said = secret_phrase::spokenIn(key, item.text);
+      if (secret_phrase::spokenIn(key, item.text))
+        hold({.userId = item.userId, .role = item.role, .keyDigest = digest, .saidAt = epochSeconds()});
       lock.lock();
       state.busy = false;
-      if (said)
-        queueRaise(state, {.userId = item.userId, .role = item.role, .key = encoded});
       continue;
     }
     const auto due = std::ranges::find_if(
         state.pending, [now](const DuressScreenState::Pending& entry) { return entry.nextAt <= now; });
-    if (due != state.pending.end()) {
-      const DuressRaise raise = due->raise;
+    if (state.keyState != KeyState::Unknown && due != state.pending.end()) {
+      if (!sameKey(state, *due)) {
+        const int64_t row = due->row;
+        state.pending.erase(due);
+        state.busy = true;
+        lock.unlock();
+        LOG_WARN << "Safety relay: an alert outlived the phrase it matched; it is dropped";
+        forget(row);
+        lock.lock();
+        state.busy = false;
+        continue;
+      }
+      const DuressRaise raise{.userId = due->userId, .role = due->role, .key = state.encodedKey};
       state.busy = true;
       lock.unlock();
       const DuressDelivery delivery = dependencies_.link->raise(raise);
       lock.lock();
+      const std::optional<int64_t> settled =
+          settle({.state = state, .timing = timing_, .userId = raise.userId, .delivery = delivery});
+      if (settled) {
+        lock.unlock();
+        forget(*settled);
+        lock.lock();
+      }
       state.busy = false;
-      settle({.state = state, .timing = timing_, .userId = raise.userId, .delivery = delivery});
       continue;
     }
     Clock::time_point wakeAt = state.nextRefresh;
-    for (const auto& entry : state.pending)
-      wakeAt = std::min(wakeAt, entry.nextAt);
+    if (state.keyState != KeyState::Unknown)
+      for (const auto& entry : state.pending)
+        wakeAt = std::min(wakeAt, entry.nextAt);
     state.wake.wait_until(lock, stop, wakeAt, [&state] {
       return state.refreshRequested || raiseDue(state) ||
              (state.keyState != KeyState::Unknown && !state.late.empty());
@@ -311,9 +399,28 @@ void DuressScreen::run(const std::stop_token& stop) const
   }
   std::vector<DuressScreenState::Pending> left = std::move(state.pending);
   state.pending.clear();
+  const KeyState keyState = state.keyState;
+  const bool keyKnown = state.key.has_value();
+  const std::string encoded = state.encodedKey;
+  const std::string digest = state.keyDigest;
   lock.unlock();
-  for (const auto& entry : left)
-    if (dependencies_.link->raise(entry.raise) == DuressDelivery::Retry)
-      LOG_ERROR << "Safety relay: an alert could not be handed to guard before the stop";
+  for (const auto& entry : left) {
+    if (keyState == KeyState::Unknown)
+      continue;
+    if (keyState != KeyState::Present || !keyKnown || digest != entry.keyDigest) {
+      forget(entry.row);
+      continue;
+    }
+    const DuressDelivery delivery =
+        dependencies_.link->raise({.userId = entry.userId, .role = entry.role, .key = encoded});
+    if (delivery == DuressDelivery::Retry) {
+      if (entry.row > 0)
+        LOG_WARN << "Safety relay: an alert could not be handed to guard before the stop; it waits for the next start";
+      else
+        LOG_ERROR << "Safety relay: an alert could not be handed to guard before the stop";
+      continue;
+    }
+    forget(entry.row);
+  }
   state.finished.store(true, std::memory_order_release);
 }

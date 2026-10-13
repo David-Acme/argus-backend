@@ -159,3 +159,14 @@ CREATE TABLE IF NOT EXISTS pending_intent (
 
 CREATE INDEX IF NOT EXISTS idx_pending_intent_open
   ON pending_intent (state, module, user_id);
+
+CREATE TABLE IF NOT EXISTS duress_raise_outbox (
+  id          INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL,
+  role        TEXT    NOT NULL,
+  key_digest  TEXT    NOT NULL,
+  said_at     INTEGER NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_duress_raise_outbox_user
+  ON duress_raise_outbox (user_id);

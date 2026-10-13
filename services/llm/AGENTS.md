@@ -90,9 +90,10 @@ argus-llm/
                         argus::pending-intent — requests kept while a module
                           was off (table pending_intent), the module feed that
                           completes them and the notice that tells the user
-  src/feature/duress/   argus::duress — the duress screen: the turn hands it
-                          the user's words, it matches guard's phrase key off
-                          the turn's path and raises guard's silent alert
+  src/feature/duress/   argus::duress — the duress screen: it matches the
+                          turn's words against guard's phrase key, withholds
+                          a match and raises guard's silent alert through its
+                          outbox (table duress_raise_outbox)
   src/feature/settings/ argus::llm-settings — the owner-editable catalog
                           served by argus.settings.v1 on the gRPC leg
   src/shared/           argus::llm-shared — vocabulary 2+ features read
@@ -101,7 +102,7 @@ argus-llm/
                           vocabulary/utterance-screen.hxx)
   database/schema.sql   memory.db: graph tables, memory_vec partitions,
                           catalog replicas, encounter_closed_inbox,
-                          pending_intent
+                          pending_intent, duress_raise_outbox
   config.toml.example   listener, LLM, intent, [rpc], memory/extract/nats,
                           [camera]/[guard]/[productivity]/[modules] tool
                           providers

@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <config/config-service.hxx>
+#include <feature/duress/infra/sqlite-duress-outbox.hxx>
 #include <feature/duress/services/duress-feed.hxx>
 #include <feature/duress/services/duress-screen.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
@@ -9,12 +10,14 @@
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/memory/services/memory/memory-chat.hxx>
 #include <feature/memory/services/memory/memory-service.hxx>
+#include <feature/memory/services/memory/sqlite-graph.hxx>
 #include <llm/llm-speech.hxx>
 #include <sqlite/vec-db.hxx>
 #include <sqlite3.h>
 #include <sync/resource-change.hxx>
 #include <text/json-util.hxx>
 #include <text/secret-phrase.hxx>
+#include <text/sha256.hxx>
 
 #include <algorithm>
 #include <chrono>
@@ -73,6 +76,8 @@ public:
   {
     const std::scoped_lock lock(mutex_);
     attempts_.push_back(raise);
+    if (unreachable_)
+      return DuressDelivery::Retry;
     if (replies_.empty())
       return DuressDelivery::Delivered;
     const DuressDelivery reply = replies_.front();
@@ -90,6 +95,12 @@ public:
   {
     const std::scoped_lock lock(mutex_);
     replies_ = std::move(replies);
+  }
+
+  void setUnreachable(bool unreachable)
+  {
+    const std::scoped_lock lock(mutex_);
+    unreachable_ = unreachable;
   }
 
   [[nodiscard]] std::vector<DuressRaise> attempts() const
@@ -110,6 +121,7 @@ private:
   mutable std::deque<DuressDelivery> replies_;
   mutable std::vector<DuressRaise> attempts_;
   mutable int asked_{0};
+  bool unreachable_{false};
 };
 
 bool disarmer(UserRole role)
@@ -206,7 +218,8 @@ std::string scratchDb(const std::string& name)
 {
   std::filesystem::create_directories(kScratchDir);
   const std::string db = std::string(kScratchDir) + "/" + name;
-  std::filesystem::remove(db);
+  for (const char* suffix : {"", "-wal", "-shm"})
+    std::filesystem::remove(db + suffix);
   const std::string config = std::string(kScratchDir) + "/" + name + ".toml";
   std::ofstream out(config);
   out << "[database]\nfile = \"" << db << "\"\n"
@@ -250,6 +263,45 @@ std::vector<std::string> graphTexts(const std::string& db)
   }
   sqlite3_close(handle);
   return texts;
+}
+
+struct OutboxRow
+{
+  int64_t userId{0};
+  std::string role;
+  std::string keyDigest;
+  int64_t saidAt{0};
+};
+
+std::vector<OutboxRow> outboxRows(const std::string& db)
+{
+  std::vector<OutboxRow> rows;
+  sqlite3* handle = nullptr;
+  if (sqlite3_open_v2(db.c_str(), &handle, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+    sqlite3_close(handle);
+    return rows;
+  }
+  sqlite3_stmt* statement = nullptr;
+  if (sqlite3_prepare_v2(handle, "SELECT user_id, role, key_digest, said_at FROM duress_raise_outbox ORDER BY id", -1,
+                         &statement, nullptr) == SQLITE_OK) {
+    while (sqlite3_step(statement) == SQLITE_ROW) {
+      const auto* role = sqlite3_column_text(statement, 1);
+      const auto* digest = sqlite3_column_text(statement, 2);
+      rows.push_back({.userId = sqlite3_column_int64(statement, 0),
+                      .role = role != nullptr ? reinterpret_cast<const char*>(role) : "",
+                      .keyDigest = digest != nullptr ? reinterpret_cast<const char*>(digest) : "",
+                      .saidAt = sqlite3_column_int64(statement, 3)});
+    }
+  }
+  sqlite3_finalize(statement);
+  sqlite3_close(handle);
+  return rows;
+}
+
+std::shared_ptr<DuressOutbox> outboxOver(SqliteGraph& graph)
+{
+  return std::make_shared<SqliteDuressOutbox>(
+      SqliteDuressOutboxInput{.mutex = &graph.mutex(), .db = [&graph] { return graph.handle(); }});
 }
 
 tools::ToolResult rememberAsTheTurnWould(MemoryService& memory, const ChatRequest& turn)
@@ -446,6 +498,99 @@ TEST_CASE("the memory graph keeps no trace of the phrase once it is withheld")
     CHECK(text.find("caf") == std::string::npos);
     CHECK(text.find("hermana") == std::string::npos);
   }
+}
+
+TEST_CASE("a match is written down before the turn goes on, as the key's digest and never the words")
+{
+  const std::string db = scratchDb("outbox-written.db");
+  SqliteGraph graph;
+  REQUIRE(graph.open(db));
+  const std::string key = sealed(kPhrase);
+  const auto link = std::make_shared<ScriptedLink>(key);
+  link->setUnreachable(true);
+  DuressScreen screen({.link = link, .eligible = disarmer, .outbox = outboxOver(graph)}, quick());
+  screen.start();
+  REQUIRE(eventually([&link, &screen] { return link->asked() > 0 && screen.idle(); }));
+
+  CHECK(screen.screen({.userId = 2, .role = UserRole::Resident, .text = "oye, el gato está en el tejado"}).withheld);
+  const std::vector<OutboxRow> written = outboxRows(db);
+  REQUIRE(written.size() == 1);
+  CHECK(written.front().userId == 2);
+  CHECK(written.front().role == "resident");
+  CHECK(written.front().keyDigest == argus::hash::sha256Hex(key));
+  CHECK(written.front().keyDigest != key);
+  CHECK(written.front().saidAt > 0);
+  for (const std::string_view word : {"gato", "tejado", "oye"}) {
+    CHECK(written.front().role.find(word) == std::string::npos);
+    CHECK(written.front().keyDigest.find(word) == std::string::npos);
+  }
+
+  CHECK(screen.screen({.userId = 2, .role = UserRole::Resident, .text = "el gato está en el tejado"}).withheld);
+  CHECK(outboxRows(db).size() == 1);
+
+  REQUIRE(eventually([&link] { return !link->attempts().empty(); }));
+  link->setUnreachable(false);
+  link->reply({DuressDelivery::Dropped});
+  REQUIRE(eventually([&db, &screen] { return outboxRows(db).empty() && screen.idle(); }));
+  screen.requestStop();
+}
+
+TEST_CASE("a raise written down survives a restart of argus-llm and reaches guard once guard takes it")
+{
+  const std::string db = scratchDb("outbox-restart.db");
+  const std::string key = sealed(kPhrase);
+  {
+    SqliteGraph graph;
+    REQUIRE(graph.open(db));
+    const auto unreachable = std::make_shared<ScriptedLink>(key);
+    unreachable->setUnreachable(true);
+    DuressScreen before({.link = unreachable, .eligible = disarmer, .outbox = outboxOver(graph)}, quick());
+    before.start();
+    REQUIRE(eventually([&unreachable, &before] { return unreachable->asked() > 0 && before.idle(); }));
+    CHECK(before.screen({.userId = 3, .role = UserRole::Owner, .text = "el gato está en el tejado"}).withheld);
+    REQUIRE(eventually([&unreachable] { return unreachable->attempts().size() >= 2; }));
+  }
+  const std::vector<OutboxRow> carried = outboxRows(db);
+  REQUIRE(carried.size() == 1);
+  CHECK(carried.front().userId == 3);
+  CHECK(carried.front().role == "owner");
+
+  SqliteGraph graph;
+  REQUIRE(graph.open(db));
+  const auto guard = std::make_shared<ScriptedLink>(key);
+  DuressScreen after({.link = guard, .eligible = disarmer, .outbox = outboxOver(graph)}, quick());
+  after.start();
+  REQUIRE(eventually([&guard, &after, &db] { return guard->attempts().size() == 1 && after.idle() && outboxRows(db).empty(); }));
+  const DuressRaise raised = guard->attempts().front();
+  CHECK(raised.userId == 3);
+  CHECK(raised.role == UserRole::Owner);
+  CHECK(raised.key == key);
+  after.requestStop();
+}
+
+TEST_CASE("a raise whose phrase changed while argus-llm was down is crossed out without asking guard")
+{
+  const std::string db = scratchDb("outbox-stale.db");
+  {
+    SqliteGraph graph;
+    REQUIRE(graph.open(db));
+    const auto unreachable = std::make_shared<ScriptedLink>(sealed(kPhrase));
+    unreachable->setUnreachable(true);
+    DuressScreen before({.link = unreachable, .eligible = disarmer, .outbox = outboxOver(graph)}, quick());
+    before.start();
+    REQUIRE(eventually([&unreachable, &before] { return unreachable->asked() > 0 && before.idle(); }));
+    CHECK(before.screen({.userId = 3, .role = UserRole::Owner, .text = "el gato está en el tejado"}).withheld);
+  }
+  REQUIRE(outboxRows(db).size() == 1);
+
+  SqliteGraph graph;
+  REQUIRE(graph.open(db));
+  const auto guard = std::make_shared<ScriptedLink>(sealed("la tía Rosa no viene"));
+  DuressScreen after({.link = guard, .eligible = disarmer, .outbox = outboxOver(graph)}, quick());
+  after.start();
+  REQUIRE(eventually([&guard, &after, &db] { return guard->asked() > 0 && after.idle() && outboxRows(db).empty(); }));
+  CHECK(guard->attempts().empty());
+  after.requestStop();
 }
 
 TEST_CASE("only guard's duress notice asks for a refresh")

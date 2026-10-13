@@ -931,11 +931,36 @@ withheld turn and an unintelligible one cannot be told apart.
   `STALE` and `NOT_ALLOWED` drop it and read the key again, because words that
   are no longer the phrase are no alert. An unreachable guard is retried with
   the same backoff for as long as the process runs, and once more at stop (the
-  `llm-duress` drain). Whether the pending raise survives a restart of
-  argus-llm is the next F4 gap.
+  `llm-duress` drain).
+- **The raise survives a restart (the reviewer's F4 gap, closed 2026-10-13).**
+  - **Written in the same turn.** The match is written down before `screen`
+    answers: one row per speaker in `duress_raise_outbox` (this service's
+    `memory.db`, `repositories/duress-raise`, `infra/sqlite-duress-outbox`).
+    A row holds the speaker's id and role, the SHA-256 of the phrase key it
+    matched and the time it was said. It never holds the key and never the
+    words.
+  - **Crossed out only when settled.** Every answer that settles the raise
+    crosses its row out. A guard that does not answer leaves the row as it is.
+  - **Read back at start.** The worker reads the rows back and waits for
+    guard's key. When the digest still matches, it hands the raise over with
+    that key. A row whose digest no longer matches (the phrase changed or was
+    removed while argus-llm was down) is crossed out without asking guard,
+    since guard would answer `STALE`.
+  - **Durability.** The write shares the memory graph's connection and lock.
+    WAL with `synchronous = NORMAL` keeps it through a process restart, not
+    necessarily through a power cut. A write that fails leaves the raise in
+    memory only, as before, and says so in the log.
+  - **Never written down.** Words matched late (the boot window above) are
+    written only once they match. The late queue itself is never written,
+    since it holds words, so a restart inside the boot window forgets what
+    had not been matched yet.
+  - **A row that may come back.** A row guard settled but argus-llm could not
+    cross out may reach guard again after a restart. Guard's repeat window
+    answers `REPEATED`.
 - **Logs.** Never the utterance, the key or the speaker. The screen says only
   that guard did not answer, or answers again. The relay says only that "an
-  alert" waits for guard.
+  alert" waits for guard, how many it carried across a start and how long the
+  oldest has waited.
 
 `tests/unit/llm-duress-screen-test.cc` covers:
 - a member who says the phrase is withheld at once and raises once, with the
@@ -953,6 +978,12 @@ withheld turn and an unintelligible one cannot be told apart.
   `unheard` marker, and the unary chat answers the same marker with no text;
 - the memory graph keeps the same words when they are not the phrase, and
   keeps no trace of them once withheld;
+- a match is written down before the screen answers, once per speaker, as the
+  key's digest and never the words, and a settled raise is crossed out;
+- a raise written down survives a restart of argus-llm between the match and
+  guard's acknowledgement, and reaches guard with the key it matched;
+- a raise whose phrase changed while argus-llm was down is crossed out without
+  asking guard;
 - the change notice that asks for a refresh.
 
 ## The per-turn context block (2026-10-08)
