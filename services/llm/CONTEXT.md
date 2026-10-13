@@ -962,6 +962,7 @@ withheld turn and an unintelligible one cannot be told apart.
     counts as idle. A row whose digest no longer matches (the phrase changed or was
     removed while argus-llm was down) is crossed out without asking guard,
     since guard would answer `STALE`.
+  - **A restart test follows the real start order** (worker before store, as in `main.cc`), as fafe0a6d showed.
   - **Durability (reviewer ruling, 2026-10-13).** The insert goes through
     the outbox's own connection to the same `memory.db`
     (`SqliteDuressOutbox`, opened on first use from the shared connection's
