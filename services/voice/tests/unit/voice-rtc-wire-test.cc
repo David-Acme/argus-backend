@@ -48,6 +48,13 @@ TEST_CASE("server frames become the data messages the app already understands")
   CHECK(parsed(sttMessage.payload)["text"].asString() == "¿qué tengo hoy?");
   CHECK(parsed(sttMessage.payload)["final"].asBool());
 
+  v1::ServerFrame correction;
+  correction.mutable_stt_correction()->set_text("…");
+  const auto correctionMessage = messageOf(correction);
+  CHECK(correctionMessage.topic == "argus.stt_correction");
+  CHECK(parsed(correctionMessage.payload)["text"].asString() == "…");
+  CHECK(parsed(correctionMessage.payload).getMemberNames() == std::vector<std::string>{"text"});
+
   v1::ServerFrame assistant;
   assistant.mutable_assistant()->set_text("Tienes dentista a las cinco.");
   assistant.mutable_assistant()->set_turn_id(3);

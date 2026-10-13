@@ -16,6 +16,7 @@ inline constexpr std::string_view kAgentTrackName = "argus-voice";
 inline constexpr std::string_view kAgentStateAttribute = "lk.agent.state";
 
 inline constexpr std::string_view kTopicStt = "argus.stt";
+inline constexpr std::string_view kTopicSttCorrection = "argus.stt_correction";
 inline constexpr std::string_view kTopicAssistant = "argus.assistant";
 inline constexpr std::string_view kTopicTurn = "argus.turn";
 inline constexpr std::string_view kTopicInterrupted = "argus.interrupted";

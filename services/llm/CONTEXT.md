@@ -899,9 +899,9 @@ withheld turn and an unintelligible one cannot be told apart.
   the `speech` marker `unheard` (`llm_speech::kUnheard`) and ends the stream
   with its sentinel alone, and `chatSync` answers an empty text with the same
   marker. The marker reaches voice on the HTTP sentinel's `speech` key and on
-  `ChatToken.speech`, and voice answers the turn as unheard. Voice only
-  meets this when its own screen did not answer, or when the key changed
-  between the two screens.
+  `ChatToken.speech`, and voice corrects the transcript it showed and answers
+  the turn as unheard. Voice only meets this when its own screen did not
+  answer, or when the key changed between the two screens.
 - **Who.** `DuressScreen` (`feature/duress`, module `argus::duress`) screens
   only a speaker who holds `safety.duress` under the current module snapshot
   (Owner, Resident, surveillance on). Guard checks again.

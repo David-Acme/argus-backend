@@ -186,7 +186,11 @@ protocol could not regress by accident in the commit that changed the endpoint.
   `VoiceInterrupted` as `{"type":"voice:interrupted","payload":{"id":N}}`.
   `voice:assistant` gains `payload.turnId` only when the frame carries a
   non-zero `turn_id`, which only a duplex session sets, so a half-duplex
-  `voice:assistant` stays `{"text":...}` byte for byte.
+  `voice:assistant` stays `{"text":...}` byte for byte. `VoiceSttCorrection`
+  (additive, 2026-10-13) renders as
+  `{"type":"voice:stt_correction","payload":{"text":"…"}}`: it replaces the
+  call's most recent final `voice:stt` in place
+  (`services/voice/CONTEXT.md`, "The correction frame").
 
 ## Realtime calls: `POST /rtc/token` (2026-10-04)
 

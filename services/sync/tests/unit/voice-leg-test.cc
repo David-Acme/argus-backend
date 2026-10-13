@@ -120,6 +120,26 @@ TEST_CASE("An unavailable assistant frame reaches the app with an empty text and
   CHECK(assistantJson["payload"]["speech"] == "unavailable");
 }
 
+TEST_CASE("A transcript correction reaches the app as voice:stt_correction with its text alone")
+{
+  argus::voice::v1::ServerFrame correction;
+  correction.mutable_stt_correction()->set_text("…");
+  const Json::Value correctionJson = json_util::fromString(
+      json_util::toString(VoiceGrpcRelay::renderServerFrame(correction)));
+  CHECK(correctionJson["type"] == "voice:stt_correction");
+  CHECK(correctionJson["payload"]["text"] == "…");
+  CHECK(correctionJson["payload"].getMemberNames() == std::vector<std::string>{"text"});
+
+  argus::voice::v1::ServerFrame stt;
+  stt.mutable_stt()->set_text("…");
+  stt.mutable_stt()->set_final(true);
+  const Json::Value sttJson = json_util::fromString(
+      json_util::toString(VoiceGrpcRelay::renderServerFrame(stt)));
+  CHECK(sttJson["type"] == "voice:stt");
+  CHECK(sttJson["payload"]["text"] == "…");
+  CHECK(sttJson["payload"]["final"].asBool());
+}
+
 TEST_CASE("voice:start selects the duplex mode only when it asks for it")
 {
   const auto modeOf = [](const std::string& raw) {

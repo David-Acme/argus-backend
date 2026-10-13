@@ -781,8 +781,8 @@ chunk; it is a little early here (the source paces in real time) which only
 makes the barge-in window shorter.
 
 Data messages replace the `voice:*` text frames one for one (topics
-`argus.stt`, `argus.assistant`, `argus.turn`, `argus.interrupted`,
-`argus.action`, `argus.event`, `argus.done`; and from the app
+`argus.stt`, `argus.stt_correction`, `argus.assistant`, `argus.turn`,
+`argus.interrupted`, `argus.action`, `argus.event`, `argus.done`; and from the app
 `argus.context`, `argus.action_result`, `argus.mute`, `argus.skip`,
 `argus.hangup`), reliable, JSON, addressed to the call's user only; data from
 any other participant is ignored. `src/feature/rtc/rtc-wire.{hxx,cc}` is the
@@ -970,13 +970,36 @@ argus-llm screens the turn again before it decides anything. When it withholds
 the words there, it asks no model and ends the stream at once with the
 `speech` marker `unheard` (`llm_speech::kUnheard`, on the HTTP sentinel and on
 `ChatToken.speech`). This service then drops the turn's user entry from the
-call history and answers through `answerUnheard` like any other turn without
-words, with no second transcript frame. A key that changed between voice's
-screen and the turn's takes the same path.
+call history, sends the **correction frame** right away, and answers through
+`answerUnheard` like any other turn without words. A key that changed between
+voice's screen and the turn's takes the same path.
 
-What stays exposed in that degraded case: the app keeps showing the words it
-was sent, and a spoken name in them may already have reached identity.
-Nothing else keeps them.
+What stays exposed in that degraded case: the app showed the words until the
+correction arrived, and a spoken name in them may already have reached
+identity. Nothing else keeps them.
+
+### The correction frame (frontend contract)
+
+`VoiceSttCorrection` is additive: `ServerFrame.stt_correction = 9`, one field,
+`string text = 1`. On the two legs the app reads:
+
+| Leg | Message |
+|---|---|
+| `/sync` WebSocket (argus-sync's relay) | `{"type":"voice:stt_correction","payload":{"text":"…"}}` |
+| LiveKit room data | topic `argus.stt_correction`, payload `{"text":"…"}` |
+
+- **Meaning.** Replace the text of the most recent final transcript of this
+  call (`voice:stt` / `argus.stt` with `final: true`) with `text`, in place.
+  Never add a bubble for it, and overwrite the stored copy too if the app keeps
+  the conversation, so the replaced words are not kept anywhere.
+- **Order.** It follows its transcript in the same call and comes before any
+  assistant frame of that turn. No other final transcript comes between them.
+- **No transcript yet.** An app that has shown no final transcript in this
+  call ignores it.
+- **Today** it carries only `…`. An app that does not know it shows the words
+  until the call ends. It never sees a second bubble.
+- **A final transcript of `…`** is an ordinary transcript. The app renders it
+  as the user's turn, like any other.
 
 `tests/unit/voice-session-seam-test.cc` pins it:
 - "A withheld transcript is answered as unheard…": the screen is asked with
@@ -987,10 +1010,13 @@ Nothing else keeps them.
   same reply, byte for byte": two turns each of a withheld utterance, an empty
   transcript and a marks-only transcript produce identical frames and history,
   and another seed does not.
-- "Words argus-llm withholds after they were shown get the unheard reply…":
-  the turn reaches argus-llm once, the reply that follows the shown words equals
-  the unheard reply under the same seed, and nothing from the reply on holds
-  the words.
+- "Words argus-llm withholds after they were shown are corrected…": the
+  correction follows the shown words and precedes the line, nothing after it
+  holds the words, and what follows it equals the unheard reply under the same
+  seed.
+
+`voice-rtc-wire-test` and argus-sync's `voice-leg-test` pin the two
+renderings above.
 
 ## Owner settings
 

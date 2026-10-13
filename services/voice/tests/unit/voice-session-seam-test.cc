@@ -1066,7 +1066,7 @@ TEST_CASE("Under the same seed a withheld turn and an unintelligible turn get th
   CHECK(otherSeed.serialized != empty.serialized);
 }
 
-TEST_CASE("Words argus-llm withholds after they were shown get the unheard reply, and no model speaks them")
+TEST_CASE("Words argus-llm withholds after they were shown are corrected, and the turn is answered as unheard")
 {
   const HeardTurnOutcome late =
       heardTurn({.transcript = "hola argus", .withhold = false, .marker = "unheard", .seed = 2, .turns = 1});
@@ -1074,32 +1074,38 @@ TEST_CASE("Words argus-llm withholds after they were shown get the unheard reply
   CHECK(late.chatStreamCalls == 1);
 
   std::optional<size_t> shown;
-  std::optional<size_t> confused;
+  std::optional<size_t> corrected;
+  std::optional<size_t> answered;
   for (size_t index = 0; index < late.frames.size(); ++index) {
     const auto& frame = late.frames[index];
     if (frame.has_stt() && frame.stt().text() == "hola argus")
       shown = index;
-    if (frame.has_event() && frame.event().reaction() == argus::voice::v1::REACTION_CONFUSED)
-      confused = index;
+    if (frame.has_stt_correction())
+      corrected = index;
+    if (frame.has_assistant() && isUnheardLine(frame.assistant().text()))
+      answered = index;
   }
   REQUIRE(shown.has_value());
-  REQUIRE(confused.has_value());
-  CHECK(requireValue(shown) < requireValue(confused));
-  for (size_t index = requireValue(confused); index < late.frames.size(); ++index)
+  REQUIRE(corrected.has_value());
+  REQUIRE(answered.has_value());
+  CHECK(requireValue(shown) < requireValue(corrected));
+  CHECK(requireValue(corrected) < requireValue(answered));
+  CHECK(late.frames[requireValue(corrected)].stt_correction().text() == "…");
+  for (size_t index = requireValue(corrected); index < late.frames.size(); ++index)
     CHECK(late.serialized[index].find("hola argus") == std::string::npos);
   for (const auto& entry : late.history)
     CHECK(entry.second.find("hola argus") == std::string::npos);
 
   const HeardTurnOutcome unheard = heardTurn({.transcript = "", .withhold = false, .marker = {}, .seed = 2, .turns = 1});
-  std::optional<size_t> asked;
+  std::optional<size_t> placeholder;
   for (size_t index = 0; index < unheard.frames.size(); ++index)
-    if (unheard.frames[index].has_event() && unheard.frames[index].event().reaction() == argus::voice::v1::REACTION_CONFUSED)
-      asked = index;
-  REQUIRE(asked.has_value());
-  const std::vector<std::string> lateTail(late.serialized.begin() + static_cast<std::ptrdiff_t>(requireValue(confused)),
+    if (unheard.frames[index].has_stt())
+      placeholder = index;
+  REQUIRE(placeholder.has_value());
+  const std::vector<std::string> lateTail(late.serialized.begin() + static_cast<std::ptrdiff_t>(requireValue(corrected)) + 1,
                                           late.serialized.end());
-  const std::vector<std::string> unheardTail(unheard.serialized.begin() + static_cast<std::ptrdiff_t>(requireValue(asked)),
-                                             unheard.serialized.end());
+  const std::vector<std::string> unheardTail(
+      unheard.serialized.begin() + static_cast<std::ptrdiff_t>(requireValue(placeholder)) + 1, unheard.serialized.end());
   CHECK(lateTail == unheardTail);
   CHECK(late.history == unheard.history);
 }

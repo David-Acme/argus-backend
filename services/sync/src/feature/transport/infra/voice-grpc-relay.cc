@@ -117,6 +117,10 @@ Json::Value VoiceGrpcRelay::renderServerFrame(
     payload["text"] = frame.stt().text();
     payload["final"] = frame.stt().final();
   }
+  else if (frame.has_stt_correction()) {
+    msg["type"] = "voice:stt_correction";
+    payload["text"] = frame.stt_correction().text();
+  }
   else if (frame.has_assistant()) {
     msg["type"] = "voice:assistant";
     payload["text"] = frame.assistant().text();

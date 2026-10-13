@@ -71,6 +71,8 @@ public:
     for (const auto& frame : snapshot()) {
       if (frame.has_stt() && type == "voice:stt")
         return true;
+      if (frame.has_stt_correction() && type == "voice:stt_correction")
+        return true;
       if (frame.has_assistant() && type == "voice:assistant")
         return true;
       if (frame.has_event() && type == "voice:event")

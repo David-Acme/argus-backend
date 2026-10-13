@@ -115,6 +115,9 @@ std::optional<DataMessage> dataMessageOf(const argus::voice::v1::ServerFrame& fr
       payload["text"] = frame.stt().text();
       payload["final"] = frame.stt().final();
       return messageOf(kTopicStt, payload);
+    case argus::voice::v1::ServerFrame::kSttCorrection:
+      payload["text"] = frame.stt_correction().text();
+      return messageOf(kTopicSttCorrection, payload);
     case argus::voice::v1::ServerFrame::kAssistant:
       payload["text"] = frame.assistant().text();
       if (frame.assistant().turn_id() != 0)

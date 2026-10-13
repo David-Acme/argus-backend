@@ -1308,12 +1308,15 @@ void VoiceSessionService::answerUnheard(Session& session, UnheardTranscript tran
 {
   LOG_INFO << "Voice: the turn carried no words to answer; Argus asks again";
   const std::string placeholder(llm_speech::kWithheldUtterance);
-  if (transcript == UnheardTranscript::Send) {
-    argus::voice::v1::ServerFrame heard;
+  argus::voice::v1::ServerFrame heard;
+  if (transcript == UnheardTranscript::Correct) {
+    heard.mutable_stt_correction()->set_text(placeholder);
+  }
+  else {
     heard.mutable_stt()->set_text(placeholder);
     heard.mutable_stt()->set_final(true);
-    sendFrame(session, std::move(heard));
   }
+  sendFrame(session, std::move(heard));
   session.history.addUser(placeholder);
   emitReaction(session, {.text = {}, .lang = langCode(session.lang), .sttFailed = true});
   const std::string line(session.unheard.next(session.lang));

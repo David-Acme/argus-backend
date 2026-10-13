@@ -96,6 +96,11 @@ message VoiceStt
   bool final = 2;
 }
 
+message VoiceSttCorrection
+{
+  string text = 1;
+}
+
 message VoiceAssistant
 {
   string text = 1;
@@ -163,6 +168,7 @@ message ServerFrame
     VoiceTurn turn = 6;
     VoiceInterrupted interrupted = 7;
     VoiceAction action = 8;
+    VoiceSttCorrection stt_correction = 9;
   }
 }
 
