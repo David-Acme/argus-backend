@@ -1,5 +1,6 @@
 #pragma once
 
+#include <shared/services/action-journal/action-journal.hxx>
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
@@ -56,6 +57,7 @@ private:
   drogon::Task<void> retireMembers(const EmitInput& input) const;
   drogon::Task<bool> canEdit(const CanEditInput& input) const;
 
+  ActionJournal journal_;
   ProjectRepository repository_;
   ProjectMemberRepository memberRepository_;
   ProjectTaskRepository taskRepository_;

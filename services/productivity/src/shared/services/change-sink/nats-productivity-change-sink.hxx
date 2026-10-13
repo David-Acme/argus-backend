@@ -20,6 +20,8 @@ public:
     int retryMs{outbox::kRetryMs};
     std::string publishSubject;
     std::string streamName;
+    std::string actionSubject;
+    std::string actionStreamName;
   };
 
   NatsProductivityChangeSink(std::shared_ptr<NatsBus> bus,
@@ -35,6 +37,8 @@ public:
   emitUsers(const UserEmitInput& input) const override;
   [[nodiscard]] drogon::Task<void>
   publishAudit(const UserAuditInput& input) const override;
+  [[nodiscard]] drogon::Task<void>
+  publishAction(const ActionPublishInput& input) const override;
 
   void reconcile();
   void requestStop();
@@ -42,6 +46,7 @@ public:
 
   static constexpr std::size_t kMaxPayloadBytes = outbox::kMaxPayloadBytes;
   static constexpr std::string_view kEventIdPrefix = "productivity-change:";
+  static constexpr std::string_view kActionIdPrefix = "productivity-action:";
 
   [[nodiscard]] static outbox::OutboxRepository repository();
 
@@ -58,6 +63,7 @@ private:
   [[nodiscard]] drogon::Task<void> record(RecordInput input) const;
 
   const std::string subject_;
+  const std::string actionSubject_;
   mutable std::atomic<uint64_t> transitions_{0};
   outbox::TransactionalOutbox outbox_;
 };

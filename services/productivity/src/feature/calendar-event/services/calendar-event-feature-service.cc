@@ -130,6 +130,13 @@ CalendarEventFeatureService::create(const CreateCalendarEventDto& body,
     co_await emit({.operation = SyncOperation::Add,
                    .row = row,
                    .client = transaction.get()});
+    co_await journal_.record({.actorId = who.actorId,
+                              .table = TableName::CalendarEvent,
+                              .recordId = row.id,
+                              .action = UserAction::Create,
+                              .title = row.title,
+                              .sharingParentId = row.id,
+                              .client = transaction.get()});
     if (!who.idempotencyKey.empty())
       co_await idempotency_.remember({.userId = who.ownerId,
                                       .key = who.idempotencyKey,
@@ -197,6 +204,13 @@ CalendarEventFeatureService::update(const UpdateInput& input) const
                                    .after = row.toJson(),
                                    .userIds = std::move(recipients),
                                    .client = transaction.get()});
+    co_await journal_.record({.actorId = input.actorId,
+                              .table = TableName::CalendarEvent,
+                              .recordId = row.id,
+                              .action = UserAction::Update,
+                              .title = row.title,
+                              .sharingParentId = row.id,
+                              .client = transaction.get()});
 
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
@@ -221,6 +235,13 @@ drogon::Task<bool> CalendarEventFeatureService::remove(int64_t id,
       co_return false;
     }
     before = *existing;
+    co_await journal_.record({.actorId = actorId,
+                              .table = TableName::CalendarEvent,
+                              .recordId = before.id,
+                              .action = UserAction::Delete,
+                              .title = before.title,
+                              .sharingParentId = before.id,
+                              .client = transaction.get()});
 
     if (!co_await repository_.remove(id, transaction.get())) {
       db_transaction::rollback(transaction);

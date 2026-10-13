@@ -22,12 +22,6 @@ struct IdentityCatalogInput
   drogon::orm::DbClient* client{nullptr};
 };
 
-struct ActionPublishInput
-{
-  UserActionEvent event;
-  drogon::orm::DbClient* client{nullptr};
-};
-
 struct IdentityResourceInput
 {
   ResourceScope scope{ResourceScope::PrivacyHousehold};

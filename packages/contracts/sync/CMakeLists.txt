@@ -49,6 +49,7 @@ argus_contracts(NAME sync
         src/sync/user-audit-event.hxx
         src/sync/module-audit-event.hxx
         src/sync/user-action-event.hxx
+        src/sync/action-journal-fields.hxx
         src/sync/auth-change-sink.hxx
         src/sync/identity-change-sink.hxx
         src/sync/sync-control-sink.hxx
@@ -96,6 +97,12 @@ target_link_libraries(user-action-event-test PRIVATE
     argus::contracts::sync doctest::doctest)
 target_compile_options(user-action-event-test PRIVATE -Wall -Wextra)
 add_test(NAME user-action-event-test COMMAND user-action-event-test)
+
+add_executable(action-journal-fields-test tests/unit/action-journal-fields-test.cc)
+target_link_libraries(action-journal-fields-test PRIVATE
+    argus::contracts::sync doctest::doctest)
+target_compile_options(action-journal-fields-test PRIVATE -Wall -Wextra)
+add_test(NAME action-journal-fields-test COMMAND action-journal-fields-test)
 
 add_executable(stream-retention-test tests/unit/stream-retention-test.cc)
 target_link_libraries(stream-retention-test PRIVATE

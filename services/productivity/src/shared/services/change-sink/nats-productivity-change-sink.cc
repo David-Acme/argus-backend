@@ -34,25 +34,33 @@ std::string orDefault(const std::string& configured, std::string_view fallback)
 outbox::OutboxConfig
 outboxConfig(const NatsProductivityChangeSink::Config& config)
 {
-  NatsBus::StreamInput stream{
+  NatsBus::StreamInput change{
       .name = orDefault(config.streamName,
                         nats_subject::kProductivityChangeStream),
       .subjects = {orDefault(config.publishSubject,
                              nats_subject::kProductivityChange)},
       .maxAgeNs = stream_retention::kRetentionNs,
       .duplicatesNs = stream_retention::kDuplicatesNs};
+  NatsBus::StreamInput action{
+      .name = orDefault(config.actionStreamName,
+                        nats_subject::kProductivityActionStream),
+      .subjects = {orDefault(config.actionSubject,
+                             nats_subject::kProductivityUserAction)},
+      .maxAgeNs = stream_retention::kRetentionNs,
+      .duplicatesNs = stream_retention::kDuplicatesNs};
   return {.label = "Productivity change outbox",
           .client = [] { return DbService::productivityClient(); },
-          .defaultSubject = stream.subjects.front(),
+          .defaultSubject = change.subjects.front(),
           .legacyIdPrefix =
               std::string(NatsProductivityChangeSink::kEventIdPrefix),
           .refusal = ProductivityErrors::ChangeNotRecorded,
           .ensureStreams =
-              [stream = std::move(stream)](NatsBus& bus) {
-                if (!bus.ensureStream(stream))
+              [change = std::move(change), action = std::move(action)](
+                  NatsBus& bus) {
+                if (!bus.ensureStream(change) || !bus.ensureStream(action))
                   return false;
-                LOG_INFO << "Productivity change outbox: stream "
-                         << stream.name << " ready";
+                LOG_INFO << "Productivity change outbox: streams "
+                         << change.name << " and " << action.name << " ready";
                 return true;
               },
           .timing = {.retryMs = config.retryMs,
@@ -69,6 +77,8 @@ NatsProductivityChangeSink::NatsProductivityChangeSink(
     std::shared_ptr<NatsBus> bus, const Config& config)
     : subject_(orDefault(config.publishSubject,
                          nats_subject::kProductivityChange)),
+      actionSubject_(orDefault(config.actionSubject,
+                               nats_subject::kProductivityUserAction)),
       outbox_(std::move(bus), outboxConfig(config))
 {
 }
@@ -129,6 +139,15 @@ NatsProductivityChangeSink::publishAudit(const UserAuditInput& input) const
                    .discriminator = payload,
                    .payload = std::move(payload),
                    .client = input.client});
+}
+
+drogon::Task<void>
+NatsProductivityChangeSink::publishAction(const ActionPublishInput& input) const
+{
+  co_await outbox_.append({.idPrefix = kActionIdPrefix,
+                           .subject = actionSubject_,
+                           .payload = json_util::toString(input.event.toJson()),
+                           .client = input.client});
 }
 
 drogon::Task<void> NatsProductivityChangeSink::record(RecordInput input) const

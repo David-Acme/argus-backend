@@ -104,6 +104,13 @@ ProjectTaskFeatureService::create(const CreateInput& input) const
     co_await emit({.operation = SyncOperation::Add,
                    .row = row,
                    .client = transaction.get()});
+    co_await journal_.record({.actorId = actorId,
+                              .table = TableName::ProjectTask,
+                              .recordId = row.id,
+                              .action = UserAction::Create,
+                              .title = row.title,
+                              .sharingParentId = row.projectId,
+                              .client = transaction.get()});
     if (!input.idempotencyKey.empty())
       co_await idempotency_.remember({.userId = actorId,
                                       .key = input.idempotencyKey,
@@ -173,6 +180,13 @@ ProjectTaskFeatureService::update(const UpdateInput& input) const
       else
         LOG_WARN << "user change sink not installed; drop project task audit";
     }
+    co_await journal_.record({.actorId = input.actorId,
+                              .table = TableName::ProjectTask,
+                              .recordId = row.id,
+                              .action = UserAction::Update,
+                              .title = row.title,
+                              .sharingParentId = row.projectId,
+                              .client = transaction.get()});
 
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
@@ -212,6 +226,13 @@ drogon::Task<bool> ProjectTaskFeatureService::remove(int64_t id,
     co_await emit({.operation = SyncOperation::Delete,
                    .row = before,
                    .client = transaction.get()});
+    co_await journal_.record({.actorId = actorId,
+                              .table = TableName::ProjectTask,
+                              .recordId = before.id,
+                              .action = UserAction::Delete,
+                              .title = before.title,
+                              .sharingParentId = before.projectId,
+                              .client = transaction.get()});
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
   }

@@ -324,8 +324,19 @@ TEST_CASE("an identity write and its change are one unit of work")
   CHECK(renamedAgain->name == "Ana Solis");
   {
     const auto pending = outbox.pendingBatch(10);
-    REQUIRE(pending.size() == 2);
+    REQUIRE(pending.size() == 3);
     CHECK(countSubject(pending, nats_subject::kIdentityChange) == 2);
+    CHECK(countSubject(pending, nats_subject::kIdentityUserAction) == 1);
+    const auto action = std::ranges::find_if(
+        pending, [](const outbox::OutboxRow& row) {
+          return row.subject == nats_subject::kIdentityUserAction;
+        });
+    REQUIRE(action != pending.end());
+    CHECK(action->payload.find("\"action\":\"update\"") != std::string::npos);
+    CHECK(action->payload.find("\"table_name\":\"user\"") != std::string::npos);
+    CHECK(action->payload.find("\"new_data\":null") != std::string::npos);
+    CHECK(action->payload.find("\"old_data\":null") != std::string::npos);
+    CHECK(action->payload.find("Ana Solis") == std::string::npos);
     const auto catalog = std::ranges::find_if(
         pending, [](const outbox::OutboxRow& row) {
           return row.payload.find(R"("kind":"identity")") != std::string::npos;
@@ -335,7 +346,7 @@ TEST_CASE("an identity write and its change are one unit of work")
     CHECK(catalog->payload.find("\"deleted\":false") != std::string::npos);
     CHECK(catalog->payload.find("\"name\":\"Ana Solis\"") != std::string::npos);
   }
-  CHECK(drainOutbox(outbox) == 2);
+  CHECK(drainOutbox(outbox) == 3);
 
   UpdateUserDto rename;
   rename.name = "Ana Maria";

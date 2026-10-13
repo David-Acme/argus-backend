@@ -31,7 +31,7 @@ public:
 private:
   drogon::Task<void> insertModuleAudit(const ModuleAuditEvent& event);
   drogon::Task<void> insertUsersAudit(const UserAuditEvent& event);
-  drogon::Task<bool> insertAction(const UserActionEvent& event,
+  drogon::Task<bool> insertAction(const UserActionEvent& published,
                                   std::string_view msgId);
 
   AuditLogService auditLogService_;

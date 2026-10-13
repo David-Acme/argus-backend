@@ -19,6 +19,11 @@ inline constexpr const char* kProductivityChange =
 inline constexpr const char* kProductivityChangeStream =
     "ARGUS_PRODUCTIVITY_CHANGE";
 
+inline constexpr const char* kProductivityUserAction =
+    "argus.productivity.v1.user-action";
+inline constexpr const char* kProductivityActionStream =
+    "ARGUS_PRODUCTIVITY_ACTION";
+
 inline constexpr const char* kNotificationChange =
     "argus.notification.v1.change";
 inline constexpr const char* kNotificationChangeStream =

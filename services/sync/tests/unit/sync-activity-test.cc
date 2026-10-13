@@ -285,6 +285,34 @@ void journaledEventsCarryTheirModule()
         ActionJournalOutcome::Refused);
   CHECK(scalar("SELECT COUNT(*) FROM user_action_log WHERE msg_id = 'settings:8'") == "0");
 
+  UserActionEvent reminder;
+  reminder.userId = 3;
+  reminder.recordId = 12;
+  reminder.tableName = TableName::Reminder;
+  reminder.action = UserAction::Create;
+  reminder.oldData["title"] = "antes";
+  reminder.newData["title"] = "Llamar al doctor";
+  reminder.newData["description"] = "resultado de la biopsia";
+  REQUIRE(drogon::sync_wait(journal(fanOut, reminder, "productivity:1")) ==
+          ActionJournalOutcome::Acknowledged);
+  CHECK(scalar("SELECT new_data FROM user_action_log WHERE msg_id = 'productivity:1'") == "{}");
+  CHECK(scalar("SELECT old_data FROM user_action_log WHERE msg_id = 'productivity:1'") == "{}");
+  CHECK(scalar("SELECT module FROM user_action_log WHERE msg_id = 'productivity:1'") == "core");
+
+  UserActionEvent project;
+  project.userId = 3;
+  project.recordId = 5;
+  project.tableName = TableName::Project;
+  project.action = UserAction::Update;
+  project.oldData["title"] = "Casa";
+  project.newData["title"] = "Casa nueva";
+  project.newData["description"] = "presupuesto 40k";
+  REQUIRE(drogon::sync_wait(journal(fanOut, project, "productivity:2")) ==
+          ActionJournalOutcome::Acknowledged);
+  CHECK(scalar("SELECT new_data FROM user_action_log WHERE msg_id = 'productivity:2'") ==
+        R"({"title":"Casa nueva"})");
+  CHECK(scalar("SELECT old_data FROM user_action_log WHERE msg_id = 'productivity:2'") == "{}");
+
   DbService::client()->execSqlSync("DELETE FROM user_action_log");
 }
 

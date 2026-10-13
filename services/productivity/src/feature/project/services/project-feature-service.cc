@@ -148,6 +148,13 @@ ProjectFeatureService::create(const CreateInput& input) const
     co_await emit({.operation = SyncOperation::Add,
                    .row = row,
                    .client = transaction.get()});
+    co_await journal_.record({.actorId = ownerId,
+                              .table = TableName::Project,
+                              .recordId = row.id,
+                              .action = UserAction::Create,
+                              .title = row.name,
+                              .sharingParentId = row.id,
+                              .client = transaction.get()});
     if (!input.idempotencyKey.empty())
       co_await idempotency_.remember({.userId = ownerId,
                                       .key = input.idempotencyKey,
@@ -210,6 +217,13 @@ ProjectFeatureService::update(const UpdateInput& input) const
                                    .after = row.toJson(),
                                    .userIds = std::move(recipients),
                                    .client = transaction.get()});
+    co_await journal_.record({.actorId = input.actorId,
+                              .table = TableName::Project,
+                              .recordId = row.id,
+                              .action = UserAction::Update,
+                              .title = row.name,
+                              .sharingParentId = row.id,
+                              .client = transaction.get()});
 
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
@@ -234,6 +248,13 @@ drogon::Task<bool> ProjectFeatureService::remove(int64_t id,
       co_return false;
     }
     before = *existing;
+    co_await journal_.record({.actorId = actorId,
+                              .table = TableName::Project,
+                              .recordId = before.id,
+                              .action = UserAction::Delete,
+                              .title = before.name,
+                              .sharingParentId = before.id,
+                              .client = transaction.get()});
 
     if (!co_await repository_.remove(id, transaction.get())) {
       db_transaction::rollback(transaction);

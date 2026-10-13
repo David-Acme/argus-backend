@@ -1,5 +1,6 @@
 #pragma once
 
+#include <shared/services/action-journal/action-journal.hxx>
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
@@ -45,6 +46,7 @@ private:
 
   drogon::Task<void> emitMembership(const EmitMembershipInput& input) const;
 
+  ActionJournal journal_;
   CalendarEventShareRepository repository_;
   CalendarEventRepository parentRepository_;
   IdentityUserDirectory directory_;

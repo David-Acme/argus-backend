@@ -7,6 +7,7 @@ argus_module(NAME productivity-calendar-event-share
     INCLUDES
         ../..
     DEPENDS
+        argus::productivity-action-journal
         argus::productivity-repositories
         argus::contracts::productivity
         argus::contracts::sync

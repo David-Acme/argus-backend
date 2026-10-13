@@ -243,6 +243,28 @@ own `productivity.db`.
   commit used to find nothing and leave every live change waiting the 500 ms
   retry period.
 
+## The action journal (R19b, 2026-10-12)
+
+Every user-initiated create, update and delete of a project, task, membership,
+calendar event, share or reminder writes one `user_action_log` row through
+`ActionJournal` (`shared/services/action-journal/`, read by the six write
+features), in the same transaction as the write, appended to the same
+`change_outbox` with the subject `argus.productivity.v1.user-action` and the msg
+id prefix `productivity-action:`. The outbox's `ensureStreams` ensures both
+`ARGUS_PRODUCTIVITY_CHANGE` and `ARGUS_PRODUCTIVITY_ACTION`. The Activity screen is
+the Owner's, so a row carries who, the kind, the table, the record id and the
+time and nothing of the row: `old_data` is never sent, and `new_data` holds only
+the title of a project, task or event while it is shared (a project with
+members, a task of such a project, an event with shares), decided by
+`ActionJournal` from the member and share tables at the moment of the write;
+reminders and memberships never carry one. The allowlist is
+`contracts/sync`'s `action-journal-fields.hxx`, which argus-sync applies again
+before it stores a row. The assistant's writes go through the same feature
+services, so they journal under the user they act for. Retirements that follow a
+delete (a project's tasks and members, an event's shares) are consequences and
+journal nothing of their own. `productivity-action-journal-test` pins every
+table and kind.
+
 ## Build wiring (decisions)
 
 - The canonical build is the service's standalone graph. From the repository

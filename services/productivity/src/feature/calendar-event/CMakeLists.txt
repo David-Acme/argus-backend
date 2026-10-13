@@ -8,6 +8,7 @@ argus_module(NAME productivity-calendar-event
         ../..
     DEPENDS
         argus::productivity-dtos
+        argus::productivity-action-journal
         argus::productivity-repositories
         argus::contracts::productivity
         argus::contracts::sync

@@ -2,6 +2,7 @@
 
 #include <feature/fanout/services/sync-fan-out.hxx>
 #include <shared/vocabulary/module-tables.hxx>
+#include <sync/action-journal-fields.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
 #include <stdexcept>
@@ -92,9 +93,11 @@ drogon::Task<void> AuditFanOut::insertUsersAudit(const UserAuditEvent& event)
   }
 }
 
-drogon::Task<bool> AuditFanOut::insertAction(const UserActionEvent& event,
+drogon::Task<bool> AuditFanOut::insertAction(const UserActionEvent& published,
                                             std::string_view msgId)
 {
+  UserActionEvent event = published;
+  action_journal::restrict(event);
   const std::string module = event.module.empty()
                                   ? std::string(module_tables::moduleOf(event.tableName))
                                   : event.module;

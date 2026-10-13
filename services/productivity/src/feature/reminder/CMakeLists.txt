@@ -9,6 +9,7 @@ argus_module(NAME productivity-reminder
         ../..
     DEPENDS
         argus::productivity-dtos
+        argus::productivity-action-journal
         argus::productivity-repositories
         argus::clients::productivity
         argus::contracts::productivity

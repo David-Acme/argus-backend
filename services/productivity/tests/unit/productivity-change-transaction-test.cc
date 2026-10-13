@@ -92,6 +92,15 @@ public:
     co_return;
   }
 
+  [[nodiscard]] drogon::Task<void>
+  publishAction(const ActionPublishInput& input) const override
+  {
+    note(input.client);
+    if (refuse_)
+      throw std::runtime_error("the change sink refused the action");
+    co_return;
+  }
+
   void refuse(bool value) const { refuse_ = value; }
   [[nodiscard]] int calls() const { return calls_; }
   [[nodiscard]] bool sawClient() const { return sawClient_; }
@@ -293,7 +302,7 @@ TEST_CASE("a productivity write and its change are one unit of work")
   const auto project =
       drogon::sync_wait(projects.create({.body = projectBody("Kept Project"), .ownerId = kOwner, .idempotencyKey = {}}));
   CHECK(project.id > 0);
-  CHECK(sink.calls() == beforeCreate + 1);
+  CHECK(sink.calls() == beforeCreate + 2);
   CHECK(sink.sawClient());
   CHECK(sink.transactional());
   CHECK(liveProjects("Kept Project") == 1);
@@ -445,7 +454,11 @@ TEST_CASE("a productivity write and its change are one unit of work")
 
   NatsProductivityChangeSink durableSink(
       nullptr, NatsProductivityChangeSink::Config{
-                   .retryMs = 20, .publishSubject = {}, .streamName = {}});
+                   .retryMs = 20,
+                   .publishSubject = {},
+                   .streamName = {},
+                   .actionSubject = {},
+                   .actionStreamName = {}});
   user_change::setProductivitySink(&durableSink);
 
   const auto outbox = NatsProductivityChangeSink::repository();
@@ -453,9 +466,9 @@ TEST_CASE("a productivity write and its change are one unit of work")
       projects.create({.body = projectBody("Durable Project"), .ownerId = kOwner, .idempotencyKey = {}}));
   CHECK(durable.id > 0);
   const auto pending = outbox.pendingBatch(10);
-  REQUIRE(pending.size() == 1);
-  CHECK(pending.front().payload.find(std::to_string(durable.id)) !=
-        std::string::npos);
+  REQUIRE(pending.size() == 2);
+  for (const auto& row : pending)
+    CHECK(row.payload.find(std::to_string(durable.id)) != std::string::npos);
 
   DbService::productivityClient()->execSqlSync("DROP TABLE change_outbox");
 

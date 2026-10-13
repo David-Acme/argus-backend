@@ -61,6 +61,7 @@ ProjectMemberFeatureService::create(const CreateProjectMemberDto& body, int64_t 
   auto transaction =
       co_await db_transaction::begin(DbService::productivityClient());
   ProjectMemberSchema row;
+  UserAction action = UserAction::Create;
   try {
     if (const auto existing = co_await repository_.findExisting(
             {.parentId = body.projectId,
@@ -73,6 +74,7 @@ ProjectMemberFeatureService::create(const CreateProjectMemberDto& body, int64_t 
         co_return {.error = MembershipError::ParentNotFound,
                    .row = std::nullopt};
       }
+      action = UserAction::Update;
       const auto* sink = user_change::getProductivitySink();
       if (!sink)
         LOG_WARN << "user change sink not installed; drop project member audit";
@@ -94,6 +96,13 @@ ProjectMemberFeatureService::create(const CreateProjectMemberDto& body, int64_t 
                                .ownerId = parent->ownerId,
                                .client = transaction.get()});
     }
+    co_await journal_.record({.actorId = actorId,
+                              .table = TableName::ProjectMember,
+                              .recordId = row.id,
+                              .action = action,
+                              .title = "",
+                              .sharingParentId = 0,
+                              .client = transaction.get()});
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
   }
@@ -146,6 +155,13 @@ ProjectMemberFeatureService::update(const UpdateInput& input) const
                                    .after = row.toJson(),
                                    .userIds = {parent->ownerId, row.userId},
                                    .client = transaction.get()});
+    co_await journal_.record({.actorId = input.actorId,
+                              .table = TableName::ProjectMember,
+                              .recordId = row.id,
+                              .action = UserAction::Update,
+                              .title = "",
+                              .sharingParentId = 0,
+                              .client = transaction.get()});
 
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
@@ -187,6 +203,13 @@ drogon::Task<bool> ProjectMemberFeatureService::remove(int64_t id,
                              .row = before,
                              .ownerId = parent->ownerId,
                              .client = transaction.get()});
+    co_await journal_.record({.actorId = actorId,
+                              .table = TableName::ProjectMember,
+                              .recordId = before.id,
+                              .action = UserAction::Delete,
+                              .title = "",
+                              .sharingParentId = 0,
+                              .client = transaction.get()});
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
   }

@@ -105,6 +105,7 @@ add_subdirectory(src/config)
 add_subdirectory(src/shared/services/change-sink)
 add_subdirectory(src/shared/dtos)
 add_subdirectory(src/shared/repositories)
+add_subdirectory(src/shared/services/action-journal)
 
 file(GLOB PRODUCTIVITY_FEATURE_MODULES CONFIGURE_DEPENDS
     "${PRODUCTIVITY_SRC_ROOT}/feature/*/CMakeLists.txt")
@@ -250,6 +251,42 @@ target_compile_options(productivity-change-transaction-test
 
 add_test(NAME productivity-change-transaction-test
          COMMAND productivity-change-transaction-test)
+
+add_executable(productivity-action-journal-test
+    tests/unit/productivity-action-journal-test.cc)
+target_link_libraries(productivity-action-journal-test PRIVATE argus::lib::test-support)
+
+set_target_properties(productivity-action-journal-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_compile_definitions(productivity-action-journal-test PRIVATE
+    ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_link_libraries(productivity-action-journal-test PRIVATE
+    argus::productivity-calendar-event
+    argus::productivity-calendar-event-share
+    argus::productivity-project
+    argus::productivity-project-member
+    argus::productivity-project-task
+    argus::productivity-reminder
+    argus::productivity-change-sink
+    argus::lib::auth
+    argus::contracts::auth
+    argus::contracts::productivity
+    argus::contracts::sync
+    argus::lib::config
+    argus::lib::text
+    argus::lib::nats
+    argus::lib::sqlite
+    argus::lib::validation
+    argus::lib::http
+    doctest::doctest)
+
+target_compile_options(productivity-action-journal-test
+                       PRIVATE -Wall -Wextra)
+
+add_test(NAME productivity-action-journal-test
+         COMMAND productivity-action-journal-test)
 
 add_executable(productivity-agenda-test
     tests/unit/productivity-agenda-test.cc)

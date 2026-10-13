@@ -1,5 +1,6 @@
 #pragma once
 
+#include <shared/services/action-journal/action-journal.hxx>
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
@@ -55,6 +56,7 @@ private:
   drogon::Task<bool> canWorkOn(const CanWorkOnInput& input) const;
   drogon::Task<void> emit(const EmitInput& input) const;
 
+  ActionJournal journal_;
   ProjectTaskRepository repository_;
   ProjectRepository projectRepository_;
   IdempotencyKeyRepository idempotency_;

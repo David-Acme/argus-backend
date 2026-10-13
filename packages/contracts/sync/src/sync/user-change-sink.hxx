@@ -6,6 +6,7 @@
 #include <json/value.h>
 #include <sync/table-name.hxx>
 #include <sync/socket-emit-dto.hxx>
+#include <sync/user-action-event.hxx>
 #include <vector>
 
 struct UserAuditInput
@@ -25,6 +26,12 @@ struct UserEmitInput
   drogon::orm::DbClient* client{nullptr};
 };
 
+struct ActionPublishInput
+{
+  UserActionEvent event;
+  drogon::orm::DbClient* client{nullptr};
+};
+
 class AuditSink
 {
 public:
@@ -39,6 +46,9 @@ class UserChangeSink : public AuditSink
 public:
   [[nodiscard]] virtual drogon::Task<void>
   emitUsers(const UserEmitInput& input) const = 0;
+
+  [[nodiscard]] virtual drogon::Task<void>
+  publishAction(const ActionPublishInput& input) const = 0;
 };
 
 namespace user_change

@@ -26,6 +26,10 @@ const std::vector<Feed>& defaults()
        .subject = nats_subject::kProductivityChange,
        .durable = "argus-sync-productivity",
        .maxAckPending = NatsBus::kOrderedMaxAckPending},
+      {.stream = nats_subject::kProductivityActionStream,
+       .subject = nats_subject::kProductivityUserAction,
+       .durable = "argus-sync-productivity-action",
+       .maxAckPending = NatsBus::kDefaultMaxAckPending},
       {.stream = nats_subject::kIdentityChangeStream,
        .subject = nats_subject::kIdentityChange,
        .durable = "argus-sync-identity",
@@ -124,6 +128,7 @@ ChangeFeedConsumer::handle(const durable_delivery::Payload& message)
     co_return sync_fan_out::handleModulePayload(json);
   if (message.subject == nats_subject::kIdentityUserAction ||
       message.subject == nats_subject::kAuthUserAction ||
+      message.subject == nats_subject::kProductivityUserAction ||
       message.subject == nats_subject::kSettingsUserAction)
     co_return co_await sync_fan_out::handleActionPayload(
         {.json = json,

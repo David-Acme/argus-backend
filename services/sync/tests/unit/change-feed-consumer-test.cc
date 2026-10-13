@@ -190,7 +190,7 @@ Json::Value cameraEmit()
 TEST_CASE("every producer stream carries the durable the change feed holds")
 {
   const auto& feeds = change_feed::defaults();
-  REQUIRE(feeds.size() == 11);
+  REQUIRE(feeds.size() == 12);
 
   CHECK(feeds[0].stream == std::string(nats_subject::kCameraStream));
   CHECK(feeds[0].subject == std::string(nats_subject::kCameraChange));
@@ -208,45 +208,51 @@ TEST_CASE("every producer stream carries the durable the change feed holds")
   CHECK(feeds[2].durable == "argus-sync-productivity");
   CHECK(feeds[2].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
-  CHECK(feeds[3].stream == std::string(nats_subject::kIdentityChangeStream));
-  CHECK(feeds[3].subject == std::string(nats_subject::kIdentityChange));
-  CHECK(feeds[3].durable == "argus-sync-identity");
-  CHECK(feeds[3].maxAckPending == NatsBus::kOrderedMaxAckPending);
+  CHECK(feeds[3].stream ==
+        std::string(nats_subject::kProductivityActionStream));
+  CHECK(feeds[3].subject == std::string(nats_subject::kProductivityUserAction));
+  CHECK(feeds[3].durable == "argus-sync-productivity-action");
+  CHECK(feeds[3].maxAckPending == NatsBus::kDefaultMaxAckPending);
 
   CHECK(feeds[4].stream == std::string(nats_subject::kIdentityChangeStream));
-  CHECK(feeds[4].subject == std::string(nats_subject::kIdentityUserAction));
-  CHECK(feeds[4].durable == "argus-sync-identity-action");
-  CHECK(feeds[4].maxAckPending == NatsBus::kDefaultMaxAckPending);
+  CHECK(feeds[4].subject == std::string(nats_subject::kIdentityChange));
+  CHECK(feeds[4].durable == "argus-sync-identity");
+  CHECK(feeds[4].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
-  CHECK(feeds[5].stream == std::string(nats_subject::kAuthChangeStream));
-  CHECK(feeds[5].subject == std::string(nats_subject::kAuthUserAction));
-  CHECK(feeds[5].durable == "argus-sync-auth-action");
+  CHECK(feeds[5].stream == std::string(nats_subject::kIdentityChangeStream));
+  CHECK(feeds[5].subject == std::string(nats_subject::kIdentityUserAction));
+  CHECK(feeds[5].durable == "argus-sync-identity-action");
   CHECK(feeds[5].maxAckPending == NatsBus::kDefaultMaxAckPending);
 
-  CHECK(feeds[6].stream == std::string(nats_subject::kAuthSessionStream));
-  CHECK(feeds[6].subject == std::string(nats_subject::kAuthSession));
-  CHECK(feeds[6].durable == "argus-sync-auth-session");
-  CHECK(feeds[6].maxAckPending == NatsBus::kOrderedMaxAckPending);
+  CHECK(feeds[6].stream == std::string(nats_subject::kAuthChangeStream));
+  CHECK(feeds[6].subject == std::string(nats_subject::kAuthUserAction));
+  CHECK(feeds[6].durable == "argus-sync-auth-action");
+  CHECK(feeds[6].maxAckPending == NatsBus::kDefaultMaxAckPending);
 
-  CHECK(feeds[7].stream == std::string(nats_subject::kSettingsModuleStream));
-  CHECK(feeds[7].subject == std::string(nats_subject::kSettingsModule));
-  CHECK(feeds[7].durable == "argus-sync-settings-module");
+  CHECK(feeds[7].stream == std::string(nats_subject::kAuthSessionStream));
+  CHECK(feeds[7].subject == std::string(nats_subject::kAuthSession));
+  CHECK(feeds[7].durable == "argus-sync-auth-session");
   CHECK(feeds[7].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
-  CHECK(feeds[8].stream == std::string(nats_subject::kSettingsActionStream));
-  CHECK(feeds[8].subject == std::string(nats_subject::kSettingsUserAction));
-  CHECK(feeds[8].durable == "argus-sync-settings-action");
-  CHECK(feeds[8].maxAckPending == NatsBus::kDefaultMaxAckPending);
+  CHECK(feeds[8].stream == std::string(nats_subject::kSettingsModuleStream));
+  CHECK(feeds[8].subject == std::string(nats_subject::kSettingsModule));
+  CHECK(feeds[8].durable == "argus-sync-settings-module");
+  CHECK(feeds[8].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
-  CHECK(feeds[9].stream == std::string(nats_subject::kSettingsChangeStream));
-  CHECK(feeds[9].subject == std::string(nats_subject::kSettingsChange));
-  CHECK(feeds[9].durable == "argus-sync-settings");
-  CHECK(feeds[9].maxAckPending == NatsBus::kOrderedMaxAckPending);
+  CHECK(feeds[9].stream == std::string(nats_subject::kSettingsActionStream));
+  CHECK(feeds[9].subject == std::string(nats_subject::kSettingsUserAction));
+  CHECK(feeds[9].durable == "argus-sync-settings-action");
+  CHECK(feeds[9].maxAckPending == NatsBus::kDefaultMaxAckPending);
 
-  CHECK(feeds[10].stream == std::string(nats_subject::kGuardStream));
-  CHECK(feeds[10].subject == std::string(nats_subject::kGuardChange));
-  CHECK(feeds[10].durable == "argus-sync-guard");
+  CHECK(feeds[10].stream == std::string(nats_subject::kSettingsChangeStream));
+  CHECK(feeds[10].subject == std::string(nats_subject::kSettingsChange));
+  CHECK(feeds[10].durable == "argus-sync-settings");
   CHECK(feeds[10].maxAckPending == NatsBus::kOrderedMaxAckPending);
+
+  CHECK(feeds[11].stream == std::string(nats_subject::kGuardStream));
+  CHECK(feeds[11].subject == std::string(nats_subject::kGuardChange));
+  CHECK(feeds[11].durable == "argus-sync-guard");
+  CHECK(feeds[11].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
   std::unordered_set<std::string> durables;
   for (const auto& feed : feeds) {

@@ -154,6 +154,8 @@ TEST_CASE("every change stream carries the name its consumer subscribes to")
   CHECK(std::string(nats_subject::kNotificationDeliveryStream) ==
         "ARGUS_NOTIFICATION");
   CHECK(std::string(nats_subject::kGuardStream) == "ARGUS_GUARD");
+  CHECK(std::string(nats_subject::kProductivityActionStream) ==
+        "ARGUS_PRODUCTIVITY_ACTION");
 
   CHECK(isValidSubject(nats_subject::kCameraChange, SubjectKind::Subscribe));
   CHECK(isValidSubject(nats_subject::kNotificationChange,
@@ -163,6 +165,8 @@ TEST_CASE("every change stream carries the name its consumer subscribes to")
   CHECK(isValidSubject(nats_subject::kIdentityChange,
                        SubjectKind::Subscribe));
   CHECK(isValidSubject(nats_subject::kIdentityUserAction,
+                       SubjectKind::Subscribe));
+  CHECK(isValidSubject(nats_subject::kProductivityUserAction,
                        SubjectKind::Subscribe));
 }
 

@@ -76,6 +76,13 @@ ReminderFeatureService::create(const ReminderCreateCommand& command) const
     co_await emit({.operation = SyncOperation::Add,
                    .row = row,
                    .client = transaction.get()});
+    co_await journal_.record({.actorId = command.userId,
+                              .table = TableName::Reminder,
+                              .recordId = row.id,
+                              .action = UserAction::Create,
+                              .title = "",
+                              .sharingParentId = 0,
+                              .client = transaction.get()});
     if (!command.idempotencyKey.empty())
       co_await idempotency_.remember({.userId = command.userId,
                                       .key = command.idempotencyKey,
@@ -145,6 +152,13 @@ ReminderFeatureService::update(const ReminderUpdateCommand& command) const
                                      .after = after,
                                      .userIds = {row.targetUserId},
                                      .client = transaction.get()});
+      co_await journal_.record({.actorId = command.userId,
+                                .table = TableName::Reminder,
+                                .recordId = row.id,
+                                .action = UserAction::Update,
+                                .title = "",
+                                .sharingParentId = 0,
+                                .client = transaction.get()});
     }
 
     if (!co_await db_transaction::Commit(std::move(transaction)))
@@ -178,6 +192,13 @@ drogon::Task<bool> ReminderFeatureService::remove(const ReminderRef& ref) const
     co_await emit({.operation = SyncOperation::Delete,
                    .row = *existing,
                    .client = transaction.get()});
+    co_await journal_.record({.actorId = ref.userId,
+                              .table = TableName::Reminder,
+                              .recordId = (*existing).id,
+                              .action = UserAction::Delete,
+                              .title = "",
+                              .sharingParentId = 0,
+                              .client = transaction.get()});
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
   }

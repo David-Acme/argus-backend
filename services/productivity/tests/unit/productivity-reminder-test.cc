@@ -123,6 +123,12 @@ public:
     co_return;
   }
 
+  [[nodiscard]] drogon::Task<void>
+  publishAction(const ActionPublishInput&) const override
+  {
+    co_return;
+  }
+
   void clear() const
   {
     const std::scoped_lock lock(mutex_);

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <shared/services/action-journal/action-journal.hxx>
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
@@ -58,6 +59,7 @@ private:
   drogon::Task<void> requireProject(std::optional<int64_t> projectId,
                                     drogon::orm::DbClient* client) const;
 
+  ActionJournal journal_;
   CalendarEventRepository repository_;
   CalendarEventShareRepository shareRepository_;
   ProjectRepository projectRepository_;

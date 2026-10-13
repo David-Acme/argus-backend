@@ -201,7 +201,11 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
   {
     NatsProductivityChangeSink sink(
         nullptr, NatsProductivityChangeSink::Config{
-                     .retryMs = 20, .publishSubject = {}, .streamName = {}});
+                     .retryMs = 20,
+                     .publishSubject = {},
+                     .streamName = {},
+                     .actionSubject = {},
+                     .actionStreamName = {}});
 
     const SocketEmitDto created = projectRow(SyncOperation::Add, 42, "Gate");
     drogon::sync_wait(sink.emitUsers({.userIds = {42, 7}, .body = created}));
@@ -306,7 +310,11 @@ TEST_CASE("the change sink lands every emit and audit in the durable outbox")
   {
     NatsProductivityChangeSink sink(
         nullptr, NatsProductivityChangeSink::Config{
-                     .retryMs = 20, .publishSubject = {}, .streamName = {}});
+                     .retryMs = 20,
+                     .publishSubject = {},
+                     .streamName = {},
+                     .actionSubject = {},
+                     .actionStreamName = {}});
     sink.reconcile();
     drogon::sync_wait(
         sink.emitUsers({.userIds = {42},
@@ -374,7 +382,9 @@ TEST_CASE("a live productivity change sink publishes every emit onto the stream"
     NatsProductivityChangeSink liveSink(
         liveBus, NatsProductivityChangeSink::Config{.retryMs = 20,
                                                     .publishSubject = subject,
-                                                    .streamName = stream});
+                                                    .streamName = stream,
+                                                    .actionSubject = "argus.test.productivity.action." + stream,
+                                                    .actionStreamName = stream + "_ACTION"});
     drogon::sync_wait(
         liveSink.emitUsers({.userIds = {42, 7},
                             .body = projectRow(SyncOperation::Add, 99,
@@ -407,7 +417,9 @@ TEST_CASE("a live productivity change sink publishes every emit onto the stream"
         liveBus, NatsProductivityChangeSink::Config{
                      .retryMs = 20,
                      .publishSubject = healedSubject,
-                     .streamName = healed});
+                     .streamName = healed,
+                     .actionSubject = "argus.test.productivity.action." + healed,
+                     .actionStreamName = healed + "_ACTION"});
     healer.reconcile();
     drogon::sync_wait(healer.emitUsers(
         {.userIds = {42},
@@ -427,7 +439,9 @@ TEST_CASE("a live productivity change sink publishes every emit onto the stream"
         liveBus, NatsProductivityChangeSink::Config{
                      .retryMs = 20,
                      .publishSubject = subject + ".eager",
-                     .streamName = eager});
+                     .streamName = eager,
+                     .actionSubject = "argus.test.productivity.action." + eager,
+                     .actionStreamName = eager + "_ACTION"});
     eagerSink.reconcile();
     bool created = false;
     for (int attempt = 0; attempt < 200 && !created; ++attempt) {
@@ -446,7 +460,9 @@ TEST_CASE("a live productivity change sink publishes every emit onto the stream"
         liveBus, NatsProductivityChangeSink::Config{.retryMs = 20,
                                                     .publishSubject =
                                                         burstSubject,
-                                                    .streamName = burstStream});
+                                                    .streamName = burstStream,
+                                                    .actionSubject = "argus.test.productivity.action." + burstStream,
+                                                    .actionStreamName = burstStream + "_ACTION"});
     const int64_t watermark = outboxWatermark();
     const auto started = std::chrono::steady_clock::now();
     for (int64_t recordId = 200; recordId < 300; ++recordId)
@@ -468,7 +484,9 @@ TEST_CASE("a live productivity change sink publishes every emit onto the stream"
       liveBus, NatsProductivityChangeSink::Config{
                    .retryMs = 20,
                    .publishSubject = "argus.test.productivity.change.*",
-                   .streamName = stream});
+                   .streamName = stream,
+                   .actionSubject = "argus.test.productivity.action." + stream,
+                   .actionStreamName = stream + "_ACTION"});
   stranded.reconcile();
   drogon::sync_wait(stranded.emitUsers(
       {.userIds = {42},

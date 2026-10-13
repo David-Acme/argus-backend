@@ -220,6 +220,16 @@ UserFeatureService::rename(const UserRenameInput& input) const
                                          .row = user.toJson(),
                                          .client = transaction.get()};
       co_await sink->publishCatalog(catalog);
+      co_await sink->publishAction({.event = {.userId = user.id,
+                                              .recordId = user.id,
+                                              .tableName = TableName::User,
+                                              .action = UserAction::Update,
+                                              .oldData = Json::Value(),
+                                              .newData = Json::Value(),
+                                              .ipAddress = "",
+                                              .module = "",
+                                              .subject = ""},
+                                    .client = transaction.get()});
     }
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(IdentityErrors::ChangeNotRecorded);
