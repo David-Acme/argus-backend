@@ -2042,6 +2042,14 @@ go2rtc (no PTZ), gSOAP (GPL or commercial) and a Python sidecar.
   - A hold (`angle`) is a `ContinuousMove` at half speed in the generic
     velocity space: `x = cos`, `y = sin`, with right at 0° and up at 90°.
     The release is `Stop`.
+  - Every `ContinuousMove` carries `<tptz:Timeout>PT2S</tptz:Timeout>`
+    (reviewer ruling, 2026-10-13). If the `Stop` is lost, because the app
+    died, the network dropped or the phone switched networks mid-hold, the
+    camera stops by itself after 2 s instead of turning to its end stop.
+    The app's hold has no lease of its own to copy: it sends one move when
+    the hold starts and a stop on release, and does not repeat while the
+    button is held. So on an ONVIF camera a hold longer than 2 s stops
+    early, until the app renews the move while the button is held.
   - A step (`x`, `y` in degrees) is a `RelativeMove` in the generic
     translation space, at `x/180` and `y/90`. Those spans assume the space
     covers ±180° of pan and ±90° of tilt; no camera has been measured.

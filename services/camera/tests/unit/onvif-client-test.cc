@@ -362,6 +362,12 @@ TEST_CASE("the PTZ calls name the profile, the preset and the generic coordinate
   const pugi::xml_node moving = onvif_soap::path(operationNode(*velocity), {"Velocity", "PanTilt"});
   CHECK(std::string(moving.attribute("x").value()) == "0.5000");
   CHECK(std::string(moving.attribute("y").value()) == "0.0000");
+  const pugi::xml_node lease = onvif_soap::child(operationNode(*velocity), "Timeout");
+  REQUIRE(lease);
+  CHECK(std::string(lease.name()) == "tptz:Timeout");
+  CHECK(onvif_soap::textOf(lease) == "PT2S");
+  CHECK(std::string(lease.previous_sibling().name()) == "tptz:Velocity");
+  CHECK_FALSE(onvif_soap::child(operationNode(*parsed(camera->sent[1].body)), "Timeout"));
   const auto step = parsed(camera->sent[1].body);
   const pugi::xml_node stepping = onvif_soap::path(operationNode(*step), {"Translation", "PanTilt"});
   CHECK(std::string(stepping.attribute("x").value()) == "0.0556");
@@ -546,6 +552,8 @@ TEST_CASE("the ONVIF driver answers the app in the shapes it already reads")
   CHECK(held.data["moved"].asBool());
   CHECK_FALSE(held.data["limit"].asBool());
   CHECK(lastPanTilt("Velocity") == "0.0000,0.5000");
+  CHECK(onvif_soap::textOf(onvif_soap::child(operationNode(*parsed(camera->sent.back().body)), "Timeout")) ==
+        "PT2S");
   REQUIRE(driver.move({.x = std::nullopt, .y = std::nullopt, .angle = 180, .stop = false}).ok);
   CHECK(lastPanTilt("Velocity") == "-0.5000,0.0000");
   REQUIRE(driver.move({.x = std::nullopt, .y = std::nullopt, .angle = 270, .stop = false}).ok);

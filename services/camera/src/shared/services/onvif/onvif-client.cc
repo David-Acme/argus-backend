@@ -16,6 +16,7 @@ constexpr size_t kNonceBytes = 16;
 constexpr size_t kClientNonceChars = 16;
 constexpr const char* kNoPtz = "This camera has no pan and tilt over ONVIF";
 constexpr double kHalfStep = 0.00005;
+constexpr const char* kHoldTimeout = "PT2S";
 
 void appendText(pugi::xml_node& parent, const char* name, const std::string& value)
 {
@@ -328,6 +329,7 @@ OnvifOutcome<bool> OnvifClient::continuousMove(const OnvifVector& velocity)
                                .body = [profile, velocity](pugi::xml_node& operation) {
                                  appendText(operation, "tptz:ProfileToken", profile);
                                  appendPanTilt(operation, "tptz:Velocity", velocity);
+                                 appendText(operation, "tptz:Timeout", kHoldTimeout);
                                },
                                .secured = true});
   if (!answer.ok())
