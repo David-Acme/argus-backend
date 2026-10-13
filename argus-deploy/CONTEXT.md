@@ -578,6 +578,18 @@ the matching `*-init` profile is the only migration path onto a volume.
 - No docker secrets for the services: nothing is baked into images and
   instance secrets live only in the gitignored config files (rustfs and its
   init job read theirs from compose secret files).
+- No provisioning secret passes through a shell value. `provision-host.sh`,
+  `setup.sh`'s config steps and the helpers in `scripts/lib/` generate a
+  secret straight into the file that keeps it (`openssl rand | ...`), copy it
+  from one config to another through awk and a pipe, and compare or validate
+  it inside awk, so it is never an argument, an assignment or a word a
+  `set -x` trace prints: the JWT, refresh and fingerprint secrets, the shared
+  NATS password, every RPC credential, the LiveKit and tunnel secrets, the
+  pairing code, the S3 keys and the NATS seeds. `scripts/deploy-mounts-test.sh`
+  runs provisioning (tunnel profile included) and the native config steps
+  twice each under `bash -x`, builds the secret inventory from what they
+  wrote, and fails if any trace carries one or if a re-run changes a config or
+  a secret.
 - `[device] identity_mode` is argus-auth's decision: provisioning copies
   `config.auth.toml`'s value (default `credential`) into every config that has
   the key, so a verifier never fingerprints differently from the issuer.
@@ -701,15 +713,17 @@ its own key; removing it is the last step.
   service alone at `/run/secrets/nats.seed`; the broker never sees it.
 - **How a seed is made.** OpenSSL, which provisioning already requires for the
   PKI, generates 32 random bytes and derives the Ed25519 public key from them;
-  the seed reaches OpenSSL on its standard input, never as an argument. The
-  nkey text framing (the user and seed prefix bytes, the CRC-16/XMODEM
-  checksum, unpadded base32) is done in `scripts/lib/nats-users.sh` with shell
-  arithmetic, `od` and `base32`, which the PKI step already needs. The `nk` tool
-  would be a new host dependency, nats-server has no generator, and a generator
-  linked against cnats would need a build on the deployment host. The
-  derivation is pinned to the seed and public key pair the cnats tests and the
-  NATS documentation use (`SUACSSL3…` / `UDXU4RCS…`), in
-  `scripts/deploy-mounts-test.sh`.
+  the seed reaches OpenSSL on its standard input, as a PKCS#8 PEM, never as an
+  argument. The nkey text framing (the user and seed prefix bytes, the
+  CRC-16/XMODEM checksum, unpadded base32) is done in
+  `scripts/lib/nats-users.sh` by POSIX awk reading a pipe, and `od` reads the
+  public key back, so a seed is never a shell value; on 2026-10-13 it gave the
+  earlier shell implementation's keys for 80 seeds under gawk, `gawk --posix`,
+  mawk 1.3.4 and busybox awk. The `nk` tool would be a new host dependency,
+  nats-server has no generator, and a generator linked against cnats would
+  need a build on the deployment host. The derivation is pinned to the seed
+  and public key pair the cnats tests and the NATS documentation use
+  (`SUACSSL3…` / `UDXU4RCS…`), in `scripts/deploy-mounts-test.sh`.
 - **Every row gets a user.** nats-server refuses a config variable nothing
   uses ("unknown field"), so the rendering iterates the variables of
   `nats-permissions.conf` and issues a seed and a user for each of them.

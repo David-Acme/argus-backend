@@ -74,6 +74,77 @@ toml_key_exists() {
     END { exit !found }' "$file"
 }
 
+TOML_VALUE_AWK='
+  function toml_unquoted(line, key,   value) {
+    value = line
+    sub("^[[:space:]]*" key "[[:space:]]*=[[:space:]]*", "", value)
+    sub("[[:space:]]+#.*$", "", value)
+    gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+    if (value ~ /^".*"$/)
+      value = substr(value, 2, length(value) - 2)
+    return value
+  }
+  /^[[:space:]]*\[/ {
+    in_table = ($0 ~ "^\\[" table "\\][[:space:]]*$")
+  }
+'
+
+toml_secret_set() {
+  local file="$1"
+  local table="$2"
+  local key="$3"
+  local min="${4:-1}"
+  local pattern="${5:-}"
+
+  [ -f "$file" ] || return 1
+  awk -v table="$table" -v key="$key" -v min="$min" -v pattern="$pattern" "$TOML_VALUE_AWK"'
+    in_table && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+      value = toml_unquoted($0, key)
+      set = length(value) >= min + 0 && value !~ /CHANGE_ME/ && (pattern == "" || value ~ pattern)
+      exit
+    }
+    END { exit !set }' "$file"
+}
+
+toml_secret_emit() {
+  awk -v table="$2" -v key="$3" "$TOML_VALUE_AWK"'
+    in_table && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+      print toml_unquoted($0, key)
+      exit
+    }' "$1"
+}
+
+toml_secrets_equal() {
+  awk -v table="$2" -v first="$3" -v second="$4" "$TOML_VALUE_AWK"'
+    in_table && $0 ~ "^[[:space:]]*" first "[[:space:]]*=" { a = toml_unquoted($0, first) }
+    in_table && $0 ~ "^[[:space:]]*" second "[[:space:]]*=" { b = toml_unquoted($0, second) }
+    END { exit !(b != "" && a == b) }' "$1"
+}
+
+toml_literal_is() {
+  ARGUS_TOML_EXPECTED="$4" awk -v table="$2" -v key="$3" '
+    /^[[:space:]]*\[/ {
+      in_table = ($0 ~ "^\\[" table "\\][[:space:]]*$")
+    }
+    in_table && $0 ~ "^[[:space:]]*" key "[[:space:]]*=" {
+      value = $0
+      sub("^[[:space:]]*" key "[[:space:]]*=[[:space:]]*", "", value)
+      sub("[[:space:]]+#.*$", "", value)
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
+      same = (value == ENVIRON["ARGUS_TOML_EXPECTED"])
+      exit
+    }
+    END { exit !same }' "$1"
+}
+
+toml_secret_generate() {
+  openssl rand -hex "$4" | replace_toml_value_from_file "$2" "$3" /dev/stdin "$1"
+}
+
+toml_secret_copy() {
+  toml_secret_emit "$1" "$2" "$3" | replace_toml_value_from_file "$5" "$6" /dev/stdin "$4"
+}
+
 replace_toml_value() {
   local table="$1"
   local key="$2"
@@ -216,14 +287,11 @@ propagate_config_value() {
 
 ensure_distinct_refresh_secret() {
   local config="$1"
-  local access refresh
 
   [ -f "$config" ] || return 0
   toml_key_exists "$config" jwt refresh_secret || return 0
-  access="$(toml_value "$config" jwt secret)"
-  refresh="$(toml_value "$config" jwt refresh_secret)"
-  if [ -n "$refresh" ] && [ "$refresh" = "$access" ]; then
-    replace_toml_value jwt refresh_secret "$(openssl rand -hex 48)" "$config"
+  if toml_secrets_equal "$config" jwt secret refresh_secret; then
+    toml_secret_generate "$config" jwt refresh_secret 48
     warn "jwt.refresh_secret equalled jwt.secret in $config; a new one was generated (refresh sessions end once)"
   fi
 }
@@ -241,23 +309,22 @@ drop_verifier_refresh_secret() {
 ensure_tunnel_secret() {
   local first="$1"
   local second="${2:-}"
-  local value="" candidate config
+  local source="" config
 
   for config in "$first" "$second"; do
     [ -n "$config" ] && [ -f "$config" ] || continue
-    toml_key_exists "$config" tunnel secret || continue
-    candidate="$(toml_value "$config" tunnel secret)"
-    case "$candidate" in
-      ""|*CHANGE_ME*) continue ;;
-    esac
-    [ "${#candidate}" -ge 32 ] || continue
-    value="$candidate"
+    toml_secret_set "$config" tunnel secret 32 || continue
+    source="$config"
     break
   done
-  [ -n "$value" ] || value="$(openssl rand -hex 32)"
   for config in "$first" "$second"; do
-    [ -n "$config" ] && [ -f "$config" ] || continue
-    replace_toml_value tunnel secret "$value" "$config"
+    [ -n "$config" ] && [ -f "$config" ] && [ "$config" != "$source" ] || continue
+    if [ -z "$source" ]; then
+      toml_secret_generate "$config" tunnel secret 32
+      source="$config"
+    else
+      toml_secret_copy "$source" tunnel secret "$config" tunnel secret
+    fi
   done
 }
 
@@ -360,7 +427,7 @@ adopt_template_key() {
   literal="$(toml_literal "$template" "$table" "$key")"
 
   if toml_key_exists "$config" "$table" "$key"; then
-    [ "$(toml_literal "$config" "$table" "$key")" = "\"$literal\"" ] || return 0
+    toml_literal_is "$config" "$table" "$key" "\"$literal\"" || return 0
   fi
 
   replace_toml_value "$table" "$key" "$literal" "$config" literal
@@ -478,35 +545,27 @@ ensure_project_config() {
   chmod 600 "$config"
 }
 
-shared_config_value() {
-  local table="$1"
-  local key="$2"
-  local bytes="$3"
-  shift 3
-
-  local config value
-  for config in "$@"; do
-    toml_key_exists "$config" "$table" "$key" || continue
-    value="$(toml_value "$config" "$table" "$key")"
-    if [ -n "$value" ]; then
-      printf '%s' "$value"
-      return 0
-    fi
-  done
-  openssl rand -hex "$bytes"
-}
-
 share_config_value() {
   local table="$1"
   local key="$2"
   local bytes="$3"
   shift 3
 
-  local value config
-  value="$(shared_config_value "$table" "$key" "$bytes" "$@")"
+  local config source=""
   for config in "$@"; do
+    toml_secret_set "$config" "$table" "$key" || continue
+    source="$config"
+    break
+  done
+  for config in "$@"; do
+    [ "$config" != "$source" ] || continue
     toml_key_exists "$config" "$table" "$key" || continue
-    replace_toml_value "$table" "$key" "$value" "$config"
+    if [ -z "$source" ]; then
+      toml_secret_generate "$config" "$table" "$key" "$bytes"
+      source="$config"
+    else
+      toml_secret_copy "$source" "$table" "$key" "$config" "$table" "$key"
+    fi
   done
 }
 
@@ -523,23 +582,30 @@ ensure_shared_configs() {
   done
 }
 
-shared_deploy_secret() {
+share_deploy_secret() {
   local deploy_dir="$1"
   local table="$2"
   local key="$3"
   local bytes="$4"
-  local config value
+  local config source=""
 
   for config in "$deploy_dir"/config.*.toml; do
     [ -f "$config" ] || continue
-    toml_key_exists "$config" "$table" "$key" || continue
-    value="$(toml_value "$config" "$table" "$key")"
-    case "$value" in
-      ""|*CHANGE_ME*) continue ;;
-      *) printf '%s' "$value"; return 0 ;;
-    esac
+    toml_secret_set "$config" "$table" "$key" || continue
+    source="$config"
+    break
   done
-  openssl rand -hex "$bytes"
+  for config in "$deploy_dir"/config.*.toml; do
+    [ -f "$config" ] && [ "$config" != "$source" ] || continue
+    toml_key_exists "$config" "$table" "$key" || continue
+    toml_secret_set "$config" "$table" "$key" && continue
+    if [ -z "$source" ]; then
+      toml_secret_generate "$config" "$table" "$key" "$bytes"
+      source="$config"
+    else
+      toml_secret_copy "$source" "$table" "$key" "$config" "$table" "$key"
+    fi
+  done
 }
 
 fill_config_pair() {
@@ -554,16 +620,14 @@ fill_config_pair() {
   [ -f "$a_config" ] && [ -f "$b_config" ] || return 0
   toml_key_exists "$a_config" "$a_table" "$a_key" || return 0
   toml_key_exists "$b_config" "$b_table" "$b_key" || return 0
-  local value="" candidate
-  candidate="$(toml_value "$a_config" "$a_table" "$a_key")"
-  case "$candidate" in ""|*CHANGE_ME*) ;; *) value="$candidate" ;; esac
-  if [ -z "$value" ]; then
-    candidate="$(toml_value "$b_config" "$b_table" "$b_key")"
-    case "$candidate" in ""|*CHANGE_ME*) ;; *) value="$candidate" ;; esac
+  if toml_secret_set "$a_config" "$a_table" "$a_key"; then
+    toml_secret_copy "$a_config" "$a_table" "$a_key" "$b_config" "$b_table" "$b_key"
+  elif toml_secret_set "$b_config" "$b_table" "$b_key"; then
+    toml_secret_copy "$b_config" "$b_table" "$b_key" "$a_config" "$a_table" "$a_key"
+  else
+    toml_secret_generate "$a_config" "$a_table" "$a_key" "$bytes"
+    toml_secret_copy "$a_config" "$a_table" "$a_key" "$b_config" "$b_table" "$b_key"
   fi
-  [ -n "$value" ] || value="$(openssl rand -hex "$bytes")"
-  replace_toml_value "$a_table" "$a_key" "$value" "$a_config"
-  replace_toml_value "$b_table" "$b_key" "$value" "$b_config"
 }
 
 fleet_caller_config() {
@@ -710,42 +774,27 @@ ensure_livekit_key_pair() {
   local config="$1"
   [ -f "$config" ] || return 0
   toml_key_exists "$config" rtc api_key || return 0
-  local key secret
-  key="$(toml_value "$config" rtc api_key)"
-  secret="$(toml_value "$config" rtc api_secret)"
-  case "$key" in ""|*CHANGE_ME*) key="" ;; esac
-  case "$secret" in ""|*CHANGE_ME*) secret="" ;; esac
-  if [ -n "$key" ] && [ "${#secret}" -ge 32 ]; then
+  if toml_secret_set "$config" rtc api_key && toml_secret_set "$config" rtc api_secret 32; then
     return 0
   fi
-  replace_toml_value rtc api_key "argus$(openssl rand -hex 6)" "$config"
-  replace_toml_value rtc api_secret "$(openssl rand -hex 24)" "$config"
+  { printf 'argus'; openssl rand -hex 6; } | replace_toml_value_from_file rtc api_key /dev/stdin "$config"
+  toml_secret_generate "$config" rtc api_secret 24
 }
 
 write_livekit_keys() {
   local config="$1"
   local keys="$2"
-  local key secret
-  key="$(toml_value "$config" rtc api_key)"
-  secret="$(toml_value "$config" rtc api_secret)"
-  [ -n "$key" ] && [ -n "$secret" ] || { err "no [rtc] key pair in $config"; return 1; }
+  if ! toml_secret_set "$config" rtc api_key || ! toml_secret_set "$config" rtc api_secret; then
+    err "no [rtc] key pair in $config"
+    return 1
+  fi
   mkdir -p "$(dirname "$keys")"
-  (umask 077 && printf '%s: %s\n' "$key" "$secret" > "$keys")
+  (umask 077 && {
+    toml_secret_emit "$config" rtc api_key | tr -d '\n'
+    printf ': '
+    toml_secret_emit "$config" rtc api_secret
+  } > "$keys")
   chmod 600 "$keys"
-}
-
-fill_deploy_placeholder() {
-  local config="$1"
-  local table="$2"
-  local key="$3"
-  local value="$4"
-  local current
-
-  toml_key_exists "$config" "$table" "$key" || return 0
-  current="$(toml_value "$config" "$table" "$key")"
-  case "$current" in
-    ""|*CHANGE_ME*) replace_toml_value "$table" "$key" "$value" "$config" ;;
-  esac
 }
 
 ensure_deploy_configs() {
@@ -765,25 +814,21 @@ ensure_deploy_configs() {
     chmod 600 "$config"
   done
 
-  local jwt_secret refresh_secret fingerprint_secret rpc_secret auth_rpc_secret
-  local control_secret nats_password
-  jwt_secret="$(shared_deploy_secret "$deploy_dir" jwt secret 48)"
-  refresh_secret="$(shared_deploy_secret "$deploy_dir" jwt refresh_secret 48)"
-  fingerprint_secret="$(shared_deploy_secret "$deploy_dir" device fingerprint_secret 48)"
-  rpc_secret="$(shared_deploy_secret "$deploy_dir" identity rpc_secret 32)"
-  auth_rpc_secret="$(shared_deploy_secret "$deploy_dir" auth rpc_secret 32)"
-  control_secret="$(shared_deploy_secret "$deploy_dir" sync control_secret 32)"
-  nats_password="$(shared_deploy_secret "$deploy_dir" nats password 32)"
+  local table key bytes
+  while read -r table key bytes; do
+    share_deploy_secret "$deploy_dir" "$table" "$key" "$bytes"
+  done <<'SECRETS'
+jwt secret 48
+jwt refresh_secret 48
+device fingerprint_secret 48
+identity rpc_secret 32
+auth rpc_secret 32
+sync control_secret 32
+nats password 32
+SECRETS
 
   for config in "$deploy_dir"/config.*.toml; do
     [ -f "$config" ] || continue
-    fill_deploy_placeholder "$config" jwt secret "$jwt_secret"
-    fill_deploy_placeholder "$config" jwt refresh_secret "$refresh_secret"
-    fill_deploy_placeholder "$config" device fingerprint_secret "$fingerprint_secret"
-    fill_deploy_placeholder "$config" identity rpc_secret "$rpc_secret"
-    fill_deploy_placeholder "$config" auth rpc_secret "$auth_rpc_secret"
-    fill_deploy_placeholder "$config" sync control_secret "$control_secret"
-    fill_deploy_placeholder "$config" nats password "$nats_password"
     drop_verifier_refresh_secret "$config"
     ensure_distinct_refresh_secret "$config"
   done

@@ -187,19 +187,24 @@ grep -v 'nats/seeds/sync.seed' "$COMPOSE" > "$TEST_TMP/compose-no-seed.yml"
 
 source "$ROOT/scripts/lib/nats-users.sh"
 documented_seed="SUACSSL3UAHUDXKFSNVUZRF5UHPMWZ6BFDTJ7M6USDXIEDNPPQYYYCU3VY"
-documented_hex="$(nkey_seed_hex "$documented_seed")" || fail "the documented NATS seed does not decode"
-[ "$(nkey_public_text "$(nkey_public_hex "$documented_hex")")" = "UDXU4RCSJNZOIQHZNWXHXORDPRTGNJAHAHFRGZNEEJCPQTT2M7NLCNF4" ] \
+printf '%s\n' "$documented_seed" > "$TEST_TMP/documented.seed"
+[ "$(nkey_public_of "$TEST_TMP/documented.seed")" = "UDXU4RCSJNZOIQHZNWXHXORDPRTGNJAHAHFRGZNEEJCPQTT2M7NLCNF4" ] \
   || fail "the documented NATS seed does not derive its documented public key"
-[ "$(nkey_seed_text "$documented_hex")" = "$documented_seed" ] \
+[ "$(nkey_seed_payload < "$TEST_TMP/documented.seed" | nkey_encode "$NKEY_USER_SEED_PREFIX")" = "$documented_seed" ] \
   || fail "the documented NATS seed does not encode back to itself"
-! nkey_seed_hex "SUAMK2FG4MI6UE3ACF3FK3OIQBCEIEZV7NSWFFEW63UXMRLFM2XLAXK4AA" >/dev/null \
+printf 'SUAMK2FG4MI6UE3ACF3FK3OIQBCEIEZV7NSWFFEW63UXMRLFM2XLAXK4AA\n' > "$TEST_TMP/corrupt.seed"
+! nkey_public_of "$TEST_TMP/corrupt.seed" >/dev/null 2>&1 \
   || fail "a NATS seed with a wrong checksum was accepted"
+[ -z "$(nkey_public_of "$TEST_TMP/corrupt.seed" 2>/dev/null)" ] \
+  || fail "a NATS seed with a wrong checksum still printed a public key"
 
 permissions="$ROOT/argus-deploy/nats-permissions.conf"
 mkdir -p "$TEST_TMP/seeds"
-nats_auth_conf "$permissions" "$TEST_TMP/seeds" legacy > "$TEST_TMP/auth.conf" \
+legacy="$TEST_TMP/legacy.toml"
+printf '[nats]\npassword = "legacy"\n' > "$legacy"
+nats_auth_conf "$permissions" "$TEST_TMP/seeds" "$legacy" > "$TEST_TMP/auth.conf" \
   || fail "the NATS users could not be rendered"
-nats_auth_conf "$permissions" "$TEST_TMP/seeds" legacy > "$TEST_TMP/auth-again.conf" \
+nats_auth_conf "$permissions" "$TEST_TMP/seeds" "$legacy" > "$TEST_TMP/auth-again.conf" \
   || fail "the NATS users could not be rendered a second time"
 cmp -s "$TEST_TMP/auth.conf" "$TEST_TMP/auth-again.conf" || fail "a second provisioning run changed the NATS users"
 grep -qx 'include ./nats-permissions.conf' "$TEST_TMP/auth.conf" || fail "auth.conf does not include the permission config"
@@ -216,11 +221,14 @@ for seed in "$TEST_TMP"/seeds/*.seed; do
   [ "$(grep -c "\"$(nkey_public_of "$seed")\"" "$TEST_TMP/auth.conf")" = 1 ] \
     || fail "the seed $seed does not match its user in auth.conf"
 done
-printf 'SUAMK2FG4MI6UE3ACF3FK3OIQBCEIEZV7NSWFFEW63UXMRLFM2XLAXK4AA\n' > "$TEST_TMP/seeds/sync.seed"
-! nats_auth_conf "$permissions" "$TEST_TMP/seeds" legacy >/dev/null 2>&1 \
+printf '[nats]\npassword = "not-alphanumeric"\n' > "$TEST_TMP/bad-legacy.toml"
+! nats_auth_conf "$permissions" "$TEST_TMP/seeds" "$TEST_TMP/bad-legacy.toml" >/dev/null 2>&1 \
+  || fail "a NATS password that is not alphanumeric was rendered"
+cp "$TEST_TMP/corrupt.seed" "$TEST_TMP/seeds/sync.seed"
+! nats_auth_conf "$permissions" "$TEST_TMP/seeds" "$legacy" >/dev/null 2>&1 \
   || fail "a corrupt NATS seed was accepted"
 
-grep -Eq '^  if ! nats_auth_conf "\$permissions" "\$seeds" "\$password" > "\$temp"; then$' "$ROOT/scripts/provision-host.sh" \
+grep -Eq '^  if ! nats_auth_conf "\$permissions" "\$seeds" "\$config" > "\$temp"; then$' "$ROOT/scripts/provision-host.sh" \
   || fail "provision-host.sh does not render the NATS users from the permission config"
 
 source "$ROOT/scripts/lib/common.sh"
@@ -237,7 +245,7 @@ for service in $(nats_clients); do
   cp "$ROOT/argus-deploy/config.$service.toml.example" "$TEST_TMP/users/deploy/config.$service.toml"
 done
 cp "$ROOT/argus-deploy/config.tts.toml.example" "$TEST_TMP/users/deploy/config.tts.toml"
-nats_auth_conf "$permissions" "$TEST_TMP/users/data/nats/seeds" legacy >/dev/null \
+nats_auth_conf "$permissions" "$TEST_TMP/users/data/nats/seeds" "$legacy" >/dev/null \
   || fail "the NATS users could not be rendered for the key check"
 {
   printf 'source %q\nsource %q\n' "$ROOT/scripts/lib/common.sh" "$ROOT/scripts/lib/nats-users.sh"
@@ -332,23 +340,155 @@ for stub in docker sudo; do
   printf '#!/bin/sh\nexit 1\n' > "$sandbox/bin/$stub"
   chmod 700 "$sandbox/bin/$stub"
 done
-PATH="$sandbox/bin:$PATH" \
-ARGUS_DATA_DIR="$sandbox/data" \
-ARGUS_CERTS_DIR="$sandbox/certs" \
-ARGUS_MODELS_DIR="$sandbox/models" \
-ARGUS_GO2RTC_DIR="$sandbox/go2rtc" \
-ARGUS_MDNS_ADDRESS=192.168.1.20 \
-  bash -x "$sandbox/root/scripts/provision-host.sh" --no-docker -y --accept-privacy-notice \
-  > "$sandbox/out" 2> "$sandbox/trace" \
-  || fail "the provisioning dry run failed: $(tail -n 3 "$sandbox/out" | tr '\n' ' ')"
-grep -q 'storage.s3\|nats' "$sandbox/trace" || fail "the provisioning dry run left no trace"
+provision_dry_run() {
+  PATH="$sandbox/bin:$PATH" \
+  ARGUS_DATA_DIR="$sandbox/data" \
+  ARGUS_CERTS_DIR="$sandbox/certs" \
+  ARGUS_MODELS_DIR="$sandbox/models" \
+  ARGUS_GO2RTC_DIR="$sandbox/go2rtc" \
+  ARGUS_MDNS_ADDRESS=192.168.1.20 \
+    bash -x "$sandbox/root/scripts/provision-host.sh" --no-docker -y --accept-privacy-notice --with-tunnel \
+    > "$sandbox/out-$1" 2> "$sandbox/trace-$1" \
+    || fail "the provisioning dry run ($1) failed: $(tail -n 3 "$sandbox/out-$1" | tr '\n' ' ')"
+  grep -q 'storage.s3\|nats' "$sandbox/trace-$1" || fail "the provisioning dry run ($1) left no trace"
+}
+
+provisioned_state() {
+  cat "$sandbox/root/argus-deploy"/config.*.toml "$sandbox/root/argus-deploy/livekit-keys.yaml" \
+    "$sandbox/data/nats/auth.conf" "$sandbox/data/nats/seeds"/*.seed "$sandbox/data/pki/pairing.code" \
+    "$sandbox/data/rustfs/secrets"/* | sha256sum
+}
+
+secret_values() {
+  local config
+  for config in "$@"; do
+    awk -v file="${config#"$TEST_TMP"/}" '
+      /^[[:space:]]*\[/ {
+        table = $0
+        gsub(/^[[:space:]]*\[|\][[:space:]]*$/, "", table)
+        next
+      }
+      /^[[:space:]]*[A-Za-z0-9_.-]+[[:space:]]*=[[:space:]]*"/ {
+        key = $0
+        sub(/^[[:space:]]*/, "", key)
+        sub(/[[:space:]]*=.*$/, "", key)
+        if (key !~ /(^|_)(secret|password|credential)$/ && key !~ /^caller_/ && table != "rpc.callers")
+          next
+        value = $0
+        sub(/^[^=]*=[[:space:]]*"/, "", value)
+        sub(/".*$/, "", value)
+        if (length(value) >= 8 && value !~ /CHANGE_ME/)
+          printf "%s [%s] %s\t%s\n", file, table, key, value
+      }' "$config"
+  done
+}
+
+provisioned_secrets() {
+  local seed name
+  secret_values "$sandbox/root/argus-deploy"/config.*.toml
+  for seed in "$sandbox/data/nats/seeds"/*.seed; do
+    printf 'NATS seed %s\t%s\n' "${seed##*/}" "$(tr -d '[:space:]' < "$seed")"
+    printf 'NATS seed payload %s\t%s\n' "${seed##*/}" "$(nkey_seed_payload < "$seed")"
+  done
+  printf 'pairing code\t%s\n' "$(tr -d '[:space:]' < "$sandbox/data/pki/pairing.code")"
+  for name in rustfs_access_key rustfs_secret_key rustfs_rpc_secret argus_s3_access_key argus_s3_secret_key; do
+    printf 'S3 %s\t%s\n' "$name" "$(tr -d '\r\n' < "$sandbox/data/rustfs/secrets/$name")"
+  done
+}
+
+secret_named() {
+  awk -F '\t' -v name="$2" '$1 == name { found = 1 } END { exit !found }' "$1"
+}
+
+leaked_secrets() {
+  local inventory="$1" trace="$2" name value
+  while IFS="$(printf '\t')" read -r name value; do
+    if grep -qF -- "$value" "$trace"; then
+      printf '%s; ' "$name"
+    fi
+  done < "$inventory"
+}
+
+check_trace() {
+  local inventory="$1" trace="$2" what="$3"
+  cut -f2 "$inventory" | sort -u > "$inventory.values"
+  if grep -qF -f "$inventory.values" "$trace"; then
+    fail "the set -x trace of $what carries: $(leaked_secrets "$inventory" "$trace")"
+  fi
+}
+
+provision_dry_run first
+first_state="$(provisioned_state)"
+provision_dry_run second
+[ "$(provisioned_state)" = "$first_state" ] || fail "a second provisioning run changed a config or a secret"
 for name in rustfs_access_key rustfs_secret_key rustfs_rpc_secret argus_s3_access_key argus_s3_secret_key; do
   secret_file="$sandbox/data/rustfs/secrets/$name"
   [ -s "$secret_file" ] || fail "the provisioning dry run wrote no $name"
   [ "$(find "$secret_file" -perm 600)" = "$secret_file" ] || fail "$name is not 0600"
-  ! grep -qF -f "$secret_file" "$sandbox/trace" \
-    || fail "the set -x trace of provision-host.sh carries the value of $name"
 done
+provisioned_secrets > "$sandbox/secrets.tsv"
+for name in "provision/root/argus-deploy/config.auth.toml [jwt] secret" \
+    "provision/root/argus-deploy/config.auth.toml [jwt] refresh_secret" \
+    "provision/root/argus-deploy/config.auth.toml [device] fingerprint_secret" \
+    "provision/root/argus-deploy/config.auth.toml [nats] password" \
+    "provision/root/argus-deploy/config.sync.toml [rtc] api_secret" \
+    "provision/root/argus-deploy/config.tunnel.toml [tunnel] secret" \
+    "provision/root/argus-deploy/config.identity.toml [rpc.callers] settings" \
+    "pairing code" "S3 argus_s3_secret_key"; do
+  secret_named "$sandbox/secrets.tsv" "$name" || fail "the provisioned secret inventory has no $name"
+done
+[ "$(grep -c '^NATS seed payload ' "$sandbox/secrets.tsv")" -ge 10 ] \
+  || fail "the provisioned secret inventory has fewer than 10 NATS seeds"
+[ "$(awk -F '\t' '$1 ~ /credential$|\[rpc\.callers\]|caller_/' "$sandbox/secrets.tsv" | wc -l)" -ge 40 ] \
+  || fail "the provisioned secret inventory has fewer than 40 RPC credentials"
+check_trace "$sandbox/secrets.tsv" "$sandbox/trace-first" "the first provisioning run"
+check_trace "$sandbox/secrets.tsv" "$sandbox/trace-second" "a second provisioning run"
+{
+  cat "$sandbox/trace-first"
+  printf '+ replace_toml_value nats password %s\n' "$(awk -F '\t' '$1 ~ /\[nats\] password$/ { print $2; exit }' "$sandbox/secrets.tsv")"
+} > "$TEST_TMP/planted-trace"
+! (check_trace "$sandbox/secrets.tsv" "$TEST_TMP/planted-trace" "a planted trace") 2>/dev/null \
+  || fail "a secret planted in a trace was not reported"
+
+native="$TEST_TMP/native"
+mkdir -p "$native/scripts"
+cp -R "$ROOT/scripts/lib" "$native/scripts/"
+for service in auth identity sync camera guard settings productivity notification tts stt vlm llm voice tunnel; do
+  mkdir -p "$native/services/$service"
+  cp "$ROOT/services/$service/config.toml.example" "$native/services/$service/"
+done
+{
+  printf 'set -euo pipefail\nsource %q\nROOT=%q\n' "$native/scripts/lib/common.sh" "$native"
+  awk '/^(ensure_local_config|sync_storage_credentials)\(\) \{$/ { on = 1 } on { print } on && /^}$/ { on = 0 }' \
+    "$ROOT/scripts/setup.sh"
+  printf 'ensure_local_config\nsync_storage_credentials\n'
+} > "$native/run.sh"
+grep -q '^sync_storage_credentials() {$' "$native/run.sh" \
+  || fail "setup.sh no longer defines the native config steps this test runs"
+native_dry_run() {
+  ARGUS_DATA_DIR="$sandbox/data" bash -x "$native/run.sh" > "$native/out-$1" 2> "$native/trace-$1" \
+    || fail "the native setup dry run ($1) failed: $(tail -n 3 "$native/out-$1" | tr '\n' ' ')"
+}
+native_dry_run first
+native_state="$(cat "$native"/services/*/config.toml | sha256sum)"
+native_dry_run second
+[ "$(cat "$native"/services/*/config.toml | sha256sum)" = "$native_state" ] \
+  || fail "a second native setup changed a config"
+[ "$(toml_value "$native/services/identity/config.toml" storage.s3 secret_key)" \
+    = "$(tr -d '\r\n' < "$sandbox/data/rustfs/secrets/argus_s3_secret_key")" ] \
+  || fail "the native setup did not sync the S3 secret into identity's config"
+{
+  secret_values "$native"/services/*/config.toml
+  grep '^S3 ' "$sandbox/secrets.tsv"
+} > "$native/secrets.tsv"
+for name in "native/services/auth/config.toml [jwt] secret" \
+    "native/services/auth/config.toml [device] fingerprint_secret" \
+    "native/services/sync/config.toml [rtc] api_secret" \
+    "native/services/tunnel/config.toml [tunnel] secret"; do
+  secret_named "$native/secrets.tsv" "$name" || fail "the native secret inventory has no $name"
+done
+check_trace "$native/secrets.tsv" "$native/trace-first" "the native setup"
+check_trace "$native/secrets.tsv" "$native/trace-second" "a second native setup"
 for service in identity camera guard; do
   account_dir="$sandbox/data/rustfs/accounts/$service"
   [ -d "$account_dir" ] && [ "$(find "$account_dir" -maxdepth 0 -perm 700)" = "$account_dir" ] \
@@ -369,7 +509,7 @@ grep -Eq '^ensure_secret_file "\$secrets/argus_s3_secret_key" lower_hex 16$|^  e
 if [ -n "${ARGUS_NATS_SERVER_BIN:-}" ]; then
   mkdir -p "$TEST_TMP/broker/js"
   cp "$permissions" "$TEST_TMP/broker/"
-  nats_auth_conf "$permissions" "$TEST_TMP/broker" legacy > "$TEST_TMP/broker/auth.conf"
+  nats_auth_conf "$permissions" "$TEST_TMP/broker" "$legacy" > "$TEST_TMP/broker/auth.conf"
   sed -e "s#\"/data\"#\"$TEST_TMP/broker/js\"#" "$ROOT/argus-deploy/nats.conf" > "$TEST_TMP/broker/nats.conf"
   "$ARGUS_NATS_SERVER_BIN" -c "$TEST_TMP/broker/nats.conf" -t > "$TEST_TMP/broker/check.out" 2>&1 \
     || fail "nats-server refuses the provisioned configuration: $(tail -n 1 "$TEST_TMP/broker/check.out")"

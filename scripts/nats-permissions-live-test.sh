@@ -57,7 +57,8 @@ mkdir -p "$work/seeds" "$work/js"
 chmod 700 "$work/seeds"
 cp "$ROOT/argus-deploy/nats-permissions.conf" "$work/"
 legacy="$(openssl rand -hex 16)"
-nats_auth_conf "$work/nats-permissions.conf" "$work/seeds" "$legacy" > "$work/auth.conf"
+printf '[nats]\npassword = "%s"\n' "$legacy" > "$work/legacy.toml"
+nats_auth_conf "$work/nats-permissions.conf" "$work/seeds" "$work/legacy.toml" > "$work/auth.conf"
 for seed in "$work"/seeds/*.seed; do
   nkey_public_of "$seed" > "${seed%.seed}.pub"
 done

@@ -318,6 +318,12 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   `access_key`/`secret_key` keys (from those three configs and from the provisioning that writes
   them). Native runs still take the shared keys from `scripts/setup.sh`; the cleanup gives them
   their account's file first. Both credentials stay valid until that check passes.
+  Trace follow-up, 2026-10-13: no provisioning secret is a shell value any more, in
+  `provision-host.sh` or in `setup.sh`'s config steps (NATS seeds and password, JWT, refresh and
+  fingerprint secrets, every RPC credential, LiveKit and tunnel secrets, pairing code, S3 keys).
+  `deploy-mounts-test` runs both twice under `bash -x`, builds the inventory from what they wrote
+  and fails on any secret in a trace or any change on a re-run (before: 83 of 89 provisioning and
+  57 of 57 native secret values in the traces; after: none).
 - S5 Legacy refresh tokens two rotations old refused without revoking their family (accepted gap).
 
 Rulings of 2026-10-12 (reviewer, owner away and delegating): S2 is superseded by the separate Argus

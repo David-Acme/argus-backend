@@ -109,11 +109,13 @@ ensure_instance_certs() {
   local fingerprint
   fingerprint="$(openssl x509 -in "$cert_dir/ca.pem" -noout -fingerprint -sha256 | sed 's/.*=//; s/://g')"
   local code_file="$signer_dir/pairing.code"
-  local code=""
-  [ -f "$code_file" ] && code="$(tr -d '[:space:]' < "$code_file")"
-  if ! printf '%s' "$code" | grep -Eq '^[A-Z2-7]{26,32}$'; then
-    code="$(openssl rand 16 | base32 | tr -d '=\n')"
-    (umask 077 && printf '%s\n' "$code" > "$code_file")
+  if ! { [ -f "$code_file" ] && awk '
+      { text = text $0 }
+      END {
+        gsub(/[[:space:]]/, "", text)
+        exit !(text ~ /^[A-Z2-7]+$/ && length(text) >= 26 && length(text) <= 32)
+      }' "$code_file"; }; then
+    (umask 077 && { openssl rand 16 | base32 | tr -d '=\n'; printf '\n'; } > "$code_file")
   fi
   chmod 600 "$code_file"
 

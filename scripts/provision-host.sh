@@ -270,21 +270,17 @@ write_nats_auth() {
   local dir="$DATA_DIR/nats"
   local seeds="$DATA_DIR/nats/seeds"
   local permissions="$DEPLOY_DIR/nats-permissions.conf"
-  local password temp
+  local config="$DEPLOY_DIR/config.auth.toml"
+  local temp
 
-  password="$(toml_value "$DEPLOY_DIR/config.auth.toml" nats password)"
-  case "$password" in
-    ""|*CHANGE_ME*) err "no NATS password in config.auth.toml"; return 1 ;;
-  esac
-  case "$password" in
-    *[!A-Za-z0-9]*) err "the NATS password must be alphanumeric"; return 1 ;;
-  esac
+  toml_secret_set "$config" nats password || { err "no NATS password in config.auth.toml"; return 1; }
+  toml_secret_set "$config" nats password 1 '^[A-Za-z0-9]+$' \
+    || { err "the NATS password must be alphanumeric"; return 1; }
   [ -f "$permissions" ] || { err "missing NATS permissions: $permissions"; return 1; }
-  need_cmd base32
   mkdir -p "$seeds"
   chmod 700 "$dir" "$seeds"
   temp="$(mktemp "$dir/auth.conf.XXXXXX")"
-  if ! nats_auth_conf "$permissions" "$seeds" "$password" > "$temp"; then
+  if ! nats_auth_conf "$permissions" "$seeds" "$config" > "$temp"; then
     rm -f "$temp"
     err "could not issue the NATS service keys in $seeds (OpenSSL with Ed25519 is required)"
     return 1
