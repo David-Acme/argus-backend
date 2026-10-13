@@ -199,6 +199,7 @@ drogon::Task<Json::Value> CameraProbeService::probe(CameraProbeRequest request) 
                                                    .main = pathOr(body.streamPath, camera_stream_paths::kDefaultMain),
                                                    .sub = pathOr(body.subStreamPath, camera_stream_paths::kDefaultSub),
                                                    .catalogId = std::nullopt,
-                                                   .retentionIncident = std::nullopt});
+                                                   .retentionIncident = std::nullopt,
+                                                   .onvifPort = std::nullopt});
   co_return co_await BlockingTask<Json::Value>([camera]() { return camera_probe::run(camera); });
 }

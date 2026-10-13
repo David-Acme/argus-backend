@@ -31,6 +31,13 @@ inline std::optional<std::string> pathError(const std::optional<std::string>& pa
   return "must start with / and use only letters, digits and / . _ ~ - ? = & % + , ; :";
 }
 
+inline std::optional<std::string> onvifPortError(const std::optional<int32_t>& port)
+{
+  if (!port || (*port >= 0 && *port <= camera_stream_paths::kMaxPort))
+    return std::nullopt;
+  return "must be between 1 and 65535, or 0 for the model's default";
+}
+
 inline std::optional<std::string> catalogError(const std::optional<std::string>& catalogId)
 {
   if (!catalogId || catalogId->empty() || camera_catalog::byId(*catalogId) != nullptr)

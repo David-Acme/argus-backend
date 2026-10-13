@@ -20,6 +20,7 @@
 #include <shared/services/camera-driver/stream-only-driver.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
+#include <shared/vocabulary/camera-stream-paths.hxx>
 #include <feature/zone/controllers/zone-controller.hxx>
 #include <feature/zone/dtos/create-zone-dto.hxx>
 #include <auth/jwt-filter.hxx>
@@ -829,10 +830,12 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   onvifBody["port"] = 554;
   onvifBody["driver"] = "onvif";
   onvifBody["catalogId"] = "onvif";
+  onvifBody["onvifPort"] = 8899;
   const Json::Value onvifRow =
       body(drogon::sync_wait(cameraController.create(drogon::HttpRequest::newHttpJsonRequest(onvifBody))))["info"];
   const int64_t garageId = onvifRow["id"].asInt64();
   CHECK(onvifRow["capabilities"] == R"(["streamOnly"])");
+  CHECK(camera_stream_paths::onvifPortOf(onvifRow["config"].asString()) == 8899);
   const auto capabilitiesOf = [](int64_t id) {
     const auto row = drogon::sync_wait(CameraRepository().findById(id));
     return row ? row->capabilities : std::string();
@@ -876,6 +879,20 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK(body(drogon::sync_wait(
             cameraController.update(drogon::HttpRequest::newHttpJsonRequest(garageMoved), garageId)))
             ["info"]["capabilities"] == R"(["streamOnly"])");
+  Json::Value garagePort;
+  garagePort["onvifPort"] = 0;
+  const Json::Value defaultPort = body(drogon::sync_wait(
+      cameraController.update(drogon::HttpRequest::newHttpJsonRequest(garagePort), garageId)))["info"];
+  CHECK_FALSE(camera_stream_paths::onvifPortOf(defaultPort["config"].asString()).has_value());
+  CHECK(camera_stream_paths::catalogIdOf(defaultPort["config"].asString()) == "onvif");
+  for (const int wrong : {-1, 65536}) {
+    Json::Value outOfRange;
+    outOfRange["onvifPort"] = wrong;
+    CHECK_THROWS_AS(UpdateCameraDto::fromJson(outOfRange), ValidationException);
+    outOfRange["name"] = "Garage";
+    outOfRange["ip"] = "192.168.1.42";
+    CHECK_THROWS_AS(CreateCameraDto::fromJson(outOfRange), ValidationException);
+  }
   CameraDriverRegistry::instance().forget(garageId);
 
   CameraPresenceRecorder presence;

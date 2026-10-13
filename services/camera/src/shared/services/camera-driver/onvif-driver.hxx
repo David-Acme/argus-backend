@@ -21,6 +21,7 @@ public:
   OnvifDriver(const CameraSchema& camera, std::shared_ptr<IOnvifTransport> transport);
   explicit OnvifDriver(OnvifDriverParts parts);
 
+  static int portOf(const CameraSchema& camera);
   static OnvifEndpoint endpointOf(const CameraSchema& camera);
 
   [[nodiscard]] Json::Value capabilities() const override;

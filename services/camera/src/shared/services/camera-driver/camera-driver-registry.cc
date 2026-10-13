@@ -4,7 +4,6 @@
 #include "tapo-driver.hxx"
 
 #include <mutex>
-#include <shared/vocabulary/camera-stream-paths.hxx>
 #include <text/sha256.hxx>
 #include <trantor/utils/Logger.h>
 #include <unordered_map>
@@ -26,7 +25,7 @@ std::string fingerprintOf(const CameraSchema& camera)
                          cameraDriverToString(camera.driver) + '|' + camera.username + '|' +
                          camera.password + '|' + camera.cloudUsername + '|' + camera.cloudPassword;
   if (camera.driver == CameraDriver::Onvif)
-    material += '|' + camera_stream_paths::catalogIdOf(camera.config);
+    material += '|' + std::to_string(OnvifDriver::portOf(camera));
   return argus::hash::sha256Hex(material);
 }
 }

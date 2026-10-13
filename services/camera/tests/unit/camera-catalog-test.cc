@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <feature/camera/dtos/camera-address-rules.hxx>
 #include <feature/camera/infra/rtsp-probe.hxx>
 #include <shared/services/camera-catalog/camera-catalog.hxx>
 #include <shared/services/camera-driver/camera-capabilities.hxx>
@@ -307,14 +308,57 @@ TEST_CASE("a fixed Tapo camera offers no pan and tilt, an unknown model keeps ev
 
 TEST_CASE("the catalog id lives in the camera config beside the stream paths")
 {
-  const std::string config = camera_stream_paths::withConfig(
-      {.config = R"({"streamPath":"/a"})", .main = std::nullopt, .sub = std::nullopt, .catalogId = "reolink", .retentionIncident = std::nullopt});
+  const std::string config = camera_stream_paths::withConfig({.config = R"({"streamPath":"/a"})",
+                                                              .main = std::nullopt,
+                                                              .sub = std::nullopt,
+                                                              .catalogId = "reolink",
+                                                              .retentionIncident = std::nullopt,
+                                                              .onvifPort = std::nullopt});
   CHECK(camera_stream_paths::catalogIdOf(config) == "reolink");
   CHECK(camera_stream_paths::of(config).main == "/a");
-  const std::string cleared = camera_stream_paths::withConfig(
-      {.config = config, .main = std::nullopt, .sub = std::nullopt, .catalogId = "",
-       .retentionIncident = std::nullopt});
+  const std::string cleared = camera_stream_paths::withConfig({.config = config,
+                                                               .main = std::nullopt,
+                                                               .sub = std::nullopt,
+                                                               .catalogId = "",
+                                                               .retentionIncident = std::nullopt,
+                                                               .onvifPort = std::nullopt});
   CHECK(camera_stream_paths::catalogIdOf(cleared).empty());
+}
+
+TEST_CASE("a camera's own ONVIF port lives in its config, and 0 hands it back to the model's")
+{
+  const std::string own = camera_stream_paths::withConfig({.config = R"({"catalogId":"vigi"})",
+                                                           .main = std::nullopt,
+                                                           .sub = std::nullopt,
+                                                           .catalogId = std::nullopt,
+                                                           .retentionIncident = std::nullopt,
+                                                           .onvifPort = 8899});
+  CHECK(camera_stream_paths::onvifPortOf(own) == 8899);
+  CHECK(camera_stream_paths::catalogIdOf(own) == "vigi");
+  const std::string kept = camera_stream_paths::withConfig({.config = own,
+                                                            .main = "/live",
+                                                            .sub = std::nullopt,
+                                                            .catalogId = std::nullopt,
+                                                            .retentionIncident = std::nullopt,
+                                                            .onvifPort = std::nullopt});
+  CHECK(camera_stream_paths::onvifPortOf(kept) == 8899);
+  const std::string cleared = camera_stream_paths::withConfig({.config = own,
+                                                               .main = std::nullopt,
+                                                               .sub = std::nullopt,
+                                                               .catalogId = std::nullopt,
+                                                               .retentionIncident = std::nullopt,
+                                                               .onvifPort = 0});
+  CHECK_FALSE(camera_stream_paths::onvifPortOf(cleared).has_value());
+  CHECK(json_util::fromString(cleared).isMember("catalogId"));
+  CHECK_FALSE(json_util::fromString(cleared).isMember("onvifPort"));
+  CHECK_FALSE(camera_stream_paths::onvifPortOf(R"({"onvifPort":70000})").has_value());
+  CHECK_FALSE(camera_stream_paths::onvifPortOf(R"({"onvifPort":"8899"})").has_value());
+  CHECK_FALSE(camera_stream_paths::onvifPortOf("not json").has_value());
+  CHECK(camera_address_rules::onvifPortError(std::nullopt) == std::nullopt);
+  CHECK(camera_address_rules::onvifPortError(0) == std::nullopt);
+  CHECK(camera_address_rules::onvifPortError(65535) == std::nullopt);
+  CHECK(camera_address_rules::onvifPortError(65536).has_value());
+  CHECK(camera_address_rules::onvifPortError(-1).has_value());
 }
 
 TEST_CASE("an H.264 parameter set gives the picture size, cropping included")

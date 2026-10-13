@@ -464,6 +464,16 @@ TEST_CASE("a camera without pan and tilt still connects, and every PTZ call says
   CHECK_FALSE(driver.move({.x = std::nullopt, .y = std::nullopt, .angle = std::nullopt, .stop = true}).ok);
 }
 
+TEST_CASE("a camera's own ONVIF port wins over its model's, and 80 is the last default")
+{
+  CHECK(OnvifDriver::endpointOf(onvifCamera(R"({"catalogId":"vigi","onvifPort":8899})")).port == 8899);
+  CHECK(OnvifDriver::endpointOf(onvifCamera(R"({"onvifPort":8899})")).port == 8899);
+  CHECK(OnvifDriver::endpointOf(onvifCamera(R"({"catalogId":"vigi","onvifPort":0})")).port == 2020);
+  CHECK(OnvifDriver::endpointOf(onvifCamera(R"({"catalogId":"vigi","onvifPort":"8899"})")).port == 2020);
+  CHECK(OnvifDriver::endpointOf(onvifCamera(R"({"onvifPort":70000})")).port == 80);
+  CHECK(OnvifDriver::portOf(onvifCamera(R"({"catalogId":"reolink","onvifPort":8000})")) == 8000);
+}
+
 TEST_CASE("the ONVIF driver answers the app in the shapes it already reads")
 {
   CHECK(OnvifDriver::endpointOf(onvifCamera(R"({"catalogId":"vigi"})")).port == 2020);
@@ -717,6 +727,10 @@ TEST_CASE("over HTTP the transport posts SOAP 1.2 with its action and answers th
   CHECK(std::dynamic_pointer_cast<OnvifDriver>(control) != nullptr);
   CHECK(CameraDriverRegistry::instance().driverFor(onvifCamera("{}", 77)) == nullptr);
   CameraDriverRegistry::instance().forget(77);
+  const auto onOwnPort = CameraDriverRegistry::instance().controlDriverFor(onvifCamera(R"({"onvifPort":8000})", 78));
+  CHECK(CameraDriverRegistry::instance().controlDriverFor(onvifCamera(R"({"onvifPort":8000})", 78)) == onOwnPort);
+  CHECK(CameraDriverRegistry::instance().controlDriverFor(onvifCamera(R"({"onvifPort":8001})", 78)) != onOwnPort);
+  CameraDriverRegistry::instance().forget(78);
 
   drogon::app().quit();
   runner.join();

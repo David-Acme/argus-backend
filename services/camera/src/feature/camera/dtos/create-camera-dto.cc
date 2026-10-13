@@ -28,6 +28,8 @@ CreateCameraDto CreateCameraDto::fromJson(const Json::Value& json)
     dto.catalogId = json["catalogId"].asString();
   if (json.isMember("retentionIncident") && json["retentionIncident"].isBool())
     dto.retentionIncident = json["retentionIncident"].asBool();
+  if (json.isMember("onvifPort") && json["onvifPort"].isInt())
+    dto.onvifPort = json["onvifPort"].asInt();
 
   START_VALIDATION(CreateCameraDto, dto)
   IS_NOT_EMPTY(name)
@@ -60,6 +62,9 @@ CreateCameraDto CreateCameraDto::fromJson(const Json::Value& json)
   })
   CUSTOM_LAMBDA(catalogId, [](const CreateCameraDto& d) {
     return camera_address_rules::catalogError(d.catalogId);
+  })
+  CUSTOM_LAMBDA(onvifPort, [](const CreateCameraDto& d) {
+    return camera_address_rules::onvifPortError(d.onvifPort);
   })
   END_VALIDATION()
   return dto;

@@ -41,6 +41,8 @@ UpdateCameraDto UpdateCameraDto::fromJson(const Json::Value& json)
     dto.catalogId = json["catalogId"].asString();
   if (json.isMember("retentionIncident") && json["retentionIncident"].isBool())
     dto.retentionIncident = json["retentionIncident"].asBool();
+  if (json.isMember("onvifPort") && json["onvifPort"].isInt())
+    dto.onvifPort = json["onvifPort"].asInt();
 
   START_VALIDATION(UpdateCameraDto, dto)
   IS_NOT_EMPTY_OPTIONAL(name)
@@ -78,6 +80,9 @@ UpdateCameraDto UpdateCameraDto::fromJson(const Json::Value& json)
   })
   CUSTOM_LAMBDA(catalogId, [](const UpdateCameraDto& d) {
     return camera_address_rules::catalogError(d.catalogId);
+  })
+  CUSTOM_LAMBDA(onvifPort, [](const UpdateCameraDto& d) {
+    return camera_address_rules::onvifPortError(d.onvifPort);
   })
   CUSTOM_LAMBDA(driver, [](const UpdateCameraDto& d) -> std::optional<std::string> {
     if (!d.driver)

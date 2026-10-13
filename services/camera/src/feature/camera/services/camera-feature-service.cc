@@ -97,7 +97,8 @@ CameraFeatureService::create(const CreateCameraDto& body) const
                                                     .main = body.streamPath,
                                                     .sub = body.subStreamPath,
                                                     .catalogId = body.catalogId,
-                                                    .retentionIncident = body.retentionIncident});
+                                                    .retentionIncident = body.retentionIncident,
+                                                    .onvifPort = body.onvifPort});
   CameraSchema row;
   try {
     row = co_await repository_.create({
@@ -169,12 +170,13 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
       if (!body.cloudPassword)
         input.cloudPassword = std::string();
     }
-    if (body.streamPath || body.subStreamPath || body.catalogId || body.retentionIncident) {
+    if (body.streamPath || body.subStreamPath || body.catalogId || body.retentionIncident || body.onvifPort) {
       input.config = camera_stream_paths::withConfig({.config = before.config,
                                                       .main = body.streamPath,
                                                       .sub = body.subStreamPath,
                                                       .catalogId = body.catalogId,
-                                                      .retentionIncident = body.retentionIncident});
+                                                      .retentionIncident = body.retentionIncident,
+                                                      .onvifPort = body.onvifPort});
     }
     const bool incident = body.retentionIncident.value_or(
         camera_stream_paths::retentionIncidentOf(before.config));

@@ -51,13 +51,18 @@ OnvifDriver::OnvifDriver(OnvifDriverParts parts)
 {
 }
 
+int OnvifDriver::portOf(const CameraSchema& camera)
+{
+  if (const auto own = camera_stream_paths::onvifPortOf(camera.config))
+    return *own;
+  const auto* entry = camera_catalog::byId(camera_stream_paths::catalogIdOf(camera.config));
+  return entry != nullptr && entry->defaults.onvifPort > 0 ? entry->defaults.onvifPort : kDefaultPort;
+}
+
 OnvifEndpoint OnvifDriver::endpointOf(const CameraSchema& camera)
 {
-  const auto* entry = camera_catalog::byId(camera_stream_paths::catalogIdOf(camera.config));
-  const int port =
-      entry != nullptr && entry->defaults.onvifPort > 0 ? entry->defaults.onvifPort : kDefaultPort;
   return {.host = camera.ip,
-          .port = port,
+          .port = portOf(camera),
           .username = camera.username,
           .password = camera.password,
           .timeoutSeconds = kTimeoutSeconds};

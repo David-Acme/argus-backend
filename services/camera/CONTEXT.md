@@ -1287,7 +1287,8 @@ Not done yet, in the order they pay off:
    is the clean fix once a device is at hand to test it.
 7. **ONVIF control** for generic cameras: pan, tilt and presets landed (2026-10-13, "ONVIF
    control"), and the camera row records what each camera reports; the app's hold renewal,
-   imaging (day/night), events (motion) and a per-camera ONVIF port are still to come.
+   imaging (day/night) and events (motion) are still to come; the per-camera ONVIF port landed
+   (2026-10-13), and the app's form field for it is app work.
 
 ## The SD card's timeline (2026-10-13, F1)
 
@@ -2028,9 +2029,17 @@ go2rtc (no PTZ), gSOAP (GPL or commercial) and a Python sidecar.
   device, media, PTZ and imaging services by URL. The client keeps only each
   URL's path and always speaks to the camera's stored address and ONVIF port,
   so an answer cannot send the credentials to another host.
-- **The port** is the catalog entry's `onvifPort` for the camera's
-  `catalogId`: 2020 for Tapo and VIGI, 8000 for Reolink, 80 for most others,
-  and 80 without an entry. There is no per-camera ONVIF port setting yet.
+- **The port** (`OnvifDriver::portOf`) is the camera's own `onvifPort` when
+  it has one, else the catalog entry's `onvifPort` for its `catalogId`
+  (2020 for Tapo and VIGI, 8000 for Reolink, 80 for most others), else 80.
+  The camera's own port (2026-10-13, queue (i)) lives in its `config` JSON
+  beside the stream paths and the `catalogId`
+  (`camera_stream_paths::onvifPortOf`). `POST /camera` and `PATCH
+  /camera/{id}` take `onvifPort`, 1 to 65535; `0` removes it and hands the
+  camera back to its model's port. Any other value is a 422
+  (`camera_address_rules::onvifPortError`). A stored value outside the range
+  is ignored. The app's camera form has no field for it yet; that is app
+  work. The probe does not speak ONVIF and does not take it.
 - **Connecting reads the camera itself.** After the clock come
   `GetCapabilities`, `GetDeviceInformation` and, from the media service,
   `GetProfiles`. The first profile with a `PTZConfiguration` is the one every
@@ -2106,8 +2115,8 @@ go2rtc (no PTZ), gSOAP (GPL or commercial) and a Python sidecar.
   nor a siren. A driver that refused them would turn the rejection into an
   indeterminate command that guard keeps retrying, and leave a siren lease
   behind. Camera-control uses `controlDriverFor`, the same cache with ONVIF
-  in it. For an ONVIF camera the cache key also covers the `catalogId`,
-  because the port comes from it.
+  in it. For an ONVIF camera the cache key also covers the resolved port
+  (`portOf`), so a new `onvifPort` or `catalogId` builds a new driver.
 
 Proven without a camera: `tests/unit/onvif-client-test.cc` drives the client
 and the driver through a scripted transport over the SOAP fixtures in

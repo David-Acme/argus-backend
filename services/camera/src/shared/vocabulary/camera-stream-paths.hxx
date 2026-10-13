@@ -21,6 +21,8 @@ inline constexpr const char* kMainKey = "streamPath";
 inline constexpr const char* kSubKey = "subStreamPath";
 inline constexpr const char* kCatalogKey = "catalogId";
 inline constexpr const char* kRetentionIncidentKey = "retentionIncident";
+inline constexpr const char* kOnvifPortKey = "onvifPort";
+inline constexpr int kMaxPort = 65535;
 inline constexpr size_t kMaxCatalogIdLength = 40;
 inline constexpr const char* kDefaultMain = "/stream1";
 inline constexpr const char* kDefaultSub = "/stream2";
@@ -66,6 +68,17 @@ inline bool retentionIncidentOf(const std::string& config)
          json[kRetentionIncidentKey].asBool();
 }
 
+inline std::optional<int> onvifPortOf(const std::string& config)
+{
+  const Json::Value json = json_util::fromString(config);
+  if (!json.isObject() || !json[kOnvifPortKey].isInt())
+    return std::nullopt;
+  const int port = json[kOnvifPortKey].asInt();
+  if (port < 1 || port > kMaxPort)
+    return std::nullopt;
+  return port;
+}
+
 struct ConfigChange
 {
   std::string config;
@@ -73,6 +86,7 @@ struct ConfigChange
   std::optional<std::string> sub;
   std::optional<std::string> catalogId;
   std::optional<bool> retentionIncident;
+  std::optional<int> onvifPort;
 };
 
 inline std::string withConfig(const ConfigChange& change)
@@ -96,6 +110,12 @@ inline std::string withConfig(const ConfigChange& change)
       json[kRetentionIncidentKey] = true;
     else
       json.removeMember(kRetentionIncidentKey);
+  }
+  if (change.onvifPort) {
+    if (*change.onvifPort == 0)
+      json.removeMember(kOnvifPortKey);
+    else
+      json[kOnvifPortKey] = *change.onvifPort;
   }
   return json_util::toString(json);
 }
