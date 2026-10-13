@@ -398,32 +398,29 @@ int main()
     settingsRpc->attachModuleData(moduleData);
     controlServices.push_back(settingsRpc.get());
   }
-  auto controlListener = startSyncControlRpc(
-      {.address = control.listener.host + ":" + std::to_string(control.listener.port),
-       .tlsAddress = internalTlsConfig.address,
-       .tls = internalTls,
-       .services = std::move(controlServices)});
+  const SyncControlRpcListenInput controlInput{
+      .address = control.listener.host + ":" + std::to_string(control.listener.port),
+      .tlsAddress = internalTlsConfig.address,
+      .tls = internalTls,
+      .services = std::move(controlServices)};
+  auto controlListener = startSyncControlRpc(controlInput);
+  if (const auto failure = syncControlRpcFailure(controlInput, controlListener)) {
+    LOG_FATAL << *failure << " — aborting startup";
+    _exit(1);
+  }
   std::unique_ptr<grpc::Server> controlServer = std::move(controlListener.server);
-  if (controlServer && controlListener.tlsPort > 0)
+  if (controlListener.tlsPort > 0)
     LOG_INFO << "Sync control RPC with mutual TLS on " << internalTlsConfig.address;
-  if (controlServer)
-    LOG_INFO << "Sync control RPC listening on " << control.listener.host << ":"
-             << control.listener.port << " (cleartext, "
-             << (controlGate->open()
-                     ? "loopback only, no caller credential"
-                     : std::to_string(controlGate->pairedCount()) +
-                           " paired callers" +
-                           (controlGate->acceptsLegacy()
-                                ? ", legacy fleet secret for the unpaired ones"
-                                : ""))
-             << ")";
-  else
-    LOG_WARN << "Sync control RPC failed to listen on " << control.listener.host
-             << ":" << control.listener.port
-             << (internalTls && !internalTlsConfig.address.empty()
-                     ? " and " + internalTlsConfig.address
-                     : std::string{})
-             << "; role changes and disconnects cannot reach this service";
+  LOG_INFO << "Sync control RPC listening on " << control.listener.host << ":"
+           << control.listener.port << " (cleartext, "
+           << (controlGate->open()
+                   ? "loopback only, no caller credential"
+                   : std::to_string(controlGate->pairedCount()) +
+                         " paired callers" +
+                         (controlGate->acceptsLegacy()
+                              ? ", legacy fleet secret for the unpaired ones"
+                              : ""))
+           << ")";
   argus::client::GrpcServerDrain controlDrain(std::move(controlServer), kControlShutdownDeadline);
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port

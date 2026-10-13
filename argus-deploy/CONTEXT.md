@@ -1011,9 +1011,9 @@ Wired so far: tts, settings, productivity, notification and sync.
 - sync publishes its plaintext control RPC 7041 on 127.0.0.1, so 7241 is
   published there too (`SYNC_CONTROL_TLS_PORT`). Its main used to build
   the control server inline and now calls startSyncControlRpc
-  (services/sync/src/app/rpc/sync-control-rpc-server). A control RPC that
-  cannot listen stays a warning, as before, and that covers the mutual TLS
-  port too: no server then serves either port.
+  (services/sync/src/app/rpc/sync-control-rpc-server). If the control RPC
+  cannot listen on either port, sync does not start (fatal since step 4; see
+  services/sync/CONTEXT.md, "The control RPC must listen").
 
 The clients move to `tls:` targets in step 5, and the plaintext listeners
 go only after the owner's check. For every deploy template that declares

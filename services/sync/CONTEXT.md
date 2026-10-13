@@ -117,6 +117,16 @@ protocol could not regress by accident in the commit that changed the endpoint.
   Each caller presents its own credential (`[rpc.callers]` `identity` and
   `notification`, paired with their `[sync] control_credential`), checked by
   `argus::client::FleetCallerGate`; see "Control callers" below.
+- **The control RPC must listen.** Since S1 step 4 (2026-10-13), sync does
+  not start when its control RPC cannot listen on 7041, or on its mutual TLS
+  port 7241 when that one is configured. It logs the cause with LOG_FATAL
+  and exits 1. It used to log a warning and run on, but running without the
+  control RPC is a silent outage: identity and notification can no longer
+  emit to a user's room, while /sync still looks healthy. A sync that
+  stops is restarted by its supervisor, shows in the logs, and is marked
+  unhealthy by compose. The decision is syncControlRpcFailure
+  (`src/app/rpc/sync-control-rpc-server`), tested in
+  sync-control-rpc-server-test.
 - **Sessions.** Every socket keeps the `JwtContext` its upgrade produced, and
   that context now carries the session id the auth verdict returned, so a
   socket is tagged with its session for its whole life. argus-auth queues its

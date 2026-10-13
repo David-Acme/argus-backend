@@ -16,3 +16,7 @@ struct SyncControlRpcListenInput
 
 [[nodiscard]] argus::client::Listener
 startSyncControlRpc(const SyncControlRpcListenInput& input);
+
+[[nodiscard]] std::optional<std::string>
+syncControlRpcFailure(const SyncControlRpcListenInput& input,
+                      const argus::client::Listener& listener);
