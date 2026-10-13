@@ -31,6 +31,17 @@ target_compile_options(sync-context-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-context-test)
 add_test(NAME sync-context-test COMMAND sync-context-test)
 
+add_executable(sync-remote-test unit/sync-remote-test.cc)
+target_link_libraries(sync-remote-test PRIVATE
+    argus::sync-remote
+    argus::sync-services
+    argus::contracts::routes
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(sync-remote-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(sync-remote-test)
+add_test(NAME sync-remote-test COMMAND sync-remote-test)
+
 add_executable(audit-sync-read-test unit/audit-sync-read-test.cc)
 target_link_libraries(audit-sync-read-test PRIVATE
     argus::sync-fanout

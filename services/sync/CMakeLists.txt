@@ -123,6 +123,7 @@ argus_service(NAME argus-sync
             argus::sync-rtc
             argus::sync-activity
             argus::sync-heartbeat
+            argus::sync-remote
             argus::sync-control-rpc
             argus::sync-module-data
             argus::sync-repositories

@@ -15,6 +15,7 @@
 #include <feature/heartbeat/services/heartbeat-feed.hxx>
 #include <feature/heartbeat/services/heartbeat-service.hxx>
 #include <feature/heartbeat/services/presence-board.hxx>
+#include <feature/remote/services/remote-link-feed.hxx>
 #include <feature/rtc/controllers/rtc-controller.hxx>
 #include <feature/rtc/infra/livekit-room-client.hxx>
 #include <feature/rtc/infra/notification-call-claimer.hxx>
@@ -268,6 +269,7 @@ int main()
   std::shared_ptr<ChangeFeedConsumer> changeFeedConsumer;
   std::unique_ptr<NatsPushIntentSink> heartbeatPush;
   std::unique_ptr<HeartbeatFeed> heartbeatFeed;
+  std::unique_ptr<RemoteLinkFeed> remoteLinkFeed;
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; event bus disabled";
   }
@@ -311,6 +313,12 @@ int main()
             .pushIntervalSeconds =
                 static_cast<double>(heartbeatConfig.pushIntervalSeconds),
             .refillSeconds = static_cast<double>(heartbeatConfig.refillSeconds)});
+    remoteLinkFeed = std::make_unique<RemoteLinkFeed>(
+        RemoteLinkFeedDependencies{.bus = natsBus.get()},
+        RemoteLinkFeedConfig{.subject = std::string(nats_subject::kTunnelLink),
+                             .gate = {.staleAfterMs = 90'000, .throttleMs = 5'000},
+                             .tickSeconds = 1.0,
+                             .refusalLogWindowMs = 60'000});
     if (connected)
       LOG_INFO << "NATS event bus connected to " << natsBus->options().url;
     else
@@ -405,7 +413,7 @@ int main()
   drogon::app().registerBeginningAdvice([&syncDb = syncDb, &auditFanOut,
                                          &changeFeedConsumer,
                                          &deliveryConsumer, &auditRetention,
-                                         &heartbeatFeed, &lanes, &userDirectory,
+                                         &heartbeatFeed, &remoteLinkFeed, &lanes, &userDirectory,
                                          auditRetentionDays]() {
     if (!auditFanOut.migrateLegacySchema() ||
         !DbService::runScriptFile(syncDb.schemaPath) ||
@@ -423,6 +431,8 @@ int main()
     auditRetention.start(auditRetentionDays);
     if (heartbeatFeed)
       heartbeatFeed->start();
+    if (remoteLinkFeed)
+      remoteLinkFeed->start();
     lanes->startRevalidation({.intervalSeconds = kSocketRevalidationSeconds,
                               .directory = userDirectory});
   });
@@ -437,6 +447,9 @@ int main()
   if (heartbeatFeed)
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*heartbeatFeed, "sync-heartbeat"));
+  if (remoteLinkFeed)
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*remoteLinkFeed, "sync-remote-link"));
   if (voiceLeg)
     shutdown_signal::onStop(shutdown_signal::drainOf(*voiceLeg, "sync-voice"));
   shutdown_signal::onStop(

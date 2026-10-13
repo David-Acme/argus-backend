@@ -1045,8 +1045,14 @@ user's role.
                  "intro": { "es": { "what", "examples": [..] }, "en": { ... } },
                  "roles": ["guard"], "enabled": false, "lifecycle": "disabled",
                  "dataPurgedAt": null }, ... ],
-  "ownerCatalog": [ ...the Owner's module JSON, only for the Owner... ] }
+  "ownerCatalog": [ ...the Owner's module JSON, only for the Owner... ],
+  "remote": { "homeId": "0123456789abcdef0123456789abcdef",
+              "domain": "argus-tunnel.lynk.page", "link": "up", "since": 1790000000 } }
 ```
+
+`remote` is additive (2026-10-13, "Remote access in the context" below): present
+only when the home's tunnel client has reported its link, absent for a home
+without remote access and for the `unknown` role.
 
 `timeZone` is the household zone: the IANA name the host runs in, resolved by
 `hostTimeZone()` (`packages/lib/runtime/src/runtime/host-time-zone.cc`) from
@@ -1121,6 +1127,60 @@ never get a module room or a global audit page for any role, the Owner
 included: a reminder change reaches the target's own room only.
 `tests/unit/sync-context-test.cc` pins the context, the frames, the room moves,
 the pulls and the refusal.
+
+### Remote access in the context (home-id contract, 2026-10-13)
+
+The app reaches its home through the cloud relay by a device name,
+`<service>--<home-id>.<domain>`, and shows whether the cloud link is up
+(argus-cloud `docs/plan.md`, section 4b; the app's route model is in the
+frontend's `CONTEXT.md`, "Local-first route choice"). argus-sync tells it both,
+from the one message the home's tunnel client publishes
+(`services/tunnel/CONTEXT.md`, "The link state on the home's bus"). argus-sync
+never reads the tunnel's config.
+
+- **The field.** `remote: {homeId, domain, link, since}` in `InitialInfo`'s
+  `info.context` and in every `ContextUpdate`; `link` is `up`, `connecting` or
+  `down`, `since` the epoch second the link entered it. It is additive: absent
+  until the tunnel client has reported, so a home with no remote access never
+  shows it. Every role with a session gets it; `unknown` gets neither the field
+  nor a frame for it (`user_context::build`, `UserContextService::deliverRemote`).
+- **The feed** (`src/feature/remote/`, module `argus::sync-remote`): a core
+  subscription to `argus.tunnel.v1.link`, each message handed to the loop. Its
+  `RemoteLinkGate` holds the last valid state and decides what is sent;
+  `UserContextService` holds the copy `InitialInfo` and every context build read.
+- **Every frame is checked before it touches the context**, the second barrier
+  after the NATS permission (only the `tunnel` row may publish the subject):
+  `homeId` 32 lowercase hexadecimal characters, `domain` a lowercase DNS name of
+  two labels or more, `link` one of the closed enum's values (`RemoteLink`, with
+  `remoteLinkToString`/`remoteLinkFromString`), `since` a positive integer
+  (`readRemoteLink` in `packages/contracts/routes`). A frame that fails, or is
+  not JSON, is dropped and the last valid state stays. The drops are logged at
+  most once a minute, one line with their count and the check the last one
+  failed (`RefusalLog`).
+- **When a frame goes out.** A `ContextUpdate` follows a change of what the app
+  routes or shows by: the home id appearing or changing, the domain changing, or
+  the link changing. A `since` alone is not a change. At most one frame per 5
+  seconds: a change within 5 seconds of the last frame waits, and the frame that
+  ends the wait (the feed checks once a second) carries the latest state. When
+  the state is back where the last frame left it (up, down, up inside the
+  window), nothing is sent. The frame goes to every connected socket but
+  `unknown`'s, built like a module change's but without asking argus-settings
+  for the owner catalog: `ownerCatalog` is left out and the app keeps its last
+  one, as it already does when settings does not answer.
+- **Silence reads as down.** The client republishes every 30 seconds; when
+  nothing valid has been heard for 90 seconds the link reads `down`, `since` the
+  last frame heard, and the home id and domain stay, so the app can still name
+  the relay. A dropped frame does not count as heard. The next valid frame is a
+  change like any other. A restart of argus-sync starts with no state and learns
+  it within 30 seconds; until then `InitialInfo` goes without `remote`.
+
+Tests (they run without a stack): `tests/unit/sync-remote-test.cc` (each of the
+four checks, a failing frame leaving the last valid state, the 5-second
+throttle, the trailing frame with the latest state, no frame when the state is
+back, a `since` alone not being a change, the 90-second rule with the id kept,
+the refusal log, the feed writing the context) and `tests/unit/sync-context-test.cc`
+(the field for every role and not for `unknown`, `InitialInfo` with and without
+it, the update reaching a Resident and not an `unknown` socket).
 
 ### Resource changes (2026-10-12, the real-time plan's 2.2)
 

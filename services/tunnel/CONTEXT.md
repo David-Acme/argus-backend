@@ -162,6 +162,15 @@ message (`services/sync/CONTEXT.md`, "Remote access in the context").
   started, or reconnects at once after a GOAWAY), `down` after a failed attempt
   or a drop. `since` moves only when the state does, so the retries of a down
   link change nothing.
+- **A link that comes back and drops again reads `down`.** `reconnectAttempts()`
+  goes back to 0 with the HELLO that brings the link up (`LinkClient::handleHello`
+  stores 0 beside `connected`), and a drop schedules the next attempt with the
+  counter at 1 (`nextDelayMs`), so a link that was up and drops reads `down` from
+  its first retry, never `connecting`. Only a GOAWAY's immediate reconnect, which
+  stores 0 again (`scheduleReconnect`), reads `connecting`. The two counters are
+  read one after the other, not together, so a sample taken in the instant
+  between a drop and its scheduled retry can read `connecting` once; the next
+  sample, a second later, reads `down`.
 - **When it is sent.** At once on every change, and again every 30 seconds while
   nothing changes, so a subscriber that restarts learns the state within 30
   seconds and one that stops hearing it can call the link down (argus-sync does

@@ -174,9 +174,11 @@ SyncService::handleConnect(const drogon::HttpRequestPtr& req,
   user["id"] = ctx.sub;
   user["role"] = userRoleToString(role);
   user["isActive"] = ctx.isActive;
-  if (settled)
+  if (settled) {
+    const auto remote = userContext().remote();
     user["context"] = user_context::build(
-        {.userId = ctx.sub, .role = role, .modules = modules, .ownerCatalog = ownerCatalog});
+        {.userId = ctx.sub, .role = role, .modules = modules, .ownerCatalog = ownerCatalog, .remote = remote});
+  }
 
   SocketEmitDto response;
   response.operation = SyncOperation::InitialInfo;

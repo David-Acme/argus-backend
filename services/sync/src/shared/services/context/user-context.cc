@@ -114,6 +114,8 @@ Json::Value build(const BuildInput& input)
   context["modules"] = std::move(modules);
   if (input.role == UserRole::Owner && input.ownerCatalog.isArray())
     context["ownerCatalog"] = input.ownerCatalog;
+  if (input.remote && input.role != UserRole::Unknown)
+    context["remote"] = routes::remoteLinkToJson(*input.remote);
   return context;
 }
 
@@ -165,8 +167,12 @@ void UserContextService::deliverLocal(const Conn& conn, const ContextDelivery& d
     return;
   const auto& ctx = conn->getContextRef<JwtContext>();
   RoomManager{}.reconcileRoleRooms(conn, {.role = ctx.role, .modules = delivery.modules});
-  const Json::Value context = user_context::build(
-      {.userId = ctx.sub, .role = ctx.role, .modules = delivery.modules, .ownerCatalog = delivery.ownerCatalog});
+  const auto remoteNow = remote();
+  const Json::Value context = user_context::build({.userId = ctx.sub,
+                                                   .role = ctx.role,
+                                                   .modules = delivery.modules,
+                                                   .ownerCatalog = delivery.ownerCatalog,
+                                                   .remote = remoteNow});
   conn->sendJson(user_context::updateFrame(context));
 }
 
@@ -212,6 +218,34 @@ void UserContextService::userChanged(int64_t userId, UserRole role) const
       deliverLocal(conn, {.modules = *modules, .ownerCatalog = catalog});
     });
   });
+}
+
+void UserContextService::setRemote(std::optional<routes::RemoteLinkState> remote) const
+{
+  const std::scoped_lock lock(mutex_);
+  remote_ = std::move(remote);
+}
+
+std::optional<routes::RemoteLinkState> UserContextService::remote() const
+{
+  const std::scoped_lock lock(mutex_);
+  return remote_;
+}
+
+void UserContextService::deliverRemote(const Conn& conn, const ModuleSnapshot& modules) const
+{
+  if (!conn || !conn->hasContext() || conn->getContextRef<JwtContext>().role == UserRole::Unknown)
+    return;
+  const Json::Value noCatalog(Json::nullValue);
+  deliverLocal(conn, {.modules = modules, .ownerCatalog = noCatalog});
+}
+
+void UserContextService::remoteChanged() const
+{
+  if (!drogon::app().isRunning())
+    return;
+  const auto modules = std::make_shared<const ModuleSnapshot>(moduleGate().snapshot());
+  RoomManager{}.forEachConnection([this, modules](const Conn& conn) { deliverRemote(conn, *modules); });
 }
 
 UserContextService& userContext()

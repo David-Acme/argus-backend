@@ -4,6 +4,7 @@
 #include <auth/user-role.hxx>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
+#include <routes/remote-link.hxx>
 #include <shared/services/room/room-manager.hxx>
 
 #include <cstdint>
@@ -22,6 +23,7 @@ struct BuildInput
   UserRole role;
   const ModuleSnapshot& modules;
   const Json::Value& ownerCatalog;
+  const std::optional<routes::RemoteLinkState>& remote;
 };
 
 [[nodiscard]] Json::Value build(const BuildInput& input);
@@ -48,6 +50,11 @@ public:
   void modulesChanged() const;
   void userChanged(int64_t userId, UserRole role) const;
 
+  void setRemote(std::optional<routes::RemoteLinkState> remote) const;
+  [[nodiscard]] std::optional<routes::RemoteLinkState> remote() const;
+  void remoteChanged() const;
+  void deliverRemote(const Conn& conn, const ModuleSnapshot& modules) const;
+
   [[nodiscard]] std::optional<UserRole> roleOf(int64_t userId) const;
 
 private:
@@ -56,6 +63,7 @@ private:
   mutable std::mutex mutex_;
   std::shared_ptr<const CatalogFetch> fetch_;
   mutable std::unordered_map<int64_t, UserRole> roles_;
+  mutable std::optional<routes::RemoteLinkState> remote_;
 };
 
 UserContextService& userContext();

@@ -5,6 +5,7 @@ argus_module(NAME sync-services
     INCLUDES ../..
     DEPENDS
         argus::contracts::auth
+        argus::contracts::routes
         argus::contracts::sync
         argus::lib::auth
         argus::lib::runtime

@@ -30,6 +30,8 @@
 
 namespace
 {
+const std::optional<routes::RemoteLinkState> kNoRemote;
+
 class FakeConnection final : public drogon::WebSocketConnection
 {
 public:
@@ -171,7 +173,7 @@ TEST_CASE("the context carries the role, its capabilities, the roles to offer an
 {
   const auto modules = snapshotWith(true, true);
   const Json::Value none;
-  const Json::Value context = user_context::build({.userId = 7, .role = UserRole::Resident, .modules = modules, .ownerCatalog = none});
+  const Json::Value context = user_context::build({.userId = 7, .role = UserRole::Resident, .modules = modules, .ownerCatalog = none, .remote = kNoRemote});
 
   CHECK(context["userId"] == 7);
   CHECK(context["role"] == "resident");
@@ -210,7 +212,7 @@ TEST_CASE("a role whose module is off is inactive and holds the baseline alone")
 {
   const auto modules = snapshotWith(false, true);
   const Json::Value none;
-  const Json::Value context = user_context::build({.userId = 9, .role = UserRole::Guard, .modules = modules, .ownerCatalog = none});
+  const Json::Value context = user_context::build({.userId = 9, .role = UserRole::Guard, .modules = modules, .ownerCatalog = none, .remote = kNoRemote});
   CHECK(context["role"] == "guard");
   CHECK(context["roleActive"] == false);
   CHECK(contains(context["capabilities"], "safety.panic"));
@@ -226,7 +228,7 @@ TEST_CASE("a role this build does not know gets an empty context, never a defaul
 {
   const auto modules = snapshotWith(true, true);
   const Json::Value catalog = json_util::fromString(R"([{"id":"core"}])");
-  const Json::Value context = user_context::build({.userId = 3, .role = UserRole::Unknown, .modules = modules, .ownerCatalog = catalog});
+  const Json::Value context = user_context::build({.userId = 3, .role = UserRole::Unknown, .modules = modules, .ownerCatalog = catalog, .remote = kNoRemote});
   CHECK(context["role"] == "unknown");
   CHECK(context["roleActive"] == false);
   CHECK(context["capabilities"].empty());
@@ -237,15 +239,15 @@ TEST_CASE("only the Owner receives the owner catalog")
 {
   const auto modules = snapshotWith(true, true);
   const Json::Value catalog = json_util::fromString(R"([{"id":"core","job":null}])");
-  const Json::Value owner = user_context::build({.userId = 1, .role = UserRole::Owner, .modules = modules, .ownerCatalog = catalog});
+  const Json::Value owner = user_context::build({.userId = 1, .role = UserRole::Owner, .modules = modules, .ownerCatalog = catalog, .remote = kNoRemote});
   CHECK(owner["ownerCatalog"].isArray());
   CHECK(owner["ownerCatalog"][0]["id"] == "core");
   for (const auto role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
-    const Json::Value other = user_context::build({.userId = 2, .role = role, .modules = modules, .ownerCatalog = catalog});
+    const Json::Value other = user_context::build({.userId = 2, .role = role, .modules = modules, .ownerCatalog = catalog, .remote = kNoRemote});
     CHECK_FALSE(other.isMember("ownerCatalog"));
   }
   const Json::Value none;
-  CHECK_FALSE(user_context::build({.userId = 1, .role = UserRole::Owner, .modules = modules, .ownerCatalog = none})
+  CHECK_FALSE(user_context::build({.userId = 1, .role = UserRole::Owner, .modules = modules, .ownerCatalog = none, .remote = kNoRemote})
                   .isMember("ownerCatalog"));
 }
 
@@ -253,7 +255,7 @@ TEST_CASE("the context update frame is operation 13 with the bare context as inf
 {
   const auto modules = snapshotWith(true, true);
   const Json::Value none;
-  const Json::Value context = user_context::build({.userId = 1, .role = UserRole::Guest, .modules = modules, .ownerCatalog = none});
+  const Json::Value context = user_context::build({.userId = 1, .role = UserRole::Guest, .modules = modules, .ownerCatalog = none, .remote = kNoRemote});
   const Json::Value frame = user_context::updateFrame(context);
   CHECK(frame["operation"] == 13);
   CHECK(frame["option"] == "user");
@@ -313,7 +315,7 @@ TEST_CASE("a socket connecting before the enabled set is known gets no context, 
 
   const Json::Value none;
   const Json::Value unknown = user_context::build(
-      {.userId = 61, .role = UserRole::Resident, .modules = moduleGate().snapshot(), .ownerCatalog = none});
+      {.userId = 61, .role = UserRole::Resident, .modules = moduleGate().snapshot(), .ownerCatalog = none, .remote = kNoRemote});
   CHECK(unknown["modules"].empty());
   CHECK_FALSE(unknown["capabilities"].empty());
 
@@ -547,7 +549,7 @@ TEST_CASE("a producer that sends no kind gets one inferred: core for core, avail
   core.id = "core";
   const ModuleSnapshot modules({core, bare});
   const Json::Value none;
-  const Json::Value context = user_context::build({.userId = 1, .role = UserRole::Guest, .modules = modules, .ownerCatalog = none});
+  const Json::Value context = user_context::build({.userId = 1, .role = UserRole::Guest, .modules = modules, .ownerCatalog = none, .remote = kNoRemote});
   CHECK(context["modules"][0]["kind"] == "core");
   CHECK(context["modules"][1]["kind"] == "available");
 }
@@ -557,7 +559,87 @@ TEST_CASE("the context names the zone the household runs in, taken from TZ")
   setenv("TZ", "America/New_York", 1);
   const auto modules = snapshotWith(true, true);
   const Json::Value none;
-  const Json::Value context = user_context::build({.userId = 1, .role = UserRole::Guest, .modules = modules, .ownerCatalog = none});
+  const Json::Value context = user_context::build({.userId = 1, .role = UserRole::Guest, .modules = modules, .ownerCatalog = none, .remote = kNoRemote});
   unsetenv("TZ");
   CHECK(context["timeZone"] == "America/New_York");
+}
+
+TEST_CASE("every role with a session gets remote in its context, and Unknown gets no field")
+{
+  const auto modules = snapshotWith(true, true);
+  const Json::Value none;
+  const std::optional<routes::RemoteLinkState> remote = routes::RemoteLinkState{
+      .homeId = "0123456789abcdef0123456789abcdef",
+      .domain = "argus-tunnel.lynk.page",
+      .link = routes::RemoteLink::Up,
+      .since = 1'790'000'000};
+  for (const auto role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    const Json::Value context =
+        user_context::build({.userId = 5, .role = role, .modules = modules, .ownerCatalog = none, .remote = remote});
+    REQUIRE(context.isMember("remote"));
+    CHECK(context["remote"]["homeId"] == "0123456789abcdef0123456789abcdef");
+    CHECK(context["remote"]["domain"] == "argus-tunnel.lynk.page");
+    CHECK(context["remote"]["link"] == "up");
+    CHECK(context["remote"]["since"] == 1'790'000'000);
+    CHECK(context["remote"].getMemberNames().size() == 4);
+  }
+  const Json::Value unknown = user_context::build(
+      {.userId = 5, .role = UserRole::Unknown, .modules = modules, .ownerCatalog = none, .remote = remote});
+  CHECK_FALSE(unknown.isMember("remote"));
+  const Json::Value absent =
+      user_context::build({.userId = 5, .role = UserRole::Owner, .modules = modules, .ownerCatalog = none, .remote = kNoRemote});
+  CHECK_FALSE(absent.isMember("remote"));
+}
+
+TEST_CASE("InitialInfo carries the remote state the home last reported, and Unknown's carries none")
+{
+  setGate(true, true);
+  userContext().setRemote(routes::RemoteLinkState{.homeId = "0123456789abcdef0123456789abcdef",
+                                                  .domain = "argus-tunnel.lynk.page",
+                                                  .link = routes::RemoteLink::Connecting,
+                                                  .since = 1'790'000'100});
+  SyncService service;
+  const auto resident = connect(service, 71, UserRole::Resident);
+  const Json::Value first = json_util::fromString(resident->messages.front());
+  CHECK(first["info"]["context"]["remote"]["link"] == "connecting");
+  CHECK(first["info"]["context"]["remote"]["since"] == 1'790'000'100);
+  const auto unknown = connect(service, 72, UserRole::Unknown);
+  const Json::Value unknownFirst = json_util::fromString(unknown->messages.front());
+  CHECK_FALSE(unknownFirst["info"]["context"].isMember("remote"));
+  leave(resident);
+  leave(unknown);
+  userContext().setRemote(std::nullopt);
+  moduleGate().reset();
+}
+
+TEST_CASE("a remote change sends a context update to every role with a session, and Unknown gets no frame")
+{
+  setGate(true, true);
+  userContext().setRemote(std::nullopt);
+  SyncService service;
+  const auto resident = connect(service, 81, UserRole::Resident);
+  const auto unknown = connect(service, 82, UserRole::Unknown);
+  resident->messages.clear();
+  unknown->messages.clear();
+
+  userContext().setRemote(routes::RemoteLinkState{.homeId = "0123456789abcdef0123456789abcdef",
+                                                  .domain = "argus-tunnel.lynk.page",
+                                                  .link = routes::RemoteLink::Down,
+                                                  .since = 1'790'000'200});
+  const auto modules = moduleGate().snapshot();
+  userContext().deliverRemote(resident, modules);
+  userContext().deliverRemote(unknown, modules);
+
+  REQUIRE(resident->messages.size() == 1);
+  const Json::Value update = resident->last();
+  CHECK(update["operation"] == 13);
+  CHECK(update["option"] == "user");
+  CHECK(update["info"]["remote"]["link"] == "down");
+  CHECK(update["info"]["remote"]["homeId"] == "0123456789abcdef0123456789abcdef");
+  CHECK_FALSE(update["info"].isMember("ownerCatalog"));
+  CHECK(unknown->messages.empty());
+  leave(resident);
+  leave(unknown);
+  userContext().setRemote(std::nullopt);
+  moduleGate().reset();
 }
