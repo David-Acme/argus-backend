@@ -280,6 +280,25 @@ VOLATILE_FIELDS = {
                   "change it reports, so both move on every call; the "
                   "interval, grace and armed state beside them stay pinned",
     },
+    ("sync", "/sync/activity"): {
+        "keys": ("items", "nextCursor"),
+        "reason": "the Owner's activity history grows with every write the "
+                  "fleet makes, and the rows reach argus-sync asynchronously "
+                  "over NATS, so the page a probe reads depends on how many "
+                  "had landed; the envelope, the access answers beside it and "
+                  "the filters and paging (pinned by sync-activity-test) stay "
+                  "checked",
+    },
+    ("settings", "/modules/{1}/impact"): {
+        "keys": ("data", "filesBytes"),
+        "reason": "the module's data summary is read live from five owners "
+                  "(the synced change history arrives asynchronously over "
+                  "NATS) and the bytes of its files come from the model files "
+                  "present on the answering host; the refusal, the stops, the "
+                  "role holders, the invitations, the roles an uninstall may "
+                  "give and what keeps running stay pinned, and the data "
+                  "summary itself is pinned by GET /modules/{id}/data",
+    },
     ("notification", "/notification/delivery-summary"): {
         "keys": ("latencyMsMax", "latencyMsP50", "latencyMsP95",
                  "probeMs", "probeOk", "sent", "unacked"),
@@ -310,6 +329,25 @@ VOLATILE_FIELDS = {
         "reason": "the recommendation is derived from the cores, RAM, ISA "
                   "and GPU of the host that answers, so it differs between "
                   "machines; the profile previews beside it stay pinned",
+    },
+    ("shared", "/health"): {
+        "keys": ("internalTls",),
+        "reason": "internalTls describes the internal certificate the "
+                  "answering process loaded: its CA's subject is the "
+                  "installation's own, the days left move every day and a CA "
+                  "rotation puts two CAs in the bundle, so it is never "
+                  "pinned here; lib/http's tls-health-test pins its content, "
+                  "and every other /health field stays pinned",
+    },
+    ("guard", "/health"): {
+        "keys": ("internalTls",),
+        "reason": "guard's own /health has no envelope and carries "
+                  "internalTls at its top level, beside status and service; "
+                  "it describes the internal certificate the answering "
+                  "process loaded, whose CA's subject is the installation's "
+                  "own and whose days left move every day, so it is never "
+                  "pinned here; lib/http's tls-health-test pins its content, "
+                  "and status and service stay pinned",
     },
 }
 
@@ -1117,6 +1155,8 @@ def record(fixtures, routes, bases, sessions, ids, roles, timeout, stack):
             print(f"violation: {entry['unit']} {entry['method']} "
                   f"{entry['route']} [{entry['probe']['name']}] {problem}",
                   file=sys.stderr)
+        record_entry["response"]["json"] = without_volatile(
+            entry, record_entry["response"]["json"], VOLATILE_FIELDS)
         units.setdefault(entry["unit"], []).append(record_entry)
         if session_killed(entry, record_entry):
             sessions = remint_sessions(stack, bases["auth"], timeout)
@@ -1165,25 +1205,16 @@ def differences(expected, actual, prefix=""):
     return []
 
 
-def volatile_of(manifest):
-    entries = manifest.get("volatileFields")
-    if entries is None:
-        return VOLATILE_FIELDS
-    return {(entry["unit"], entry["route"]): {"keys": tuple(entry["keys"]),
-                                              "reason": entry.get("reason", "")}
-            for entry in entries}
-
-
 def without_volatile(entry, body, volatile):
     fields = volatile.get((entry["unit"], entry["route"]))
     if not fields or not isinstance(body, dict):
         return body
-    info = body.get("info")
-    if not isinstance(info, dict):
+    if "info" in body and not isinstance(body["info"], dict):
         return body
     body = json.loads(json.dumps(body))
+    node = body["info"] if "info" in body else body
     for key in fields["keys"]:
-        drop_path(body["info"], key.split("."))
+        drop_path(node, key.split("."))
     return body
 
 
@@ -1225,7 +1256,6 @@ def verify(fixtures, routes, bases, sessions, ids, roles, timeout, verbose,
     report_unsent(routes, bases, ids, roles)
     manifest = load_manifest(fixtures)
     deviations = manifest["declaredDeviations"]
-    volatile = volatile_of(manifest)
     plan = build_plan(plan_routes(routes, bases), ids, roles, bases)
     expected_by_unit = {unit: load_fixture(fixtures, unit)
                         for unit in {entry["unit"] for entry in plan}}
@@ -1242,7 +1272,7 @@ def verify(fixtures, routes, bases, sessions, ids, roles, timeout, verbose,
                   file=sys.stderr)
             continue
         actual = run_entry(entry, bases, sessions, timeout)
-        problems = compare(expected, actual, volatile)
+        problems = compare(expected, actual, VOLATILE_FIELDS)
         problems += violates(entry, actual, deviations)
         checked += 1
         if problems:

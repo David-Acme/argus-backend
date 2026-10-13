@@ -67,6 +67,14 @@
     },
     {
       "keys": [
+        "internalTls"
+      ],
+      "reason": "guard's own /health has no envelope and carries internalTls at its top level, beside status and service; it describes the internal certificate the answering process loaded, whose CA's subject is the installation's own and whose days left move every day, so it is never pinned here; lib/http's tls-health-test pins its content, and status and service stay pinned",
+      "route": "/health",
+      "unit": "guard"
+    },
+    {
+      "keys": [
         "latencyMsMax",
         "latencyMsP50",
         "latencyMsP95",
@@ -91,6 +99,15 @@
     },
     {
       "keys": [
+        "data",
+        "filesBytes"
+      ],
+      "reason": "the module's data summary is read live from five owners (the synced change history arrives asynchronously over NATS) and the bytes of its files come from the model files present on the answering host; the refusal, the stops, the role holders, the invitations, the roles an uninstall may give and what keeps running stay pinned, and the data summary itself is pinned by GET /modules/{id}/data",
+      "route": "/modules/{1}/impact",
+      "unit": "settings"
+    },
+    {
+      "keys": [
         "recommendation"
       ],
       "reason": "the recommendation is derived from the cores, RAM, ISA and GPU of the host that answers, so it differs between machines; the profile previews beside it stay pinned",
@@ -99,12 +116,11 @@
     },
     {
       "keys": [
-        "at",
-        "presenceSince"
+        "internalTls"
       ],
-      "reason": "a heartbeat stamps the second it answers and the presence change it reports, so both move on every call; the interval, grace and armed state beside them stay pinned",
-      "route": "/sync/heartbeat",
-      "unit": "sync"
+      "reason": "internalTls describes the internal certificate the answering process loaded: its CA's subject is the installation's own, the days left move every day and a CA rotation puts two CAs in the bundle, so it is never pinned here; lib/http's tls-health-test pins its content, and every other /health field stays pinned",
+      "route": "/health",
+      "unit": "shared"
     },
     {
       "keys": [
@@ -117,12 +133,12 @@
     },
     {
       "keys": [
-        "data",
-        "filesBytes"
+        "at",
+        "presenceSince"
       ],
-      "reason": "the module's data summary is read live from five owners (the synced change history arrives asynchronously over NATS) and the bytes of its files come from the model files present on the answering host; the refusal, the stops, the role holders, the invitations, the roles an uninstall may give and what keeps running stay pinned, and the data summary itself is pinned by GET /modules/{id}/data",
-      "route": "/modules/{1}/impact",
-      "unit": "settings"
+      "reason": "a heartbeat stamps the second it answers and the presence change it reports, so both move on every call; the interval, grace and armed state beside them stay pinned",
+      "route": "/sync/heartbeat",
+      "unit": "sync"
     }
   ]
 }

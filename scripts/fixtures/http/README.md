@@ -119,16 +119,46 @@ invariant, one entry per unit, method and route, each with a written reason.
 One entry exists: guard's `/health`, which guard serves from its own handler
 and which no other unit's client reads.
 
-`volatileFields` in the manifest lists the fields of a response that are an
-observation rather than a contract, and the comparison drops them from both
-sides; a key spelled `list[].field` drops that field from every row of the
-list. Three entries exist: `/notification/delivery-summary` reports the push
-channel's last self-test (`probeOk`, `probeMs`, `latencyMsP50/P95/Max`), which
-runs on its own schedule; `/settings/profiles` carries the `recommendation`
-derived from the answering host's hardware; `/camera/overview` reports each
-camera's `health`, which is `unknown` until the stream supervisor's first
-probe of the fixture camera and `unreachable` after it. Everything beside
-them stays pinned.
+Volatile fields are the fields of a response that are an observation rather
+than a contract. `VOLATILE_FIELDS` in `scripts/golden-http.py` is their only
+source: `record` writes it into the manifest's `volatileFields`, and `verify`
+reads it from the harness, never from the manifest, so an entry edited into
+the manifest by hand changes nothing. `record` drops the declared keys before
+it writes, so they never reach a fixture, and `verify` drops them from both
+sides, a recording older than that rule included. A key is dropped under
+`info` in an answer with the envelope, and at the top level of an answer
+without it (guard's `/health`, the one declared deviation). Only the keys an
+entry declares for its own unit and route are dropped, so the same key
+anywhere else still fails the comparison. A key spelled `list[].field` drops
+that field from every row of the list. The entries:
+
+- `/notification/delivery-summary`: the push channel's last self-test
+  (`probeOk`, `probeMs`, `latencyMsP50/P95/Max`), which runs on its own
+  schedule, and the `sent` and `unacked` counters of deliveries that drain
+  asynchronously;
+- `/settings/profiles`: the `recommendation` derived from the answering
+  host's hardware;
+- `/modules` and `/modules/{1}/impact`: what the answering host reports about
+  its hardware, disk, model files and live data;
+- `/camera/overview`: each camera's `health`, which is `unknown` until the
+  stream supervisor's first probe of the fixture camera and `unreachable`
+  after it;
+- `/sync/heartbeat` and `/sync/activity`: the heartbeat's stamps and the
+  activity page, which move with every call and every write;
+- `/health`, for the shared envelope and for guard's own answer:
+  `internalTls`, the internal certificate the answering process loaded. Its
+  CA's subject is the installation's own and its days left move every day, so
+  it is never pinned here; lib/http's `tls-health-test` pins its content.
+
+Everything beside them stays pinned. `scripts/golden-http-test.py`, run by
+`scripts/build-all-test.sh`, pins all of it against a stand-in fleet:
+- `internalTls` leaves both kinds of `/health` answer, while a field beside it
+  that changes, or a key no entry declares, still fails.
+- A recording whose `internalTls` carries a random CA subject writes no trace
+  of it.
+- `record` regenerates the manifest's entries from the harness alone, and the
+  committed manifest is what it writes.
+- `verify` ignores a manifest whose entries were removed by hand.
 
 ## What a run writes
 
