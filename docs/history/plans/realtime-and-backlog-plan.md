@@ -244,6 +244,12 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   once every installation has booted a build that carries the copy into `change_outbox`. It is no
   longer created and no longer read or written, but deleting it is a data removal and needs an
   explicit owner reset or a later release, never a side effect of a feature build.
+- D9 argus-tts's streaming route answers an empty 200 to a request that carries `Connection: close`
+  (Drogon logs "Chunking Set CloseConnection" and drops the chunked body; found 2026-10-12 while
+  measuring Pocket). The in-tree client avoids it (`tts-remote.cc` streams with `closeConnection =
+  false`), so production is not affected; any other client that closes per request gets silence.
+  Fix on the server side (ignore the close for the stream, or close after the last chunk) with a test
+  that streams audio to a closing client.
 
 ## 8. Decisions awaiting the owner
 
