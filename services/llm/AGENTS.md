@@ -6,7 +6,7 @@ that apply to llm-service code; when in doubt, the root file wins.
 
 ## MUST-FOLLOW Rules
 
-1. **Brain process** — this service runs LFM2.5 chat, intent routing, the
+1. **Brain process** — this service runs LFM2.5 chat, the decider, the
    assistant turn (decide, fill, run, speak) and the memory stack. It must not absorb
    camera, face, VLM, STT, TTS or voice-session responsibilities.
 2. **Internal wire only** — the service serves the legacy voice session over
@@ -21,8 +21,8 @@ that apply to llm-service code; when in doubt, the root file wins.
    `{status, info, errors}` envelope (`ApiResponse`); the chat body is JSON
    `{messages, max_tokens?, temperature?, reset_context?}`.
 4. **The turn stays here** — `LfmAdapter`, the turn flow (deciders, slots,
-   pendings), `ToolRegistry`/`ToolExecutor` and the fast intent gate are part of
-   the brain. The LLM never chooses a tool: it is not told one exists, and it only
+   pendings), `ToolRegistry`/`ToolExecutor` and the decider stack (rules, Laya and
+   the explicit triggers) are part of the brain. The LLM never chooses a tool: it is not told one exists, and it only
    speaks. Tools are MCP tools: the core
    ones (memory, reminders, `app.open`) are served in process, the modules'
    by their own services and aggregated by `ToolDirectory`, filtered per turn
@@ -50,8 +50,8 @@ that apply to llm-service code; when in doubt, the root file wins.
     Identity/camera catalog snapshots arrive over the SDK clients
     (`argus::clients::identity`, `argus::clients::camera`); this service opens no
     other domain database.
-14. **Models are never copied** — LLM, memory and intent artifacts are read
-    from the shared `models/` tree.
+14. **Models are never copied** — the LLM and memory artifacts and the
+    decider and extractor bundles are read from the shared `models/` tree.
 15. **Build gate** — 0 errors AND 0 warnings (`-Wall -Wextra`) in Argus's
     own code; third-party includes are SYSTEM.
 
@@ -70,18 +70,21 @@ argus-llm/
   src/feature/llm/      argus::llm — the brain:
                           controllers/ (the frozen /llm/v1/* wire),
                           dtos/ (the chat DTO, validation DSL),
-                          services/ (the LFM2.5 engine facade, the fast
-                                     intent gate, and the tool runtime
-                                     under its own tools/)
+                          services/ (the LFM2.5 engine facade,
+                                     turn-engines.{hxx,cc} — installTurnEngines,
+                                     the one composition of rules, Laya and
+                                     GLiNER that main.cc and the evals share —
+                                     turn/ (the deciders RuleDecider,
+                                     TriggerDecider and LayaDecider, the
+                                     GLiNER extractor, the slots and the
+                                     flow), and the tool runtime under its
+                                     own tools/)
   src/feature/memory/   argus::memory — the memory stack:
                           services/memory (MemoryService, SqliteGraph,
                             GraphRecall, MemoryFormation, EntityResolver,
                             ToolParser, MemoryChat), services/embedding,
                           services/extract, repositories/memory-graph,
                           vocabulary/, infra/catalog-replica
-  src/feature/intent/   argus::intent — the fast tier of the router:
-                          services/ (fastText classifier + intent router),
-                          models/ (the artifact pin and its NOTICE)
   src/feature/encounter-closed/
                         argus::encounter-closed — the camera guard feed's
                           durable JetStream consumer, writing the memory
@@ -103,27 +106,27 @@ argus-llm/
   database/schema.sql   memory.db: graph tables, memory_vec partitions,
                           catalog replicas, encounter_closed_inbox,
                           pending_intent, duress_raise_outbox
-  config.toml.example   listener, LLM, intent, [rpc], memory/extract/nats,
+  config.toml.example   listener, LLM, [decide]/[extract], [rpc], memory/nats,
                           [camera]/[guard]/[productivity]/[modules] tool
                           providers
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
-There are seven features and nine modules: `argus::llm` compiles the engine
+There are six features and nine modules: `argus::llm` compiles the engine
 facade, the DTOs, the tool runtime and the HTTP surface together,
 `argus::memory` the memory stack the assistant turn calls in process,
-`argus::intent` the fastText router tier `argus::llm`'s gate drives,
 `argus::encounter-closed` the consumer `app/main.cc` starts on the beginning
 advice and stops before `memory.shutdown()`, `argus::pending-intent` the
 ledger and module-feed consumer `app/main.cc` starts and drains with it,
 `argus::duress` the duress screen `app/main.cc` installs on the controller,
 `argus::llm-settings` the
-owner settings catalog, `argus::llm-rpc` the gRPC
-server under `src/app/rpc/`, and `argus::llm-shared` the vocabulary two
+owner settings catalog, `argus::llm-config` the typed config under
+`src/config/`, `argus::llm-rpc` the gRPC server under `src/app/rpc/`, and `argus::llm-shared` the vocabulary two
 features read (`vocabulary/tool-contracts.hxx`). `app/main.cc` registers its
 controllers explicitly (Drogon `HttpController<…, false>`), so no route
 depends on static-init registration. The folder IS the module (root rule 25) —
-a consumer links `argus::llm`, `argus::memory`, `argus::intent`,
-`argus::encounter-closed`, `argus::pending-intent`, `argus::llm-rpc` or
+a consumer links `argus::llm`, `argus::memory`,
+`argus::encounter-closed`, `argus::pending-intent`, `argus::duress`,
+`argus::llm-settings`, `argus::llm-config`, `argus::llm-rpc` or
 `argus::llm-shared`
 and never lists `.cc` files. `src/shared/` holds what 2+ features of this
 service read and nothing else (root rule 23).

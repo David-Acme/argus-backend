@@ -74,7 +74,7 @@ file mounts exists.
 |---|---|
 | `services/tts/scripts/provision.sh` | Supertonic 3 |
 | `services/stt/scripts/provision.sh` | sherpa-onnx models |
-| `services/llm/scripts/provision.sh` | LFM2.5-1.2B-Instruct QAD, e5-small embeddings, NuExtract |
+| `services/llm/scripts/provision.sh` | LFM2.5-1.2B-Instruct QAD, e5-small embeddings, and the Laya and GLiNER pilot bundles installed from a local source (`ARGUS_DECIDE_BUNDLE_SOURCE` / `ARGUS_EXTRACT_BUNDLE_SOURCE`) |
 | `services/vlm/scripts/provision.sh` | LFM2.5-VL-450M GGUF + mmproj |
 | `services/voice/scripts/provision.sh` | Silero VAD |
 | `services/camera/scripts/provision.sh` | YOLO26n export + go2rtc |
@@ -82,7 +82,11 @@ file mounts exists.
 
 Models live in the shared `models/` tree and are never copied into projects or
 the image. Each download uses a `.part` file, SHA-256 verification and an
-atomic move; mismatched files are replaced.
+atomic move; mismatched files are replaced. The two llm bundles are not
+downloadable: they are exported by the sibling `intent-training/` project, and
+`services/llm/scripts/install-bundle.sh <decide|extract> <bundle-dir>` verifies
+one, swaps it into its slot and keeps the replaced bundle as `<slot>.previous`
+(`--rollback` swaps it back).
 
 ## Local PKI and hardware profile
 

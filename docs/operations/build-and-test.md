@@ -212,7 +212,7 @@ carry.
   shared build infrastructure changes.
 - `./scripts/build-all-test.sh` mocks Conan/CMake/CTest and locks the
   orchestrator flags that CI depends on.
-- Evaluation tests (ctest label `eval`: `fast-tier-eval`, `llm-tier-eval`,
+- Evaluation tests (ctest label `eval`: `llm-tier-eval`,
   `llm-tier-smoke`, `eval-sealed-hash`, `decider-eval-test`, `slot-eval-test`,
   `conversation-eval-test`, `stt-wer-eval`) measure what Argus understands
   against versioned gates and exit 77, reported as skipped, when the model, the
@@ -246,8 +246,7 @@ failed` because one that also matched a failure would hide it), a test that
 exits 77 (`SKIP_RETURN_CODE`: the evaluations and `golden-sync-test`, which
 fails instead once a native stack is announced), and the script tests, which
 print a `SKIPPED:` line and exit 77 when a tool they need (`script(1)`,
-clang-tidy) is absent. A test that needs a file the repository carries
-(`models/intent/intent.bin`) fails without it. The final sweep counts each
+clang-tidy) is absent. The final sweep counts each
 project's Skipped tests and the `SKIPPED:` lines of the scripts.
 
 That verdict is per binary, not per case, and it is worth reading it that way.

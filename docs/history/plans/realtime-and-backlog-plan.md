@@ -155,12 +155,12 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 
 ## 3. Laya and GLiNER in the product (not training)
 
-- I1 C++ sequence parity for Laya: the renderer's segment assembly differs from Python
+- **Done (2026-10-12)** — the C++ renderer reproduces 360 Python sequences id for id. I1 C++ sequence parity for Laya: the renderer's segment assembly differs from Python
   (`services/llm/CONTEXT.md` ~1849).
-- I2 One question set: the bundle export writes and hashes a single `questions.json` (~1874).
-- I3 NFC normaliser at serving time: utf8proc as a tier-1 package, ICU as fallback — **owner
+- **Done (2026-10-12)** — the bundle carries its own `questions.json`, its hash is in the manifest, and a bundle without it is refused. I2 One question set: the bundle export writes and hashes a single `questions.json` (~1874).
+- **Done (2026-10-12)** — utf8proc NFC composes every message at the turn's entry, on both legs. I3 NFC normaliser at serving time: utf8proc as a tier-1 package, ICU as fallback — **owner
   approval pending** (~1868).
-- I4 Cutover behind `[decide] engine` / `[extract] engine` (defaults `router` / `nuextract` today),
+- **Done (2026-10-12)** — Laya and GLiNER are the only engines; fastText and NuExtract are removed, the deploy mounts the bundles, and a bundle is validated by its own manifest and swapped with `install-bundle.sh`. I4 Cutover behind `[decide] engine` / `[extract] engine` (defaults `router` / `nuextract` today),
   deploy configs, the 1 GB memory gate on the host; fastText and NuExtract removed in the flipping
   change, per the three-axis measurement.
 - I5 The training kit gets a CUDA lock (today `torch==2.14.1+cpu` and the CPU index in
@@ -462,7 +462,7 @@ otherwise. Order S3 → S4 → S1; every migration is additive and removes the o
 
 ## 8. Decisions awaiting the owner
 
-1. Laya and GLiNER cutover, and utf8proc for NFC.
+1. **Decided (2026-10-12)** — Laya and GLiNER cutover, and utf8proc for NFC.
 2. App siren button and its consent.
 3. Camera conversation variant A.
 4. Settings profiles: RAM floors 14/7 GB; whether Equilibrado uses the fast es model.

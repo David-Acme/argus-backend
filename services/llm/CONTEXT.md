@@ -173,7 +173,8 @@ scaffolds.
   checks every call, the routed ones included. A role with no permitted tool
   gets the direct engine path.
 - **Config**: `[llm]` (engine knobs, mirroring the legacy block) +
-  `[intent]` (the router's model path and operating point) +
+  `[decide]` (the Laya bundle, the fallback policy and the ONNX session
+  options; "Laya and GLiNER: the turn's engines") +
   `[server]` (loopback listener, default 7032) + `[rpc]`/`[rpc.callers]`
   (the gRPC face). The `[server]`
   listener is internal-network only: the wire is never announced or
@@ -184,8 +185,9 @@ scaffolds.
   both through `argus::client::startListening`, caps a message at 8 MiB on
   both, and throws when a port cannot be bound. The plaintext leg stays until
   the owner's deploy check. The database is `[memory]` (`db_file =
-  "database/memory.db"`, `schema_file = "database/schema.sql"`) with the
-  extractor's `[extract]` beside it, and `[nats]` is the bus the catalog
+  "database/memory.db"`, `schema_file = "database/schema.sql"`) with
+  `[extract]` (the GLiNER bundle, its session options and the memory
+  lexicon's coverage floor) beside it, and `[nats]` is the bus the catalog
   replica and the guard feed read; no JWT/device key lives here.
 
 ## Tier note (the F4-2 lesson, applied)
@@ -333,10 +335,11 @@ episodic throttle beside it.
 
 `packages/memory` and `packages/intent` became features of this service:
 `src/feature/memory/` (`argus::memory`) and `src/feature/intent/`
-(`argus::intent`), with the schema at `database/schema.sql` and the
-provisioning in this service's `scripts/provision.sh`. Nothing links them
-from outside — the memory stack's only caller is the assistant turn beside it and
-the intent router's only caller is this feature's gate — so the two
+(`argus::intent`, removed with the fastText router on 2026-10-12; "The decider:
+rules, Laya and explicit triggers"), with the schema at `database/schema.sql`
+and the provisioning in this service's `scripts/provision.sh`. Nothing linked
+them from outside — the memory stack's only caller is the assistant turn beside
+it, and the intent router's only caller was this feature's gate — so the two
 `add_library` targets (`memory-core`, `memory-catalog`) and the standalone
 project behind them bought a build graph nobody read. The history that made
 them packages is below and stands: the stack is in process, and the reason
@@ -356,8 +359,9 @@ and the memory feature both read it, which is what `src/shared/` is for.
 
 - **The memory stack** (`MemoryService`, owned BY VALUE by the host — no
   singleton): `VecDb` (sqlite-vec), `SqliteGraph` (memory.db graph tables),
-  `EntityResolver`, `GraphRecall`, `MemoryFormation`, extraction (NuExtract
-  gguf + lexicon/tiered/temporal) and embeddings (onnxruntime + unigram
+  `EntityResolver`, `GraphRecall`, `MemoryFormation`, extraction (the lexicon
+  tier with its coverage floor, `CoveredLexiconExtractor`, and the temporal
+  resolver) and embeddings (onnxruntime + unigram
   tokenizer). The stack is THE capacity of the brain: the boot gate fails
   loudly rather than running without memory. Feed handlers marshal onto the
   Drogon loop — cnats dispatcher threads must not block.
@@ -421,11 +425,12 @@ and the memory feature both read it, which is what `src/shared/` is for.
   `LlmService`, no wire hop. `WireMemoryChat` survives header-only because
   the back-pressure suite exercises the port over the wire shape.
   Back-pressure is the bounded work queue (`[memory] queue_bound`, default
-  64): at the bound, non-extract jobs drop with a WARN and an extract job
-  evicts the oldest non-extract job.
-- **Models stay in the shared `models/memory/` and `models/extract/` trees** —
-  never copied — and arrive through this service's `scripts/provision.sh`,
-  beside the LLM and intent artifacts.
+  64): at the bound, a new job drops with a WARN. The worker's jobs are
+  embed, compact, rebuild and profile; the extract job left with NuExtract.
+- **Models stay in the shared `models/` tree** — `models/memory/` for the
+  embeddings, `models/decide/` and `models/extract/` for the Laya and GLiNER
+  bundles, never copied — and arrive through this service's
+  `scripts/provision.sh`, beside the LLM weights.
 - **No migrations**: `database/schema.sql` is additive and applied
   idempotently at boot; `argus.db` is never touched, and `memoryDbFile()`
   refuses it outright.
@@ -460,17 +465,18 @@ bus.
 
 ### The mounts
 
-The compose mounts the shared `models/` subpaths (`models/memory` +
-`models/extract`) and the memory database into this service's working
-directory — the ONNX/GGUF artifacts and `memory.db` are read relative to the
+The compose mounts the shared `models/` subpaths (`models/llm`,
+`models/memory`, `models/extract` and `models/decide`, all read-only) and the
+memory database into this service's working directory — the GGUF weights, the
+ONNX artifacts, the two bundles and `memory.db` are read relative to the
 config keys.
 
 ### Stranger isolation (camera guard)
 
 The memory stack serves authenticated users. A person the camera sees is
 foreign to the system: their speech, intents and recall requests must never
-become facts, preferences, reminders or episodes. `captureExplicit`,
-`captureImplicit`, `observeSystemEvent` and every tool handler reject
+become facts, preferences, reminders or episodes. `observeSystemEvent` and
+every tool handler reject
 `userId <= 0`; camera events are written only as episodes through
 `observeSystemEvent` with the owner's scope and never pass through the rule
 parser, so a stranger can never teach the assistant anything. See
@@ -496,51 +502,59 @@ schema file, so existing stores gain the table without losing a row. Each
 receipt captures exactly one owner-scoped episode through `observeSystemEvent`
 — this is the only camera feed that survives as long-term memory.
 
-## The intent router (Phase 4 step 7)
+## The decider: rules, Laya and explicit triggers
 
-`packages/intent` became `src/feature/intent/` (`argus::intent`), the fast tier
-of the router `argus::llm`'s gate drives. The rules (`argus::lib::phrase`) and
-the fastText model each propose; `IntentRouter::decide` arbitrates:
+`turn::kDeciderIds` is `{"rules", "triggers", "laya"}`
+(`src/feature/llm/services/turn/decider.hxx`). The turn decides with
+`FirstOf{RuleDecider, LayaDecider}`:
 
-1. an explicit trigger ("recuerda que", "remind me that") decides alone, even
-   against the model, because the user asked for a write in so many words;
-2. otherwise a model score at or above 0.90 with a 0.10 margin decides, and
-   outranks any rule that proposed another class;
-3. otherwise a rule proposal (a statement, a recall marker, a cancellation)
-   stands only if the model's own top class is the same and scores at least
-   0.50 (`kAgreeFloor`);
-4. otherwise the router abstains and the turn goes on without a tool; the LLM only speaks.
+1. `RuleDecider` runs first: the module commands (`tools/module-command.cc`)
+   and the app commands (`appCommandFor`), exact by construction.
+2. `LayaDecider` runs next: the Laya model reads the utterance against its
+   bundle's own questions and proposes one offered tool with a calibrated
+   confidence, a runner-up and `now` ("Laya and GLiNER: the turn's engines").
+3. `TriggerDecider` (`deciders.{hxx,cc}`) is Laya's fallback. It runs
+   `RuleParser::parse` over the phrase catalog ("recuerda que", "remind me
+   that", ...) and routes `memory.remember`, or `memory.remind` when the
+   utterance asks to be reminded (`recuérdame`, `avísame`, `remind me`, an
+   alarm or a timer) **and** names one non-recurring instant
+   (`TemporalResolver`); "apunta que el mecánico llega el martes" is a fact.
+   Its candidate is exact, at confidence 1.0, with the source
+   `memory_save, trigger` or `reminder_set, trigger`.
 
-A fact becomes a reminder only when the utterance asks to be reminded
-(`recuérdame`, `avísame`, `remind me`, an alarm or timer) and names a single
-instant; "apunta que el mecánico llega el martes" is a fact. Six classes
-(`memory_save`, `memory_recall`, `reminder_set`, `memory_forget`, `camera`,
-`none`); the adapter routes only the first four, and `camera` is a decoy class
-that keeps camera asks out of `memory_recall`. `none` means the fast tier
-abstains: agenda, calendar, task and project utterances carry it because the
-productivity tools sit behind a module the classifier cannot see.
-`IntentDecision::source` records which proposal decided.
+`installTurnEngines` (`services/turn-engines.{hxx,cc}`) composes the stack, and
+`main.cc` and the evals call the same function. When the Laya bundle loads, the
+stack is `{rules, laya}` and the write guard's witnesses are `{rules, laya}`;
+when no Laya bundle loads, the adapter's default stack stays `{rules, triggers}`
+with witnesses `{rules, triggers}`. A Laya model whose bundle validated but whose
+session is not ready (it failed to open or cannot run) hands every turn to the
+same `TriggerDecider`.
 
-Why the arbitration: measured over 629 distinct judge utterances
-(`tests/eval`, `docs/operations/voice-quality-eval.md`), the rules decided
-alone with a precision of 0.44 (statements) and 0.31 (recall markers) while
-the model decided with 0.96; "remind me to call my mom" was a recall, "who's
-at the door" was a saved fact, and a calendar request was a reminder, so 13%
-of the turns that should fall through to the LLM were routed to a memory tool.
-With the arbitration the same set routes 1.4% of them wrongly. Operating point
-0.90 / 0.10, precision-gated: a false `none` costs one LLM round trip, a false
-tool call writes a fact nobody stated. **Degradation is a contract**: no model
-on disk, or a sub-threshold score, and only an explicit trigger can still
-route; every other turn reaches the LLM exactly as before the router existed.
-The model is a published artifact carried in-repo (`models/intent/intent.bin`,
-12.9 MB) with a configure-time SHA256 pin in `src/feature/intent/models/`;
-training lives OUTSIDE this repo, in the sibling `intent-training/` project, and
-only the artifact, its card and the frozen eval fixtures (`tests/fixtures/intent`,
-`tests/fixtures/eval/cases.jsonl`) cross over. `argus-deploy` mounts
-`models/intent` into `argus-llm` (`scripts/deploy-mounts-test.sh` checks it);
-before that mount existed the fast tier was off in Docker. `fasttext` is built
-from the `third_party/fastText` submodule (inference only, static lib) by this
-service's project file, the way it bootstraps llama.cpp and sqlite-vec.
+**Degradation is a contract.** No decider bundle on disk, a bundle that fails
+validation, a label no tool serves, or a model that does not open: one log line
+names the bundle and why (`the Laya decider is off: ...; the turn runs on rules
+and explicit triggers`), and from then on only the rule commands and the
+explicit triggers route. Nothing fails the turn. The trigger tier exists so
+that an explicit ask to write ("recuerda que el código del portón es 1234") is
+honoured even with no model: the user asked for the write in so many words, and
+no score is needed to believe it.
+
+History. From Phase 4 step 7 until 2026-10-12 the second decider was the
+fastText router (`src/feature/intent/`, `argus::intent`): a six-class
+classifier (`memory_save`, `memory_recall`, `reminder_set`, `memory_forget`,
+`camera`, `none`) at an operating point of 0.90 / 0.10, arbitrated against the
+rule proposals by `IntentRouter`, gated by `IntentGate` and handed to the turn
+by `RouterDecider`. Over 629 judge utterances the rules alone had decided with
+a precision of 0.44 (statements) and 0.31 (recall markers) against the model's
+0.96, which is why the router let a statement or a recall marker stand only
+when the model agreed. The owner's decision of 2026-10-12 made Laya and GLiNER
+the only engines and removed the router with its classifier, the
+`third_party/fastText` submodule, the in-repo artifact `models/intent/intent.bin`
+with its card and configure-time pin, `[intent]`, `intent-router-test`,
+`intent-accuracy-test`, `fast-tier-eval` and `tests/fixtures/intent/eval-check.tsv`.
+Its explicit-trigger tier survives as `TriggerDecider`.
+`tests/fixtures/intent/eval-production.tsv` (real traffic) stays; `decider-eval.py
+--traffic` reads it.
 
 ## Phase 4 step 9: config resolution into `src/config/` (D20)
 
@@ -724,11 +738,11 @@ session to lose on a restart.
   but are never judged for claims. The app-action claim check that
   existed before (`claimsAppAction`) still runs for turns that ask for an app
   action.
-- **The router is one decider.** fastText still decides explicit commands and
-  abstains otherwise (`services/llm/src/feature/intent`); `RouterDecider` hands
-  its decision to the turn, which judges it with its own thresholds, and a routed
-  call goes through the same executor, so permissions, the module check and
-  grounding apply to it as to any other.
+- **The decider stack is one seam.** Rules, then Laya, with the explicit
+  triggers as Laya's fallback ("The decider: rules, Laya and explicit
+  triggers"); a decision reaches the turn as a candidate the turn judges with
+  its own thresholds, and a decided call goes through the same executor, so
+  permissions, the module check and grounding apply to it as to any other.
 
 `tests/unit/llm-tool-runtime-test.cc`, `llm-turn-flow-test.cc` (the turn and the
 claim guard on its sync and streaming paths), `llm-reply-claims-test.cc` (the
@@ -753,15 +767,15 @@ first three without a generation (decide, which includes the judgement of the de
 1. **Decide** (`services/turn/decider.hxx`, `deciders.{hxx,cc}`, `turn-flow.cc`). A `Decider` reads
    the utterance, the tools this turn offers and the module snapshot and answers with at most one
    `Candidate`: the tool, the arguments it already knows, the slots it wants filled (`fill`), a
-   `confidence`, its own `id()` (`rules`, `router`), the `runnerUp` (another tool and its own
-   confidence), `exact` (the decision came from words that name the tool, not from a score; the
-   router counts its own arbitration deciding as exact, see the write guard below) and
+   `confidence`, its own `id()` (`rules`, `triggers`, `laya`), the `runnerUp` (another tool and its own
+   confidence), `exact` (the decision came from words that name the tool, not from a score) and
    `confident` (the decider's own gate said act). `RuleDecider` is `appCommandFor` and the module
-   command rules (`tools/module-command.cc`); `RouterDecider` wraps the fastText `IntentRouter` and
-   names the four memory tools, with the argument being the user's own words and the runner-up class
-   as `runnerUp`; `FirstOf` stacks deciders, so a rule, the router and a fine-tuned model are
-   interchangeable and stackable behind the same interface. A decider that is not here (a learned
-   model) is one more `Decider`; nothing else changes.
+   command rules (`tools/module-command.cc`); `LayaDecider` runs the Laya bundle and names any
+   offered tool its label set maps, with the runner-up label's tool as `runnerUp` and `now` from the
+   same forward pass; `TriggerDecider` is the explicit-trigger rule tier that answers when Laya is
+   not ready, naming `memory.remember` or `memory.remind` with the user's own words; `FirstOf` stacks
+   deciders, so the rules, the trigger tier and a learned model are interchangeable and stackable
+   behind the same interface. Another learned model is one more `Decider`; nothing else changes.
    **The judgement.** `DecisionPolicy{act, ask, margin}` is data, per decider: `[decide]` is the default and
    `[decide.<id>]` overrides it (`LlmConfig::resolveDecision`, `PolicySet`, main.cc composes them).
    `judge` answers **Pass** below `ask` (plain conversation; if the user asked for something, the
@@ -798,13 +812,13 @@ first three without a generation (decide, which includes the judgement of the de
    language and what became of it: act, ask, choose, pass or guard) and written to the log as
    `turn-decision decider=... exact=... family=... tool=... lang=... verdict=...` without the
    utterance; `GET /llm/v1/config` returns the counts as `decisions`.
-2. **Slots** (`slots.{hxx,cc}`, `slot-lexicon.cc`, `model-text.{hxx,cc}`). The fields to fill are
+2. **Slots** (`slots.{hxx,cc}`, `slot-lexicon.cc`, `gliner-extractor.{hxx,cc}`). The fields to fill are
    the candidate's `fill` plus the schema's required properties not yet present. A date-time goes
    through the same normalization the executor uses (`call_time` over the user's words, ISO
    accepted); a module is matched against the snapshot's names; a title or name comes from
-   `RuleText` (what is left of the sentence once verb, noun and time are taken out) and, where the
-   rules find nothing and NuExtract is already loaded, from `ModelText`, accepted only if every
-   word of it was said. NuExtract is never loaded inside a turn: asking is cheaper than loading.
+   the text engine: `turn::GlinerExtractor`, a span of the user's own utterance scored above the
+   bundle's `pairThreshold`, and, when GLiNER's bundle did not load, its model cannot run or it
+   finds no span, `RuleText` (what is left of the sentence once verb, noun and time are taken out).
    A slot nothing fills is never guessed: the system asks it in its own words
    (`turn-texts.cc`, es and en, per tool and slot) without a generation, keeps a `Pending` of kind
    `Slot` for five minutes, treats the next utterance as the answer (unless it is itself a command
@@ -857,13 +871,14 @@ to its spoken surface against `now` at render time); no act JSON survives. `spee
 act on the outcome, so a unit test asserts the exact act a path reaches and never a sentence.
 `turn-texts.{hxx,cc}` is gone.
 
-Configuration (`config.toml.example`, deploy template): `[decide]`, `[decide.router]` and `[decide.rules]` with `act`,
-`ask`, `margin` and `witness_only`. Absent or invalid keys leave the default policy (`act = ask = 0.90`, no margin),
-which is the router's published operating point with no question band.
+Configuration (`config.toml.example`, deploy template): `[decide]` with `act`, `ask` and `margin` (0.90 / 0.60 /
+0.10 in the template), the policy of a decider whose bundle declares none (Laya's own thresholds come from its
+bundle), and `[decide.rules]` with `witness_only`; a `[decide.<id>]` section may override `act`, `ask` and `margin`
+for one decider. Absent or invalid keys leave the compiled default policy (`act = ask = 0.90`, no margin).
 
 `tests/unit/llm-turn-flow-test.cc` pins the stages: the judge and the per-decider policies, deciders
-that stack and abstain, the rule decider offering only offered tools, the router decider carrying no
-code, the title and time stored and spoken back, a missing time, title and module asked and answered,
+that stack and abstain, the rule decider offering only offered tools, the trigger decider routing only an
+explicit trigger with the words as its argument, the title and time stored and spoken back, a missing time, title and module asked and answered,
 a new command replacing a question, the ask band and the choice (yes, the other one, no), the write
 guard with and without a second signal, previews that never leak the code, confirmed with the stored
 code and refused after a no, a module offered and then enabled or requested by role, an anonymous
@@ -1153,7 +1168,7 @@ The voice session and argus-llm agreed this contract with the voice agent:
   User messages carry only what STT heard. Every later `system` message is a
   note: the tone note right after its user message, context notes appended
   where they arrive. Notes are rendered in place and never read as the user's
-  words. The router and every tool read the last user message through
+  words. The deciders and every tool read the last user message through
   `LfmAdapter::spokenText`, which also drops a trailing parenthesized line,
   the shape the tone note had when it was appended to the user's content.
 - **One speak prompt.** Every spoken answer is the caller's history as it
@@ -1204,28 +1219,30 @@ The voice session and argus-llm agreed this contract with the voice agent:
   the user's fact, and "recuérdalo" alone stores nothing. An explicit request
   ("recuerda que …") whose extraction comes back incomplete is stored from its
   rule clause instead of being dropped.
-- **Explicit means the user's words, not the router's confidence.** A
-  router-decided call counts as explicit only when the rule parser recognizes
+- **Explicit means the user's words, not a decider's confidence.** A
+  model-decided call counts as explicit only when the rule parser recognizes
   a trigger or a statement, or when it is a reminder whose words name a time
   (`TemporalResolver`). "Recuérdame mañana a las nueve llamar al dentista",
   which has no "que", now stores the whole clause; before, an incomplete
   extraction kept "llamar al". A reminder that names no one is the
   speaker's: its subject is the user's own entity. So is a note asked for
   with a rule trigger ("anota que llegó el paquete", "recuerda que el wifi se
-  cae cada semana") whose lexicon extraction finds no subject. Without the
-  model tier in the turn such requests otherwise stored nothing. A
+  cae cada semana") whose lexicon extraction finds no subject. With the lexicon as
+  the only extractor such requests otherwise store nothing. A
   statement-start match is not a timed request: the vocabulary's "la cámara"
   statement start made "muéstrame la cámara 3" a reminder, and the 3 read as a
   time. Without a trigger or a subject it stores nothing.
 - **A save trigger outranks a cancellation inside it.** "don't forget that
-  the dog eats at 7" contains the cancellation "forget that", and the router
-  answered it with `memory.forget`. The router now tries the rule triggers
-  first and treats a cancellation as a forget only when no trigger matched. "Enciende la luz de la cocina", routed by
-  fastText at 0.96, stores nothing; before, an empty extraction let it
-  through the rule path. The tool handlers extract with the lexicon tier
-  only (`allowModel = false`). NuExtract inside a call's turn measured 23 s
-  of `tool_ms` on a loaded machine. The deferred extract job still uses the
-  model.
+  the dog eats at 7" contains the cancellation "forget that", and the fastText router
+  answered it with `memory.forget`. The router then tried the rule triggers
+  first and treated a cancellation as a forget only when no trigger matched;
+  `TriggerDecider` keeps that order and answers the sentence with
+  `memory.remember` (`llm-turn-flow-test`). "Enciende la luz de la cocina",
+  which the router sent to a memory tool at 0.96, stores nothing; before, an
+  empty extraction let it through the rule path. The tool handlers extract
+  with the lexicon tier, the only one since NuExtract was removed on
+  2026-10-12; NuExtract inside a call's turn had measured 23 s of `tool_ms` on
+  a loaded machine.
 - **A command is not a statement about its object.** The vocabulary's
   statement starts are noun phrases ("la cámara", "la luz", "the heating"),
   accepted within the first five words, so "muéstrame la cámara 3",
@@ -1236,28 +1253,26 @@ The voice session and argus-llm agreed this contract with the voice agent:
   form ("muéstrame", "explícame"; the memory verbs "recuérdame", "apúntalo"
   and the like excepted). A statement start is ignored when its clause, after
   fillers, opens with a command; `RuleParser::isCommand` answers the same for
-  the whole utterance, and a router-decided reminder whose words open with a
+  the whole utterance, and a model-decided reminder whose words open with a
   command is not a timed request either.
 - **Plain save requests are triggers.** "save that", "save this", "store
   that", "guarda esto", "guárdame esto", "memoriza que", "no te olvides de
   que", "quiero que guardes que", "toma nota" and their variants were not in
-  the vocabulary. The router sent such a request to `memory.remember` on
-  fastText's word, formation refused it as not explicit, and the model then
+  the vocabulary. The fastText router sent such a request to
+  `memory.remember` on the model's word, formation refused it as not explicit, and the model then
   answered "lo he guardado" for a fact that was never written (9 of 16 such
   probes before this change).
-- **A note the fast tier could not structure is refined off the turn.** An
-  explicit request whose lexicon extraction finds no complete triple is
-  stored at once as the speaker's note (`predicate = nota`, the clause as
-  written), so the confirmation the user hears is true and the fact survives
-  a restart. `MemoryService::refineLater` then queues an extract job for that
-  note (`MemoryJob::memoryId` names it, `preferIdle`), and the worker runs
-  NuExtract on the utterance after the turn, when the chat engine is idle.
-  When the model returns a usable triple it is stored with the clause as its
-  canonical text and the note is closed; when the note was forgotten in the
-  meantime the new fact is closed too, and when the model finds nothing the
-  note stays. Nothing is confirmed later: the user already heard a true
-  "Guardado", and a second confirmation would repeat it. NuExtract never runs
-  inside a turn: in a call it measured 23 s of `tool_ms` on a loaded machine.
+- **A note the lexicon cannot structure stays a note.** An explicit request
+  whose lexicon extraction finds no complete triple, or one that covers less
+  than `extract.lexicon_min_coverage` (0.6) of the clause's words
+  (`CoveredLexiconExtractor`), is stored at once as the speaker's note
+  (`predicate = nota`, the clause as written), so the confirmation the user
+  hears is true and the fact survives a restart. Until 2026-10-12
+  `MemoryService::refineLater` then queued an off-turn extract job that ran
+  NuExtract on the utterance when the chat engine was idle and replaced the
+  note with a triple when the model found one; that job, `memory.extract_wait_ms`
+  and the model left together, and the note is now final. The memory behaves
+  as it always did on an install without NuExtract.
 - **A newer value closes the older one; notes accumulate.** `upsertFact`
   looked for the open fact with the same entity and predicate and bound three
   of `CLOSE_FACT`'s four parameters, so since the close was scoped to its
@@ -1366,6 +1381,7 @@ row in its own language and persona:
 
 Of the eight rule notes the run left, NuExtract refined two off the turn
 ("el código del portón es 1234", "the gate code is 1234") and kept six as
+notes; since 2026-10-12 there is no off-turn refinement and all eight stay
 notes. Inside a call (`argus-tool-bench --voice`, `check.tsv`): camera 56/56
 and saves 19/20 in both builds; "neither" rows 22/27 → 23/27 with 3 → 2
 memory writes.
@@ -1643,11 +1659,13 @@ existing store keeps an unused empty table.
   outside the `VecDb` mutex; the lock is held only for the dedup probe and
   for the one replace transaction, so a background embed no longer holds
   the recall of a live turn for 50-300 ms.
-- The memory worker's extraction (NuExtract) waits for the chat engine to
-  be idle on every job, not only on `preferIdle` ones, so NuExtract, e5 and
-  the main model do not run at once on the same cores; a busy engine
-  requeues the job (dropped once the worker is stopping).
-- `ExtractionService::extractAsync` had no caller and is gone (#111).
+- The memory worker's NuExtract extraction waited for the chat engine to be
+  idle on every job, so NuExtract, e5 and the main model did not run at once
+  on the same cores. The job and the model were removed on 2026-10-12;
+  compaction still waits for an idle engine on its `preferIdle` jobs and
+  requeues when the engine stays busy.
+- `ExtractionService::extractAsync` had no caller and was removed (#111); the
+  rest of `ExtractionService` went with NuExtract on 2026-10-12.
 
 ## The `llm` component (selectable modules, 2026-10-05)
 
@@ -1698,9 +1716,14 @@ upper bound is taken only at the final read, over the near-miss stratum pooled a
 (`decider.certification`), and `decider-eval-test.py` fails if the fit ever reads a bound or if the bound is
 computed anywhere but the report and that certification. A process that cannot
 start is a visible skip (77). The scoring is tested without a model (`decider-eval-test`,
-`slot-eval-test`, `conversation-eval-test`, each mutation-checked). `fast-tier-eval` still drives the
-production memory router over the judge corpus; `llm-tier-eval` drives the whole turn (decide, fill, run, speak)
-with stub tools and the real model. Why the numbers are what they are, and how they were
+`slot-eval-test`, `conversation-eval-test`, each mutation-checked). `production-decider --bundle <decider bundle
+dir>` is the production decider stack over a bundle — rules, then Laya, the explicit triggers as the fallback —
+answering `decider-eval.py`'s line protocol with the tool, the confidence, the runner-up and `now`. `llm-tier-eval`
+drives the whole turn (decide, fill, run, speak) with stub tools and the real model, and it and
+`call-faithfulness-eval` run the shipped pipeline through `installTurnEngines` (`--decide-bundle` and
+`--extract-bundle`, by default `models/decide/bundle-laya-pilot` and `models/extract/pilot-bundle` beside the LLM
+weights' models root); both print `[REFUSED]` and exit 1 rather than report a gate when Laya or GLiNER is not up.
+`llm-tier-eval --no-engines` measures the rules, the triggers and the rule text alone. Why the numbers are what they are, and how they were
 measured: `docs/operations/voice-quality-eval.md`.
 
 Which tools a role is offered is data, not a table in the harness: `tests/eval/tool-visibility.json` lists, per
@@ -1716,65 +1739,84 @@ harness reads its read-only list from that file, which is what the turn flow com
 no build. `tests/eval/eval-tools.cc` (for `llm-tier-eval`) is still a hand mirror of the providers' tool
 specs; a snapshot of every provider's `tools/list` that both sides test against would remove it.
 
-## The gear swap: Laya and GLiNER behind the turn's own seams
+## Laya and GLiNER: the turn's engines
 
-The turn's deciders and the slot layer's text engine are seams, and both new
-engines ride them; nothing in the MCP path, the tool runtime, the pendings or
-the audit changes. `turn::kDeciderIds` gains a third id, `"laya"`; with
-`decide.engine = "laya"` the judge arbitrates **rules + laya** and the fastText
-router leaves the arbitration entirely, so it is a two-decider judge
-(`llm-turn-engines-test`, "with engine laya the judge arbitrates rules and
-laya, and the router never proposes"). With `decide.engine = "router"`, the
-default, nothing changes. `extract.engine = "gliner"` puts
-`turn::GlinerExtractor` behind `slots::TextSlots`; `"nuextract"` keeps
-`turn::ModelText`. Both defaults stay on today's path until a measured
-promotion; shipping defaults flip in the change that also removes the engine
-they replace.
+The owner's decision of 2026-10-12: Laya decides and GLiNER extracts, by
+default, with the pilot bundles, and no configuration chooses another engine.
+fastText and NuExtract are removed and no longer installed. Swapping in a newly
+trained model is replacing the bundle's files.
+
+Both engines ride the turn's own seams; nothing in the MCP path, the tool
+runtime, the pendings or the audit knows they exist. `installTurnEngines`
+(`services/turn-engines.{hxx,cc}`) is the one composition, called by `main.cc`
+and by the evals:
+
+- **The decider.** `turn::LayaDecider` behind `RuleDecider` in a `FirstOf`, with
+  `TriggerDecider` as its fallback ("The decider: rules, Laya and explicit
+  triggers").
+- **The extractor.** `turn::GlinerExtractor` is the slot layer's text engine,
+  behind `slots::TextSlots`. When its bundle does not load, its model cannot
+  run, or it finds no span above the bundle's threshold, the rule tier
+  (`slots::RuleText`) answers. `turn::ModelText` and the NuExtract
+  `ExtractionService` (`models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf`, through
+  llama.cpp) are gone; the memory feature's capture is the lexicon tier with its
+  coverage floor (`CoveredLexiconExtractor`, `extract.lexicon_min_coverage`).
+
+`TurnEngines::pipeline()` names what is up: `rules+laya` or `rules+triggers`,
+then `+gliner` or `+rule-text`.
 
 ### Config keys, and their allowed values
 
 | key | values | meaning |
 |---|---|---|
-| `decide.engine` | `router` (default) \| `laya` | which second decider the judge arbitrates against `rules` |
-| `decide.laya.bundle_dir` | a path | the decided bundle the loader opens |
-| `decide.laya.sha256` | 64 hex | the sha256 **of the bundle's own `sha256` file**, which pins every file transitively |
-| `decide.laya.agent_config` | a path \| empty (default) | the checkpoint's own `rl_agent_config.json`, which supplies `head_max_len` and `temperature` for a bundle whose `decision.json` declares neither |
-| `decide.laya.threads` | `0` (default) \| n | intra-op threads; `0` means `ThreadBudget::lightThreads()` |
-| `decide.laya.cpu_arena` | `false` (default) \| `true` | the ORT CPU memory arena |
-| `decide.laya.mem_pattern` | `false` (default) \| `true` | the ORT memory-pattern planner |
-| `decide.laya.prepacking` | `false` (default) \| `true` | `session.use_prepacking` |
-| `decide.laya.mmap` | `true` (default) \| `false` | hand ORT the path (mmap) instead of a read buffer |
-| `extract.engine` | `nuextract` (default) \| `gliner` | which text engine the slot layer asks |
-| `extract.gliner.bundle_dir` | a path | the extractor bundle |
-| `extract.gliner.sha256` | 64 hex | the sha256 of that bundle's `sha256` file |
-| `extract.gliner.threads` / `.cpu_arena` / `.mem_pattern` / `.prepacking` / `.mmap` | as above | the same five session options |
+| `decide.bundle_dir` | a path (default `models/decide/bundle-laya-pilot`) | the decider bundle the loader opens |
+| `decide.act` / `.ask` / `.margin` | 0..1 (template 0.90 / 0.60 / 0.10) | the policy of a decider whose bundle declares none; Laya's thresholds come from its bundle |
+| `decide.threads` | `0` (default) \| n | intra-op threads; `0` means `ThreadBudget::lightThreads()` |
+| `decide.cpu_arena` | `false` (default) \| `true` | the ORT CPU memory arena |
+| `decide.mem_pattern` | `false` (default) \| `true` | the ORT memory-pattern planner |
+| `decide.prepacking` | `false` (default) \| `true` | `session.use_prepacking` |
+| `decide.mmap` | `true` (default) \| `false` | hand ORT the path (mmap) instead of a read buffer |
+| `decide.rules.witness_only` | `false` (default) \| `true` | the rule decider's word is a second signal only |
+| `extract.bundle_dir` | a path (default `models/extract/pilot-bundle`) | the extractor bundle |
+| `extract.lexicon_min_coverage` | 0..1 (default 0.6) | the share of a clause the memory lexicon must cover for its triple to stand |
+| `extract.threads` / `.cpu_arena` / `.mem_pattern` / `.prepacking` / `.mmap` | as above | the same five session options |
 
 The template carries keys and values only; the allowed values are here, never
-in `config.toml.example`.
+in `config.toml.example`. The compiled defaults (`src/config/llm-config.cc`) are
+the same two pilot paths, so a config without the keys still loads the pilot
+bundles. Gone with the old engines: `[intent]`, `decide.engine`,
+`[decide.router]`, `[decide.laya]` (`bundle_dir`, `sha256`, `agent_config` and
+the session options), `extract.engine`, `[extract.gliner]`,
+`extract.model_path`/`prompt_format`/`gpu_layers`/`n_ctx`/`max_tokens` and
+`memory.extract_wait_ms`.
 
 ### The bundle contract
 
-`scripts/install-model-bundle.sh <laya|gliner> <bundle-dir>` writes the two keys
-from a verified bundle, and `--rollback` restores the previous one. The bundle
-is `model.onnx`, `tokenizer/`, `labels.json`, `questions.json`, `decision.json`,
-`max_len`, `model-card.md`, `sha256` and `manifest.json` (the layout
-`intent-training/scripts/kit_bundle.py` writes). The loader verifies the
-configured pin **first** — it is the sha256 of the `sha256` file — then every
-file the `sha256` file lists, and refuses an unlisted file or a missing one
-(`llm-bundle-loader-test`, one refusal per case). The artefact may be INT8 or
-fp32: the loader takes the file it is given and pins it, and never assumes a
-quantisation.
+A bundle is a directory: `model.onnx`, `tokenizer/`, `labels.json`,
+`decision.json`, `max_len`, `model-card.md`, `manifest.json`, `sha256`, and for
+a decider `questions.json` (the layout `intent-training/scripts/kit_bundle.py`
+writes). `turn::BundleLoader` validates it at load with nothing configured but
+its directory: every file the bundle's `sha256` file lists must match, no
+unlisted file is allowed, `manifest.json` must name the model the slot serves
+(`laya` for the decider, `gliner` for the extractor) and record the sha256 of
+`model.onnx` (`modelOnnx.sha256`), and a decider's manifest must record the
+sha256 of its `questions.json` (`questions: {file, sha256}`)
+(`llm-bundle-loader-test`, one refusal per case). There is no configured pin and
+no compile-time pin: the bundle is its own manifest. Validation runs **once at
+load and is latched**; there is no re-hash per turn. The artefact may be INT8 or
+fp32: the loader takes the file it is given and never assumes a quantisation.
 
-`decision.json` carries the thresholds, and **never config**: Laya's
+`decision.json` carries the thresholds and the decode, **never config**: Laya's
 `act`/`ask`/`margin`/`now` (with a `calibration` block, `platt` or `isotonic`,
-applied to the raw score before the judge reads it —
-`turn::CalibrationModel`), and GLiNER's `pairThreshold`/`maxSpanWords` — the
-pair scorer's own vocabulary, because the pilot is a `BoundaryExtractor` and
-has no span-model width axis. They are
-fit on the **calibration** split only, and `manifest.json` records which split
-(`calibration.fitOn`). The loader surfaces that split (`BundleLoader::fitSplit`)
-from the manifest, never re-derives it, and a bundle whose thresholds were fit
-on dev, OOT, IND, CH or a sealed split is refused by Unit A's gate.
+applied to the raw score before the judge reads it — `turn::CalibrationModel`)
+and its `head_max_len` and `temperature`, and GLiNER's
+`pairThreshold`/`maxSpanWords` — the pair scorer's own vocabulary, because the
+pilot is a `BoundaryExtractor` and has no span-model width axis. The thresholds
+are fit on the **calibration** split only, and `manifest.json` records which
+split (`calibration.fitOn`). The loader surfaces that split
+(`BundleLoader::fitSplit`) from the manifest, never re-derives it, and a bundle
+whose thresholds were fit on dev, OOT, IND, CH or a sealed split is refused by
+Unit A's gate.
 
 `labels.json` has **one shape per kind of bundle, and the loader refuses the
 other for each** (`llm-bundle-loader-test`, one refusal per kind). A **decider**
@@ -1785,6 +1827,36 @@ the type-keyed object whose every value is that type's logit order. The order
 cannot be flattened into one list because the schema is an input: the caller
 renders the picked type's own fields into the structure prompt, so the map is
 what the decode indexes by (`BundleLoader::typeFields`, beside `labels`).
+
+### Installing a newly trained model
+
+`services/llm/scripts/install-bundle.sh <decide|extract> <bundle-dir>` verifies
+the bundle with the loader's checks plus one of its own (a decider's labels all
+name a tool in `services/llm/tools/laya-labels.tsv`), copies it beside the slot
+(`<slot>.incoming`), verifies the copy, keeps the replaced bundle as
+`<slot>.previous` and swaps; `--rollback` swaps the two back. `--slot DIR` names
+the slot directly; otherwise it is `[decide]`/`[extract]` `bundle_dir` from
+`services/llm/config.toml` (or `--config PATH`), defaulting to the shipped
+slots. Restart argus-llm to load the new bundle.
+`services/llm/scripts/install-bundle-test.sh` tests the script and
+`scripts/build-all-test.sh` runs it.
+
+### The pilot bundles, and how they arrive
+
+The pilot bundles are local artefacts exported by the sibling `intent-training/`
+project (`scripts/kit_bundle.py`); no URL serves them. Laya is
+`models/decide/bundle-laya-pilot` (embedding-only INT8, `model.onnx` 700,845,867
+B, sha256 `d9932dc3…`); GLiNER is `models/extract/pilot-bundle` (embedding-only
+INT8, `model.onnx` 540,153,983 B, sha256 `bd5841bb…`).
+`services/llm/scripts/provision.sh` checks the two slots and, when one is
+missing, installs it through `install-bundle.sh` from
+`ARGUS_DECIDE_BUNDLE_SOURCE` / `ARGUS_EXTRACT_BUNDLE_SOURCE` when set, and
+otherwise warns with the copy step. `argus-deploy/docker-compose.yml` mounts
+`models/decide` and `models/extract` read-only into `argus-llm`;
+`scripts/provision-host.sh` copies the two pilot bundles into
+`ARGUS_MODELS_DIR` when that differs from the repository's `models/`; and
+`scripts/deploy-mounts-test.sh` checks the mounts and that the deploy config
+names both bundles and selects no engine.
 
 ### The label set is the only coupling
 
@@ -1799,38 +1871,27 @@ core provider (`tools.refresh("llm")`), while a module's tools — `productivity
 through `ToolDirectory`, and only while their module is active; a boot check
 against the registry turned the whole decider off on the first module-served
 label (`calendar_create`), a silent fallback. A module-served label whose tool is
-not offered at a
-given turn is already dropped by `isOffered` in `LayaDecider::decide`, so the
-label map is the whole coupling and the per-turn offer is the rest. A future
-bundle that renames or adds a label is therefore a config change with no code
-change — and a bad one is a visible fallback, not a misroute.
+not offered at a given turn is already dropped by `isOffered` in
+`LayaDecider::decide`, so the label map is the whole coupling and the per-turn
+offer is the rest. A bundle that renames or adds a label within that map needs
+no code change, and a bad one is a visible fallback, not a misroute.
 
 ### A gate run refuses to measure a fallback
 
-The composition degrades a bad bundle to rules + router, and that degradation
-was silent to every gate: the render and corpus evals printed `pipeline:
-laya+gliner` from the flag rather than from a load, and the TTFT eval drove
-whatever the server happened to serve. A gate harness now asserts its engines
-are up before it measures. `speech-ttft-eval.py` takes `--server-log` and
-`--require-engine` (repeatable) and, once the warm-up turns that load the
-engines have run and before any measured request, returns non-zero unless each
-required engine's ready line (`the Laya decider is ready on`, `the GLiNER
-extractor opened`) is in the log — the line is written on first use, so the
-check follows the act warm-up that loads the engine.
-`call-faithfulness-eval` exits with `[REFUSED]` after `setupEngines` when a run
-asked for `--decide laya` or `--extract gliner` and that engine did not build. A
-number taken on a fallback is therefore never compared against a previous
-run's.
-
-### Degradation is a contract
-
-A bundle that is missing, unreadable or off its pin — and a model that opens but
-cannot run — costs **one log line naming the artefact and the mismatch**, and
-the turn continues on today's path: rules + router for Laya, NuExtract for
-GLiNER. Nothing fails the turn. `Candidate.source` (and `Pick.source`) carry the
-engine and label that actually spoke, so a fallback is visible in the trace and
-in the eval instead of inferred. The pin is verified **once at load and
-latched**; there is no re-hash per turn.
+A fallback is a working turn, which is exactly why it must never be measured as
+the shipped pipeline. `call-faithfulness-eval` and `llm-tier-eval` build the
+engines through `installTurnEngines` and print `[REFUSED]` and exit 1 unless
+both Laya and GLiNER are up; `llm-tier-eval --no-engines` is the explicit way to
+measure the rules, the triggers and the rule text alone. `speech-ttft-eval.py`
+takes `--server-log` and `--require-engine` (repeatable) and, once the warm-up
+turns that load the engines have run and before any measured request, returns
+non-zero unless each required engine's ready line (`the Laya decider is ready
+on`, `the GLiNER extractor opened`) is in the log — the line is written on first
+use, so the check follows the act warm-up that loads the engine.
+`Candidate.source` (and `Pick.source`) carry the engine and label that actually
+spoke, so a fallback is visible in the trace and in the eval instead of
+inferred. A number taken on a fallback is therefore never compared against a
+previous run's.
 
 ### The tokenizers, named
 
@@ -1957,13 +2018,12 @@ laya's own arithmetic, and the `calibration` block of `decision.json` then maps
 the maximum to the confidence the judge reads (`turn::CalibrationModel`), and
 `p[1]` of the `noul` row to `Candidate.now`. `temperature` is a property of the
 weights — the checkpoint's `rl_agent_config.json` carries
-`[3.0035, 1.0, 5.0]` for the pilot — and a bundle that does not declare it runs
-at the identity default, which sharpens the softmax so hard that the
-calibration saturates and every turn acts. `BundleDecode` therefore reads
-`head_max_len` and `temperature` from `decision.json` when a bundle carries
-them, and `decide.laya.agent_config` names the checkpoint's own
-`rl_agent_config.json` when it does not; the shipped pilot bundle declares
-neither and needs the config key to reproduce its calibration.
+`[3.0035, 1.0, 5.0]` for the pilot — and at the identity default the softmax
+sharpens so hard that the calibration saturates and every turn acts.
+`BundleDecode` therefore reads `head_max_len` and `temperature` from
+`decision.json`, and the loader refuses a decider bundle that declares only one
+of them or neither. The shipped r2 bundle declares `head_max_len` 256 and
+`temperature` `[3.0035, 1.0, 5.0]`.
 
 ### Precision, then latency and CPU, then memory (David, 2026-10-08)
 
@@ -1980,7 +2040,8 @@ memory**, and memory has a ceiling again, measured where it is spent:
   the gate**, not the gate.
 - The free runtime savings are how the ceiling is met without touching the
   model, and they matter more now: **CPU arena off and memory pattern off are
-  the loader's defaults for both engines** (the five keys above), with
+  the loader's defaults for both engines** (the five `[decide]` and `[extract]`
+  session keys above), with
   prepacking off, mmap load and intra-op threads from `ThreadBudget`, applied by
   default **when the parity harness shows identical outputs**. Measured like for
   like on GLiNER, the two options do **not** move a first load: 1402.3 MB with
@@ -1995,10 +2056,10 @@ memory**, and memory has a ceiling again, measured where it is spent:
   passing; fp32 only if INT8 costs precision and fp32 still fits the 1 GB
   ceiling and the latency gate).
 - **The Laya reading, first measured 2026-10-08 on the pilot bundle** (`bundle-laya-pilot`,
-  pin `9e74075c…`, fp32, `model.onnx` 1230.6 MiB), single load in a fresh
+  its `sha256` file hashing to `9e74075c…`, fp32, `model.onnx` 1230.6 MiB), single load in a fresh
   process with arena off, pattern off, prepacking off and mmap on: **session
   load delta 1330.1 MB, process warm delta 1522.2 MB**. The same run in service
-  (call-faithfulness, `--decide laya`) prints `laya_rss_mb=1313.3`,
+  (call-faithfulness with the Laya engine on) prints `laya_rss_mb=1313.3`,
   `process_rss_mb=2435.5`. Turn the arena and the pattern **on** and the same
   reading is 1318.9 / 1513.3 MB — the two options barely move Laya, because the
   cost is the fp32 weights themselves and not the runtime's planning. The same
@@ -2007,7 +2068,8 @@ memory**, and memory has a ceiling again, measured where it is spent:
   **fp32 therefore fails the 1 GB gate** and the embedding-only quantisation is
   not avoidable on this pair; see the unit's report.
 - **The shipped Laya bundle is the embedding-only INT8 artefact** (`bundle-laya-pilot`,
-  pin `29b1cfaed940561e19f3649151976aaacebdc2d75bbc0601aefef480f9a946f5`,
+  its `sha256` file hashing to
+  `29b1cfaed940561e19f3649151976aaacebdc2d75bbc0601aefef480f9a946f5`,
   `model.onnx` 700,845,867 B), and it clears the ceiling where fp32 did not:
   single load in a fresh process, arena off, pattern off, prepacking off, mmap
   on, prints **session load delta 754.7 MB, process warm delta 947.0 MB**. The
