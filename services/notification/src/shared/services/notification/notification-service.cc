@@ -13,6 +13,7 @@
 #include <shared/services/notification/delivery-page.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
+#include <sync/socket-emit-dto.hxx>
 #include <sync/table-name.hxx>
 #include <trantor/utils/Logger.h>
 
@@ -32,8 +33,20 @@ std::string kindOf(const Json::Value& data)
   return data["kind"].asString();
 }
 
+SocketEmitDto tombstoneOf(const NotificationSchema& row)
+{
+  SocketEmitDto tombstone;
+  tombstone.operation = SyncOperation::Delete;
+  tombstone.option = TableName::Notification;
+  tombstone.obj["id"] = static_cast<Json::Int64>(row.id);
+  tombstone.obj["deletedAt"] =
+      static_cast<Json::Int64>(row.deletedAt.value_or(0));
+  return tombstone;
+}
+
 constexpr int64_t kProbeRetentionS = 7LL * 24 * 3600;
 constexpr int64_t kCommandRetentionS = 30LL * 24 * 3600;
+constexpr int64_t kDeletedRetentionS = 7LL * 24 * 3600;
 }
 
 NotificationService::NotificationService(Dependencies dependencies)
@@ -174,6 +187,41 @@ NotificationService::markAsRead(int64_t userId,
   co_return;
 }
 
+drogon::Task<bool> NotificationService::remove(const NotificationRef& ref) const
+{
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    const auto change = co_await repository_.remove(
+        {.id = ref.id, .userId = ref.userId, .client = transaction.get()});
+    if (!change) {
+      db_transaction::rollback(transaction);
+      co_return false;
+    }
+    const UserEmitSink* sink = user_change::getNotificationSink();
+    if (sink == nullptr) {
+      LOG_WARN << "user change sink not installed; drop notification delete";
+    }
+    else {
+      co_await sink->publishAudit({.recordId = change->after.id,
+                                   .tableName = TableName::Notification,
+                                   .before = change->before.toJson(),
+                                   .after = change->after.toJson(),
+                                   .userIds = {ref.userId},
+                                   .client = transaction.get()});
+      co_await sink->emitUsers({.userIds = {ref.userId},
+                                .body = tombstoneOf(change->after),
+                                .client = transaction.get()});
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(NotificationErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_return true;
+}
+
 drogon::Task<int64_t> NotificationService::ackDeliveries(
     int64_t userId, const std::vector<int64_t>& notificationIds) const
 {
@@ -217,6 +265,7 @@ drogon::Task<SelfTestState> NotificationService::runSelfTest() const
         {.at = state.at, .ok = state.ok, .ms = state.ms});
     co_await repository_.purgeProbes(at - kProbeRetentionS);
     co_await repository_.purgeCommands(at - kCommandRetentionS);
+    co_await repository_.purgeDeleted(at - kDeletedRetentionS);
     if (!state.ok)
       LOG_WARN << "notification self-test probe did not settle (status '"
                << status << "')";

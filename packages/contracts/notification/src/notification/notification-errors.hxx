@@ -17,4 +17,8 @@ inline constexpr ErrorDefinition ResponseClosed{
     .code = ErrorCode::Conflict,
     .status = 409,
     .message = "The response already has another verdict"};
+inline constexpr ErrorDefinition NotificationNotFound{
+    .code = ErrorCode::NotFound,
+    .status = 404,
+    .message = "Notification not found"};
 }

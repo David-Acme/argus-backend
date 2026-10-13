@@ -4,8 +4,10 @@
 #include <feature/notification/dtos/notification-ack-dto.hxx>
 #include <feature/notification/dtos/notification-read-dto.hxx>
 #include <auth/jwt-filter.hxx>
+#include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
 #include <auth/request-context.hxx>
+#include <notification/notification-errors.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 NotificationController::markAsRead(drogon::HttpRequestPtr req)
@@ -39,4 +41,15 @@ NotificationController::deliverySummary(drogon::HttpRequestPtr req)
 {
   const auto query = DeliverySummaryDto::fromRequest(req);
   co_return ApiResponse::ok(co_await service_.deliverySummary(query.since));
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+NotificationController::remove(drogon::HttpRequestPtr req, int64_t id)
+{
+  const auto& ctx =
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+
+  if (!co_await service_.remove({.id = id, .userId = ctx.sub}))
+    throw ResponseException(NotificationErrors::NotificationNotFound);
+  co_return ApiResponse::noContent();
 }

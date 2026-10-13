@@ -97,7 +97,8 @@ void createTables()
       "data TEXT NOT NULL DEFAULT '{}', "
       "is_read INTEGER NOT NULL DEFAULT 0, "
       "read_at INTEGER, "
-      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
+      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+      "deleted_at INTEGER)");
   client->execSqlSync(
       "CREATE TABLE notification_command ("
       "command_id TEXT NOT NULL PRIMARY KEY, "
@@ -151,10 +152,15 @@ public:
   mutable bool streamOk{true};
 };
 
-class SilentChangeSink final : public AuditSink
+class SilentChangeSink final : public UserEmitSink
 {
 public:
   drogon::Task<void> publishAudit(const UserAuditInput&) const override
+  {
+    co_return;
+  }
+
+  drogon::Task<void> emitUsers(const UserEmitInput&) const override
   {
     co_return;
   }
@@ -293,6 +299,25 @@ TEST_CASE("durable delivery keeps intents pending until the broker stores them")
           DeliverPendingOutcome::Settled);
     CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification_delivery "
                       "WHERE status = 'pending'") == 0);
+  }
+
+  {
+    const NotificationRepository repository{};
+    const auto deleted = DbService::client()->execSqlSync(
+        "INSERT INTO notification (user_id, type, title, body, deleted_at) "
+        "VALUES (4, 'camera', 'Gate', 'Person detected', 1700000000)");
+    const auto deletedId = static_cast<int64_t>(deleted.insertId());
+    REQUIRE(deletedId > 0);
+    DbService::client()->execSqlSync(
+        "INSERT INTO notification_delivery (notification_id, user_id, status, "
+        "created_at) VALUES (?, 4, 'pending', 1700000000)",
+        deletedId);
+    CHECK(drogon::sync_wait(repository.claimPending(
+                                {.limit = 10, .now = 9000, .leaseS = 30}))
+              .empty());
+    CHECK(drogon::sync_wait(repository.pendingDeliveryCount()) == 0);
+    CHECK(scalarCount("SELECT COUNT(*) AS total FROM notification_delivery "
+                      "WHERE status = 'pending' AND claimed_at = 0") == 1);
   }
 
   user_change::setNotificationSink(nullptr);

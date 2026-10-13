@@ -294,6 +294,17 @@ TEST_CASE("notification RPC creates fan-out rows and serves user pulls")
     REQUIRE(others.outcome == NotificationRpcOutcome::Success);
     CHECK(others.response.created_size() == 0);
     CHECK_FALSE(others.response.has_last_created());
+
+    const auto before = pullSdk.pullNotifications(pull, identityFor(8));
+    REQUIRE(before.outcome == NotificationRpcOutcome::Success);
+    CHECK(before.response.created_size() == 1);
+    DbService::client()->execSqlSync(
+        "UPDATE notification SET deleted_at = strftime('%s', 'now') "
+        "WHERE user_id = 8");
+    const auto deleted = pullSdk.pullNotifications(pull, identityFor(8));
+    REQUIRE(deleted.outcome == NotificationRpcOutcome::Success);
+    CHECK(deleted.response.created_size() == 0);
+    CHECK_FALSE(deleted.response.has_last_created());
   }
 
   {

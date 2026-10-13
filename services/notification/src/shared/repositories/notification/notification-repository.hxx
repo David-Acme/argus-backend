@@ -5,7 +5,7 @@
 #include <optional>
 #include <shared/schemas/notification/notification-schema.hxx>
 
-struct NotificationReadChange
+struct NotificationChange
 {
   NotificationSchema before;
   NotificationSchema after;
@@ -15,6 +15,8 @@ class NotificationRepository
 {
 public:
   NotificationRepository() = default;
+
+  [[nodiscard]] bool migrateSchema() const;
 
   drogon::Task<NotificationSchema>
   create(const NotificationCreateInput& input) const;
@@ -48,12 +50,16 @@ public:
 
   drogon::Task<int64_t> purgeProbes(int64_t olderThan) const;
   drogon::Task<int64_t> purgeCommands(int64_t olderThan) const;
+  drogon::Task<int64_t> purgeDeleted(int64_t deletedBefore) const;
 
   drogon::Task<std::vector<Json::Value>>
   findSync(const NotificationSyncFilter& filter) const;
   drogon::Task<std::optional<Json::Value>>
   findLastSync(const NotificationSyncFilter& filter) const;
 
-  drogon::Task<std::vector<NotificationReadChange>>
+  drogon::Task<std::vector<NotificationChange>>
   markAsRead(const NotificationMarkReadInput& input) const;
+
+  drogon::Task<std::optional<NotificationChange>>
+  remove(const NotificationOwnedInput& input) const;
 };

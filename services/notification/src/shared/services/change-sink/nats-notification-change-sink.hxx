@@ -1,6 +1,8 @@
 #pragma once
 
+#include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <memory>
 #include <outbox/transactional-outbox.hxx>
@@ -10,7 +12,7 @@
 
 class NatsBus;
 
-class NatsNotificationChangeSink : public AuditSink
+class NatsNotificationChangeSink : public UserEmitSink
 {
 public:
   struct Config
@@ -31,6 +33,8 @@ public:
 
   [[nodiscard]] drogon::Task<void>
   publishAudit(const UserAuditInput& input) const override;
+  [[nodiscard]] drogon::Task<void>
+  emitUsers(const UserEmitInput& input) const override;
 
   void reconcile();
   void requestStop();
@@ -42,6 +46,18 @@ public:
   [[nodiscard]] static outbox::OutboxRepository repository();
 
 private:
+  struct RecordInput
+  {
+    TableName table{TableName::Notification};
+    int64_t recordId{0};
+    std::string discriminator;
+    std::string payload;
+    drogon::orm::DbClient* client{nullptr};
+  };
+
+  [[nodiscard]] drogon::Task<void> record(RecordInput input) const;
+
   const std::string subject_;
+  mutable std::atomic<uint64_t> transitions_{0};
   outbox::TransactionalOutbox outbox_;
 };

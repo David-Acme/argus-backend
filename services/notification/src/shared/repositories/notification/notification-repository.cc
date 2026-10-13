@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <trantor/utils/Logger.h>
 #include <vector>
 #include <notification/notification-delivery-status.hxx>
 
@@ -18,6 +19,16 @@ using namespace notification_query;
 
 namespace
 {
+bool hasNotificationColumn(drogon::orm::DbClient& client, std::string_view column)
+{
+  const auto columns = client.execSqlSync(std::string(TABLE_INFO));
+  for (const auto& row : columns) {
+    if (row["name"].as<std::string>() == column)
+      return true;
+  }
+  return false;
+}
+
 int64_t nowMillis()
 {
   return std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -141,6 +152,20 @@ schemasFromIds(const NotificationSchemaBuildInput& input)
   }
   return schemas;
 }
+}
+
+bool NotificationRepository::migrateSchema() const
+{
+  try {
+    auto client = DbService::client();
+    if (!hasNotificationColumn(*client, "deleted_at"))
+      client->execSqlSync(std::string(ADD_DELETED_AT_COLUMN));
+    return true;
+  }
+  catch (const std::exception& error) {
+    LOG_ERROR << "notification migration failed: " << error.what();
+    return false;
+  }
 }
 
 drogon::Task<NotificationSchema>
@@ -512,6 +537,17 @@ drogon::Task<int64_t> NotificationRepository::purgeCommands(
   co_return static_cast<int64_t>(result.affectedRows());
 }
 
+drogon::Task<int64_t> NotificationRepository::purgeDeleted(
+    int64_t deletedBefore) const
+{
+  auto client = DbService::client();
+  co_await client->execSqlCoro(std::string(PURGE_DELETED_DELIVERIES),
+                               deletedBefore);
+  const auto result =
+      co_await client->execSqlCoro(std::string(PURGE_DELETED), deletedBefore);
+  co_return static_cast<int64_t>(result.affectedRows());
+}
+
 drogon::Task<int64_t> NotificationRepository::pendingDeliveryCount() const
 {
   auto client = DbService::client();
@@ -604,7 +640,7 @@ NotificationRepository::findLastSync(const NotificationSyncFilter& filter) const
   co_return NotificationSchema(result.front()).toJson();
 }
 
-drogon::Task<std::vector<NotificationReadChange>>
+drogon::Task<std::vector<NotificationChange>>
 NotificationRepository::markAsRead(const NotificationMarkReadInput& input) const
 {
   if (input.ids.empty())
@@ -637,11 +673,11 @@ NotificationRepository::markAsRead(const NotificationMarkReadInput& input) const
   if (rows.empty())
     co_return {};
 
-  std::vector<NotificationReadChange> changes;
+  std::vector<NotificationChange> changes;
   changes.reserve(rows.size());
   const auto readAt = static_cast<int64_t>(std::time(nullptr));
   for (const auto& row : rows) {
-    NotificationReadChange change;
+    NotificationChange change;
     change.before = NotificationSchema(row);
     change.after = change.before;
     change.after.isRead = true;
@@ -656,4 +692,21 @@ NotificationRepository::markAsRead(const NotificationMarkReadInput& input) const
   const auto& markArgsRef = markArgs;
   co_await client->execSqlCoro(withIds(MARK_READ), markArgsRef);
   co_return changes;
+}
+
+drogon::Task<std::optional<NotificationChange>>
+NotificationRepository::remove(const NotificationOwnedInput& input) const
+{
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
+  const auto existing = co_await client->execSqlCoro(
+      std::string(FIND_OWNED), input.id, input.userId);
+  if (existing.empty())
+    co_return std::nullopt;
+  const auto removed = co_await client->execSqlCoro(
+      std::string(SOFT_DELETE), input.id, input.userId);
+  if (removed.empty())
+    co_return std::nullopt;
+  co_return NotificationChange{.before = NotificationSchema(existing.front()),
+                               .after = NotificationSchema(removed.front())};
 }

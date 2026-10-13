@@ -13,6 +13,8 @@ public:
   drogon::Task<void> markAsRead(int64_t userId,
                                 const std::vector<int64_t>& ids) const;
 
+  [[nodiscard]] drogon::Task<bool> remove(const NotificationRef& ref) const;
+
   drogon::Task<int64_t> ackDeliveries(
       int64_t userId, const std::vector<int64_t>& notificationIds) const;
 

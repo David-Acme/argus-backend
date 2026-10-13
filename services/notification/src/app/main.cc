@@ -28,6 +28,7 @@
 #include <http/route-announcements.hxx>
 #include <identity/identity-client.hxx>
 #include <mdns/mdns-service.hxx>
+#include <shared/repositories/notification/notification-repository.hxx>
 #include <shared/services/change-sink/nats-notification-change-sink.hxx>
 #include <shared/services/delivery-sink/nats-notification-delivery-sink.hxx>
 #include <shared/services/task-gate/task-gate.hxx>
@@ -342,6 +343,11 @@ int main()
     if (!NatsNotificationChangeSink::repository().migrateSchema()) {
       LOG_FATAL
           << "Notification change outbox migration failed — aborting startup";
+      _exit(1);
+    }
+
+    if (!NotificationRepository().migrateSchema()) {
+      LOG_FATAL << "Notification table migration failed — aborting startup";
       _exit(1);
     }
 

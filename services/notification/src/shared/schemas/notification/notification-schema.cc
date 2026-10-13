@@ -14,6 +14,8 @@ NotificationSchema::NotificationSchema(const drogon::orm::Row& row)
   if (!row["read_at"].isNull())
     readAt = static_cast<int64_t>(row["read_at"].as<long long>());
   createdAt = static_cast<int64_t>(row["created_at"].as<long long>());
+  if (!row["deleted_at"].isNull())
+    deletedAt = static_cast<int64_t>(row["deleted_at"].as<long long>());
 }
 
 Json::Value NotificationSchema::toJson() const
@@ -28,5 +30,8 @@ Json::Value NotificationSchema::toJson() const
   json["isRead"] = isRead;
   json["readAt"] = readAt ? Json::Value(Json::Int64(*readAt)) : Json::Value();
   json["createdAt"] = Json::Int64(createdAt);
+  json["deletedAt"] = deletedAt
+                          ? Json::Value(static_cast<Json::Int64>(*deletedAt))
+                          : Json::Value();
   return json;
 }

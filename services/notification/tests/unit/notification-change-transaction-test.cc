@@ -3,10 +3,12 @@
 
 #include <drogon/drogon.h>
 #include <shared/services/change-sink/nats-notification-change-sink.hxx>
+#include <nats/nats-subject.hxx>
 #include <outbox/outbox-repository.hxx>
 #include <shared/services/notification/notification-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/user-change-sink.hxx>
+#include <text/json-util.hxx>
 
 #include <chrono>
 #include <cstdio>
@@ -61,7 +63,7 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
-class RefusingSink final : public AuditSink
+class RefusingSink final : public UserEmitSink
 {
 public:
   explicit RefusingSink(const drogon::orm::DbClient* pooled) : pooled_(pooled)
@@ -73,6 +75,14 @@ public:
     note(input.client);
     if (refuse_)
       throw std::runtime_error("the change sink refused the audit");
+    co_return;
+  }
+
+  drogon::Task<void> emitUsers(const UserEmitInput& input) const override
+  {
+    note(input.client);
+    if (refuse_)
+      throw std::runtime_error("the change sink refused the emit");
     co_return;
   }
 
@@ -95,6 +105,36 @@ private:
   mutable bool transactional_{false};
   const drogon::orm::DbClient* pooled_;
 };
+
+class EmitRefusingSink final : public UserEmitSink
+{
+public:
+  explicit EmitRefusingSink(const UserEmitSink* durable) : durable_(durable) {}
+
+  drogon::Task<void> publishAudit(const UserAuditInput& input) const override
+  {
+    co_await durable_->publishAudit(input);
+  }
+
+  drogon::Task<void> emitUsers(const UserEmitInput& input) const override
+  {
+    if (refuseEmits_)
+      throw std::runtime_error("the change sink refused the emit");
+    co_await durable_->emitUsers(input);
+  }
+
+private:
+  const UserEmitSink* durable_;
+  bool refuseEmits_{true};
+};
+
+int64_t deletedAt(int64_t id)
+{
+  const auto rows = DbService::client()->execSqlSync(
+      "SELECT COALESCE(deleted_at, 0) AS total FROM notification WHERE id = ?",
+      id);
+  return rows.empty() ? -1 : rows.front()["total"].as<int64_t>();
+}
 
 int64_t scalar(const std::string& sql)
 {
@@ -127,7 +167,7 @@ int64_t settledReadAt(int64_t id)
 }
 }
 
-TEST_CASE("a notification read and its change are one unit of work")
+TEST_CASE("a notification read or delete and its changes are one unit of work")
 {
   std::remove(kTransactionDb);
   std::remove((std::string(kTransactionDb) + "-wal").c_str());
@@ -192,6 +232,57 @@ TEST_CASE("a notification read and its change are one unit of work")
   CHECK(pending.front().payload.find(std::to_string(third)) !=
         std::string::npos);
   CHECK(pending.front().attempts == 0);
+
+  const EmitRefusingSink halfway(&durableSink);
+  user_change::setNotificationSink(&halfway);
+  CHECK_THROWS_AS(
+      drogon::sync_wait(notifications.remove({.id = second, .userId = 7})),
+      std::runtime_error);
+  CHECK(deletedAt(second) == 0);
+  CHECK(outbox.pendingBatch(10).size() == 1);
+
+  user_change::setNotificationSink(&durableSink);
+  CHECK_FALSE(
+      drogon::sync_wait(notifications.remove({.id = second, .userId = 8})));
+  CHECK(deletedAt(second) == 0);
+  CHECK(outbox.pendingBatch(10).size() == 1);
+
+  REQUIRE(drogon::sync_wait(notifications.remove({.id = second, .userId = 7})));
+  const int64_t removedAt = deletedAt(second);
+  CHECK(removedAt > 0);
+  const auto removal = outbox.pendingBatch(10);
+  REQUIRE(removal.size() == 3);
+
+  const Json::Value audit = json_util::fromString(removal[1].payload);
+  CHECK(audit["kind"].asString() == "audit");
+  CHECK(audit["record_id"].asInt64() == second);
+  CHECK(audit["table_name"].asString() == "notification");
+  CHECK(audit["changes"].getMemberNames() ==
+        std::vector<std::string>{"deletedAt"});
+  CHECK(audit["changes"]["deletedAt"]["previous"].isNull());
+  CHECK(audit["changes"]["deletedAt"]["current"].asInt64() == removedAt);
+  REQUIRE(audit["users"].size() == 1U);
+  CHECK(audit["users"][0].asInt64() == 7);
+
+  const Json::Value tombstone = json_util::fromString(removal[2].payload);
+  CHECK(tombstone.getMemberNames() ==
+        std::vector<std::string>{"info", "operation", "option", "users"});
+  CHECK(tombstone["operation"].asInt() ==
+        static_cast<int>(SyncOperation::Delete));
+  CHECK(tombstone["option"].asString() == "notification");
+  CHECK(tombstone["info"].getMemberNames() ==
+        std::vector<std::string>{"deletedAt", "id"});
+  CHECK(tombstone["info"]["id"].asInt64() == second);
+  CHECK(tombstone["info"]["deletedAt"].asInt64() == removedAt);
+  REQUIRE(tombstone["users"].size() == 1U);
+  CHECK(tombstone["users"][0].asInt64() == 7);
+  CHECK(removal[2].eventId.rfind("notification-change:", 0) == 0);
+  CHECK(removal[1].subject == nats_subject::kNotificationChange);
+  CHECK(removal[2].subject == nats_subject::kNotificationChange);
+
+  CHECK_FALSE(
+      drogon::sync_wait(notifications.remove({.id = second, .userId = 7})));
+  CHECK(outbox.pendingBatch(10).size() == 3);
 
   DbService::client()->execSqlSync("DROP TABLE change_outbox");
 

@@ -1,12 +1,14 @@
 #include "nats-notification-change-sink.hxx"
 
 #include <chrono>
+#include <errors/response-exception.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 #include <notification/notification-errors.hxx>
 #include <outbox/outbox-key.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/stream-retention.hxx>
+#include <sync/sync-change.hxx>
 #include <sync/user-audit-event.hxx>
 #include <text/json-diff.hxx>
 #include <text/json-util.hxx>
@@ -99,14 +101,45 @@ drogon::Task<void> NatsNotificationChangeSink::publishAudit(
   event.users = std::move(recipients);
   event.eventTimestamp = nowMs();
   std::string payload = json_util::toString(event.toJson());
+  co_await record({.table = input.tableName,
+                   .recordId = input.recordId,
+                   .discriminator = payload,
+                   .payload = std::move(payload),
+                   .client = input.client});
+}
+
+drogon::Task<void>
+NatsNotificationChangeSink::emitUsers(const UserEmitInput& input) const
+{
+  const Json::Value& recordId = input.body.obj["id"];
+  if (!recordId.isIntegral()) {
+    LOG_ERROR << "Notification change outbox: an emit of "
+              << tableNameToString(input.body.option)
+              << " carried no record id; the write is refused";
+    throw ResponseException(NotificationErrors::ChangeNotRecorded);
+  }
+  std::string payload = json_util::toString(
+      sync_change::userEmitPayload(input.body, input.userIds));
+  std::string transition =
+      payload + '|' + std::to_string(nowMs()) + '|' +
+      std::to_string(transitions_.fetch_add(1, std::memory_order_relaxed));
+  co_await record({.table = input.body.option,
+                   .recordId = recordId.asInt64(),
+                   .discriminator = std::move(transition),
+                   .payload = std::move(payload),
+                   .client = input.client});
+}
+
+drogon::Task<void> NatsNotificationChangeSink::record(RecordInput input) const
+{
   std::string eventId =
       outbox::transitionId({.prefix = kEventIdPrefix,
-                            .table = tableNameToString(input.tableName),
+                            .table = tableNameToString(input.table),
                             .recordId = input.recordId,
-                            .discriminator = payload});
+                            .discriminator = input.discriminator});
   static_cast<void>(co_await outbox_.record({.eventId = std::move(eventId),
                                              .subject = subject_,
-                                             .payload = std::move(payload),
+                                             .payload = std::move(input.payload),
                                              .client = input.client}));
 }
 

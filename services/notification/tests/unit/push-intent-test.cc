@@ -289,7 +289,8 @@ TEST_CASE("the create path publishes one intent per row")
       "data TEXT NOT NULL DEFAULT '{}', "
       "is_read INTEGER NOT NULL DEFAULT 0, "
       "read_at INTEGER, "
-      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')))");
+      "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
+      "deleted_at INTEGER)");
   client->execSqlSync(
       "CREATE TABLE notification_command ("
       "command_id TEXT NOT NULL PRIMARY KEY, "

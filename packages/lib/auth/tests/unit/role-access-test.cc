@@ -65,9 +65,9 @@ TEST_CASE("Resident permissions follow the kTableAccess map")
     CHECK(role_access::hasAccess({.role = UserRole::Resident,
                                   .table = TableName::Notification,
                                   .perm = RolePermission::Update}));
-    CHECK_FALSE(role_access::hasAccess({.role = UserRole::Resident,
-                                        .table = TableName::Notification,
-                                        .perm = RolePermission::Delete}));
+    CHECK(role_access::hasAccess({.role = UserRole::Resident,
+                                  .table = TableName::Notification,
+                                  .perm = RolePermission::Delete}));
 
     CHECK_FALSE(role_access::hasAccess({.role = UserRole::Resident,
                                         .table = TableName::UserInvitation,
@@ -105,6 +105,9 @@ TEST_CASE("Guard permissions follow the kTableAccess map")
     CHECK_FALSE(role_access::hasAccess({.role = UserRole::Guard,
                                         .table = TableName::Memory,
                                         .perm = RolePermission::Read}));
+    CHECK(role_access::hasAccess({.role = UserRole::Guard,
+                                  .table = TableName::Notification,
+                                  .perm = RolePermission::Delete}));
 }
 
 TEST_CASE("Guest permissions follow the kTableAccess map")
@@ -133,6 +136,9 @@ TEST_CASE("Guest permissions follow the kTableAccess map")
     CHECK_FALSE(role_access::hasAccess({.role = UserRole::Guest,
                                         .table = TableName::NotificationToken,
                                         .perm = RolePermission::Read}));
+    CHECK(role_access::hasAccess({.role = UserRole::Guest,
+                                  .table = TableName::Notification,
+                                  .perm = RolePermission::Delete}));
 }
 
 TEST_CASE("readableTables lists every table a role can read")
@@ -321,6 +327,24 @@ TEST_CASE("the delivery summary is the owner's alone")
     }
     CHECK(role_access::hasHttpAccess(
         {.role = UserRole::Owner, .path = "/notification/delivery-summary", .method = drogon::Get}));
+}
+
+TEST_CASE("every role deletes a notification by id, an inactive role included")
+{
+    for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+        CAPTURE(userRoleToString(role));
+        for (const bool roleActive : {true, false}) {
+            CAPTURE(roleActive);
+            CHECK(role_access::hasHttpAccess({.role = role,
+                                              .path = "/notification/5",
+                                              .method = drogon::Delete,
+                                              .roleActive = roleActive}));
+        }
+    }
+    CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Unknown,
+                                            .path = "/notification/5",
+                                            .method = drogon::Delete,
+                                            .roleActive = true}));
 }
 
 TEST_CASE("an app action answers the same as the route it stands for")

@@ -29,7 +29,8 @@ using PermSet = std::unordered_set<RolePermission>;
 using TableAccess = std::unordered_map<TableName, PermSet>;
 
 inline const PermSet kRead{RolePermission::Read};
-inline const PermSet kReadUpdate{RolePermission::Read, RolePermission::Update};
+inline const PermSet kReadUpdateDelete{RolePermission::Read, RolePermission::Update,
+                                       RolePermission::Delete};
 inline const PermSet kCreateOwn{RolePermission::Create};
 inline const PermSet kFull{RolePermission::Read, RolePermission::Create,
                            RolePermission::Update, RolePermission::Delete};
@@ -52,7 +53,7 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::User, kRead},
       {TableName::AuditLog, kRead},
       {TableName::UserAuditLog, kRead},
-      {TableName::Notification, kReadUpdate},
+      {TableName::Notification, kReadUpdateDelete},
       {TableName::NotificationToken, kCreateOwn},
       {TableName::Memory, kFull}}},
     {UserRole::Guard,
@@ -66,7 +67,7 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::User, kRead},
       {TableName::AuditLog, kRead},
       {TableName::UserAuditLog, kRead},
-      {TableName::Notification, kReadUpdate},
+      {TableName::Notification, kReadUpdateDelete},
       {TableName::NotificationToken, kCreateOwn}}},
     {UserRole::Guest,
      {{TableName::Camera, kRead},
@@ -75,7 +76,7 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::User, kRead},
       {TableName::AuditLog, kRead},
       {TableName::UserAuditLog, kRead},
-      {TableName::Notification, kReadUpdate},
+      {TableName::Notification, kReadUpdateDelete},
       {TableName::NotificationToken, kCreateOwn}}},
 };
 

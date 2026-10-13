@@ -301,7 +301,8 @@ readiness and the fallback gate — `CameraObjectNotifier`, the
 - **`markAsRead`** lands its per-change user audits in the service's own
   `change_outbox` before they are published over `argus.notification.v1.change`
   (see the change-feed section below), in the same transaction as the row
-  updates it audits. The sink carries audit diffs only: a notification row
+  updates it audits. The sink carries audit diffs and, for a deleted row, its
+  `Delete` frame (see "Deleting a notification"): a new notification row
   reaches its user through the durable delivery leg, not through the change
   subject.
 - **Push intents** (`[push].enabled`, default off) stay at-most-once
@@ -454,9 +455,11 @@ a failed probe is a warn plus a row, never silent. Probe rows older than
 seven days are purged with their deliveries, and the same step drops
 `notification_command` idempotency keys older than 30 days — a producer's
 retry never comes that late, and the table otherwise kept one row per
-command for ever. The user notifications themselves are not pruned here:
-they are synced creation-only with no tombstone, so a server-side delete
-would leave every device holding rows the server no longer has.
+command for ever. A live user notification is not pruned here: it is synced
+creation-only, so a server-side delete with no tombstone would leave every
+device holding a row the server no longer has. Only a row its owner deleted
+is purged, seven days after its `deleted_at`, because its deletion already
+travelled (see "Deleting a notification").
 
 ## Stopping cleanly (2026-10, extra finding N1)
 
@@ -1156,3 +1159,46 @@ identity target, or when identity does not answer, the call fails (the route
 answers 503) rather than reporting a request nobody will read
 (`notification-module-request-test`).
 
+## Deleting a notification (F6, 2026-10-13)
+
+`DELETE /notification/{id}` removes one of the caller's own notifications, and the
+caller's other devices drop it too. Every role holds it (`RolePermission::Delete` on
+`notification` in `role-access.hxx`; the route is core and the table baseline, so an
+inactive role keeps it; no capability changed). The answer is 204. Another user's id, a
+missing id and a row already deleted all answer 404 `NotificationNotFound`.
+
+**Why soft.** The row gets `deleted_at` and stays until the retention purge, because the
+deletion must travel (the audit diff is the row's before and after, inside the delete's
+transaction), and because a delivery intent still pending for the row must not bring it
+back: the delivery leg ends in an `Add` with the whole row, so a deleted row is never
+claimed. The column is additive and last in the table:
+`NotificationRepository::migrateSchema` adds it to an older notification.db at boot
+(`ALTER TABLE ... ADD COLUMN`, modelled on productivity's reminder migration), and the
+migration tool's column-order check still matches `schema.sql`. Every read skips a deleted row: both `/sync` pull legs,
+mark-as-read's unread selection and update, the delivery claim and backlog, and every
+count of the delivery summary. The self-test's purge step, the existing retention purge,
+hard-deletes rows deleted more than seven days ago with their delivery rows.
+
+**What is emitted.** In one transaction with the soft delete, two `change_outbox` rows on
+`argus.notification.v1.change`, in this order: the user audit diff (`publishAudit`, one
+field, `deletedAt` from null to the stored second) and a `Delete` frame (option
+`notification`, info `{id, deletedAt}`) to the owner's room, as productivity's user-emit
+payload (`sync_change::userEmitPayload`). argus-sync forwards a plain emit on this subject
+unchanged, so it needed no change. A refused row rolls the whole delete back. The sink
+offers `emitUsers` through the contract's `UserEmitSink` (`AuditSink` plus `emitUsers`;
+productivity's `UserChangeSink` adds `publishAction`), so the notification sink journals
+nothing.
+
+**Why the frame carries only id and deletedAt.** Root rule 18: a deletion event carries
+only `id` and `deletedAt`. A deleted notification's content must not travel again, and a
+device only needs to know which row to drop. The frame is live and never replayed; the
+audit diff is the durable record (argus-sync stores it in `user_audit_log`), so a device
+offline at the time learns of the deletion on its next user-audit page. The app should
+treat a diff whose only field is `deletedAt` as that removal, in either order with the
+frame.
+
+Tests: `notification-controller-test` (migration of an old-shaped database, the route's
+answers, the deleted row out of the pull, the unread rows, mark-as-read and the summary,
+the purge), `notification-change-transaction-test` (one unit of work, the outbox
+payloads), `notification-change-outbox-sink-test`, `notification-delivery-test`,
+`notification-rpc-test` and lib/auth's `role-access-test`.

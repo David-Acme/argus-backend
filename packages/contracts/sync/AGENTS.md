@@ -123,13 +123,14 @@ now `services/sync`'s `SyncSocket`.
   of the two sink headers so both name one input, and the pointer type is what
   forbids a copy of the transaction; 6 files.
 - `src/sync/user-change-sink.hxx` — `AuditSink` (`publishAudit`) with
-  `UserAuditInput`, and `UserChangeSink`, which derives from it and adds the
-  one user-scoped emit (`emitUsers`, over `UserEmitInput` and the recipient
-  list it carries), plus the two process-wide slots the services fill at boot:
+  `UserAuditInput`; `UserEmitSink`, which derives from it and adds the one
+  user-scoped emit (`emitUsers`, over `UserEmitInput` and the recipient list
+  it carries); `UserChangeSink`, which derives from that and adds
+  `publishAction`; plus the two process-wide slots the services fill at boot:
   `user_change::productivitySink` (a `UserChangeSink`) and
-  `user_change::notificationSink` (an `AuditSink`, because the notification
-  domain publishes diffs and never emits rows); 17 files, the most-included
-  sink header here.
+  `user_change::notificationSink` (a `UserEmitSink`, because the notification
+  domain publishes diffs and the `Delete` frame of a deleted row but journals
+  no action); 17 files, the most-included sink header here.
 - `src/sync/camera-change-sink.hxx` — the camera domain's pair: `CameraChangeSink`
   (`emitModule`, `publishAudit`), `ModuleAuditInput`, and the single
   `camera_change` slot `argus-camera` installs; 4 files.

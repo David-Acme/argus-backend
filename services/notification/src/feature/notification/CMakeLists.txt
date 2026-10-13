@@ -22,6 +22,7 @@ argus_module(NAME notification-feature
         argus::lib::http
         argus::lib::nats
         argus::lib::text
+        argus::contracts::notification
         argus::contracts::sync
         argus::lib::sqlite
         argus::lib::validation

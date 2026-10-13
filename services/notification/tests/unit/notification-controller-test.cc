@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
+#include <errors/response-exception.hxx>
 #include <errors/validation-exception.hxx>
 #include <feature/notification/controllers/notification-controller.hxx>
 #include <feature/notification/controllers/notification-token-controller.hxx>
@@ -10,6 +11,8 @@
 #include <feature/notification/dtos/register-notification-token-dto.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
+#include <notification/notification-errors.hxx>
+#include <shared/repositories/notification/notification-repository.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/user-change-sink.hxx>
 #include <feature/notification/repositories/notification-token/notification-token-repository.hxx>
@@ -19,10 +22,13 @@
 #include <text/json-util.hxx>
 #include <validation/validator.hxx>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <auth/request-context.hxx>
 #include <sqlite3.h>
 #include <stdexcept>
@@ -43,7 +49,13 @@ struct RecordedAudit
   std::vector<int64_t> users;
 };
 
-class RecordingSink final : public AuditSink
+struct RecordedEmit
+{
+  std::vector<int64_t> users;
+  Json::Value frame;
+};
+
+class RecordingSink final : public UserEmitSink
 {
 public:
   drogon::Task<void> publishAudit(const UserAuditInput& input) const override
@@ -55,9 +67,64 @@ public:
     co_return;
   }
 
+  drogon::Task<void> emitUsers(const UserEmitInput& input) const override
+  {
+    const std::scoped_lock lock(mutex_);
+    emits.push_back({.users = input.userIds, .frame = input.body.toJson()});
+    co_return;
+  }
+
   mutable std::mutex mutex_;
   mutable std::vector<RecordedAudit> audits;
+  mutable std::vector<RecordedEmit> emits;
 };
+
+struct Refusal
+{
+  int status{0};
+  std::string code;
+};
+
+Refusal refusalOf(const std::function<void()>& call)
+{
+  try {
+    call();
+  }
+  catch (const ResponseException& error) {
+    return {.status = error.statusCode(), .code = error.errorCode()};
+  }
+  return {};
+}
+
+int64_t scalar(const std::string& sql)
+{
+  const auto rows = DbService::client()->execSqlSync(sql);
+  return rows.empty() ? -1 : rows.front()["total"].as<int64_t>();
+}
+
+std::vector<Json::Value> listed(const NotificationRepository& repository)
+{
+  return drogon::sync_wait(repository.findSync({.userId = 7,
+                                                .startTime = std::nullopt,
+                                                .startId = std::nullopt,
+                                                .endTime = std::nullopt}));
+}
+
+std::vector<int64_t> listedIds(const NotificationRepository& repository)
+{
+  std::vector<int64_t> ids;
+  for (const auto& row : listed(repository))
+    ids.push_back(row["id"].asInt64());
+  std::ranges::sort(ids);
+  return ids;
+}
+
+int64_t listedUnread(const NotificationRepository& repository)
+{
+  const auto rows = listed(repository);
+  return static_cast<int64_t>(std::ranges::count_if(
+      rows, [](const Json::Value& row) { return !row["isRead"].asBool(); }));
+}
 
 using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
 
@@ -203,6 +270,18 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
   const AppRunner app;
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
 
+  const std::string deletedColumn =
+      "SELECT COUNT(*) AS total FROM pragma_table_info('notification') "
+      "WHERE name = 'deleted_at'";
+  const NotificationRepository repository{};
+  CHECK(scalar(deletedColumn) == 0);
+  REQUIRE(repository.migrateSchema());
+  CHECK(scalar(deletedColumn) == 1);
+  REQUIRE(repository.migrateSchema());
+  CHECK(scalar(deletedColumn) == 1);
+  CHECK(scalar("SELECT COUNT(*) AS total FROM notification "
+               "WHERE deleted_at IS NULL") == 2);
+
   RecordingSink sink;
   user_change::setNotificationSink(&sink);
 
@@ -316,20 +395,132 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
       drogon::sync_wait(notificationController.ack(ackReq({1, 2})));
   CHECK(body(reacked)["info"]["acked"].asInt64() == 0);
 
-  auto summaryReq = drogon::HttpRequest::newHttpJsonRequest(Json::Value());
-  summaryReq->setParameter("since", "1");
-  summaryReq->getAttributes()->insert(
-      AuthContext::kJwtKey,
-      JwtContext{.sub = 7, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}});
-  const auto summary =
-      drogon::sync_wait(notificationController.deliverySummary(summaryReq));
-  REQUIRE(summary);
-  const Json::Value summaryJson = body(summary);
-  CHECK(summaryJson["info"]["sent"].asInt64() == 2);
-  CHECK(summaryJson["info"]["acked"].asInt64() == 2);
-  CHECK(summaryJson["info"]["unacked"].asInt64() == 0);
-  CHECK(summaryJson["info"]["latencyMsMax"].asInt64() == 1500);
-  CHECK(summaryJson["info"]["probeAt"].asInt64() == 0);
+  auto summaryInfo = [&notificationController] {
+    auto summaryReq = drogon::HttpRequest::newHttpJsonRequest(Json::Value());
+    summaryReq->setParameter("since", "1");
+    summaryReq->getAttributes()->insert(
+        AuthContext::kJwtKey,
+        JwtContext{.sub = 7, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}});
+    const auto summary =
+        drogon::sync_wait(notificationController.deliverySummary(summaryReq));
+    REQUIRE(summary);
+    return body(summary)["info"];
+  };
+  const Json::Value summaryJson = summaryInfo();
+  CHECK(summaryJson["sent"].asInt64() == 2);
+  CHECK(summaryJson["acked"].asInt64() == 2);
+  CHECK(summaryJson["unacked"].asInt64() == 0);
+  CHECK(summaryJson["latencyMsMax"].asInt64() == 1500);
+  CHECK(summaryJson["probeAt"].asInt64() == 0);
+
+  DbService::client()->execSqlSync(
+      "INSERT INTO notification (id, user_id, type, title, body) "
+      "VALUES (3, 7, 'event', 'Bell 3', 'someone rang the bell')");
+  DbService::client()->execSqlSync(
+      "INSERT INTO notification_delivery (notification_id, user_id, status, "
+      "created_at, sent_at, created_ms, sent_ms) VALUES (3, 7, 'sent', "
+      "1700000000, 1700000001, 1700000000000, 1700000001500)");
+  CHECK(listedIds(repository) == std::vector<int64_t>{1, 2, 3});
+  CHECK(listedUnread(repository) == 1);
+  const Json::Value withThird = summaryInfo();
+  CHECK(withThird["sent"].asInt64() == 3);
+  CHECK(withThird["unacked"].asInt64() == 1);
+  CHECK(withThird["unackedOld"].asInt64() == 1);
+
+  auto removeAs = [&notificationController](int64_t userId, int64_t id) {
+    auto req = drogon::HttpRequest::newHttpRequest();
+    req->setMethod(drogon::Delete);
+    req->getAttributes()->insert(
+        AuthContext::kJwtKey,
+        JwtContext{.sub = userId, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}});
+    return drogon::sync_wait(notificationController.remove(req, id));
+  };
+  const std::string notFound(
+      NotificationErrors::NotificationNotFound.wireCode());
+
+  const Refusal foreign =
+      refusalOf([&removeAs] { static_cast<void>(removeAs(8, 3)); });
+  CHECK(foreign.status == 404);
+  CHECK(foreign.code == notFound);
+  CHECK(scalar("SELECT COUNT(*) AS total FROM notification "
+               "WHERE id = 3 AND deleted_at IS NULL") == 1);
+  CHECK(sink.audits.size() == 2);
+  CHECK(sink.emits.empty());
+
+  const auto removed = removeAs(7, 3);
+  REQUIRE(removed);
+  CHECK(removed->statusCode() == drogon::k204NoContent);
+  CHECK(body(removed)["status"].asInt() == 204);
+  const int64_t deletedAt =
+      scalar("SELECT COALESCE(deleted_at, 0) AS total FROM notification "
+             "WHERE id = 3");
+  CHECK(deletedAt > 0);
+
+  REQUIRE(sink.audits.size() == 3);
+  const RecordedAudit& deletion = sink.audits.back();
+  CHECK(deletion.recordId == 3);
+  CHECK(deletion.tableName == "notification");
+  CHECK(deletion.users == std::vector<int64_t>{7});
+  Json::Value deletionBefore = json_util::fromString(deletion.before);
+  Json::Value deletionAfter = json_util::fromString(deletion.after);
+  CHECK(deletionBefore["deletedAt"].isNull());
+  CHECK(deletionAfter["deletedAt"].asInt64() == deletedAt);
+  deletionBefore.removeMember("deletedAt");
+  deletionAfter.removeMember("deletedAt");
+  CHECK(deletionBefore == deletionAfter);
+
+  REQUIRE(sink.emits.size() == 1);
+  const RecordedEmit& tombstone = sink.emits.front();
+  CHECK(tombstone.users == std::vector<int64_t>{7});
+  CHECK(tombstone.frame["operation"].asInt() ==
+        static_cast<int>(SyncOperation::Delete));
+  CHECK(tombstone.frame["option"].asString() == "notification");
+  CHECK(tombstone.frame["info"].getMemberNames() ==
+        std::vector<std::string>{"deletedAt", "id"});
+  CHECK(tombstone.frame["info"]["id"].asInt64() == 3);
+  CHECK(tombstone.frame["info"]["deletedAt"].asInt64() == deletedAt);
+
+  const Refusal twice =
+      refusalOf([&removeAs] { static_cast<void>(removeAs(7, 3)); });
+  CHECK(twice.status == 404);
+  CHECK(twice.code == notFound);
+  const Refusal missing =
+      refusalOf([&removeAs] { static_cast<void>(removeAs(7, 99)); });
+  CHECK(missing.status == 404);
+  CHECK(missing.code == notFound);
+  CHECK(sink.audits.size() == 3);
+  CHECK(sink.emits.size() == 1);
+
+  CHECK(listedIds(repository) == std::vector<int64_t>{1, 2});
+  CHECK(listedUnread(repository) == 0);
+  const auto last = drogon::sync_wait(repository.findLastSync(
+      {.userId = 7,
+       .startTime = std::nullopt,
+       .startId = std::nullopt,
+       .endTime = std::nullopt}));
+  if (!last) {
+    FAIL("expected a value in last");
+    return;
+  }
+  CHECK((*last)["id"].asInt64() == 2);
+  const auto readDeleted =
+      drogon::sync_wait(notificationController.markAsRead(readReq({3})));
+  CHECK(body(readDeleted)["status"].asInt() == 200);
+  CHECK(sink.audits.size() == 3);
+  CHECK(scalar("SELECT is_read AS total FROM notification WHERE id = 3") == 0);
+
+  const Json::Value withoutThird = summaryInfo();
+  CHECK(withoutThird["sent"].asInt64() == 2);
+  CHECK(withoutThird["acked"].asInt64() == 2);
+  CHECK(withoutThird["unacked"].asInt64() == 0);
+  CHECK(withoutThird["unackedOld"].asInt64() == 0);
+
+  CHECK(drogon::sync_wait(repository.purgeDeleted(deletedAt)) == 0);
+  CHECK(drogon::sync_wait(repository.purgeDeleted(deletedAt + 1)) == 1);
+  CHECK(scalar("SELECT COUNT(*) AS total FROM notification") == 2);
+  CHECK(scalar("SELECT COUNT(*) AS total FROM notification_delivery "
+               "WHERE notification_id = 3") == 0);
+  CHECK(scalar("SELECT COUNT(*) AS total FROM notification_delivery") == 2);
 
   NotificationTokenController tokenController;
 

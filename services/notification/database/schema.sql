@@ -16,7 +16,8 @@ CREATE TABLE IF NOT EXISTS notification (
     data       TEXT    NOT NULL  DEFAULT '{}',
     is_read    INTEGER NOT NULL  DEFAULT 0  CHECK (is_read IN (0, 1)),
     read_at    INTEGER,
-    created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+    created_at INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    deleted_at INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_notification_user_created ON notification (user_id, created_at);

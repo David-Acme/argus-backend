@@ -20,6 +20,8 @@ public:
   ADD_METHOD_TO(NotificationController::deliverySummary,
                 "/notification/delivery-summary", drogon::Get, "DeviceFilter",
                 "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(NotificationController::remove, "/notification/{1}",
+                drogon::Delete, "DeviceFilter", "JwtFilter", "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> markAsRead(drogon::HttpRequestPtr req);
@@ -28,6 +30,9 @@ public:
 
   drogon::Task<drogon::HttpResponsePtr> deliverySummary(
       drogon::HttpRequestPtr req);
+
+  drogon::Task<drogon::HttpResponsePtr> remove(drogon::HttpRequestPtr req,
+                                               int64_t id);
 
 private:
   NotificationFeatureService service_;

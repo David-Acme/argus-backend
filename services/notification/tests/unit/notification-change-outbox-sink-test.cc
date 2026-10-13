@@ -11,6 +11,9 @@
 #include <nats/live-broker.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
+#include <sync/socket-emit-dto.hxx>
+#include <sync/sync-change.hxx>
+#include <text/json-util.hxx>
 
 #include <chrono>
 #include <condition_variable>
@@ -269,6 +272,46 @@ TEST_CASE("the change sink lands every audit in the durable outbox")
     CHECK(sink.drained());
     CHECK(outbox.markSent(waiting.id, 3000));
   }
+}
+
+TEST_CASE("the change sink lands a deletion emit in the durable outbox as the user-emit payload")
+{
+  resetOutbox();
+  const auto outbox = NatsNotificationChangeSink::repository();
+  NatsNotificationChangeSink sink(
+      nullptr, NatsNotificationChangeSink::Config{
+                   .retryMs = 20, .publishSubject = {}, .streamName = {}});
+
+  SocketEmitDto tombstone;
+  tombstone.operation = SyncOperation::Delete;
+  tombstone.option = TableName::Notification;
+  tombstone.obj["id"] = static_cast<Json::Int64>(41);
+  tombstone.obj["deletedAt"] = static_cast<Json::Int64>(1700000123);
+  drogon::sync_wait(
+      sink.emitUsers({.userIds = {7}, .body = tombstone, .client = nullptr}));
+
+  const outbox::OutboxRow emitted = pendingRow(outbox.pendingBatch(1));
+  CHECK(emitted.eventId.rfind("notification-change:", 0) == 0);
+  CHECK(emitted.eventId.size() == 52);
+  CHECK(emitted.subject == nats_subject::kNotificationChange);
+  CHECK(emitted.payload ==
+        json_util::toString(sync_change::userEmitPayload(tombstone, {7})));
+  CHECK(emitted.payload.find("\"kind\"") == std::string::npos);
+  CHECK(outbox.markSent(emitted.id, 4000));
+
+  drogon::sync_wait(
+      sink.emitUsers({.userIds = {7}, .body = tombstone, .client = nullptr}));
+  const outbox::OutboxRow repeated = pendingRow(outbox.pendingBatch(1));
+  CHECK(repeated.eventId != emitted.eventId);
+  CHECK(repeated.payload == emitted.payload);
+  CHECK(outbox.markSent(repeated.id, 4100));
+
+  SocketEmitDto anonymous = tombstone;
+  anonymous.obj.removeMember("id");
+  CHECK_THROWS_AS(drogon::sync_wait(sink.emitUsers(
+                      {.userIds = {7}, .body = anonymous, .client = nullptr})),
+                  ResponseException);
+  CHECK_FALSE(hasPending(outbox));
 }
 
 TEST_CASE("a live notification change sink publishes every audit onto the stream" *

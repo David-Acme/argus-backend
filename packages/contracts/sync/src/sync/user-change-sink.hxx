@@ -41,12 +41,16 @@ public:
   publishAudit(const UserAuditInput& input) const = 0;
 };
 
-class UserChangeSink : public AuditSink
+class UserEmitSink : public AuditSink
 {
 public:
   [[nodiscard]] virtual drogon::Task<void>
   emitUsers(const UserEmitInput& input) const = 0;
+};
 
+class UserChangeSink : public UserEmitSink
+{
+public:
   [[nodiscard]] virtual drogon::Task<void>
   publishAction(const ActionPublishInput& input) const = 0;
 };
@@ -69,18 +73,18 @@ inline const UserChangeSink* getProductivitySink()
   return productivitySink();
 }
 
-inline const AuditSink*& notificationSink()
+inline const UserEmitSink*& notificationSink()
 {
-  static const AuditSink* instance = nullptr;
+  static const UserEmitSink* instance = nullptr;
   return instance;
 }
 
-inline void setNotificationSink(const AuditSink* value)
+inline void setNotificationSink(const UserEmitSink* value)
 {
   notificationSink() = value;
 }
 
-inline const AuditSink* getNotificationSink()
+inline const UserEmitSink* getNotificationSink()
 {
   return notificationSink();
 }

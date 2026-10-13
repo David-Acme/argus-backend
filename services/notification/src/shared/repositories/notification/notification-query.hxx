@@ -20,42 +20,62 @@ inline constexpr std::string_view INSERT_MANY_PREFIX =
 inline constexpr std::string_view INSERT_MANY_SUFFIX = " RETURNING id";
 
 inline constexpr std::string_view FIND_SYNC =
-    "SELECT * FROM notification WHERE user_id = ? "
+    "SELECT * FROM notification WHERE user_id = ? AND deleted_at IS NULL "
     "AND created_at >= ? AND created_at <= ? "
     "ORDER BY created_at ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_FROM =
-    "SELECT * FROM notification WHERE user_id = ? "
+    "SELECT * FROM notification WHERE user_id = ? AND deleted_at IS NULL "
     "AND created_at >= ? ORDER BY created_at ASC LIMIT ";
 inline constexpr std::string_view FIND_SYNC_AFTER =
-    "SELECT * FROM notification WHERE user_id = ? AND "
+    "SELECT * FROM notification WHERE user_id = ? AND deleted_at IS NULL AND "
     "(created_at > ? OR (created_at = ? AND id > ?)) AND created_at <= ? "
     "ORDER BY created_at ASC, id ASC LIMIT ";
 inline constexpr std::string_view FIND_SYNC_AFTER_FROM =
-    "SELECT * FROM notification WHERE user_id = ? AND "
+    "SELECT * FROM notification WHERE user_id = ? AND deleted_at IS NULL AND "
     "(created_at > ? OR (created_at = ? AND id > ?)) "
     "ORDER BY created_at ASC, id ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_TO =
-    "SELECT * FROM notification WHERE user_id = ? "
+    "SELECT * FROM notification WHERE user_id = ? AND deleted_at IS NULL "
     "AND created_at <= ? ORDER BY created_at ASC LIMIT ";
 
 inline constexpr std::string_view FIND_SYNC_ALL =
-    "SELECT * FROM notification WHERE user_id = ? "
+    "SELECT * FROM notification WHERE user_id = ? AND deleted_at IS NULL "
     "ORDER BY created_at ASC LIMIT ";
 
 inline constexpr std::string_view FIND_LAST_SYNC =
-    "SELECT * FROM notification WHERE user_id = ? "
+    "SELECT * FROM notification WHERE user_id = ? AND deleted_at IS NULL "
     "ORDER BY created_at DESC, id DESC LIMIT 1";
 
 inline constexpr std::string_view MARK_READ =
     "UPDATE notification SET is_read = 1, read_at = ? "
-    "WHERE user_id = ? AND is_read = 0 AND id IN (%1%)";
+    "WHERE user_id = ? AND is_read = 0 AND deleted_at IS NULL AND id IN (%1%)";
 
 inline constexpr std::string_view FIND_UNREAD_BY_IDS =
-    "SELECT * FROM notification WHERE user_id = ? AND is_read = 0 AND id IN "
-    "(%1%) "
+    "SELECT * FROM notification WHERE user_id = ? AND is_read = 0 "
+    "AND deleted_at IS NULL AND id IN (%1%) "
     "ORDER BY id ASC";
+
+inline constexpr std::string_view FIND_OWNED =
+    "SELECT * FROM notification WHERE id = ? AND user_id = ? "
+    "AND deleted_at IS NULL";
+
+inline constexpr std::string_view SOFT_DELETE =
+    "UPDATE notification SET deleted_at = strftime('%s', 'now') "
+    "WHERE id = ? AND user_id = ? AND deleted_at IS NULL RETURNING *";
+
+inline constexpr std::string_view PURGE_DELETED_DELIVERIES =
+    "DELETE FROM notification_delivery WHERE notification_id IN (SELECT id "
+    "FROM notification WHERE deleted_at IS NOT NULL AND deleted_at < ?)";
+
+inline constexpr std::string_view PURGE_DELETED =
+    "DELETE FROM notification WHERE deleted_at IS NOT NULL AND deleted_at < ?";
+
+inline constexpr std::string_view TABLE_INFO = "PRAGMA table_info(notification)";
+
+inline constexpr std::string_view ADD_DELETED_AT_COLUMN =
+    "ALTER TABLE notification ADD COLUMN deleted_at INTEGER";
 }
 
 inline constexpr std::string_view CLAIM_COMMAND =
@@ -90,17 +110,22 @@ inline constexpr std::size_t kMaxNotificationData = 8192;
 
 inline constexpr std::string_view CLAIM_PENDING =
     "UPDATE notification_delivery SET claimed_at = ? WHERE id IN ("
-    "SELECT id FROM notification_delivery WHERE status = ? AND claimed_at <= ? "
-    "ORDER BY id ASC LIMIT ?) RETURNING id";
+    "SELECT d.id FROM notification_delivery d WHERE d.status = ? "
+    "AND d.claimed_at <= ? AND NOT EXISTS (SELECT 1 FROM notification n "
+    "WHERE n.id = d.notification_id AND n.deleted_at IS NOT NULL) "
+    "ORDER BY d.id ASC LIMIT ?) RETURNING id";
 
 inline constexpr std::string_view CLAIMED_DELIVERIES =
     "SELECT d.id, d.notification_id, d.user_id, n.type, n.title, n.body, "
     "n.data, n.created_at FROM notification_delivery d "
     "JOIN notification n ON n.id = d.notification_id "
-    "WHERE d.status = ? AND d.id IN (%1%) ORDER BY d.id ASC";
+    "WHERE d.status = ? AND n.deleted_at IS NULL AND d.id IN (%1%) "
+    "ORDER BY d.id ASC";
 
 inline constexpr std::string_view PENDING_DELIVERY_COUNT =
-    "SELECT COUNT(*) AS total FROM notification_delivery WHERE status = ?";
+    "SELECT COUNT(*) AS total FROM notification_delivery d WHERE d.status = ? "
+    "AND NOT EXISTS (SELECT 1 FROM notification n "
+    "WHERE n.id = d.notification_id AND n.deleted_at IS NOT NULL)";
 
 inline constexpr std::string_view MARK_DELIVERED_MANY =
     "UPDATE notification_delivery SET status = ?, attempts = attempts + 1, "
@@ -125,26 +150,31 @@ inline constexpr std::string_view DELIVERY_COUNTS =
     "COALESCE(SUM(status = 'sent'), 0) AS sent, "
     "COALESCE(SUM(acked_at > 0), 0) AS acked "
     "FROM notification_delivery WHERE created_at >= ? AND notification_id NOT "
-    "IN (SELECT id FROM notification WHERE type = 'probe')";
+    "IN (SELECT id FROM notification WHERE type = 'probe' OR deleted_at IS NOT "
+    "NULL)";
 
 inline constexpr std::string_view DELIVERY_UNACKED_OLD =
     "SELECT COUNT(*) AS rows FROM notification_delivery WHERE status = 'sent' "
     "AND acked_at = 0 AND sent_at > 0 AND sent_at <= ? AND notification_id "
-    "NOT IN (SELECT id FROM notification WHERE type = 'probe')";
+    "NOT IN (SELECT id FROM notification WHERE type = 'probe' OR deleted_at IS "
+    "NOT NULL)";
 
 inline constexpr std::string_view DELIVERY_LATENCY_COUNT =
     "SELECT COUNT(*) AS rows FROM notification_delivery WHERE status = 'sent' "
-    "AND sent_ms > created_ms AND created_ms >= ?";
+    "AND sent_ms > created_ms AND created_ms >= ? AND notification_id NOT IN "
+    "(SELECT id FROM notification WHERE deleted_at IS NOT NULL)";
 
 inline constexpr std::string_view DELIVERY_LATENCY_SAMPLE =
     "SELECT (sent_ms - created_ms) AS ms FROM notification_delivery WHERE "
     "status = 'sent' AND sent_ms > created_ms AND created_ms >= ? "
-    "ORDER BY ms ASC LIMIT 1 OFFSET ?";
+    "AND notification_id NOT IN (SELECT id FROM notification WHERE deleted_at "
+    "IS NOT NULL) ORDER BY ms ASC LIMIT 1 OFFSET ?";
 
 inline constexpr std::string_view DELIVERY_LATENCY_MAX =
     "SELECT COALESCE(MAX(sent_ms - created_ms), 0) AS ms FROM "
     "notification_delivery WHERE status = 'sent' AND sent_ms > created_ms AND "
-    "created_ms >= ?";
+    "created_ms >= ? AND notification_id NOT IN (SELECT id FROM notification "
+    "WHERE deleted_at IS NOT NULL)";
 
 inline constexpr std::string_view INSERT_PROBE =
     "INSERT INTO notification (user_id, type, title, body, data) VALUES "
@@ -246,6 +276,13 @@ struct NotificationMarkReadInput
 {
   int64_t userId{0};
   std::vector<int64_t> ids;
+  drogon::orm::DbClient* client{nullptr};
+};
+
+struct NotificationOwnedInput
+{
+  int64_t id{0};
+  int64_t userId{0};
   drogon::orm::DbClient* client{nullptr};
 };
 

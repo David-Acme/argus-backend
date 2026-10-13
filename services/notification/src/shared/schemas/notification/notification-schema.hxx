@@ -18,6 +18,7 @@ struct NotificationSchema
   bool isRead{false};
   std::optional<int64_t> readAt;
   int64_t createdAt{0};
+  std::optional<int64_t> deletedAt;
 
   NotificationSchema() = default;
   explicit NotificationSchema(const drogon::orm::Row& row);
