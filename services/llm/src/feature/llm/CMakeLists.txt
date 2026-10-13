@@ -59,6 +59,7 @@ argus_module(NAME llm
         services/tools/tool-grounding.cc
         services/tools/tool-registry.cc
         services/turn/bundle-loader.cc
+        services/turn/bundle-golden.cc
         services/turn/calibration.cc
         services/turn/context-selector.cc
         services/turn/deciders.cc

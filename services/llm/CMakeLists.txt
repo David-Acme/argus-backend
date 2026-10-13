@@ -364,6 +364,32 @@ set_target_properties(llm-bundle-loader-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-bundle-loader-test COMMAND llm-bundle-loader-test)
 
+add_executable(llm-bundle-check tools/bundle-check.cc)
+
+target_link_libraries(llm-bundle-check PRIVATE argus::llm)
+
+target_compile_options(llm-bundle-check PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-bundle-check PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-bundle-check-decide
+    COMMAND llm-bundle-check decide ${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-pilot --skip-missing)
+
+add_test(NAME llm-bundle-check-extract
+    COMMAND llm-bundle-check extract ${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/pilot-bundle --skip-missing)
+
+set_tests_properties(llm-bundle-check-decide llm-bundle-check-extract PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(llm-bundle-golden-test tests/unit/llm-bundle-golden-test.cc)
+
+target_link_libraries(llm-bundle-golden-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-bundle-golden-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-bundle-golden-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-bundle-golden-test COMMAND llm-bundle-golden-test)
+
 add_executable(llm-turn-engines-test tests/unit/llm-turn-engines-test.cc)
 
 target_compile_definitions(llm-turn-engines-test PRIVATE

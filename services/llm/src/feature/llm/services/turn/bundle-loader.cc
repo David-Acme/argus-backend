@@ -35,6 +35,10 @@ constexpr std::string_view kDeciderModel = "laya";
 
 constexpr std::string_view kExtractorModel = "gliner";
 
+constexpr std::string_view kFp32 = "fp32";
+
+constexpr std::string_view kInt8 = "int8";
+
 std::string lowered(std::string text)
 {
   for (char& c : text)
@@ -87,6 +91,23 @@ std::optional<Json::Value> readJson(const std::filesystem::path& path)
   if (!Json::parseFromStream(builder, stream, &root, &errors))
     return std::nullopt;
   return root;
+}
+
+std::optional<BundlePrecision> precisionOf(const Json::Value& manifest)
+{
+  const std::string declared = manifest.get("precision", "").asString();
+  if (declared == kFp32)
+    return BundlePrecision::Fp32;
+  if (declared == kInt8)
+    return BundlePrecision::Int8;
+  if (!declared.empty())
+    return std::nullopt;
+  const std::string kind = manifest.get("artefactKind", "").asString();
+  if (kind.starts_with(kInt8))
+    return BundlePrecision::Int8;
+  if (kind.starts_with(kFp32))
+    return BundlePrecision::Fp32;
+  return std::nullopt;
 }
 
 struct Digests
@@ -175,6 +196,11 @@ std::optional<std::map<std::string, std::vector<std::string>>> readExtractorFiel
 }
 }
 
+std::string_view bundlePrecisionToString(BundlePrecision precision)
+{
+  return precision == BundlePrecision::Int8 ? kInt8 : kFp32;
+}
+
 BundleLoader::BundleLoader(BundleLocation location) : dir_(std::move(location.dir)), kind_(location.kind)
 {
   load();
@@ -244,6 +270,26 @@ void BundleLoader::load()
     return;
   }
   modelSha256_ = listedModel->second;
+  const std::optional<BundlePrecision> precision = precisionOf(*manifest);
+  if (!precision) {
+    error_ = dir_.string() + ": manifest.json declares no precision (fp32 or int8)";
+    return;
+  }
+  precision_ = *precision;
+  if (const Json::Value& golden = (*manifest)["golden"]; !golden.isNull()) {
+    const std::string file = golden.get("file", "").asString();
+    const auto listedGolden = digests.byName.find(file);
+    if (file.empty() || listedGolden == digests.byName.end() || lowered(golden.get("sha256", "").asString()) != listedGolden->second) {
+      error_ = dir_.string() + ": manifest.json records golden vectors the bundle does not carry under that hash";
+      return;
+    }
+    const Json::Value& tolerance = golden["tolerance"];
+    golden_ = {.file = dir_ / file,
+               .probability = tolerance.get("probability", 0.0).asDouble(),
+               .now = tolerance.get("now", 0.0).asDouble(),
+               .score = tolerance.get("score", 0.0).asDouble(),
+               .present = true};
+  }
   if (kind_ == BundleKind::Decider) {
     const auto listedQuestions = digests.byName.find(std::string(kQuestionsFile));
     if (listedQuestions == digests.byName.end()) {

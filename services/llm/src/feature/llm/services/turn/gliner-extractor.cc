@@ -324,7 +324,7 @@ class GlinerBundleModel final : public GlinerModel
 public:
   GlinerBundleModel(const BundleLoader& bundle, OnnxOptions options)
       : modelPath_(bundle.modelPath()), tokenizerPath_(bundle.tokenizerJson()), types_(bundle.typeFields()),
-        options_(options),
+        precision_(bundle.precision()), options_(options),
         threshold_(bundle.thresholds().present ? bundle.thresholds().threshold : kDefaultPairThreshold),
         maxSpanWords_(bundle.thresholds().present ? bundle.thresholds().maxSpanWidth : kDefaultMaxSpanWords)
   {
@@ -388,7 +388,7 @@ private:
     }
     ready_ = true;
     LOG_INFO << "argus-llm: the GLiNER extractor opened " << modelPath_.filename().string() << " with "
-             << types_.size() << " types, pair_threshold=" << threshold_ << " max_span_words=" << maxSpanWords_;
+             << types_.size() << " types, precision=" << std::string(bundlePrecisionToString(precision_)) << " pair_threshold=" << threshold_ << " max_span_words=" << maxSpanWords_;
   }
 
   [[nodiscard]] std::vector<GlinerSpan> decode(const GraphRun& run) const
@@ -453,6 +453,7 @@ private:
   std::filesystem::path modelPath_;
   std::filesystem::path tokenizerPath_;
   std::map<std::string, std::vector<std::string>> types_;
+  BundlePrecision precision_{BundlePrecision::Fp32};
   OnnxOptions options_;
   double threshold_{kDefaultPairThreshold};
   int maxSpanWords_{kDefaultMaxSpanWords};

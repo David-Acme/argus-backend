@@ -182,7 +182,12 @@ setup_turn_bundle() {
   fi
   if [ -n "$source" ]; then
     log "Installing the $kind bundle from $source..."
-    "$INSTALL" "$kind" "$source" --slot "$SLOT" || warn "The $kind bundle at $source was refused."
+    local parity=()
+    if [ ! -x "$ROOT/services/llm/build/prod/llm-bundle-check" ] && [ ! -x "$ROOT/services/llm/build/dev/llm-bundle-check" ]; then
+      warn "argus-llm is not built yet, so the bundle's golden vectors are checked by its test suite, not now."
+      parity=(--skip-parity)
+    fi
+    "$INSTALL" "$kind" "$source" --slot "$SLOT" "${parity[@]}" || warn "The $kind bundle at $source was refused."
     return 0
   fi
   warn "No $kind bundle at models/$kind/$name. The pilot bundles are exported by the intent-training"

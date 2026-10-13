@@ -99,7 +99,7 @@ Built built(const std::string& name, std::string_view model = "laya")
   write(root / "max_len", "512\n");
   write(root / "model-card.md", "# card\n");
   write(root / "questions.json", R"({"tool": {"type": "choice", "instructions": "which", "criteria": ["memory_save", "camera"]}})");
-  write(root / "manifest.json", R"({"model": ")" + std::string(model) + R"(", "calibration": {"fitOn": "calibration"}, "labels": 2, "modelOnnx": {"sha256": ")" +
+  write(root / "manifest.json", R"({"model": ")" + std::string(model) + R"(", "precision": "fp32", "calibration": {"fitOn": "calibration"}, "labels": 2, "modelOnnx": {"sha256": ")" +
                                     argus::hash::sha256Hex(readText(root / "model.onnx")) + R"("}, "questions": {"file": "questions.json", "sha256": ")" +
                                     argus::hash::sha256Hex(readText(root / "questions.json")) + R"("}})");
   seal(root);
