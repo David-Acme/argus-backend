@@ -213,6 +213,17 @@ the binary against it; without `ARGUS_NATS_SERVER_BIN` the script exits 77 and
 the binary's cases are doctest skips. It reads its own variables, never
 `ARGUS_NATS_URL`, because CI's broker carries no permissions.
 
+`tests/unit/nats-seed-round-trip-test.cc` — the round trip of one seed:
+`scripts/nats-seed-round-trip-test.sh` issues a seed with
+`scripts/lib/nats-users.sh`, starts an isolated nats-server (a free loopback
+port, never 4222) whose only user is that seed's public key, and runs the
+binary: cnats connects through `natsOptions_SetNKeyFromSeed`, publishes inside
+the user's allow-list and is refused outside it, and a second seed presented
+with the same public key is refused at connect. ctest runs it through the
+script (`SKIP_RETURN_CODE 77`), so it runs at integration wherever
+`ARGUS_NATS_SERVER_BIN` names a nats-server binary or `nats-server` is on
+`PATH`, and is reported as skipped where none is.
+
 `[nats] user` and `[nats] password`, when both are set, are passed to the
 broker with `natsOptions_SetUserInfo`; credentials never go into the URL,
 which services log. `[nats] nkey` and `[nats] seed_file`, when both are set,

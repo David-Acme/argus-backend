@@ -55,6 +55,16 @@ target_compile_definitions(nats-permissions-test PRIVATE
     ARGUS_NATS_RENDER_OUT="${CMAKE_CURRENT_BINARY_DIR}/nats-permissions.conf")
 add_test(NAME nats-permissions-test COMMAND nats-permissions-test)
 
+get_filename_component(ARGUS_NATS_REPO_ROOT
+                       ${CMAKE_CURRENT_SOURCE_DIR}/../../.. ABSOLUTE)
+add_executable(nats-seed-round-trip-test tests/unit/nats-seed-round-trip-test.cc)
+target_link_libraries(nats-seed-round-trip-test PRIVATE argus::lib::nats doctest::doctest)
+target_compile_options(nats-seed-round-trip-test PRIVATE -Wall -Wextra)
+add_test(NAME nats-seed-round-trip-test
+         COMMAND bash ${ARGUS_NATS_REPO_ROOT}/scripts/nats-seed-round-trip-test.sh
+                 $<TARGET_FILE:nats-seed-round-trip-test>)
+set_tests_properties(nats-seed-round-trip-test PROPERTIES SKIP_RETURN_CODE 77)
+
 add_executable(nats-permissions-live-test tests/unit/nats-permissions-live-test.cc)
 target_link_libraries(nats-permissions-live-test PRIVATE argus::lib::nats doctest::doctest)
 target_compile_options(nats-permissions-live-test PRIVATE -Wall -Wextra)
