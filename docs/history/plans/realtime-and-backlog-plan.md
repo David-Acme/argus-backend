@@ -173,6 +173,37 @@ user shares the user room. Nothing here is to be changed except where a gap belo
 - F1 Camera: Argus-side recording (`record_mode` is stored, nothing records), snapshot to file, SD
   recordings with a timeline, patrol and preset rename/delete, mute live audio on the native player,
   ONVIF control for generic cameras, TURN relay for remote WebRTC.
+  **Argus-side recording, owner-approved spec and rulings (2026-10-13)**, after web research into
+  Frigate, Milestone, Synology, Blue Iris, ZoneMinder, Shinobi and Scrypted:
+  - Event recording with pre-roll: a continuous per-camera ring of the last N minutes (default 5) as
+    keyframe-aligned fMP4 segments of about 4 s, stream copy only (no transcoding), timestamps from the
+    server's NTP clock with the camera offset kept in the manifest. The ring lives in tmpfs when the
+    host has the RAM for it, otherwise on the SSD (sequential writes; SMART wear shown on the storage
+    dashboard). An important event (guard episode high/critical, intruder, escalation, panic) keeps
+    the pre-roll and records until the event ends plus a post-roll (default 2 min; panic 10 min);
+    overlapping events extend one clip; a clip is capped at 30 min and rolls into a linked clip.
+    Segments are promoted to the private RustFS store during the event, not at its end. Always armed
+    (Home mode too); main stream; audio except on "no audio" cameras; nothing in privacy mode.
+  - A clip is a signed manifest over segments (SHA-256 per segment, hash-chained manifests, an
+    instance Ed25519 key), never a re-mux; gaps from a camera dropping are explicit in the manifest
+    and trigger an SD-card backfill of that window as a second, separately hashed source. Export is
+    a byte-identical stream-copy MP4 plus the manifest and a verify tool; nothing is burned in.
+  - Access log: every view, scrub, download, export, lock and delete of a recording is an audit row
+    (who, device, clip, action, range, time), server-side only, kept a year. Owner-only access in v1.
+  - Evidence lock: the Owner can lock a clip with a reason; locked clips skip retention and the disk
+    quota; incident locks last up to 120 days, longer only with an explicit authority-request reason.
+  - Retention, applied by default even though a private home may fall outside the directive:
+    30 days (configurable to 60), 120 for a locked incident, counted in calendar days, deletion within
+    2 days of expiry. Disk: a per-camera quota (default 50 GB or 10% of the volume) and a fixed free
+    reserve; oldest unlocked first; if only locked clips remain, the ring keeps running and the Owner
+    is alerted.
+  - Resilience: a recorder process separate from the HTTP surfaces, so a backend restart does not
+    stop recording; fragmented MP4 written to a temp name and renamed; a boot reconcile of store and
+    index that aborts if it would delete more than half.
+  - Cameras over a worker's rest area get a "no recording" flag besides "no audio". Data-subject
+    exports in v1 are an Owner-chosen time range and camera; automatic blurring of third parties is a
+    later item. Measure first: each camera's GOP and bitrate on stream1 (ffprobe), and its RTSP
+    stability.
 - F2 Talking to Argus through the cameras: superseded on 2026-10-12 by the owner's wider goal, the
   always-listening watchman, designed in `camera-watchman-plan.md` (wake word, identity, hand-off,
   echo, privacy, measurements first).
