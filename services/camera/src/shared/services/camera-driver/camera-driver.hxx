@@ -51,6 +51,17 @@ struct DriverSettingsInput
   std::optional<bool> sounding;
 };
 
+struct DriverSdDaysInput
+{
+  std::string from;
+  std::string to;
+};
+
+struct DriverSdDayInput
+{
+  std::string date;
+};
+
 struct DriverSpeakInput
 {
   std::vector<int16_t> samples;
@@ -88,6 +99,8 @@ public:
   virtual DriverResult speak(const DriverSpeakInput& input) = 0;
   virtual TalkLineOpen talkLine();
   [[nodiscard]] virtual Json::Value controlStatus() const;
+  virtual DriverResult sdDays(const DriverSdDaysInput& input);
+  virtual DriverResult sdDay(const DriverSdDayInput& input);
 };
 
 class CameraDriverRegistry

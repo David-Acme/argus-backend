@@ -1,6 +1,7 @@
 #include "tapo-api.hxx"
 #include "tapo-day-night.hxx"
 #include "tapo-motor.hxx"
+#include "tapo-recordings.hxx"
 
 #include <chrono>
 #include <cstdlib>
@@ -263,6 +264,63 @@ TapoResult TapoApi::deletePreset(const TapoPresetInput& input)
   Json::Value params(Json::objectValue);
   params["preset"]["remove_preset"]["id"] = ids;
   return call("deletePreset", params);
+}
+
+TapoResult TapoApi::getUserId()
+{
+  Json::Value params(Json::objectValue);
+  params["system"]["get_user_id"] = "null";
+  auto result = call("getUserID", params);
+  if (!result.ok)
+    return result;
+  const Json::Value& id = responseAt(result.data, 0)["result"]["user_id"];
+  if (!id.isIntegral() && !(id.isString() && !id.asString().empty()))
+    return TapoResult::failure("the camera did not say which account lists its recordings");
+  return TapoResult::success(id);
+}
+
+TapoResult TapoApi::recordingDays(const TapoRecordingDaysInput& input)
+{
+  Json::Value channels(Json::arrayValue);
+  channels.append(0);
+  Json::Value params(Json::objectValue);
+  Json::Value& search = params["playback"]["search_year_utility"];
+  search["channel"] = std::move(channels);
+  search["start_date"] = input.from;
+  search["end_date"] = input.to;
+  auto result = call("searchDateWithVideo", params);
+  if (!result.ok)
+    return result;
+  const Json::Value& playback = responseAt(result.data, 0)["result"]["playback"];
+  if (!playback.isObject())
+    return TapoResult::failure("this camera does not list its recordings");
+  Json::Value out(Json::objectValue);
+  out["days"] = tapo_recordings::days(playback["search_results"]);
+  return TapoResult::success(out);
+}
+
+TapoResult TapoApi::recordingsOfDay(const TapoRecordingsInput& input)
+{
+  constexpr Json::Int64 kEveryRecording = 999999999;
+  auto user = getUserId();
+  if (!user.ok)
+    return user;
+  Json::Value params(Json::objectValue);
+  Json::Value& search = params["playback"]["search_video_utility"];
+  search["channel"] = 0;
+  search["date"] = input.date;
+  search["start_index"] = 0;
+  search["end_index"] = kEveryRecording;
+  search["id"] = std::move(user.data);
+  auto result = call("searchVideoOfDay", params);
+  if (!result.ok)
+    return result;
+  const Json::Value& playback = responseAt(result.data, 0)["result"]["playback"];
+  if (!playback.isObject())
+    return TapoResult::failure("this camera does not list its recordings");
+  Json::Value out(Json::objectValue);
+  out["segments"] = tapo_recordings::segments(playback["search_video_results"]);
+  return TapoResult::success(out);
 }
 
 TapoResult TapoApi::calibrateMotor()

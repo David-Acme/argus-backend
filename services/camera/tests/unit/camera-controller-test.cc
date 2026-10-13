@@ -30,6 +30,8 @@
 #include <mutex>
 #include <optional>
 #include <sqlite3.h>
+#include <utility>
+#include <vector>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -85,6 +87,40 @@ FakeGo2rtcFrames& fakeGo2rtc()
   static FakeGo2rtcFrames frames;
   return frames;
 }
+
+class SdCardDriver final : public ICameraDriver
+{
+public:
+  [[nodiscard]] Json::Value capabilities() const override { return {}; }
+  DriverResult status() override { return {.ok = true, .error = {}, .data = Json::Value()}; }
+  DriverResult presets() override { return {.ok = true, .error = {}, .data = Json::Value()}; }
+  DriverResult move(const DriverMoveInput&) override { return {.ok = true, .error = {}, .data = Json::Value()}; }
+  DriverResult preset(const DriverPresetInput&) override { return {.ok = true, .error = {}, .data = Json::Value()}; }
+  DriverResult settings(const DriverSettingsInput&) override
+  {
+    return {.ok = true, .error = {}, .data = Json::Value()};
+  }
+  DriverResult speak(const DriverSpeakInput&) override { return {.ok = true, .error = {}, .data = Json::Value()}; }
+
+  DriverResult sdDays(const DriverSdDaysInput& input) override
+  {
+    asked.push_back(input.from + ".." + input.to);
+    Json::Value data(Json::objectValue);
+    data["days"].append("2026-10-12");
+    return {.ok = true, .error = {}, .data = data};
+  }
+
+  DriverResult sdDay(const DriverSdDayInput& input) override
+  {
+    asked.push_back(input.date);
+    Json::Value data(Json::objectValue);
+    data["date"] = input.date;
+    data["segments"] = Json::Value(Json::arrayValue);
+    return {.ok = true, .error = {}, .data = data};
+  }
+
+  std::vector<std::string> asked;
+};
 
 using DbHandle = std::unique_ptr<sqlite3, int (*)(sqlite3*)>;
 
@@ -603,6 +639,41 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   }
   CHECK(missingSnapshot->status == 404);
   SnapshotStore::instance().forget(cameraId2);
+
+  const auto sdCard = std::make_shared<SdCardDriver>();
+  CameraDriverTestAccess::install(cameraId2, sdCard);
+  const auto daysRequest = drogon::HttpRequest::newHttpRequest();
+  daysRequest->setParameter("from", "2026-10-01");
+  daysRequest->setParameter("to", "2026-10-31");
+  const Json::Value days = body(drogon::sync_wait(controlController.sdDays(daysRequest, cameraId2)))["info"];
+  REQUIRE(days["days"].size() == 1);
+  CHECK(days["days"][0].asString() == "2026-10-12");
+  const auto dayRequest = drogon::HttpRequest::newHttpRequest();
+  dayRequest->setParameter("date", "2026-10-12");
+  const Json::Value day = body(drogon::sync_wait(controlController.sdDay(dayRequest, cameraId2)))["info"];
+  CHECK(day["date"].asString() == "2026-10-12");
+  CHECK(day["segments"].isArray());
+  CHECK(sdCard->asked == std::vector<std::string>{"2026-10-01..2026-10-31", "2026-10-12"});
+  for (const auto& [from, to] : std::vector<std::pair<std::string, std::string>>{{"2026-10-31", "2026-10-01"},
+                                                                                {"2026-02-30", "2026-03-01"},
+                                                                                {"2026-10-01", "2027-10-03"},
+                                                                                {"", "2026-10-01"},
+                                                                                {"2026-10-01", "31/10/2026"}}) {
+    const auto request = drogon::HttpRequest::newHttpRequest();
+    request->setParameter("from", from);
+    request->setParameter("to", to);
+    CHECK_THROWS_AS(drogon::sync_wait(controlController.sdDays(request, cameraId2)), ValidationException);
+  }
+  const auto badDay = drogon::HttpRequest::newHttpRequest();
+  badDay->setParameter("date", "12-10-2026");
+  CHECK_THROWS_AS(drogon::sync_wait(controlController.sdDay(badDay, cameraId2)), ValidationException);
+  CHECK(sdCard->asked.size() == 2);
+  CameraDriverRegistry::instance().forget(cameraId2);
+  CameraSchema rtsp;
+  rtsp.driver = CameraDriver::Rtsp;
+  StreamOnlyDriver videoOnly(rtsp);
+  CHECK_FALSE(videoOnly.sdDays({.from = "2026-10-01", .to = "2026-10-31"}).ok);
+  CHECK_FALSE(videoOnly.sdDay({.date = "2026-10-12"}).ok);
 
   CameraPresenceRecorder presence;
   const CameraRepository cameras;

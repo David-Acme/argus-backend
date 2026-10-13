@@ -4,6 +4,7 @@
 #include <config/config-service.hxx>
 #include <shared/services/camera-driver/camera-capabilities.hxx>
 #include <shared/vocabulary/camera-stream-paths.hxx>
+#include <shared/services/tapo/tapo-recordings.hxx>
 #include <shared/services/tapo/tapo-talk-client.hxx>
 #include <runtime/cancellation-token.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
@@ -177,6 +178,34 @@ DriverResult TapoDriver::preset(const DriverPresetInput& input)
   if (input.action == "delete")
     return toDriverResult(api_->deletePreset(target));
   return toDriverResult(api_->gotoPreset(target));
+}
+
+DriverResult TapoDriver::sdDays(const DriverSdDaysInput& input)
+{
+  if (!capabilities()["sdCard"].asBool())
+    return DriverResult::failed("This camera has no SD card Argus can read");
+  const auto from = tapo_recordings::deviceDate(input.from);
+  const auto to = tapo_recordings::deviceDate(input.to);
+  if (!from || !to)
+    return DriverResult::failed("Dates are written YYYY-MM-DD");
+  if (const auto ready = ensureConnected(); !ready.ok)
+    return ready;
+  return toDriverResult(api_->recordingDays({.from = *from, .to = *to}));
+}
+
+DriverResult TapoDriver::sdDay(const DriverSdDayInput& input)
+{
+  if (!capabilities()["sdCard"].asBool())
+    return DriverResult::failed("This camera has no SD card Argus can read");
+  const auto date = tapo_recordings::deviceDate(input.date);
+  if (!date)
+    return DriverResult::failed("Dates are written YYYY-MM-DD");
+  if (const auto ready = ensureConnected(); !ready.ok)
+    return ready;
+  DriverResult result = toDriverResult(api_->recordingsOfDay({.date = *date}));
+  if (result.ok)
+    result.data["date"] = input.date;
+  return result;
 }
 
 DriverResult TapoDriver::settings(const DriverSettingsInput& input)

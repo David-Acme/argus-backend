@@ -26,6 +26,17 @@ struct TapoPresetInput
   std::string name;
 };
 
+struct TapoRecordingDaysInput
+{
+  std::string from;
+  std::string to;
+};
+
+struct TapoRecordingsInput
+{
+  std::string date;
+};
+
 struct TapoLedInput
 {
   bool enabled{true};
@@ -115,6 +126,9 @@ public:
   TapoResult gotoPreset(const TapoPresetInput& input);
   TapoResult savePreset(const TapoPresetInput& input);
   TapoResult deletePreset(const TapoPresetInput& input);
+  TapoResult getUserId();
+  TapoResult recordingDays(const TapoRecordingDaysInput& input);
+  TapoResult recordingsOfDay(const TapoRecordingsInput& input);
   TapoResult calibrateMotor();
   TapoResult stopMotor();
 

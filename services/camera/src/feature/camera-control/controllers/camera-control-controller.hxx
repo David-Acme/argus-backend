@@ -27,6 +27,10 @@ public:
                 "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(CameraControlController::snapshot, "/camera/{1}/snapshot",
                 drogon::Get, "DeviceFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(CameraControlController::sdDays, "/camera/{1}/sd/days", drogon::Get,
+                "DeviceFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(CameraControlController::sdDay, "/camera/{1}/sd/day", drogon::Get,
+                "DeviceFilter", "JwtFilter", "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> status(drogon::HttpRequestPtr req, int64_t id);
@@ -37,6 +41,8 @@ public:
   drogon::Task<drogon::HttpResponsePtr> capabilities(drogon::HttpRequestPtr req, int64_t id);
   drogon::Task<drogon::HttpResponsePtr> talk(drogon::HttpRequestPtr req, int64_t id);
   drogon::Task<drogon::HttpResponsePtr> snapshot(drogon::HttpRequestPtr req, int64_t id);
+  drogon::Task<drogon::HttpResponsePtr> sdDays(drogon::HttpRequestPtr req, int64_t id);
+  drogon::Task<drogon::HttpResponsePtr> sdDay(drogon::HttpRequestPtr req, int64_t id);
 
 private:
   CameraControlFeatureService service_;

@@ -4,6 +4,7 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/camera-control/dtos/camera-preset-dto.hxx>
 #include <feature/camera-control/dtos/camera-ptz-dto.hxx>
+#include <feature/camera-control/dtos/camera-sd-dto.hxx>
 #include <feature/camera-control/dtos/camera-settings-dto.hxx>
 #include <feature/camera-control/dtos/camera-snapshot-dto.hxx>
 #include <feature/camera-control/dtos/camera-talk-dto.hxx>
@@ -31,6 +32,8 @@ public:
                                           const CameraTalkDto& body) const;
   drogon::Task<CameraControlResult> capabilities(int64_t cameraId) const;
   drogon::Task<CameraControlResult> snapshot(int64_t cameraId, CameraStream stream) const;
+  drogon::Task<CameraControlResult> sdDays(int64_t cameraId, const CameraSdDaysDto& query) const;
+  drogon::Task<CameraControlResult> sdDay(int64_t cameraId, const CameraSdDayDto& query) const;
 
 private:
   drogon::Task<CameraControlResult>

@@ -81,3 +81,17 @@ CameraControlController::snapshot(drogon::HttpRequestPtr req, int64_t id)
   const auto query = CameraSnapshotDto::fromRequest(req);
   co_return respond(co_await service_.snapshot(id, query.stream()));
 }
+
+drogon::Task<drogon::HttpResponsePtr>
+CameraControlController::sdDays(drogon::HttpRequestPtr req, int64_t id)
+{
+  const auto query = CameraSdDaysDto::fromRequest(req);
+  co_return respond(co_await service_.sdDays(id, query));
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+CameraControlController::sdDay(drogon::HttpRequestPtr req, int64_t id)
+{
+  const auto query = CameraSdDayDto::fromRequest(req);
+  co_return respond(co_await service_.sdDay(id, query));
+}

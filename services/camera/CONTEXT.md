@@ -1245,10 +1245,10 @@ Not done yet, in the order they pay off:
 1. **Snapshot to file**: the backend half landed (2026-10-13): `GET /camera/{id}/snapshot?quality=main`
    is a full-resolution still from the main stream ("A still to save"); the app needs a save/share
    action per platform (Tauri dialog, Android/iOS share sheet).
-2. **SD-card recordings and a timeline**: `searchDateWithVideo` / `searchVideoOfDay` are read-only
-   pytapo calls Argus can add to the driver for a day list; playback is the 8800 media stream in
-   `sdvod` mode with encrypted parts (pytapo's `Downloader`), a second media client, and it uses
-   one of the camera's three connection slots while it runs.
+2. **SD-card recordings and a timeline**: the day list and the day's timeline landed (2026-10-13,
+   "The SD card's timeline"); playback is still to come: the 8800 media stream in `sdvod` mode
+   with encrypted parts (pytapo's `Downloader`), a second media client, and it uses one of the
+   camera's three connection slots while it runs.
 3. **Argus-side recording** (`record_mode` is stored but nothing records): go2rtc can write MP4
    segments per camera; retention would follow `retention_days`, the evidence uploader's manifest
    shows the shape.
@@ -1260,6 +1260,45 @@ Not done yet, in the order they pay off:
    the live view; the call path plays its own copy, so a native `muted` prop on `argus-camera`
    is the clean fix once a device is at hand to test it.
 7. **ONVIF control** (PTZ, presets, events) for generic cameras: `StreamOnlyDriver` today.
+
+## The SD card's timeline (2026-10-13, F1)
+
+The camera keeps its own recordings on its SD card. Argus now lists them,
+read-only, for the app's timeline. The calls are the ones pytapo uses,
+through the same control session as everything else:
+
+- **`GET /camera/{id}/sd/days?from=YYYY-MM-DD&to=YYYY-MM-DD`** answers
+  `{ days: ["2026-10-12", …] }`, the days that hold a recording. It sends
+  `searchDateWithVideo` with `channel [0]` and the two dates in the camera's
+  compact form (`20261012`). The range is at most 366 days, and `to` is not
+  before `from`.
+- **`GET /camera/{id}/sd/day?date=YYYY-MM-DD`** answers
+  `{ date, segments: [{ start, end }, …] }`, epoch seconds, sorted. It first
+  asks `getUserID`, then sends `searchVideoOfDay` with that id, `channel 0`
+  and every index (`0` to `999999999`, pytapo's own bound).
+- **Times are the camera's clock.** `GET /camera/{id}/status` reports its
+  `clockOffsetSeconds` against the server, and the app can correct with it.
+- **What the parser accepts and drops** (`tapo-recordings.{hxx,cc}`, pure).
+  The camera wraps each result in a single-key object
+  (`{"search_results_1": {...}}`), and the parser takes that shape or the
+  bare one. It drops a day that is not eight digits, a duplicate day, and a
+  segment without both times, with a non-positive start, or ending before it
+  starts.
+- **Refusals.** A camera without the `sdCard` capability, or any non-Tapo
+  driver, answers that it keeps no recordings Argus can list. A camera that
+  refuses the search says so with its error code. A malformed date is a 422
+  (`CameraSdDaysDto`, `CameraSdDayDto`).
+- **Who may read it.** Camera read, like the live view and the stills:
+  `/camera/{id}/…` maps to the `camera` table. Whether the timeline should be
+  Owner-only, as the recording spec makes Argus-side recordings, needs a row
+  in `role-access.hxx`. That is track A's file, so it is a design fork
+  carried in the report, not decided here.
+- **Not yet.** Playback, the `sdvod` stream above.
+
+Proven without a camera: `tests/unit/tapo-control-test.cc` drives `TapoApi`
+through a scripted transport (the requests it sends, both answer shapes, a
+refused search, a camera that names no user). `camera-controller-test.cc`
+drives both routes, their date checks and a stream-only driver.
 
 ## Two streams, two jobs: the view watches main, every analysis reads sub (2026-10, CAMERA3)
 

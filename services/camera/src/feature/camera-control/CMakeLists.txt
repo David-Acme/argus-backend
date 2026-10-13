@@ -3,6 +3,7 @@ argus_module(NAME camera-control
         controllers/camera-control-controller.cc
         dtos/camera-preset-dto.cc
         dtos/camera-ptz-dto.cc
+        dtos/camera-sd-dto.cc
         dtos/camera-settings-dto.cc
         dtos/camera-snapshot-dto.cc
         dtos/camera-talk-dto.cc

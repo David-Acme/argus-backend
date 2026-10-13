@@ -25,6 +25,8 @@ camera	GET	/camera/{1}/capabilities	DeviceFilter,JwtFilter,RoleFilter	-	services
 camera	PATCH	/camera/{1}/preset	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	GET	/camera/{1}/presets	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	PATCH	/camera/{1}/ptz	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
+camera	GET	/camera/{1}/sd/day	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
+camera	GET	/camera/{1}/sd/days	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	PATCH	/camera/{1}/settings	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	GET	/camera/{1}/snapshot	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	GET	/camera/{1}/status	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx

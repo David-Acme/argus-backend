@@ -37,6 +37,16 @@ Json::Value ICameraDriver::controlStatus() const
   return {};
 }
 
+DriverResult ICameraDriver::sdDays(const DriverSdDaysInput&)
+{
+  return DriverResult::failed("This camera keeps no recordings Argus can list");
+}
+
+DriverResult ICameraDriver::sdDay(const DriverSdDayInput&)
+{
+  return DriverResult::failed("This camera keeps no recordings Argus can list");
+}
+
 CameraDriverRegistry& CameraDriverRegistry::instance()
 {
   static CameraDriverRegistry registry;

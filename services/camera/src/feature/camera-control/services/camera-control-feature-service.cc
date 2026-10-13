@@ -192,3 +192,18 @@ CameraControlFeatureService::snapshot(int64_t cameraId, CameraStream stream) con
   out["capturedAt"] = static_cast<Json::Int64>(picture.atMs);
   co_return DriverResult{.ok = true, .error = {}, .data = out};
 }
+
+drogon::Task<CameraControlResult>
+CameraControlFeatureService::sdDays(int64_t cameraId, const CameraSdDaysDto& query) const
+{
+  co_return co_await onDevice(cameraId, [query](ICameraDriver& driver) {
+    return driver.sdDays({.from = query.from, .to = query.to});
+  });
+}
+
+drogon::Task<CameraControlResult>
+CameraControlFeatureService::sdDay(int64_t cameraId, const CameraSdDayDto& query) const
+{
+  co_return co_await onDevice(cameraId,
+                              [query](ICameraDriver& driver) { return driver.sdDay({.date = query.date}); });
+}
