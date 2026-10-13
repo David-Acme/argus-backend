@@ -285,6 +285,24 @@ TEST_CASE("a certificate whose issuer is not in the bundle warns")
   CHECK(warns(health, "is not in the loaded trust bundle"));
 }
 
+TEST_CASE("the health extra is internalTls and reports the material it holds")
+{
+  const auto current = authority("Argus internal CA current", 3650 * kDay);
+  const auto [name, reportLoaded] =
+      tls_health::healthExtra({.certificatePem = leafOf(current, 730 * kDay),
+                               .trustBundlePem = bundleOf(current)});
+  CHECK(name == "internalTls");
+  const auto loaded = reportLoaded();
+  CHECK(loaded["loaded"].asBool());
+  CHECK(loaded["trustBundleCas"].asUInt() == 1);
+  CHECK(warningCount(loaded) == 0);
+
+  const auto [emptyName, reportEmpty] =
+      tls_health::healthExtra({.certificatePem = "", .trustBundlePem = ""});
+  CHECK(emptyName == "internalTls");
+  CHECK_FALSE(reportEmpty()["loaded"].asBool());
+}
+
 TEST_CASE("a certificate that cannot be read warns")
 {
   const auto current = authority("Argus internal CA current", 3650 * kDay);

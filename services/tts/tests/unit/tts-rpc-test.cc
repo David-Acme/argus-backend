@@ -46,7 +46,9 @@ TtsRpcInput serverInput()
           },
           .slots = 1,
           .defaultSpeed = {},
-          .services = {}};
+          .services = {},
+          .tlsAddress = {},
+          .tlsCredentials = {}};
 }
 
 ClientConfig clientConfig(int port)
@@ -399,4 +401,40 @@ TEST_CASE("the wire refuses a request that presents two credentials")
   REQUIRE_FALSE(status.ok());
   CHECK(argus::response::fromRpcStatus(status).statusCode() == 401);
   CHECK(response.sample_rate() == 0);
+}
+
+TEST_CASE("the mutual TLS address opens a second listener for the same calls")
+{
+  TtsRpcInput input = serverInput();
+  input.tlsAddress = "127.0.0.1:0";
+  input.tlsCredentials = grpc::InsecureServerCredentials();
+  TtsRpcServer server(std::move(input));
+  REQUIRE(server.tlsPort() > 0);
+  CHECK(server.tlsPort() != server.port());
+  CHECK(Client(clientConfig(server.tlsPort())).capabilities().sampleRate == 24000);
+  CHECK(Client(clientConfig(server.port())).capabilities().sampleRate == 24000);
+}
+
+TEST_CASE("no second listener without both a TLS address and credentials")
+{
+  TtsRpcServer plain(serverInput());
+  CHECK(plain.tlsPort() == 0);
+
+  TtsRpcInput addressOnly = serverInput();
+  addressOnly.tlsAddress = "127.0.0.1:0";
+  TtsRpcServer withoutCredentials(std::move(addressOnly));
+  CHECK(withoutCredentials.tlsPort() == 0);
+
+  TtsRpcInput credentialsOnly = serverInput();
+  credentialsOnly.tlsCredentials = grpc::InsecureServerCredentials();
+  TtsRpcServer withoutAddress(std::move(credentialsOnly));
+  CHECK(withoutAddress.tlsPort() == 0);
+}
+
+TEST_CASE("a mutual TLS address that cannot be bound stops the start")
+{
+  TtsRpcInput input = serverInput();
+  input.tlsAddress = "192.0.2.1:0";
+  input.tlsCredentials = grpc::InsecureServerCredentials();
+  CHECK_THROWS_AS(TtsRpcServer{std::move(input)}, std::runtime_error);
 }

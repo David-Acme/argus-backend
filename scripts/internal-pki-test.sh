@@ -332,9 +332,35 @@ find "$traced" "$TEST_TMP/first-keys" -type f \( -name '*.key' -o -name 'key.pem
 [ "$(wc -l < "$TEST_TMP/key-values")" -ge 84 ] || fail "the trace check gathered too few key lines"
 ! grep -qF -f "$TEST_TMP/key-values" "$TEST_TMP/trace" || fail "the set -x trace of the issuance carries a private key"
 
+native="$TEST_TMP/native"
+mkdir -p "$native/services/tts" "$native/services/auth" "$native/services/stt"
+printf '[server]\nport = 7029\n\n[internal_tls]\ndir = ""\naddress = "127.0.0.1:7329"\n' \
+  > "$native/services/tts/config.toml"
+printf '[server]\nport = 7042\n' > "$native/services/auth/config.toml"
+printf '[internal_tls]\ndir = ""\n' > "$native/services/stt/config.toml"
+mv "$pki/stt/cert.pem" "$TEST_TMP/stt-cert.pem"
+(cd "$TEST_TMP" && internal_pki_configure_native "$native" certs/internal)
+mv "$TEST_TMP/stt-cert.pem" "$pki/stt/cert.pem"
+absolute="$(cd "$pki" && pwd -P)"
+[ "$(toml_value "$native/services/tts/config.toml" internal_tls dir)" = "$absolute/tts" ] \
+  || fail "setup.sh's native pass did not point tts at its own certificate directory by an absolute path"
+[ "$(toml_value "$native/services/tts/config.toml" internal_tls address)" = "127.0.0.1:7329" ] \
+  || fail "the native pass changed the listener address"
+! toml_key_exists "$native/services/auth/config.toml" internal_tls dir \
+  || fail "the native pass gave a service whose config has no [internal_tls] one"
+[ -z "$(toml_value "$native/services/stt/config.toml" internal_tls dir)" ] \
+  || fail "the native pass pointed a service at a directory without its certificate"
+native_state="$(sha256sum "$native/services/tts/config.toml")"
+internal_pki_configure_native "$native" "$pki"
+[ "$(sha256sum "$native/services/tts/config.toml")" = "$native_state" ] || fail "a second native pass changed the config"
+[ "$(mode_of "$native/services/tts/config.toml")" = 600 ] || fail "the native pass left the config readable by others"
+internal_pki_configure_native "$native" "$TEST_TMP/absent" || fail "the native pass failed without a PKI directory"
+
 grep -Eq '^  ensure_internal_pki "\$DATA_DIR/certs/internal"$' "$ROOT/scripts/provision-host.sh" \
   || fail "provision-host.sh does not issue and renew the internal certificates"
 grep -Eq '^  ensure_internal_pki "\$\{ARGUS_DATA_DIR:-\$ROOT/argus-deploy/data\}/certs/internal"$' "$ROOT/scripts/setup.sh" \
   || fail "setup.sh does not issue and renew the internal certificates natively"
+grep -Eq '^  internal_pki_configure_native "\$ROOT" "\$\{ARGUS_DATA_DIR:-\$ROOT/argus-deploy/data\}/certs/internal"$' \
+  "$ROOT/scripts/setup.sh" || fail "setup.sh does not point the native configs at their internal certificates"
 
 printf 'internal-pki-test: ok\n'

@@ -359,6 +359,97 @@ for account in "identity portraits/ faces/" "camera cameras/" "guard guard/incid
     || fail "rustfs-init does not scope the ${account%% *} account to ${account#* }"
 done
 
+internal_tls_services() {
+  local template name
+  for template in "$ROOT"/argus-deploy/config.*.toml.example; do
+    grep -qx '\[internal_tls\]' "$template" || continue
+    name="${template##*/config.}"
+    printf '%s\n' "${name%.toml.example}"
+  done
+}
+
+misplaced_internal_tls() {
+  local compose="$1" listeners name service expected
+  listeners="$(internal_tls_services)"
+  for name in $(service_names "$compose"); do
+    service="${name#argus-}"
+    expected=""
+    if grep -qx "$service" <<<"$listeners"; then
+      expected="\${ARGUS_DATA_DIR:-./data}/certs/internal/$service /run/secrets/internal-tls 1"
+    fi
+    [ "$(bind_mounts "$compose" "$name" | grep '/certs/internal' || true)" = "$expected" ] || echo "$name"
+  done
+}
+
+loopback_publishes() {
+  service_block "$1" "$2" | awk '
+    /^      - "127\.0\.0\.1:/ {
+      entry = $0
+      gsub(/"/, "", entry)
+      sub(/\/(tcp|udp)$/, "", entry)
+      sub(/^.*:/, "", entry)
+      print entry
+    }'
+}
+
+internal_tls_wiring() {
+  local service="$1" template="$2" native_template="$3" compose="$4" plain tls published
+  plain="$(toml_value "$template" server grpc_port)"
+  [ -n "$plain" ] || plain="$(toml_value "$template" rpc address)"
+  plain="${plain##*:}"
+  if [ -z "$plain" ]; then
+    echo "config.$service.toml.example declares [internal_tls] without a plaintext gRPC port"
+    return
+  fi
+  tls=$(( plain + 200 ))
+  published="$(loopback_publishes "$compose" "argus-$service")"
+  [ "$(toml_value "$template" internal_tls dir)" = /run/secrets/internal-tls ] \
+    || echo "config.$service.toml.example does not read its certificates where its mount puts them"
+  [ "$(toml_value "$template" internal_tls address)" = "0.0.0.0:$tls" ] \
+    || echo "config.$service.toml.example does not listen for mutual TLS on 0.0.0.0:$tls"
+  [ -z "$(toml_value "$native_template" internal_tls dir)" ] \
+    || echo "services/$service/config.toml.example names the certificate directory setup.sh writes"
+  [ "$(toml_value "$native_template" internal_tls address)" = "127.0.0.1:$tls" ] \
+    || echo "services/$service/config.toml.example does not listen for mutual TLS on 127.0.0.1:$tls"
+  if grep -qx "$plain" <<<"$published"; then
+    grep -qx "$tls" <<<"$published" \
+      || echo "argus-$service publishes its plaintext gRPC port $plain on 127.0.0.1 but not $tls"
+  else
+    ! grep -qx "$tls" <<<"$published" \
+      || echo "argus-$service publishes $tls although its plaintext gRPC port $plain is not published"
+  fi
+}
+
+[ -n "$(internal_tls_services)" ] || fail "no deploy template declares [internal_tls]"
+[ -z "$(misplaced_internal_tls "$COMPOSE")" ] \
+  || fail "services whose internal TLS mount is missing, writable or not their own: $(misplaced_internal_tls "$COMPOSE" | tr '\n' ' ')"
+for service in $(internal_tls_services); do
+  problems="$(internal_tls_wiring "$service" "$ROOT/argus-deploy/config.$service.toml.example" \
+    "$ROOT/services/$service/config.toml.example" "$COMPOSE")"
+  [ -z "$problems" ] || fail "$(tr '\n' ';' <<<"$problems")"
+done
+sed 's#certs/internal/tts#certs/internal/stt#' "$COMPOSE" > "$TEST_TMP/compose-borrowed-tls.yml"
+[ "$(misplaced_internal_tls "$TEST_TMP/compose-borrowed-tls.yml")" = "argus-tts" ] \
+  || fail "a service mounting another service's certificate directory was not reported"
+grep -v 'certs/internal/tts' "$COMPOSE" > "$TEST_TMP/compose-no-tls.yml"
+[ "$(misplaced_internal_tls "$TEST_TMP/compose-no-tls.yml")" = "argus-tts" ] \
+  || fail "a mutual TLS listener without its certificate mount was not reported"
+awk '/^  argus-tts:$/ { tts = 1 } tts && /certs\/internal\/tts$/ { seen = 1 } seen && /^        read_only: true$/ { seen = 0; tts = 0; next } { print }' \
+  "$COMPOSE" > "$TEST_TMP/compose-writable-tls.yml"
+[ "$(misplaced_internal_tls "$TEST_TMP/compose-writable-tls.yml")" = "argus-tts" ] \
+  || fail "a certificate directory mounted writable was not reported"
+sed 's/^address = "0.0.0.0:7329"$/address = "0.0.0.0:7330"/' "$ROOT/argus-deploy/config.tts.toml.example" \
+  > "$TEST_TMP/tts-off-port.toml"
+[ "$(internal_tls_wiring tts "$TEST_TMP/tts-off-port.toml" "$ROOT/services/tts/config.toml.example" "$COMPOSE")" \
+    = "config.tts.toml.example does not listen for mutual TLS on 0.0.0.0:7329" ] \
+  || fail "a mutual TLS port that is not the plaintext gRPC port plus 200 was not reported"
+awk '{ print } /^  argus-tts:$/ { tts = 1 } tts && /^    ports:$/ { print "      - \"127.0.0.1:${TTS_TLS_PORT:-7329}:7329\""; tts = 0 }' \
+  "$COMPOSE" > "$TEST_TMP/compose-published-tls.yml"
+[ "$(internal_tls_wiring tts "$ROOT/argus-deploy/config.tts.toml.example" "$ROOT/services/tts/config.toml.example" \
+    "$TEST_TMP/compose-published-tls.yml")" \
+    = "argus-tts publishes 7329 although its plaintext gRPC port 7129 is not published" ] \
+  || fail "a mutual TLS port published where the plaintext gRPC port is not was not reported"
+
 sandbox="$TEST_TMP/provision"
 mkdir -p "$sandbox/root/scripts" "$sandbox/root/argus-deploy" "$sandbox/bin"
 cp "$ROOT/scripts/provision-host.sh" "$sandbox/root/scripts/"
@@ -368,6 +459,11 @@ cp "$ROOT"/argus-deploy/*.example "$ROOT/argus-deploy/docker-compose.yml" \
 grep -v '^credentials_file = ' "$ROOT/argus-deploy/config.identity.toml.example" \
   > "$sandbox/root/argus-deploy/config.identity.toml"
 chmod 600 "$sandbox/root/argus-deploy/config.identity.toml"
+awk '/^\[internal_tls\]$/ { skip = 1; next } skip && /^\[/ { skip = 0 } !skip { print }' \
+  "$ROOT/argus-deploy/config.tts.toml.example" > "$sandbox/root/argus-deploy/config.tts.toml"
+chmod 600 "$sandbox/root/argus-deploy/config.tts.toml"
+! grep -q 'internal_tls\|7329' "$sandbox/root/argus-deploy/config.tts.toml" \
+  || fail "the sandbox could not plant a tts config from before [internal_tls]"
 for service in identity camera guard; do
   mkdir -p "$sandbox/data/rustfs/accounts/$service"
   {
@@ -571,11 +667,15 @@ for service in auth identity sync camera guard settings productivity notificatio
   cp "$ROOT/services/$service/config.toml.example" "$native/services/$service/"
 done
 {
-  printf 'set -euo pipefail\nsource %q\nROOT=%q\n' "$native/scripts/lib/common.sh" "$native"
+  printf 'set -euo pipefail\nsource %q\nsource %q\nROOT=%q\n' "$native/scripts/lib/common.sh" \
+    "$native/scripts/lib/internal-pki.sh" "$native"
   awk '/^(ensure_local_config|sync_storage_credentials)\(\) \{$/ { on = 1 } on { print } on && /^}$/ { on = 0 }' \
     "$ROOT/scripts/setup.sh"
   printf 'ensure_local_config\nsync_storage_credentials\n'
+  grep -E '^  internal_pki_configure_native ' "$ROOT/scripts/setup.sh" | sed 's/^  //' || true
 } > "$native/run.sh"
+grep -q '^internal_pki_configure_native ' "$native/run.sh" \
+  || fail "setup.sh no longer points the native configs at their internal certificates"
 grep -q '^sync_storage_credentials() {$' "$native/run.sh" \
   || fail "setup.sh no longer defines the native config steps this test runs"
 native_dry_run() {
@@ -602,6 +702,11 @@ done
 [ "$(toml_value "$native/services/identity/config.toml" storage.s3 secret_key)" \
     = "$(tr -d '\r\n' < "$sandbox/data/rustfs/secrets/argus_s3_secret_key")" ] \
   || fail "the native setup did not sync the S3 secret into identity's config"
+for service in $(internal_tls_services); do
+  [ "$(toml_value "$native/services/$service/config.toml" internal_tls dir)" \
+      = "$(cd "$sandbox/data/certs/internal" && pwd -P)/$service" ] \
+    || fail "the native setup did not point $service at its internal certificate directory"
+done
 {
   secret_values "$native"/services/*/config.toml
   grep '^S3 ' "$sandbox/secrets.tsv"
@@ -642,6 +747,15 @@ source "$ROOT/scripts/lib/internal-pki.sh"
 for service in $INTERNAL_PKI_SERVICES; do
   openssl verify -CAfile "$sandbox/data/certs/internal/trust.pem" "$sandbox/data/certs/internal/$service/cert.pem" \
     > /dev/null 2>&1 || fail "provisioning did not issue the internal certificate of $service"
+done
+for service in $(internal_tls_services); do
+  grep -qw "$service" <<<"$INTERNAL_PKI_SERVICES" \
+    || fail "$service listens for mutual TLS but the internal PKI issues it no certificate"
+  for key in dir address; do
+    [ "$(toml_value "$sandbox/root/argus-deploy/config.$service.toml" internal_tls "$key")" \
+        = "$(toml_value "$ROOT/argus-deploy/config.$service.toml.example" internal_tls "$key")" ] \
+      || fail "provisioning did not bring [internal_tls] $key into config.$service.toml"
+  done
 done
 
 if [ -n "${ARGUS_NATS_SERVER_BIN:-}" ]; then

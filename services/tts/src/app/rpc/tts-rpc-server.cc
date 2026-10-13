@@ -68,12 +68,16 @@ struct TtsRpcServer::Impl final : wire::Synthesis::Service
     grpc::ServerBuilder builder;
     builder.SetMaxReceiveMessageSize(32768);
     builder.AddListeningPort(input_.address, grpc::InsecureServerCredentials(), &port_);
+    if (!input_.tlsAddress.empty() && input_.tlsCredentials)
+      builder.AddListeningPort(input_.tlsAddress, input_.tlsCredentials, &tlsPort_);
     builder.RegisterService(this);
     for (auto* service : input_.services)
       builder.RegisterService(service);
     server_ = builder.BuildAndStart();
     if (!server_)
       throw std::runtime_error("TTS RPC listener failed");
+    if (!input_.tlsAddress.empty() && input_.tlsCredentials && tlsPort_ == 0)
+      throw std::runtime_error("TTS RPC mutual TLS listener failed");
   }
 
   [[nodiscard]] float currentSpeed() const
@@ -218,6 +222,7 @@ struct TtsRpcServer::Impl final : wire::Synthesis::Service
   argus::client::FleetCallerGate gate_;
   std::counting_semaphore<> slots_;
   int port_{0};
+  int tlsPort_{0};
   std::unique_ptr<grpc::Server> server_;
 };
 
@@ -228,6 +233,7 @@ TtsRpcServer::TtsRpcServer(TtsRpcInput input)
 
 TtsRpcServer::~TtsRpcServer() { shutdown(); }
 int TtsRpcServer::port() const { return impl_->port_; }
+int TtsRpcServer::tlsPort() const { return impl_->tlsPort_; }
 void TtsRpcServer::shutdown()
 {
   if (impl_->server_) {

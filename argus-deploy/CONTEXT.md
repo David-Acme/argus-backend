@@ -865,7 +865,8 @@ written `tls:<host>:<port>` gets mutual TLS, every other target stays
 plaintext); step 3a gives `packages/lib/http` the health report
 (`tls_health::report`: how many CAs the loaded trust bundle holds, the days
 left on the certificate and on the CA that issued it, and a warning under 30
-days for either); no service loads them yet. Deploy-time check: build the images
+days for either); step 4 loads them in each service and opens its mutual TLS
+listener, one service per commit (below). Deploy-time check: build the images
 (`docker compose build`) before any config names a `tls:` target. The images
 link Debian trixie's gRPC 1.51, and the internal TLS code has so far been
 built only against the development host's 1.84; it uses only the
@@ -932,6 +933,70 @@ one place a difference would show.
   refused, each for that reason), and a `set -x` trace that carries no line
   of a private key. `deploy-mounts-test` checks that the provisioning dry run
   issues every certificate and that no trace carries a line of their keys.
+
+### The mutual TLS listener (S1 step 4)
+
+Each service opens a second gRPC listener beside its plaintext one. It serves
+the same gRPC services, and mutual TLS with the service's own certificate is
+the only way in. The wiring is the same for every service (ruling of 2026-10-13):
+
+- `[internal_tls] dir` is where the service reads `cert.pem`, `key.pem` and
+  `ca.pem`. In the container it is `/run/secrets/internal-tls`, a read-only
+  bind of `${ARGUS_DATA_DIR}/certs/internal/<service>` with
+  `create_host_path: false`, so a missing directory fails the start rather
+  than mounting an empty one. Natively, `setup.sh` writes the absolute
+  `<data dir>/certs/internal/<service>` (`internal_pki_configure_native`) into
+  each native config whose template carries the key. The native template
+  leaves it empty. Empty means the service loads nothing, opens no mutual TLS
+  listener, and its `/health` reports `internalTls.loaded: false`.
+- `[internal_tls] address` is `<host>:<plaintext gRPC port + 200>`, with host
+  `0.0.0.0` in the container and `127.0.0.1` natively. Empty loads the
+  material (for `tls:` client targets) and opens no listener. The listener
+  belongs to the gRPC server of the plaintext one, so it opens only where that
+  one does: natively tts leaves `[rpc] address` empty, so neither opens until
+  a developer sets it.
+- The service loads its directory right after `ConfigService::load`, before
+  any channel exists (`installInternalTlsFrom`). A directory that is named but
+  unreadable stops the start with a fatal log. The service never falls back
+  to plaintext alone.
+- The mutual TLS port is published on `127.0.0.1` exactly where the plaintext
+  gRPC port is published today, and nowhere else.
+- `/health` carries `internalTls` (`tls_health::report`).
+  `provision-host.sh` and `setup.sh` bring both keys into existing configs
+  (`adopt_wiring_keys`).
+
+| Service | Plaintext gRPC | Mutual TLS |
+|---|---|---|
+| voice | 7034 | 7234 |
+| camera | 7036 | 7236 |
+| productivity | 7037 | 7237 |
+| notification | 7038 | 7238 |
+| identity | 7040 | 7240 |
+| sync | 7041 | 7241 |
+| auth | 7043 | 7243 |
+| settings | 7047 | 7247 |
+| tts | 7129 | 7329 |
+| stt | 7130 | 7330 |
+| vlm | 7131 | 7331 |
+| llm | 7132 | 7332 |
+| guard | 7139 | 7339 |
+
+The relay and the tunnel client speak no internal gRPC and get no listener.
+Wired so far: tts. Its gRPC port is not published, so 7329 is not published
+either. The clients move to `tls:` targets in step 5, and the plaintext
+listeners go only after the owner's check. For every deploy template that
+declares `[internal_tls]`, `deploy-mounts-test` checks:
+- its own read-only certificate mount;
+- the port plus 200 in both templates;
+- both `dir` values;
+- the publish rule;
+- adoption into an older deploy config;
+- the directory the native setup writes.
+
+Its red controls are a borrowed, a missing and a writable mount, a port off
+by one, and a published mutual TLS port.
+`scripts/port-map-test.sh` reads `[internal_tls] address` beside the other
+listeners.
 
 ## Init jobs and rule 27 (2026-10)
 

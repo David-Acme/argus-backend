@@ -124,6 +124,12 @@ target_compile_options(tls-health-test PRIVATE -Wall -Wextra)
 
 add_test(NAME tls-health-test COMMAND tls-health-test)
 
+add_executable(listener-config-test tests/unit/listener-config-test.cc)
+target_link_libraries(listener-config-test PRIVATE argus::lib::http argus::lib::config doctest::doctest)
+target_compile_options(listener-config-test PRIVATE -Wall -Wextra)
+
+add_test(NAME listener-config-test COMMAND listener-config-test)
+
 add_executable(download-url-test tests/unit/download/download-url-test.cc)
 target_link_libraries(download-url-test PRIVATE argus::lib::http-download doctest::doctest)
 target_compile_options(download-url-test PRIVATE -Wall -Wextra)

@@ -44,6 +44,9 @@ internalChannelCredentials(const InternalTlsMaterial& material);
 
 void installInternalTls(InternalTlsMaterial material);
 
+[[nodiscard]] std::optional<InternalTlsMaterial>
+installInternalTlsFrom(const std::string& directory);
+
 [[nodiscard]] bool isInternalTlsTarget(std::string_view target);
 
 [[nodiscard]] ChannelPlan openChannel(const std::string& target);

@@ -239,3 +239,18 @@ ensure_internal_pki() {
     log "Internal PKI: every internal certificate is valid for more than $INTERNAL_PKI_RENEW_DAYS days"
   fi
 }
+
+internal_pki_configure_native() {
+  local root="$1"
+  local dir="$2"
+  local service config
+
+  [ -d "$dir" ] || return 0
+  dir="$(cd "$dir" && pwd -P)"
+  for service in $INTERNAL_PKI_SERVICES; do
+    config="$root/services/$service/config.toml"
+    [ -f "$config" ] && [ -s "$dir/$service/cert.pem" ] || continue
+    toml_key_exists "$config" internal_tls dir || continue
+    replace_toml_value internal_tls dir "$dir/$service" "$config"
+  done
+}

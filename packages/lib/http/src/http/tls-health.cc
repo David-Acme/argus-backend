@@ -156,4 +156,11 @@ Json::Value report(const LoadedTls& loaded)
   return health;
 }
 
+std::pair<std::string, std::function<Json::Value()>>
+healthExtra(LoadedTls loaded)
+{
+  return {"internalTls",
+          [loaded = std::move(loaded)] { return report(loaded); }};
+}
+
 }

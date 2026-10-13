@@ -260,6 +260,42 @@ TEST_CASE("an install after makeStreamingChannel throws")
                   std::logic_error);
 }
 
+TEST_CASE("an empty directory setting installs nothing")
+{
+  CHECK_FALSE(argus::client::installInternalTlsFrom("").has_value());
+  CHECK_NOTHROW(argus::client::installInternalTls(
+      materialOf(serviceDirectory("camera"))));
+}
+
+TEST_CASE("a directory without the material throws and installs nothing")
+{
+  CHECK_THROWS_AS(static_cast<void>(argus::client::installInternalTlsFrom(
+                      "/nonexistent/argus")),
+                  std::runtime_error);
+  CHECK_NOTHROW(argus::client::installInternalTls(
+      materialOf(serviceDirectory("camera"))));
+}
+
+TEST_CASE("a service directory is installed and its material returned")
+{
+  const auto installed =
+      argus::client::installInternalTlsFrom(serviceDirectory("camera"));
+  REQUIRE(installed.has_value());
+  const auto material = installed.value_or(InternalTlsMaterial{});
+  CHECK(material.certificatePem ==
+        materialOf(serviceDirectory("camera")).certificatePem);
+  CHECK(material.trustBundlePem ==
+        materialOf(serviceDirectory("camera")).trustBundlePem);
+
+  const ServingOn auth(argus::client::internalServerCredentials(
+      materialOf(serviceDirectory("auth"))));
+  CHECK(healthOver(argus::client::makeChannel(
+            "tls:" + auth.address("127.0.0.1"))) == grpc::StatusCode::OK);
+  CHECK_THROWS_AS(static_cast<void>(argus::client::installInternalTlsFrom(
+                      serviceDirectory("auth"))),
+                  std::logic_error);
+}
+
 TEST_CASE("an empty install is refused and does not count as the install")
 {
   CHECK_THROWS_AS(argus::client::installInternalTls(InternalTlsMaterial{}),

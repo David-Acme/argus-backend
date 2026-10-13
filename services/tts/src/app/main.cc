@@ -14,13 +14,17 @@
 #include <feature/settings/tts-components.hxx>
 #include <feature/settings/tts-settings.hxx>
 #include <feature/synthesis/services/tts-service.hxx>
+#include <grpc/internal-tls.hxx>
+#include <http/tls-health.hxx>
 #include <settings/settings-rpc.hxx>
 
 #include <json/value.h>
 #include <cstdlib>
 #include <filesystem>
+#include <optional>
 #include <string>
 #include <thread>
+#include <unistd.h>
 
 namespace
 {
@@ -39,10 +43,23 @@ int main()
 {
   log_output::flushEachLine();
   ConfigService::load("config.toml");
+  const InternalTlsConfig internalTlsConfig = InternalTlsConfig::resolve();
+  std::optional<argus::client::InternalTlsMaterial> internalTls;
+  try {
+    internalTls = argus::client::installInternalTlsFrom(internalTlsConfig.directory);
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  const auto loaded = internalTls.value_or(argus::client::InternalTlsMaterial{});
 
   const ListenerConfig listener = TtsConfig::resolveListener();
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-tts", .extras = {}}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{
+      .serviceName = "argus-tts",
+      .extras = {tls_health::healthExtra({.certificatePem = loaded.certificatePem,
+                                          .trustBundlePem = loaded.trustBundlePem})}}));
   const auto controller = std::make_shared<TtsController>();
   drogon::app().registerController(controller);
   shutdown_signal::onStop(shutdown_signal::drainOf(controller->streams(), "tts-streams"));
@@ -101,11 +118,17 @@ int main()
         },
         .slots = ThreadBudget::inferenceSlots(),
         .defaultSpeed = [&synthesis] { return synthesis.defaultSpeed(); },
-        .services = std::move(services)});
+        .services = std::move(services),
+        .tlsAddress = internalTls ? internalTlsConfig.address : std::string{},
+        .tlsCredentials = internalTls && !internalTlsConfig.address.empty()
+                              ? argus::client::internalServerCredentials(*internalTls)
+                              : nullptr});
   }
 
   if (rpc)
     LOG_INFO << "argus-tts gRPC synthesis listening on " << rpcConfig.address;
+  if (rpc && rpc->tlsPort() > 0)
+    LOG_INFO << "argus-tts gRPC synthesis with mutual TLS on " << internalTlsConfig.address;
 
   LOG_INFO << "argus-tts listening on " << listener.host << ":"
            << listener.port;

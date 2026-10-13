@@ -12,8 +12,10 @@ scripts/lib/internal-pki.sh, adds a foreign client certificate the internal CA
 did not issue, and runs the given test binary against them: two services speak
 mutual TLS through argus::client::makeChannel, the client checks the server's
 name, the server refuses a foreign client, a client without a certificate and a
-plaintext client, and installInternalTls refuses a second install, an install
-after a channel and empty material. A process installs its certificate once,
+plaintext client, installInternalTls refuses a second install, an install
+after a channel and empty material, and installInternalTlsFrom installs a
+service directory, installs nothing for an empty setting and throws for a
+directory without the material. A process installs its certificate once,
 so every test case runs in a process of its own. Without openssl the test exits
 77, which ctest reports as skipped.
 USAGE
@@ -70,6 +72,6 @@ while IFS= read -r name; do
   ran=$((ran + 1))
 done < "$work/cases"
 
-[ "$ran" -ge 11 ] || { printf 'internal-tls-test: only %s test cases were found\n' "$ran" >&2; exit 1; }
+[ "$ran" -ge 14 ] || { printf 'internal-tls-test: only %s test cases were found\n' "$ran" >&2; exit 1; }
 [ "$failed" -eq 0 ] || { printf 'internal-tls-test: %s of %s test cases failed\n' "$failed" "$ran" >&2; exit 1; }
 printf 'internal-tls-test: %s test cases passed, each in a process of its own\n' "$ran"

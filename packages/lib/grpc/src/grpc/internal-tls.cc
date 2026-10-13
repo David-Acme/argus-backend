@@ -96,6 +96,20 @@ void installInternalTls(InternalTlsMaterial material)
   state.material = std::move(material);
 }
 
+std::optional<InternalTlsMaterial>
+installInternalTlsFrom(const std::string& directory)
+{
+  if (directory.empty())
+    return std::nullopt;
+  auto material = readInternalTls(internalTlsFilesIn(directory));
+  if (!material)
+    throw std::runtime_error("the internal TLS directory " + directory +
+                             " does not hold a readable cert.pem, key.pem "
+                             "and ca.pem");
+  installInternalTls(*material);
+  return material;
+}
+
 bool isInternalTlsTarget(std::string_view target)
 {
   return target.starts_with(kInternalTlsScheme);

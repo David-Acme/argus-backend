@@ -4,6 +4,7 @@
 #include <feature/synthesis/services/tts-service.hxx>
 #include <tts/tts-wire.hxx>
 #include <grpcpp/impl/service_type.h>
+#include <grpcpp/security/server_credentials.h>
 #include <functional>
 #include <memory>
 #include <string>
@@ -19,6 +20,8 @@ struct TtsRpcInput
   int slots{1};
   std::function<float()> defaultSpeed;
   std::vector<grpc::Service*> services;
+  std::string tlsAddress;
+  std::shared_ptr<grpc::ServerCredentials> tlsCredentials;
 };
 
 class TtsRpcServer
@@ -27,6 +30,7 @@ public:
   explicit TtsRpcServer(TtsRpcInput input);
   ~TtsRpcServer();
   [[nodiscard]] int port() const;
+  [[nodiscard]] int tlsPort() const;
   void shutdown();
 private:
   struct Impl;

@@ -30,6 +30,14 @@ struct GrpcListenerConfig
       uint16_t defaultPort, std::string_view portKey = "server.grpc_port");
 };
 
+struct InternalTlsConfig
+{
+  std::string directory;
+  std::string address;
+
+  static InternalTlsConfig resolve();
+};
+
 Json::Value listenerJson(const ListenerConfig& config);
 
 Json::Value singleListenerJson(const ListenerConfig& base, int port);

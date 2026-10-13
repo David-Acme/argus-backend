@@ -10,6 +10,10 @@ voice = ""
 camera = ""
 settings = ""
 
+[internal_tls]
+dir = ""
+address = "127.0.0.1:7329"
+
 [tts]
 threads = 0
 quality = "auto"

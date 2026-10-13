@@ -494,6 +494,8 @@ nats nkey
 nats seed_file
 nats inbox_prefix
 rpc address
+internal_tls dir
+internal_tls address
 owners.llm target
 owners.llm credential
 owners.llm config_file

@@ -49,6 +49,12 @@ ListenerConfig ListenerConfig::resolveServiceTls(std::string_view section,
   return config;
 }
 
+InternalTlsConfig InternalTlsConfig::resolve()
+{
+  return {.directory = ConfigService::getString("internal_tls.dir"),
+          .address = ConfigService::getString("internal_tls.address")};
+}
+
 GrpcListenerConfig GrpcListenerConfig::resolve(uint16_t defaultPort,
                                                std::string_view portKey)
 {
