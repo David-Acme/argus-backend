@@ -3,6 +3,10 @@ host = "127.0.0.1"
 grpc_port = 7034
 health_port = 7035
 
+[internal_tls]
+dir = ""
+address = "127.0.0.1:7234"
+
 [grpc]
 caller_sync = ""
 caller_settings = ""

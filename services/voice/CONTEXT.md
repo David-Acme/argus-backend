@@ -1166,8 +1166,15 @@ cannot change settings. An empty `caller_settings`, or one equal to
   (`argus-identity:7040` in the deploy stack, `127.0.0.1:7040` natively).
 - No alarm/siren trigger path exists here (voice reactions never carry alarm
   triggers); no camera frames, no sync-table CRUD, no schema.
-- Cleartext loopback/internal-network gRPC is a documented F6 limitation;
-  mTLS arrives with the eventual trust root.
+- The same gRPC services also listen with mutual TLS on 7234
+  (`[internal_tls] address`, S1 step 4), from the internal certificate in
+  `[internal_tls] dir`; the cleartext 7034 stays until the owner's deploy
+  check. `startVoiceRpc` (`src/feature/voice/voice-rpc-server`) opens both
+  through lib/grpc's `startListening`. It sits in `feature/voice`, beside the
+  gRPC services it serves, because voice has no `src/app/` (reviewer ruling,
+  2026-10-13), and it moves to `app/rpc/` unchanged when voice gets one. When
+  either port cannot be bound, `voiceRpcFailure` names both addresses and
+  voice does not start.
 - The canonical build is the service's standalone graph. From the repository
   root use `scripts/build-all.sh dev --only voice`; its CTest graph
   compiles the voice suites with `argus::voice-core`.

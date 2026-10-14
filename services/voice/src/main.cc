@@ -2,12 +2,15 @@
 #include <feature/health/health-rpc-service.hxx>
 #include <feature/rtc/rtc-agent-service.hxx>
 #include <feature/settings/voice-settings.hxx>
+#include <feature/voice/voice-rpc-server.hxx>
 #include <feature/voice/voice-rpc-service.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
+#include <http/tls-health.hxx>
 #include <config/config-service.hxx>
 #include <livekit/livekit.h>
 #include <notification/notification-client.hxx>
@@ -18,8 +21,11 @@
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
+#include <unistd.h>
+#include <vector>
 #include <runtime/log-output.hxx>
 #include <runtime/shutdown-signal.hxx>
 
@@ -124,6 +130,16 @@ int main()
 {
   log_output::flushEachLine();
   ConfigService::load("config.toml");
+  const InternalTlsConfig internalTlsConfig = InternalTlsConfig::resolve();
+  std::optional<argus::client::InternalTlsMaterial> internalTls;
+  try {
+    internalTls = argus::client::installInternalTlsFrom(internalTlsConfig.directory);
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  const auto loadedTls = internalTls.value_or(argus::client::InternalTlsMaterial{});
 
   const ListenerConfig healthListener = VoiceConfig::resolveHealthListener();
   const GrpcListenerConfig grpcListener = VoiceConfig::resolveGrpcListener();
@@ -164,21 +180,27 @@ int main()
     settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
         .service = "voice", .registry = &settings, .credentials = std::move(callers)});
 
-  grpc::ServerBuilder builder;
-  builder.AddListeningPort(hostPort(grpcListener.host, grpcListener.port),
-                           grpc::InsecureServerCredentials());
-  builder.RegisterService(&voiceRpc);
-  builder.RegisterService(&healthRpc);
+  std::vector<grpc::Service*> grpcServices{&voiceRpc, &healthRpc};
   if (settingsRpc)
-    builder.RegisterService(settingsRpc.get());
-  std::unique_ptr<grpc::Server> server(builder.BuildAndStart());
-  if (!server) {
-    LOG_ERROR << "gRPC server failed to listen on "
-              << hostPort(grpcListener.host, grpcListener.port);
+    grpcServices.push_back(settingsRpc.get());
+  const VoiceRpcListenInput grpcInput{
+      .address = hostPort(grpcListener.host, grpcListener.port),
+      .tlsAddress = internalTlsConfig.address,
+      .tls = internalTls,
+      .services = std::move(grpcServices)};
+  auto grpcListening = startVoiceRpc(grpcInput);
+  if (const auto failure = voiceRpcFailure(grpcInput, grpcListening)) {
+    LOG_ERROR << *failure;
     return 1;
   }
+  std::unique_ptr<grpc::Server> server = std::move(grpcListening.server);
+  if (grpcListening.tlsPort > 0)
+    LOG_INFO << "gRPC with mutual TLS on " << internalTlsConfig.address;
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-voice", .extras = {}}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{
+      .serviceName = "argus-voice",
+      .extras = {tls_health::healthExtra({.certificatePem = loadedTls.certificatePem,
+                                          .trustBundlePem = loadedTls.trustBundlePem})}}));
 
   drogon::app().loadConfigJson(drogonConfig(healthListener));
 

@@ -994,8 +994,8 @@ composition test under its own certificate name: two ports, plaintext only,
 one handshake. A service whose main used to build its server inline gets
 such a delegate.
 
-Wired so far: tts, settings, productivity, notification, sync, auth and
-guard.
+Wired so far: tts, settings, productivity, notification, sync, auth, guard
+and voice.
 - tts and settings publish no gRPC port, so 7329 and 7247 are not published
   either.
 - settings opens its mutual TLS port on the modules RPC server, beside
@@ -1029,6 +1029,11 @@ guard.
   A port that cannot be bound stops the start, as it already did. Its own
   `/health` handler, outside the shared envelope, carries `internalTls` at the
   top level beside `status` and `service`.
+- voice publishes its plaintext gRPC 7034 on 127.0.0.1, so 7234 is published
+  there too (`VOICE_TLS_PORT`). Voice has no `src/app/`, so its delegate,
+  startVoiceRpc, sits in `services/voice/src/feature/voice/voice-rpc-server`,
+  beside the gRPC services it serves (reviewer ruling, 2026-10-13). A port that
+  cannot be bound stops the start, as it already did.
 
 The clients move to `tls:` targets in step 5, and the plaintext listeners
 go only after the owner's check. For every deploy template that declares

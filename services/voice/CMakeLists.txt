@@ -99,6 +99,7 @@ argus_module(NAME voice-core
         src/feature/voice/voice-session-service.cc
         src/feature/voice/voice-engine-seam.cc
         src/feature/voice/voice-rpc-service.cc
+        src/feature/voice/voice-rpc-server.cc
         src/feature/health/health-rpc-service.cc
         ${VOICE_ENGINE_SOURCES}
     INCLUDES
@@ -320,3 +321,20 @@ argus_runtime_rpath(voice-playout-gain-test)
 set_target_properties(voice-playout-gain-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-playout-gain-test COMMAND voice-playout-gain-test)
+
+add_executable(voice-rpc-server-test tests/unit/voice-rpc-server-test.cc)
+
+target_link_libraries(voice-rpc-server-test PRIVATE argus::voice-core
+    argus::lib::grpc-test-support
+    doctest::doctest)
+
+target_compile_options(voice-rpc-server-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-rpc-server-test)
+
+set_target_properties(voice-rpc-server-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME voice-rpc-server-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:voice-rpc-server-test> 4)
+set_tests_properties(voice-rpc-server-test PROPERTIES SKIP_RETURN_CODE 77)
