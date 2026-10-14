@@ -4,6 +4,8 @@
 #include <camera/camera-sync-client.hxx>
 #include <chrono>
 #include <doctest/doctest.h>
+#include <grpc-test-support/mutual-tls-endpoint.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <string>
@@ -141,4 +143,24 @@ TEST_CASE("every call carries a deadline, and a refusal is not an empty table")
       CameraSyncClient({.target = "127.0.0.1:1", .credential = ""}).listCatalog(identity).has_value());
 
   server->Shutdown();
+}
+
+TEST_CASE("the sync pull dials the mutual TLS port with the internal certificate")
+{
+  ScriptedSyncService service;
+  const argus::client::test_support::MutualTlsEndpoint endpoint(
+      {.service = "camera", .services = {&service}});
+  REQUIRE(endpoint.tlsPort() > 0);
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("sync"));
+  const SyncIdentity identity{.userId = 7, .role = "owner", .device = "abc123"};
+
+  const CameraSyncClient client({.target = endpoint.tlsTarget(), .credential = ""});
+  const auto catalog = client.listCatalog(identity);
+  REQUIRE(catalog);
+  CHECK(catalog->cameras(0).name() == "porton");
+
+  const CameraSyncClient plaintext(
+      {.target = endpoint.plaintextToTlsPortTarget(), .credential = ""});
+  CHECK_FALSE(plaintext.listCatalog(identity).has_value());
 }

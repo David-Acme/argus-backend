@@ -38,8 +38,11 @@ set_target_properties(camera-sync-client-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(camera-sync-client-test PRIVATE argus::clients::camera
-    doctest::doctest)
+    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
 
 target_compile_options(camera-sync-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME camera-sync-client-test COMMAND camera-sync-client-test)
+add_test(NAME camera-sync-client-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:camera-sync-client-test> 4)
+set_tests_properties(camera-sync-client-test PROPERTIES SKIP_RETURN_CODE 77)

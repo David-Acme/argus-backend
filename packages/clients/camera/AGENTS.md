@@ -70,9 +70,10 @@ themselves are argus-camera's since sub-step 3a-1b.
   Three files declare it: `services/sync/config.toml.example:43-44`,
   `argus-deploy/config.sync.toml.example:43-44` and
   `argus-deploy/config.llm.toml.example:74-75` (both `argus-camera:7036`).
-- The channel is plaintext: `argus::client::makeChannel` is
-  `InsecureChannelCredentials`, so what protects this edge is the network, not
-  this package.
+- The channel is the one `argus::client::makeChannel` builds for the configured
+  target: a `tls:` target in `sync.grpc_target` runs the pull over mutual TLS
+  with the process's internal certificate, and `camera-sync-client-test` dials a
+  fake camera service on its TLS port and refuses a plaintext dial to it.
 
 ## Tests
 
