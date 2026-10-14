@@ -152,7 +152,8 @@ add_executable(vlm-rpc-test tests/unit/vlm-rpc-test.cc)
 target_include_directories(vlm-rpc-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 
-target_link_libraries(vlm-rpc-test PRIVATE argus::vlm-rpc doctest::doctest)
+target_link_libraries(vlm-rpc-test PRIVATE argus::vlm-rpc
+    argus::lib::grpc-test-support doctest::doctest)
 target_compile_definitions(vlm-rpc-test PRIVATE
     ARGUS_TEST_VLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/vision/lfm2vl-25")
 argus_runtime_rpath(vlm-rpc-test)
@@ -161,7 +162,10 @@ target_compile_options(vlm-rpc-test PRIVATE -Wall -Wextra)
 
 set_target_properties(vlm-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-add_test(NAME vlm-rpc-test COMMAND vlm-rpc-test)
+add_test(NAME vlm-rpc-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:vlm-rpc-test> 20)
+set_tests_properties(vlm-rpc-test PROPERTIES SKIP_RETURN_CODE 77)
 
 add_executable(vlm-settings-test tests/unit/vlm-settings-test.cc)
 

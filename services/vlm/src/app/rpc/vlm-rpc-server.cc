@@ -2,6 +2,7 @@
 
 #include <errors/response-exception.hxx>
 #include <grpc/fleet-caller-gate.hxx>
+#include <grpc/internal-tls.hxx>
 #include <feature/vlm/services/jpeg-gate.hxx>
 #include <response/response-rpc.hxx>
 #include <vlm.grpc.pb.h>
@@ -12,6 +13,7 @@
 #include <cstddef>
 #include <semaphore>
 #include <stdexcept>
+#include <vector>
 
 namespace
 {
@@ -55,16 +57,23 @@ struct VlmRpcServer::Impl final : wire::Vision::Service
   {
     if (!input_.describe || !input_.capabilities || gate_.pairedCount() == 0)
       throw std::invalid_argument("Invalid VLM RPC configuration");
-    grpc::ServerBuilder builder;
-    builder.SetMaxReceiveMessageSize(kMaxReceiveBytes);
-    builder.AddListeningPort(input_.address, grpc::InsecureServerCredentials(),
-                             &port_);
-    builder.RegisterService(this);
-    for (auto* service : input_.services)
-      builder.RegisterService(service);
-    server_ = builder.BuildAndStart();
-    if (!server_)
-      throw std::runtime_error("VLM RPC listener failed");
+    std::vector<grpc::Service*> services{this};
+    services.insert(services.end(), input_.services.begin(),
+                    input_.services.end());
+    const argus::client::ListenInput listen{.address = input_.address,
+                                            .tlsAddress = input_.tlsAddress,
+                                            .tls = input_.tls,
+                                            .services = std::move(services),
+                                            .maxReceiveBytes = kMaxReceiveBytes};
+    auto listener = argus::client::startListening(listen);
+    if (const auto failure = argus::client::listenFailure({.name = "VLM RPC",
+                                                           .input = listen,
+                                                           .listener = listener,
+                                                           .consequence = ""}))
+      throw std::runtime_error(*failure);
+    server_ = std::move(listener.server);
+    port_ = listener.port;
+    tlsPort_ = listener.tlsPort;
   }
 
   grpc::Status Capabilities(grpc::ServerContext* context,
@@ -139,6 +148,7 @@ struct VlmRpcServer::Impl final : wire::Vision::Service
   argus::client::FleetCallerGate gate_;
   std::counting_semaphore<> slots_;
   int port_{0};
+  int tlsPort_{0};
   std::unique_ptr<grpc::Server> server_;
 };
 
@@ -149,6 +159,7 @@ VlmRpcServer::VlmRpcServer(VlmRpcInput input)
 
 VlmRpcServer::~VlmRpcServer() { shutdown(); }
 int VlmRpcServer::port() const { return impl_->port_; }
+int VlmRpcServer::tlsPort() const { return impl_->tlsPort_; }
 void VlmRpcServer::shutdown()
 {
   if (impl_->server_) {

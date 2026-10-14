@@ -5,6 +5,10 @@ port = 7031
 [rpc]
 address = "0.0.0.0:7131"
 
+[internal_tls]
+dir = "/run/secrets/internal-tls"
+address = "0.0.0.0:7331"
+
 [rpc.callers]
 guard = "CHANGE_ME_GUARD_VLM"
 settings = "CHANGE_ME_SETTINGS_VLM"

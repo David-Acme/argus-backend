@@ -5,6 +5,10 @@ port = 7031
 [rpc]
 address = ""
 
+[internal_tls]
+dir = ""
+address = "127.0.0.1:7331"
+
 [rpc.callers]
 guard = ""
 settings = ""

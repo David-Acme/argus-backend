@@ -6,9 +6,11 @@
 #include <feature/settings/vlm-settings.hxx>
 #include <feature/vlm/controllers/vlm-controller.hxx>
 #include <drogon/drogon.h>
+#include <grpc/internal-tls.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
+#include <http/tls-health.hxx>
 #include <runtime/thread-budget.hxx>
 #include <runtime/log-output.hxx>
 #include <vlm/vlm-client.hxx>
@@ -18,7 +20,9 @@
 #include <json/value.h>
 #include <llama.h>
 #include <memory>
+#include <optional>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 namespace
@@ -39,10 +43,23 @@ int main()
   limitDecoderPixels();
   log_output::flushEachLine();
   ConfigService::load("config.toml");
+  const InternalTlsConfig internalTlsConfig = InternalTlsConfig::resolve();
+  std::optional<argus::client::InternalTlsMaterial> internalTls;
+  try {
+    internalTls = argus::client::installInternalTlsFrom(internalTlsConfig.directory);
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  const auto loadedTls = internalTls.value_or(argus::client::InternalTlsMaterial{});
 
   const ListenerConfig listener = VlmConfig::resolveListener();
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-vlm", .extras = {}}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{
+      .serviceName = "argus-vlm",
+      .extras = {tls_health::healthExtra({.certificatePem = loadedTls.certificatePem,
+                                          .trustBundlePem = loadedTls.trustBundlePem})}}));
   const auto vlm = std::make_shared<VlmController>();
   drogon::app().registerController(vlm);
 
@@ -100,11 +117,15 @@ int main()
           return vlm->service().describeMat(input);
         },
         .slots = ThreadBudget::inferenceSlots(),
-        .services = std::move(services)});
+        .services = std::move(services),
+        .tlsAddress = internalTlsConfig.address,
+        .tls = internalTls});
   }
 
   if (rpc)
     LOG_INFO << "argus-vlm gRPC vision listening on " << rpcConfig.address;
+  if (rpc && rpc->tlsPort() > 0)
+    LOG_INFO << "argus-vlm gRPC vision with mutual TLS on " << internalTlsConfig.address;
 
   LOG_INFO << "argus-vlm listening on " << listener.host << ":"
            << listener.port;

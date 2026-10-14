@@ -8,7 +8,9 @@
 #include <config/config-service.hxx>
 #include <errors/response-exception.hxx>
 #include <feature/vlm/controllers/vlm-controller.hxx>
+#include <grpc-test-support/internal-tls-probe.hxx>
 #include <grpc/grpc-client-base.hxx>
+#include <grpc/internal-tls.hxx>
 #include <llama.h>
 #include <response.pb.h>
 #include <response/response-rpc.hxx>
@@ -19,6 +21,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <fstream>
 #include <latch>
@@ -93,7 +96,9 @@ VlmRpcInput serverInput()
           .capabilities = capabilities,
           .describe = described,
           .slots = 1,
-          .services = {}};
+          .services = {},
+          .tlsAddress = {},
+          .tls = std::nullopt};
 }
 
 constexpr auto kEntryWait = std::chrono::seconds(10);
@@ -124,6 +129,13 @@ ClientConfig clientConfig(int port,
   return {.target = "127.0.0.1:" + std::to_string(port),
           .credential = kSecret,
           .timeout = timeout};
+}
+
+ClientConfig mutualTlsConfig(int port)
+{
+  return {.target = "tls:127.0.0.1:" + std::to_string(port),
+          .credential = kSecret,
+          .timeout = std::chrono::seconds(5)};
 }
 
 wire::DescribeRequest wireRequest(const DescribeInput& input)
@@ -574,4 +586,87 @@ TEST_CASE("a listener whose callers are all placeholders refuses to start")
   VlmRpcInput input = serverInput();
   input.credentials = {{"voice", "CHANGE_ME_VOICE_VLM"}, {"settings", "CHANGE_ME_SETTINGS_VLM"}};
   CHECK_THROWS_AS(VlmRpcServer{std::move(input)}, std::invalid_argument);
+}
+
+struct DescriptionCarryingInput
+{
+  std::string target;
+  std::string jpeg;
+};
+
+grpc::StatusCode descriptionCarrying(const DescriptionCarryingInput& input)
+{
+  const auto stub =
+      argus::vlm::v1::Vision::NewStub(argus::client::makeChannel(input.target));
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::seconds(30));
+  argus::client::addCallerCredential(context, kSecret);
+  argus::vlm::v1::DescribeRequest request;
+  request.set_image_jpeg(input.jpeg);
+  request.set_prompt("who?");
+  argus::vlm::v1::DescribeResponse response;
+  return stub->Describe(&context, request, &response).error_code();
+}
+
+TEST_CASE("the mutual TLS address opens a second listener for the same calls")
+{
+  VlmRpcInput input = serverInput();
+  input.tlsAddress = "127.0.0.1:0";
+  input.tls = argus::client::test_support::pkiMaterial("vlm");
+  VlmRpcServer server(std::move(input));
+  REQUIRE(server.tlsPort() > 0);
+  CHECK(server.tlsPort() != server.port());
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("guard"));
+  CHECK(Client(mutualTlsConfig(server.tlsPort())).capabilities().maxInputPx ==
+        384);
+  CHECK(Client(clientConfig(server.port())).capabilities().maxInputPx == 384);
+}
+
+TEST_CASE("no second listener without both a TLS address and material")
+{
+  VlmRpcServer plain(serverInput());
+  CHECK(plain.tlsPort() == 0);
+
+  VlmRpcInput addressOnly = serverInput();
+  addressOnly.tlsAddress = "127.0.0.1:0";
+  VlmRpcServer withoutMaterial(std::move(addressOnly));
+  CHECK(withoutMaterial.tlsPort() == 0);
+
+  VlmRpcInput materialOnly = serverInput();
+  materialOnly.tls = argus::client::test_support::pkiMaterial("vlm");
+  VlmRpcServer withoutAddress(std::move(materialOnly));
+  CHECK(withoutAddress.tlsPort() == 0);
+}
+
+TEST_CASE("a mutual TLS address that cannot be bound stops the start")
+{
+  VlmRpcInput input = serverInput();
+  input.tlsAddress = "192.0.2.1:0";
+  input.tls = argus::client::test_support::pkiMaterial("vlm");
+  CHECK_THROWS_WITH_AS(
+      VlmRpcServer{std::move(input)},
+      "VLM RPC failed to listen on 127.0.0.1:0 and 192.0.2.1:0",
+      std::runtime_error);
+}
+
+TEST_CASE("a request over the 64 MiB cap is refused on both ports")
+{
+  VlmRpcInput input = serverInput();
+  input.tlsAddress = "127.0.0.1:0";
+  input.tls = argus::client::test_support::pkiMaterial("vlm");
+  VlmRpcServer server(std::move(input));
+  REQUIRE(server.tlsPort() > 0);
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("guard"));
+  const std::string plain = "127.0.0.1:" + std::to_string(server.port());
+  const std::string mutual = "tls:127.0.0.1:" + std::to_string(server.tlsPort());
+  const std::string over(std::size_t{64} * 1024 * 1024 + 1024, 'x');
+  CHECK(descriptionCarrying({.target = plain, .jpeg = jpegFixture()}) == grpc::StatusCode::OK);
+  CHECK(descriptionCarrying({.target = mutual, .jpeg = jpegFixture()}) == grpc::StatusCode::OK);
+  CHECK(descriptionCarrying({.target = plain, .jpeg = over}) ==
+        grpc::StatusCode::RESOURCE_EXHAUSTED);
+  CHECK(descriptionCarrying({.target = mutual, .jpeg = over}) ==
+        grpc::StatusCode::RESOURCE_EXHAUSTED);
 }

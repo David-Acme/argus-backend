@@ -995,7 +995,7 @@ one handshake. A service whose main used to build its server inline gets
 such a delegate.
 
 Wired so far: tts, settings, productivity, notification, sync, auth, guard,
-voice and stt.
+voice, stt and vlm.
 - tts and settings publish no gRPC port, so 7329 and 7247 are not published
   either.
 - settings opens its mutual TLS port on the modules RPC server, beside
@@ -1036,6 +1036,9 @@ voice and stt.
   cannot be bound stops the start, as it already did.
 - stt publishes no RPC port, so 7330 is not published either. Its
   SttRpcServer opens the plaintext 7130 and the mutual TLS port through
+  startListening and mounts the internal certificate read-only.
+- vlm publishes no RPC port, so 7331 is not published either. Its
+  VlmRpcServer opens the plaintext 7131 and the mutual TLS port through
   startListening and mounts the internal certificate read-only.
 
 The clients move to `tls:` targets in step 5, and the plaintext listeners

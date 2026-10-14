@@ -50,6 +50,12 @@ the legacy's RAM/VRAM with zero functional risk. It mirrors the argus-tts
 - **Caption cache**: stays IN the service (per-process warm state keyed by
   FNV of the scaled pixels + prompt — an extraction WIN: the legacy lost it
   anyway on restart).
+- **Mutual TLS (S1 step 4)**: the vision RPC also listens on
+  `[internal_tls] address` (`rpc.address` plus 200, 7331 in the deploy stack)
+  with mutual TLS from the internal certificate in `[internal_tls] dir`.
+  `VlmRpcServer` opens both ports through `argus::client::startListening`,
+  caps a message at 64 MiB on both, and throws when a port cannot be bound.
+  The plaintext leg stays until the owner's deploy check.
 - **Config**: `[vision]` (engine knobs, mirroring the legacy block) +
   `[server]` (loopback listener, default 7031) + `[rpc]` (address and caller
   pairs, both empty by default when Phase 4 step 6b added the gRPC leg). No
