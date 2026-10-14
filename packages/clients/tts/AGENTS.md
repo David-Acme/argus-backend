@@ -127,3 +127,9 @@ the gRPC one to serve the same protocol.
   `services/camera/tests/unit/camera-talk-cutover-test.cc`,
   `services/camera/tests/unit/camera-action-rpc-test.cc`), which is where the
   HTTP leg is tested end to end.
+- `tests/unit/tts-grpc-tls-test.cc` — its own binary, because the suite above
+  shares the runtime config across cases and an install must come before any
+  channel: `tts-grpc-tls-test` runs through `scripts/internal-tls-test.sh`, one
+  process per case. A `tls:` gRPC client reads `Capabilities` from a fake tts
+  service on its mutual TLS port with the voice certificate, and a plaintext
+  client to that port is refused.
