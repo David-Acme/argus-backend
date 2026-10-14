@@ -23,8 +23,11 @@ add_executable(notification-client-test tests/unit/notification-client-test.cc)
 set_target_properties(notification-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(notification-client-test PRIVATE argus::clients::notification
-    doctest::doctest)
+    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
 
 target_compile_options(notification-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME notification-client-test COMMAND notification-client-test)
+add_test(NAME notification-client-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:notification-client-test> 4)
+set_tests_properties(notification-client-test PROPERTIES SKIP_RETURN_CODE 77)

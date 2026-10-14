@@ -1,6 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <argus/notification/v1/notification.grpc.pb.h>
 #include <doctest/doctest.h>
+#include <grpc-test-support/mutual-tls-endpoint.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <map>
 #include <memory>
@@ -291,4 +293,26 @@ TEST_CASE("the call methods carry their fields and the credential")
   CHECK(client.claimCall({.callId = "call-4", .userId = 7, .sessionId = ""})
             .outcome == NotificationRpcOutcome::Unavailable);
   server->Shutdown();
+}
+
+TEST_CASE("the create dials the mutual TLS port with the internal certificate")
+{
+  ScriptedNotificationService service;
+  service.created.set_created(2);
+  const argus::client::test_support::MutualTlsEndpoint endpoint(
+      {.service = "notification", .services = {&service}});
+  REQUIRE(endpoint.tlsPort() > 0);
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("voice"));
+
+  const NotificationClient client(
+      {.target = endpoint.tlsTarget(), .credential = kCredential});
+  const auto result = client.createNotifications(createRequest(), identityFor(7));
+  CHECK(result.outcome == NotificationRpcOutcome::Success);
+  CHECK(result.created == 2);
+
+  const NotificationClient plaintext(
+      {.target = endpoint.plaintextToTlsPortTarget(), .credential = kCredential});
+  CHECK(plaintext.createNotifications(createRequest(), identityFor(7)).outcome !=
+        NotificationRpcOutcome::Success);
 }

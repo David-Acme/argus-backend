@@ -99,3 +99,7 @@ CMakeLists of the tree.
   `Unavailable`, `UNAUTHENTICATED` → `Rejected`, an unreachable target →
   `Unavailable` — and then that the same client under `OK` returns the rows
   the receiver served, title and `last_created` id included.
+  The last case dials the TLS port of the same fake receiver: a `tls:` target
+  under the voice certificate creates the notification, and a plaintext client
+  to that port does not succeed. The binary runs through
+  `scripts/internal-tls-test.sh`, one process per case.
