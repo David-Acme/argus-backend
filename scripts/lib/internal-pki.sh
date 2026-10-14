@@ -250,6 +250,10 @@ guard notifications grpc_target notification
 guard identity target identity
 guard modules target settings
 identity auth target auth
+camera auth target auth
+guard auth target auth
+notification auth target auth
+productivity auth target auth
 identity sync control_target sync
 identity modules target settings
 llm guard target guard
