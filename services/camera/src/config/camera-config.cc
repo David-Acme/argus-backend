@@ -57,6 +57,11 @@ CameraHealthConfig CameraConfig::resolveHealth()
   return config;
 }
 
+CameraOnvifConfig CameraConfig::resolveOnvif()
+{
+  return {.events = !ConfigService::hasKey("onvif.events") || ConfigService::getBool("onvif.events")};
+}
+
 std::string CameraConfig::resolveGuardCallerSecret()
 {
   return ConfigService::getString("grpc.caller_guard");

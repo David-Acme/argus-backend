@@ -23,12 +23,18 @@ struct CameraHealthConfig
   int64_t rebaselineAfterMs{900000};
 };
 
+struct CameraOnvifConfig
+{
+  bool events{true};
+};
+
 class CameraConfig
 {
 public:
   static CameraDbConfig resolveDb();
   static ListenerConfig resolveListener();
   static CameraHealthConfig resolveHealth();
+  static CameraOnvifConfig resolveOnvif();
   static std::string resolveGuardCallerSecret();
   static std::string resolveSyncCallerSecret();
   static std::string resolveLlmCallerSecret();

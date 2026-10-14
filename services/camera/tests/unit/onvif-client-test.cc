@@ -12,10 +12,18 @@
 
 #include <drogon/drogon.h>
 #include <trantor/net/EventLoopThread.h>
+#include <trantor/net/TcpConnection.h>
+#include <trantor/net/TcpServer.h>
+#include <trantor/utils/MsgBuffer.h>
 
+#include <algorithm>
+#include <atomic>
+#include <cctype>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <cstdlib>
+#include <functional>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -813,6 +821,11 @@ TEST_CASE("the events calls answer the digest challenge like every call, and a l
   CHECK(pulled.at("uri") == made.value.path);
   CHECK(pulled.at("nc") == "00000002");
   CHECK(pulled.at("response") == expectedDigest(pulled, kPassword));
+  REQUIRE(drogon::sync_wait(client.pull(made.value)).ok());
+  const auto pulledAgain = digestFields(camera->sent.back().authorization);
+  CHECK(pulledAgain.at("nonce") == pulled.at("nonce"));
+  CHECK(pulledAgain.at("nc") == "00000003");
+  CHECK(pulledAgain.at("response") == expectedDigest(pulledAgain, kPassword));
 
   camera->once("PullMessagesRequest", {.status = 0, .body = {}, .challenge = {}, .error = "connection reset"});
   const auto lost = drogon::sync_wait(client.pull(made.value));
@@ -869,6 +882,34 @@ struct SeenOnvif
 
 constexpr const char* kManagerPath = "/onvif/Events/PullSubManager_2026-10-13T17:04:30Z_0";
 
+bool digestAccepted(const std::string& header, std::string_view target)
+{
+  if (!header.starts_with("Digest "))
+    return false;
+  const auto fields = digestFields(header);
+  return fields.contains("response") && fields.contains("uri") && fields.at("uri") == target &&
+         fields.contains("nonce") && fields.at("nonce") == "0a1b2c3d" && fields.contains("nc") &&
+         fields.contains("cnonce") && fields.contains("qop") &&
+         fields.at("response") == expectedDigest(fields, kPassword);
+}
+
+std::string cameraAnswer(const std::string& operation)
+{
+  static const std::map<std::string, std::string> kFiles{
+      {"GetSystemDateAndTime", "get-system-date-and-time.xml"},
+      {"GetCapabilities", "get-capabilities.xml"},
+      {"GetDeviceInformation", "get-device-information.xml"},
+      {"GetProfiles", "get-profiles.xml"},
+      {"GetPresets", "get-presets.xml"},
+      {"Stop", "stop.xml"},
+      {"CreatePullPointSubscriptionRequest", "create-pull-point-subscription.xml"},
+      {"GetEventPropertiesRequest", "get-event-properties.xml"},
+      {"PullMessagesRequest", "pull-messages-motion.xml"},
+      {"UnsubscribeRequest", "unsubscribe.xml"}};
+  const auto file = kFiles.find(operation);
+  return file == kFiles.end() ? fixture("fault-action-not-supported.xml") : fixture(file->second);
+}
+
 class FakeOnvifCamera
 {
 public:
@@ -905,7 +946,7 @@ private:
     seen_.paths.emplace_back(request->path());
     seen_.targets.push_back(target);
     const bool open = operation == "GetSystemDateAndTime";
-    if (!open && !authorized(authorization, target)) {
+    if (!open && !digestAccepted(authorization, target)) {
       ++seen_.challenged;
       auto refusal = drogon::HttpResponse::newHttpResponse();
       refusal->setStatusCode(drogon::k401Unauthorized);
@@ -915,7 +956,7 @@ private:
     ++seen_.answered;
     auto response = drogon::HttpResponse::newHttpResponse();
     response->setContentTypeString("application/soap+xml; charset=utf-8");
-    response->setBody(fixtureFor(operation));
+    response->setBody(cameraAnswer(operation));
     return response;
   }
 
@@ -925,33 +966,6 @@ private:
     std::smatch found;
     std::regex_search(contentType, found, action);
     return found;
-  }
-
-  static bool authorized(const std::string& header, std::string_view path)
-  {
-    if (!header.starts_with("Digest "))
-      return false;
-    const auto fields = digestFields(header);
-    return fields.contains("response") && fields.contains("uri") && fields.at("uri") == path &&
-           fields.contains("nonce") && fields.at("nonce") == "0a1b2c3d" && fields.contains("nc") &&
-           fields.contains("cnonce") && fields.contains("qop") &&
-           fields.at("response") == expectedDigest(fields, kPassword);
-  }
-
-  static std::string fixtureFor(const std::string& operation)
-  {
-    static const std::map<std::string, std::string> kFiles{
-        {"GetSystemDateAndTime", "get-system-date-and-time.xml"},
-        {"GetCapabilities", "get-capabilities.xml"},
-        {"GetDeviceInformation", "get-device-information.xml"},
-        {"GetProfiles", "get-profiles.xml"},
-        {"GetPresets", "get-presets.xml"},
-        {"Stop", "stop.xml"},
-        {"CreatePullPointSubscriptionRequest", "create-pull-point-subscription.xml"},
-        {"GetEventPropertiesRequest", "get-event-properties.xml"},
-        {"PullMessagesRequest", "pull-messages-motion.xml"}};
-    const auto file = kFiles.find(operation);
-    return file == kFiles.end() ? fixture("fault-action-not-supported.xml") : fixture(file->second);
   }
 
   mutable std::mutex mutex_;
@@ -1049,4 +1063,313 @@ TEST_CASE("over HTTP the transport posts SOAP 1.2 with its action and answers th
 
   drogon::app().quit();
   runner.join();
+}
+
+namespace
+{
+struct RawCounts
+{
+  std::vector<int> othersAtAccept;
+  std::vector<std::string> operations;
+  int accepted{0};
+  int open{0};
+};
+
+struct RawRequest
+{
+  std::string target;
+  std::string operation;
+  std::string authorization;
+  bool closes{false};
+  size_t length{0};
+};
+
+struct RawReply
+{
+  bool accepted{true};
+  std::string body;
+  bool closes{false};
+};
+
+std::string lowered(std::string_view text)
+{
+  std::string out(text);
+  std::ranges::transform(out, out.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return out;
+}
+
+RawRequest rawRequestOf(std::string_view head)
+{
+  RawRequest request;
+  size_t at = head.find("\r\n");
+  const std::string_view line = head.substr(0, at);
+  const auto first = line.find(' ');
+  const auto second = line.find(' ', first + 1);
+  if (first != std::string_view::npos && second != std::string_view::npos)
+    request.target = std::string(line.substr(first + 1, second - first - 1));
+  while (at != std::string_view::npos && at + 2 < head.size()) {
+    const size_t start = at + 2;
+    at = head.find("\r\n", start);
+    const std::string_view header = head.substr(start, at == std::string_view::npos ? std::string_view::npos : at - start);
+    const auto colon = header.find(':');
+    if (colon == std::string_view::npos)
+      continue;
+    const std::string name = lowered(header.substr(0, colon));
+    std::string_view value = header.substr(colon + 1);
+    while (!value.empty() && value.front() == ' ')
+      value.remove_prefix(1);
+    if (name == "authorization")
+      request.authorization = std::string(value);
+    else if (name == "content-length")
+      request.length = std::stoul(std::string(value));
+    else if (name == "connection")
+      request.closes = lowered(value) == "close";
+    else if (name == "content-type") {
+      static const std::regex action(R"re(action="([^"]+)")re");
+      std::smatch found;
+      const std::string type(value);
+      if (std::regex_search(type, found, action))
+        request.operation = operationOf(found[1].str());
+    }
+  }
+  return request;
+}
+
+class RawOnvifCamera
+{
+public:
+  RawOnvifCamera(trantor::EventLoop* loop, bool honoursClose)
+      : honoursClose_(honoursClose), server_(loop, trantor::InetAddress("127.0.0.1", 0), "raw-onvif-camera")
+  {
+    server_.setConnectionCallback([this](const trantor::TcpConnectionPtr& connection) { onConnection(connection); });
+    server_.setRecvMessageCallback([this](const trantor::TcpConnectionPtr& connection, trantor::MsgBuffer* buffer) {
+      onMessage(connection, buffer);
+    });
+    server_.start();
+  }
+
+  [[nodiscard]] uint16_t port() const { return server_.address().toPort(); }
+
+  void hold(const std::string& operation)
+  {
+    const std::scoped_lock lock(mutex_);
+    held_ = operation;
+  }
+
+  [[nodiscard]] size_t heldCount() const
+  {
+    const std::scoped_lock lock(mutex_);
+    return waiting_.size();
+  }
+
+  [[nodiscard]] RawCounts counts() const
+  {
+    const std::scoped_lock lock(mutex_);
+    return counts_;
+  }
+
+  void releaseHeld()
+  {
+    std::vector<std::pair<trantor::TcpConnectionPtr, RawRequest>> waiting;
+    {
+      const std::scoped_lock lock(mutex_);
+      waiting.swap(waiting_);
+    }
+    for (const auto& [connection, request] : waiting)
+      send(connection, {.accepted = true, .body = cameraAnswer(request.operation), .closes = request.closes});
+  }
+
+private:
+  void onConnection(const trantor::TcpConnectionPtr& connection)
+  {
+    const std::scoped_lock lock(mutex_);
+    if (!connection->connected()) {
+      --counts_.open;
+      return;
+    }
+    counts_.othersAtAccept.push_back(counts_.open);
+    ++counts_.accepted;
+    ++counts_.open;
+  }
+
+  void onMessage(const trantor::TcpConnectionPtr& connection, trantor::MsgBuffer* buffer)
+  {
+    const std::string_view data(buffer->peek(), buffer->readableBytes());
+    const auto headEnd = data.find("\r\n\r\n");
+    if (headEnd == std::string_view::npos)
+      return;
+    const RawRequest request = rawRequestOf(data.substr(0, headEnd));
+    const size_t total = headEnd + 4 + request.length;
+    if (data.size() < total)
+      return;
+    buffer->retrieve(total);
+    RawReply reply{.accepted = true, .body = {}, .closes = request.closes};
+    {
+      const std::scoped_lock lock(mutex_);
+      counts_.operations.push_back(request.operation);
+      if (request.operation != "GetSystemDateAndTime" && !digestAccepted(request.authorization, request.target)) {
+        reply.accepted = false;
+      }
+      else if (!held_.empty() && request.operation == held_) {
+        waiting_.emplace_back(connection, request);
+        return;
+      }
+      else {
+        reply.body = cameraAnswer(request.operation);
+      }
+    }
+    send(connection, reply);
+  }
+
+  void send(const trantor::TcpConnectionPtr& connection, const RawReply& reply) const
+  {
+    std::string out = reply.accepted ? "HTTP/1.1 200 OK\r\n"
+                                     : "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Digest realm=\"argus-fake\", "
+                                       "nonce=\"0a1b2c3d\", qop=\"auth\"\r\n";
+    out += "Content-Type: application/soap+xml; charset=utf-8\r\nContent-Length: " + std::to_string(reply.body.size()) +
+           "\r\n";
+    const bool closing = reply.closes && honoursClose_;
+    if (closing)
+      out += "Connection: close\r\n";
+    out += "\r\n" + reply.body;
+    connection->send(out);
+    if (closing)
+      connection->shutdown();
+  }
+
+  bool honoursClose_;
+  trantor::TcpServer server_;
+  mutable std::mutex mutex_;
+  RawCounts counts_;
+  std::string held_;
+  std::vector<std::pair<trantor::TcpConnectionPtr, RawRequest>> waiting_;
+};
+
+struct HeldPull
+{
+  OnvifClient& client;
+  OnvifSubscription subscription;
+  OnvifOutcome<OnvifPull> outcome;
+  std::atomic<bool> done{false};
+};
+
+drogon::Task<void> pullInto(HeldPull& held)
+{
+  held.outcome = co_await held.client.pull(held.subscription);
+  held.done = true;
+}
+
+bool waitFor(const std::function<bool()>& ready)
+{
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (ready())
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
+  }
+  return ready();
+}
+
+void onLoop(trantor::EventLoop* loop, const std::function<void()>& work)
+{
+  std::mutex mutex;
+  std::condition_variable done;
+  bool finished = false;
+  loop->runInLoop([&] {
+    work();
+    const std::scoped_lock lock(mutex);
+    finished = true;
+    done.notify_one();
+  });
+  std::unique_lock lock(mutex);
+  done.wait(lock, [&finished] { return finished; });
+}
+
+bool drained(const RawOnvifCamera& camera)
+{
+  return waitFor([&camera] { return camera.counts().open == 0; });
+}
+}
+
+TEST_CASE("over real sockets each events request has its own connection, and two are never open at once")
+{
+  for (const bool honoursClose : {true, false}) {
+    CAPTURE(honoursClose);
+    trantor::EventLoopThread cameraLoop("raw-onvif-camera");
+    cameraLoop.run();
+    std::unique_ptr<RawOnvifCamera> camera;
+    onLoop(cameraLoop.getLoop(),
+           [&camera, &cameraLoop, honoursClose] {
+             camera = std::make_unique<RawOnvifCamera>(cameraLoop.getLoop(), honoursClose);
+           });
+    trantor::EventLoopThread eventsLoop("onvif-events-client");
+    eventsLoop.run();
+    const OnvifEndpoint local{
+        .host = "127.0.0.1", .port = camera->port(), .username = kUser, .password = kPassword, .timeoutSeconds = 5.0};
+    const auto transport = std::make_shared<OnvifAsyncHttpTransport>(local, eventsLoop.getLoop());
+    OnvifClient events({.endpoint = local, .transport = {}, .asyncTransport = transport, .clock = {}});
+    REQUIRE(drogon::sync_wait(events.openEvents()).ok());
+    const auto made = drogon::sync_wait(events.subscribe());
+    REQUIRE(made.ok());
+    CHECK(made.value.path == kManagerPath);
+
+    const int64_t closedBefore = transport->closedConnections();
+    for (int round = 0; round < 4; ++round) {
+      CAPTURE(round);
+      const auto pulled = drogon::sync_wait(events.pull(made.value));
+      REQUIRE(pulled.ok());
+      CHECK(pulled.value.motions.size() == 4);
+      CHECK(drained(*camera));
+    }
+    CHECK(transport->closedConnections() == closedBefore + 4);
+
+    onLoop(eventsLoop.getLoop(), [&transport] { transport->cancel(); });
+    CHECK(transport->closedConnections() == closedBefore + 4);
+
+    camera->hold("PullMessagesRequest");
+    HeldPull held{.client = events, .subscription = made.value, .outcome = {}, .done = false};
+    onLoop(eventsLoop.getLoop(), [&held] { drogon::async_run([&held] { return pullInto(held); }); });
+    REQUIRE(waitFor([&camera] { return camera->heldCount() == 1; }));
+    const auto cancelledAt = std::chrono::steady_clock::now();
+    onLoop(eventsLoop.getLoop(), [&transport] { transport->cancel(); });
+    REQUIRE(waitFor([&held] { return held.done.load(); }));
+    CHECK(std::chrono::steady_clock::now() - cancelledAt < std::chrono::seconds(1));
+    CHECK(held.outcome.failure == OnvifFailure::Transport);
+    CHECK(transport->closedConnections() == closedBefore + 5);
+    CHECK(drained(*camera));
+    camera->hold({});
+    REQUIRE(drogon::sync_wait(events.unsubscribe(made.value)).ok());
+    CHECK(drained(*camera));
+    CHECK(camera->counts().operations.back() == "UnsubscribeRequest");
+
+    camera->hold("GetSystemDateAndTime");
+    const OnvifHttpRequest clockRequest{
+        .path = "/onvif/device_service",
+        .action = "http://www.onvif.org/ver10/device/wsdl/GetSystemDateAndTime",
+        .body = onvif_soap::envelope({.service = OnvifService::Device,
+                                      .operation = "GetSystemDateAndTime",
+                                      .body = {},
+                                      .security = std::nullopt,
+                                      .header = {}}),
+        .authorization = {},
+        .timeoutSeconds = 0.3};
+    const int64_t closedBeforeTimeout = transport->closedConnections();
+    const auto timedOut = drogon::sync_wait(transport->send(clockRequest));
+    CHECK(timedOut.status == 0);
+    CHECK(timedOut.error.find("Timeout") != std::string::npos);
+    CHECK(transport->closedConnections() == closedBeforeTimeout + 1);
+    CHECK(drained(*camera));
+    camera->hold({});
+    CHECK(drogon::sync_wait(transport->send(clockRequest)).status == 200);
+    CHECK(drained(*camera));
+
+    const RawCounts counts = camera->counts();
+    CHECK(counts.accepted == static_cast<int>(counts.operations.size()));
+    CHECK(counts.othersAtAccept.size() == static_cast<size_t>(counts.accepted));
+    CHECK(std::ranges::all_of(counts.othersAtAccept, [](int others) { return others == 0; }));
+    onLoop(cameraLoop.getLoop(), [&camera] {
+      camera->releaseHeld();
+      camera.reset();
+    });
+  }
 }

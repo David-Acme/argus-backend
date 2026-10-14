@@ -53,6 +53,9 @@ transport = "auto"
 talk_framing = "none"
 talk_mode = "aec"
 
+[onvif]
+events = true
+
 [streaming]
 go2rtc_bin = "third_party/go2rtc/go2rtc"
 go2rtc_config = "go2rtc.yaml"

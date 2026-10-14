@@ -40,7 +40,9 @@
 #include <shared/services/event-stream/event-stream.hxx>
 #include <feature/operator/services/evidence/evidence-uploader.hxx>
 #include <feature/objects/ncnn-object-detector.hxx>
+#include <feature/onvif-events/onvif-motion-events.hxx>
 #include <feature/operator/camera-operator-service.hxx>
+#include <shared/services/camera-motion/camera-motion-board.hxx>
 #include <shared/services/stream/go2rtc-frame-source.hxx>
 #include <feature/operator/identity-known-person-matcher.hxx>
 #include <feature/operator/known-person-matcher.hxx>
@@ -368,6 +370,7 @@ int main()
   });
 
   const ObjectsConfig objectsConfig = operator_config::resolveObjects();
+  CameraMotionBoard motionBoard;
   std::unique_ptr<ObjectDetectorService> detector;
   std::unique_ptr<CameraOperatorService> operatorService;
   std::unique_ptr<ZoneProvider> zoneProvider;
@@ -406,6 +409,7 @@ int main()
       }
       inputs.dependencies.detections = &detectionChanges;
       inputs.dependencies.active = surveillanceActive;
+      inputs.dependencies.motion = &motionBoard;
       inputs.objects = objectsConfig;
       inputs.operator_ = operator_config::resolveOperator();
       if (inputs.operator_.zonesFromDb) {
@@ -420,6 +424,11 @@ int main()
   else {
     LOG_INFO << "Object detection disabled by configuration";
   }
+
+  std::unique_ptr<OnvifMotionEvents> onvifEvents;
+  if (operatorService && CameraConfig::resolveOnvif().events)
+    onvifEvents = std::make_unique<OnvifMotionEvents>(
+        OnvifMotionEventsParts{.board = &motionBoard, .active = surveillanceActive});
 
   const CameraHealthConfig healthConfig = CameraConfig::resolveHealth();
   if (healthConfig.enabled) {
@@ -448,7 +457,7 @@ int main()
 
   drogon::app().registerBeginningAdvice(
       [&cameraDb, &operatorService, &healthMonitor, &cameraActionRpc,
-       &objectSink, &changeSink, &detectionChanges, keyCreated]() {
+       &objectSink, &changeSink, &detectionChanges, &onvifEvents, keyCreated]() {
     DbService::installExtensions();
 
     if (!DbService::runScriptFile(cameraDb.schemaPath)) {
@@ -497,6 +506,8 @@ int main()
     StreamHub::instance().init();
 
     detectionChanges.start();
+    if (onvifEvents)
+      onvifEvents->start();
     drogon::async_run([operator_ = operatorService.get(),
                        monitor = healthMonitor.get()]() {
       return startAfterSources(operator_, monitor);
@@ -518,6 +529,10 @@ int main()
   if (operatorService) {
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*operatorService, "camera-operator"));
+  }
+  if (onvifEvents) {
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*onvifEvents, "camera-onvif-events"));
   }
   if (healthMonitor) {
     shutdown_signal::onStop(

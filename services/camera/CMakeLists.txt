@@ -174,6 +174,7 @@ argus_service(NAME argus-camera
         argus::camera-rpc-server
         argus::camera-monitor
         argus::camera-operator
+        argus::camera-onvif-events
         argus::camera-settings
         argus::camera-privacy
         argus::camera-module-data
@@ -200,6 +201,7 @@ set(CAMERA_UNIT_TESTS
     camera-controller-test
     camera-operator-test
     camera-motion-board-test
+    onvif-motion-events-test
     camera-health-test
     event-intelligence-test
     camera-source-registrar-test
@@ -263,6 +265,17 @@ target_link_libraries(camera-operator-test PRIVATE
 
 target_link_libraries(camera-motion-board-test PRIVATE
     argus::camera-motion)
+
+target_include_directories(onvif-motion-events-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+
+target_compile_definitions(onvif-motion-events-test PRIVATE
+    ARGUS_ONVIF_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/onvif")
+
+target_link_libraries(onvif-motion-events-test PRIVATE
+    argus::camera-onvif-events
+    argus::camera-motion
+    argus::camera-onvif)
 
 target_link_libraries(camera-health-test PRIVATE
     argus::camera-monitor)

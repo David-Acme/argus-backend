@@ -2,9 +2,13 @@
 
 #include <shared/services/onvif/onvif-types.hxx>
 
+#include <atomic>
+#include <cstdint>
 #include <drogon/HttpClient.h>
 #include <drogon/utils/coroutine.h>
+#include <memory>
 #include <string>
+#include <trantor/net/InetAddress.h>
 
 namespace trantor
 {
@@ -40,6 +44,7 @@ class IOnvifAsyncTransport
 public:
   virtual ~IOnvifAsyncTransport() = default;
   virtual drogon::Task<OnvifHttpResponse> send(OnvifHttpRequest request) = 0;
+  virtual void cancel() = 0;
 };
 
 class OnvifHttpTransport final : public IOnvifTransport
@@ -54,14 +59,27 @@ private:
   drogon::HttpClientPtr client_;
 };
 
-class OnvifAsyncHttpTransport final : public IOnvifAsyncTransport
+class OnvifAsyncHttpTransport final : public IOnvifAsyncTransport,
+                                      public std::enable_shared_from_this<OnvifAsyncHttpTransport>
 {
 public:
   OnvifAsyncHttpTransport(OnvifEndpoint endpoint, trantor::EventLoop* loop);
 
   drogon::Task<OnvifHttpResponse> send(OnvifHttpRequest request) override;
+  void cancel() override;
+
+  [[nodiscard]] int64_t closedConnections() const;
 
 private:
+  class Exchange;
+
+  void close(int fd);
+  [[nodiscard]] bool reachesCamera(int fd) const;
+
   OnvifEndpoint endpoint_;
-  drogon::HttpClientPtr client_;
+  trantor::EventLoop* loop_;
+  trantor::InetAddress camera_;
+  int pendingFd_{-1};
+  bool strangerLogged_{false};
+  std::atomic<int64_t> closed_{0};
 };

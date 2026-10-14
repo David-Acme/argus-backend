@@ -2141,10 +2141,10 @@ Application Programmer's Guide (nonce `LKqI6G/AikKCQrN0zqZFlg==`, created
 `2010-09-16T07:50:45Z`, password `userpassword`, digest
 `tuOSpGlFlIXsozq4HFNeeGeFLEI=`).
 
-## ONVIF motion events over PullPoint (design note, 2026-10-13; the client calls and the motion board are built, the subscriber is not)
+## ONVIF motion events over PullPoint (built 2026-10-13)
 
-Queue (ii). This note comes before any code, because it touches what guard
-sees.
+Queue (ii). The design note came before any code because it touches what
+guard sees; the reviewer's rulings of 2026-10-13 are folded in below.
 
 **What.** The camera's own motion detector, read through the ONVIF events
 service: a WS-BaseNotification PullPoint (`CreatePullPointSubscription`,
@@ -2152,16 +2152,18 @@ long-polled `PullMessages`, `Renew`, `Unsubscribe`) on the two topics Profile
 S and T devices publish, `tns1:RuleEngine/CellMotionDetector/Motion`
 (`IsMotion`) and `tns1:VideoSource/MotionAlarm` (`State`).
 
-**What it is for: waking the operator, never alerting.** Guard's posture
-rejects "motion detected" alerts (guard CONTEXT, "Site, camera context and
-episodes"). Camera motion is noisy: trees, headlights, rain and the IR
-switch all trigger it. So it would not reach guard as an event or a
-notification. It would feed the operator only.
-- A motion onset on camera N raises that camera's cadence to `active_fps`
-  at once. That is the state the operator enters today when its own frame
-  diff sees motion.
-- The camera keeps that cadence while it reports motion, plus a hold after
-  the motion ends.
+**What it is for: waking the operator, never alerting** (ruling: option (a),
+a wake signal only). Guard's posture rejects "motion detected" alerts (guard
+CONTEXT, "Site, camera context and episodes"). Camera motion is noisy:
+trees, headlights, rain and the IR switch all trigger it. So it never reaches
+guard as an event or a notification; it feeds the operator only.
+- A motion onset on camera N raises that camera's cadence to `active_fps`.
+  The operator reads it on its next tick, at most one idle interval later
+  (0.5 s at the default `max_fps_inference` of 2).
+- The camera keeps that cadence while it reports motion, plus a hold of 5 s
+  after the motion ends. The frame-diff gate (`operator.motion_gate`) has no
+  hold of its own, and the ruling is one rule, not two; with none to share,
+  the hold is 5 s.
 - The detector, the zones, the privacy mask, identity and the nine-rule
   table stay the only path to `argus.camera.v1.object_detected`.
 
@@ -2169,94 +2171,175 @@ What guard sees therefore does not change: the same subject, the same
 `schemaVersion: 3`, the same durable consumer. It gets the same person
 events, sooner, from a camera that was idling at `max_fps_inference`.
 
-Options:
-- **(a) A wake signal inside argus-camera** (recommended). This is
-  described above.
+Options considered:
+- **(a) A wake signal inside argus-camera.** Built.
 - **(b) Also publish `argus.camera.v1.motion` on `ARGUS_CAMERA`, as an
-  indication for guard.** Guard would need a policy for it, and it would
-  duplicate the person path with the noisiest signal a camera has. It stays
-  additive for later, if guard asks for it (for example, motion in an armed
-  zone where no person was found).
+  indication for guard.** Not built. Guard would need a policy for it, and
+  it would duplicate the person path with the noisiest signal a camera has.
+  It stays additive for later, if guard asks for it (for example, motion in
+  an armed zone where no person was found).
 - **(c) Let camera motion replace the operator's frame-diff gate.**
   Rejected: a camera whose subscription drops would go blind. The frame
   diff stays the fallback, and a camera without events runs exactly as
   today.
 
-**How.**
-- **Where it runs.** There is one subscriber per ONVIF camera whose
-  `GetCapabilities` names an `Events` service; the client keeps the device,
-  media, PTZ, imaging and events paths. All subscribers share one event
-  loop thread and use Drogon's HTTP client in coroutine form, so a 10 s long
-  poll holds no blocking-lane worker. The subscriber sits beside the driver,
-  not in the operator: Ruling AF stands, and the operator never touches
-  hardware. It only reads a per-camera motion state.
-- **The motion board (built).** `CameraMotionBoard`
-  (`src/shared/services/camera-motion/`) keeps one motion episode per
-  camera. An onset opens an episode, an end starts the hold, and an onset
-  inside the hold continues the same episode; an end with no onset starts
-  nothing. The operator asks it in `currentInferenceFps` when it is given
-  one (`Dependencies::motion`): while it answers yes, the camera runs at
-  `active_fps`, and the burst and the operator's own presence keep their
-  place above it. The operator reads it on its next tick, at most one idle
-  interval later (0.5 s at the default `max_fps_inference` of 2). The hold
-  is 5 s: the frame-diff gate (`operator.motion_gate`, off by default)
-  compares each frame with the one before it and keeps no hold of its own,
-  so there is no value to share (ruling: one rule, not two). Guardrail
-  (ruling): an episode that lasts more than 10 continuous minutes, held on
-  or re-fired within the hold, stops raising the cadence until the camera
-  reports the end and stays quiet for the hold, which is stricter than an
-  end alone and was accepted as such; the board logs it once per episode.
-  The board is a plain object; `main.cc` owns it and hands it to the
-  operator and the subscriber when the subscriber lands.
-- **The subscription.** Only the request target of the subscription address
-  is used, its path and its query (`/onvif/Subscription?Idx=3`), never its
-  host or its fragment, as for the services. Every ONVIF path goes out
-  exactly as the camera wrote it: Drogon's path encoding is off, because it
-  would turn the colons of a manager path such as
-  `PullSubManager_2026-10-13T17:04:30Z_0` into `%3A`, and the Digest `uri`
-  must equal the request target the camera reads. The WS-Addressing `To` and
-  `Action` headers and the subscription's reference parameters are echoed,
-  because some devices require them; each reference parameter carries the
-  namespace declarations it uses, since a camera may declare them on its
-  envelope. `InitialTerminationTime` is PT60S, with a `Renew` at half-life.
-  `PullMessages` uses `Timeout` PT10S and `MessageLimit` 10.
-- **When it ends.** The subscription is unsubscribed when the camera is
-  removed, disabled or edited (the registry's `forget`), and at shutdown
-  through a `shutdown_signal` drain.
-- **The messages.** A `PropertyOperation` of `Initialized` or `Changed` is
-  read. `IsMotion` or `State` true is an onset, false is an end. A message
-  counts from the moment Argus receives it; its `UtcTime` is not read
-  (reviewer ruling, 2026-10-13, replacing the earlier "corrected by the
-  camera's clock offset"). The event only wakes the operator, so what
-  matters is when Argus learns of it, not the camera's clock: an
-  `Initialized` message can carry the moment its state began, a camera's
-  clock drifts, and a pull returns as soon as a message is queued, so
-  receipt follows the event within one round trip. The source token is
-  ignored in this version, which handles one video source.
-- **Failures.** A fault, a refused account or no answer drops the
-  subscription and re-creates it from `GetCapabilities` after a backoff of
-  5 s rising to 60 s. This is the same rule as the session of 1b0d8f42. A
-  camera without the events service, or without either topic, gets no
-  subscriber. The topics come from `GetEventProperties`: only a topic set
-  that names neither motion topic keeps a camera out, and a camera that
-  cannot answer `GetEventProperties` is subscribed anyway.
-- **Budget.** Many cameras cap their pull points, often at 2 to 5. Argus
-  holds one per camera.
-- **Tapo cameras.** Their ONVIF service on port 2020 offers the same
-  PullPoint motion, but the Tapo driver drives them; they are out of this
-  version.
+**Switch.** `[onvif] events = true` by default (ruling): the events only
+raise the cadence. `false` keeps the operator exactly as before. The
+subscriber runs only when the operator does (object detection on, its model
+loaded) and only while the surveillance module is active; when the module
+goes off, every subscription is ended as at shutdown.
+
+**The motion board.** `CameraMotionBoard`
+(`src/shared/services/camera-motion/`) keeps one motion episode per camera,
+owned by `main.cc` and passed by pointer to the operator
+(`Dependencies::motion`) and to the subscriber. An onset opens an episode,
+an end starts the hold, and an onset inside the hold continues the same
+episode. An end with no onset starts nothing. The operator asks it in
+`currentInferenceFps`; the burst and the operator's own presence keep their
+place above it.
+- **Guardrail** (ruling). An episode that lasts more than 10 continuous
+  minutes, held on or re-fired within the hold, stops raising the cadence
+  until the camera reports the end and stays quiet for the hold. The board
+  logs that once per episode. Tested with a fake clock.
+- When a subscription drops, the subscriber reports an end for that camera:
+  its motion state is unknown from then on, and the hold runs out.
+
+**Where it runs.** `OnvifMotionEvents` (`src/feature/onvif-events/`) owns
+one event loop thread for every camera, so a 10 s long poll holds no
+blocking-lane worker. Every 5 s it lists the live cameras
+(`CameraRepository::findLive`) and keeps one `OnvifMotionWatch` per enabled
+ONVIF camera, on the driver's own endpoint (`OnvifDriver::endpointOf`: the
+camera's ONVIF port, its account). A camera that is removed, disabled or
+edited is found by that pass and its watch is stopped with the shutdown
+sequence below; an edited camera gets its new watch only after the old one
+has finished, so the two never talk to the camera at once. The subscriber
+sits beside the driver, not in the operator: Ruling AF stands, and the
+operator never touches hardware; it only reads the board.
+
+**The subscription.** Only the request target of the subscription address
+is used, its path and its query (`/onvif/Subscription?Idx=3`), never its
+host or its fragment, as for the services. Every ONVIF path goes out exactly
+as the camera wrote it: Drogon's path encoding is off, because it would turn
+the colons of a manager path such as `PullSubManager_2026-10-13T17:04:30Z_0`
+into `%3A`, and the Digest `uri` must equal the request target the camera
+reads. The WS-Addressing `To` and `Action` headers and the subscription's
+reference parameters are echoed, because some devices require them; each
+reference parameter carries the namespace declarations it uses, since a
+camera may declare them on its envelope. `InitialTerminationTime` is PT60S,
+with a `Renew` at half-life. `PullMessages` uses `Timeout` PT10S and
+`MessageLimit` 10, with a 15 s HTTP timeout.
+
+**The messages.** A `PropertyOperation` of `Initialized` or `Changed` is
+read. `IsMotion` or `State` true is an onset, false is an end. A message
+counts from the moment Argus receives it; its `UtcTime` is not read
+(reviewer ruling, 2026-10-13, replacing the earlier "corrected by the
+camera's clock offset"). The event only wakes the operator, so what matters
+is when Argus learns of it, not the camera's clock: an `Initialized` message
+can carry the moment its state began, a camera's clock drifts, and a pull
+returns as soon as a message is queued, so receipt follows the event within
+one round trip. The source token is ignored in this version, which handles
+one video source.
+
+**One connection at a time** (rulings). The long poll keeps an HTTP
+connection to the camera open almost all the time. It counts against the
+device's connection limit, on top of the driver's own control connection
+(PTZ and presets); cameras commonly allow only a few. So the subscriber
+never holds two connections to a camera:
+- **One Drogon client per request.** Each request gets its own
+  `HttpClient`, so the socket `setSockOptCallback` hands over belongs to
+  exactly that request; no socket is remembered between requests, which is
+  what makes the cancel and the timeout safe. The cost is one TCP handshake
+  per pull, about one every 10 s per camera while it is quiet. The Digest
+  state (nonce and count) lives in `OnvifClient`, not in the transport, so
+  it carries across connections and is sent ahead with the next request,
+  with no extra 401. Pulls are paced at one every 200 ms at most, so a
+  camera that answers every pull at once (a burst, or a chatty topic) opens
+  at most five connections a second. The pacing is unconditional (ruling):
+  it is simpler than a rule that switches on under load, the event only
+  wakes the operator, whose idle tick is 0.5 s, so 200 ms between pulls is
+  not observable there, and it protects any camera that answers instantly.
+  A stop interrupts the pause. The control connection is not
+  affected: no control request is ever cancelled, so it keeps Drogon's
+  keep-alive and a 1 s hold reuses one connection.
+- **The socket is known only while its request is pending.** The transport
+  marks it when the request goes out; the answer's or the error's callback
+  takes and clears it as its first action. Capture, callback and cancel all
+  run on the subscriber's loop thread, so nothing races, and a socket that
+  trantor has closed can never be reused under the transport's hands.
+- **A request ends its connection, twice over** (rulings). Every events
+  request asks for `Connection: close`, so a camera that honours it closes
+  the connection after its answer. The two rulings, `Connection: close` on
+  every ONVIF request and the control connection's keep-alive, are read
+  narrowly: the subscriber's requests (the events calls and PullPoint itself)
+  carry the header, and the control connection that PTZ and presets use never
+  carries it and keeps Drogon's keep-alive. Drogon would replace that header with
+  `Keep-Alive`, so these requests are sent pass-through and the transport
+  writes their `content-type` and `content-length` itself. And whatever the
+  camera does, when the answer or our own timeout arrives, the callback
+  shuts that socket down (`shutdown(SHUT_RDWR)`), so the next request never
+  opens beside it. Drogon alone would not do that: every pending request
+  holds a strong reference to its own client, a dropped `HttpClientPtr`
+  closes nothing, Drogon's timeout only calls back with `Timeout` while the
+  socket stays open until the camera answers, and even after an answer the
+  socket's `close` is queued behind the coroutine that sends the next
+  request.
+- **Every shutdown checks the socket first.** `getsockname` and
+  `getpeername` must both succeed and the peer must be the camera's host and
+  port. A socket that does not match is left alone and logged once.
+
+**When it ends.** At shutdown (a `shutdown_signal` drain), and for a
+removed, disabled or edited camera:
+1. the transport cancels the request in flight, normally the long poll: it
+   shuts its socket down, and `PullMessages` fails at once;
+2. only then does `Unsubscribe` go out, on a new connection, with a 2 s
+   timeout;
+3. if that does not finish within 2 s, it is abandoned, and the camera ends
+   the subscription itself when its termination time runs out (PT60S).
+The drain reports drained when every watch has finished, or 2 s after the
+stop, and never blocks the main loop. A request that answers before the
+drain leaves nothing to shut down: its socket was already cleared.
+
+**Failures.** A fault, a refused account or no answer drops the
+subscription. The watch reports an end, sends one `Unsubscribe` so the
+camera frees the pull point, then waits a backoff of 5 s, doubling to 60 s,
+before it opens the events again from `GetSystemDateAndTime` and
+`GetCapabilities`; a pull that delivered resets the backoff. A refused or
+reset connection is never retried in a loop. A stop wakes a watch in its
+backoff at once. A camera without the events service, or without either
+topic, gets no subscription: the topics come from `GetEventProperties`, only
+a topic set that names neither motion topic keeps a camera out, and a camera
+that cannot answer `GetEventProperties` is subscribed anyway. Such a camera
+is asked again only when its endpoint changes or the service restarts.
+
+**Budget** (rulings). Per camera, Argus holds at most two ONVIF HTTP
+connections, on top of the go2rtc streams: the subscriber's long poll, and
+one control connection (PTZ and presets) while it is open. The control
+connection stays open while the camera keeps it alive (the camera's own
+idle timeout, usually seconds to a minute), or until the driver is replaced
+or a request fails; Argus does not bound it. If a camera with a low
+connection limit shows trouble, the measure is to drop it after the hold
+(pending). Many cameras also cap their pull points, often at 2 to 5; Argus
+holds one per camera. A camera with a very low connection limit can turn
+events off with `[onvif] events = false`.
+
+**Tapo cameras.** Their ONVIF service on port 2020 offers the same
+PullPoint motion, but the Tapo driver drives them; they are out of this
+version.
 
 **Tests, with no camera.**
-- A scripted transport over SOAP fixtures written to the events WSDL
-  (subscription, pulls with motion on and off, empty pulls, `Renew`,
-  faults, a lost subscription), with a fake clock.
-- An operator test that an onset raises the cadence and an end returns it
-  after the hold.
-
-**Open questions for the reviewer.**
-1. A wake signal only (a), or also a published motion indication (b)?
-2. Should events be on by default? The recommendation is on behind
-   `[onvif] events`, since they only raise the cadence; off keeps today's
-   behaviour exactly.
-3. How long is the hold after motion ends? The proposal is 5 s, the
-   operator's own `burst_ms` order.
+- `onvif-client-test`: the PullPoint calls over a scripted transport and
+  SOAP fixtures written to the events WSDL, Digest across consecutive pulls,
+  and a raw trantor camera over real sockets, once honouring
+  `Connection: close` and once ignoring it. It counts its connections on the
+  server side: every request arrives on its own connection, and at each
+  accept no other accepted connection is still open, across the pulls, a
+  held long poll cancelled at once with `Unsubscribe` after it, a cancel
+  after an answer that shuts nothing down, and our own timeout closing its
+  connection before the next one connects.
+- `onvif-motion-events-test`: the watch over the scripted transport with a
+  fake clock (receipt times, the hold, renew at half-life, the drain order
+  and peak connections, the backoff that waits and the stop that wakes it, a
+  parked camera), and which cameras get a subscription.
+- `camera-motion-board-test` (the guardrail, with a fake clock) and
+  `camera-operator-test` (an onset raises the cadence, the hold brings it
+  back).
