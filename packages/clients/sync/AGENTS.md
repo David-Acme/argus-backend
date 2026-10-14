@@ -107,7 +107,7 @@ session revocation now travel its durable change outbox
   `services/sync/config.toml.example:37`. The deploy stack pairs them under
   the same keys (`argus-deploy/config.identity.toml.example`,
   sync's own at `argus-deploy/config.sync.toml.example:37`), spelling the target
-  `tls:argus-sync:7241` from the compose containers and `127.0.0.1:7041` in the
+  `tls:argus-sync:7241` from the compose containers and `tls:127.0.0.1:7241` in the
   project templates, and an empty target leaves the leg uninstalled
   rather than failing a call.
 

@@ -5,6 +5,21 @@ template does not set. The templates carry no comments (rule 20); this page is
 where their notes live. Per-project templates are `<project>/config.toml.example`,
 the deploy stack's are `argus-deploy/config.<service>.toml.example`.
 
+## Internal dial targets
+
+Every internal caller dials its callee over mutual TLS: the dial keys carry
+`tls:` and the callee's `[internal_tls] address` port. In deploy that is
+`tls:argus-<service>:<port>`; natively it is `tls:127.0.0.1:<port>`, the same
+path in both. The native keys are one list, `internal_pki_native_dial_rows`
+in `scripts/lib/internal-pki.sh`. `scripts/setup.sh` issues the native
+internal PKI and migrates an existing `config.toml` whose listed key still
+holds `127.0.0.1:<port>`, printing one line per key. A native service with no
+certificate (`[internal_tls] dir` empty) keeps its plaintext values, setup.sh
+warns, and the service refuses to start with a client built from a `tls:`
+target: the message names `scripts/setup.sh`. The `auth.rpc_*` and
+`identity.rpc_*` fallbacks below are code defaults used only when the target
+key is empty; they remain plaintext.
+
 ## `argus-deploy/config.camera.toml.example`
 
 argus-deploy argus-camera configuration. Copy to config.camera.toml (gitignored) next to this file and fill the instance secrets (the same jwt/device values as every other service); the compose file bind-mounts it as argus-camera's config.toml.
@@ -156,7 +171,7 @@ argus-settings deploy configuration; `provision-host.sh` fills it.
 | `settings.host` / `settings.port` / `settings.plain` / `settings.min_protocol` | The app-facing TLS listener (`0.0.0.0:7045`); `[cert]` carries the certificate served and `[mdns]` the `settings` route announcement. No database, no gRPC listener. |
 | `settings.list_timeout_ms` / `settings.update_timeout_ms` | Per-owner deadlines: 1500 ms for each catalog read of `GET /settings` (owners are read in parallel, so one dead owner costs one deadline), 5000 ms for a forwarded update. Values outside 1..120000 fall back to these. |
 | `settings.profiles_path` | The owner profiles file (`services/settings/profiles.json`, baked into the image at `/opt/argus/profiles.json`): the three profiles, the keys each sets per owner and the hardware recommendation thresholds. Relative paths resolve against the working directory; absent means `profiles.json`. A missing or invalid file is logged at boot and the profile routes answer 503; `GET /settings` and `PATCH /settings/{owner}` keep working. |
-| `owners.<owner>.target` / `owners.<owner>.credential` | One table per settings owner (`llm`, `voice`, `tts`, `stt`, `vlm`, `guard`, `camera`, `notification`, also the display order). An empty target leaves the owner out. Provisioning sets the target to `tls:argus-<owner>:<TLS port>` (the owner's `[internal_tls] address` port) in deploy, and `127.0.0.1:<grpc port>` for a native run, and mints the credential into both this file and the owner's caller slot (`[rpc.callers] settings`, or `[grpc] caller_settings` for voice, camera and notification), but only for an owner whose config carries that slot. |
+| `owners.<owner>.target` / `owners.<owner>.credential` | One table per settings owner (`llm`, `voice`, `tts`, `stt`, `vlm`, `guard`, `camera`, `notification`, also the display order). An empty target leaves the owner out. Provisioning sets the target to `tls:argus-<owner>:<TLS port>` (the owner's `[internal_tls] address` port) in deploy, and `tls:127.0.0.1:<TLS port>` for a native run, and mints the credential into both this file and the owner's caller slot (`[rpc.callers] settings`, or `[grpc] caller_settings` for voice, camera and notification), but only for an owner whose config carries that slot. |
 
 ## `argus-deploy/config.stt.toml.example`
 
@@ -226,7 +241,7 @@ argus-deploy argus-voice configuration. Copy to config.voice.toml (gitignored) n
 
 argus-identity configuration. Copy to config.toml (gitignored) to run.
 
-- **`[server]`** — The gRPC listener: `host` is loopback by default. `grpc_port` is the plaintext port; the peers' `identity.target` names its mutual TLS port (`grpc_port` + 200 under `[internal_tls] address`) in deploy, and `127.0.0.1:<grpc_port>` natively.
+- **`[server]`** — The gRPC listener: `host` is loopback by default. `grpc_port` is the plaintext port; the peers' `identity.target` names its mutual TLS port (`grpc_port` + 200 under `[internal_tls] address`), `tls:argus-identity:<port>` in deploy and `tls:127.0.0.1:<port>` natively.
 - **`[drogon.app]`** — The HTTP listener and db_clients are built by the service itself.
 - **`[cert]`** — The instance CA and server certificate; the HTTPS surface needs both.
 - **`[face]`** — The face engine runs in this process: the vec0 index lives in identity.db and no crop leaves the host.
@@ -238,7 +253,7 @@ argus-identity configuration. Copy to config.toml (gitignored) to run.
 | `identity.port` | The TLS HTTP surface (7044): the app-facing listener the `/user`, `/invitation`, `/portrait-preview`, `/voiceprint` and `/pairing` prefixes serve on. It is also the port the pairing and invitation answers publish, and the one the app writes into every later invitation QR. |
 | `identity.db` / `identity.schema` | `database/identity.db` and this owner's `database/schema.sql`, applied at boot. |
 | `identity.rpc_secret` | Gates the gRPC listener; empty is legal only while `[server] host` is loopback, and the service refuses to start otherwise. |
-| `auth.target` / `auth.rpc_secret` | The session-verdict leg the filter chain asks (`tls:argus-auth:7243` in deploy, `127.0.0.1:7043` natively). |
+| `auth.target` / `auth.rpc_secret` | The session-verdict leg the filter chain asks (`tls:argus-auth:7243` in deploy, `tls:127.0.0.1:7243` natively). |
 | `sync.control_target` / `sync.control_secret` | The sync control plane: a role update rides `replaceRoleRooms` before the `AuthContextChanged` emit. |
 | `pairing.paired` | The QR pairing state the frontend's onboarding reads; `ConfigService::setBool` persists it, so this file must stay writable. |
 | `nats.url` | The broker the change feed publishes to; empty disables the publish. |
@@ -289,7 +304,7 @@ Optional keys the template does not set:
 
 | Key | Example | Notes |
 |---|---|---|
-| `identity.target` | `"127.0.0.1:7040"` | The identity RPC the guard matcher calls; unset leaves recognition off. |
+| `identity.target` | `"tls:127.0.0.1:7240"` | The identity RPC the guard matcher calls, over mutual TLS; unset leaves recognition off. |
 | `identity.rpc_secret` | `""` | Must match argus-identity's [identity] rpc_secret. |
 | `identity.identify` | `false` |  |
 | `identity.auto_enroll` | `false` |  |
@@ -385,7 +400,7 @@ argus-auth configuration. Copy to config.toml (gitignored) to run.
 | `auth.rpc_secret` | Fleet secret for the session-verdict RPC. Required whenever its listener is reachable beyond loopback: an unauthenticated caller could read any session's verdict. Empty means loopback-only and ungated. |
 | `auth.context_cache_seconds` | How long a resolved user context may be reused before identity is asked again (0 disables the cache); a change on the identity feed drops the entry immediately. |
 | `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
-| `identity.target` | The identity RPC behind a session verdict. An empty value falls back to `identity.rpc_host` / `identity.rpc_port`, which default to `127.0.0.1:7040`, so the leg is always dialled. |
+| `identity.target` | The identity RPC behind a session verdict. An empty value falls back to `identity.rpc_host` / `identity.rpc_port`, which default to the plaintext `127.0.0.1:7040` (a code default, used only when the target is empty), so the leg is always dialled. |
 
 ## `services/productivity/config.toml.example`
 
@@ -397,9 +412,10 @@ argus-productivity configuration. Copy to config.toml (gitignored) to run.
 
 argus-settings configuration. `scripts/setup.sh` copies it to `config.toml`
 and wires every owner whose `config.toml` carries a settings caller slot: the
-credential on both sides and the target `127.0.0.1:<grpc port>` (tts, stt,
-vlm and llm need a non-empty `[rpc] address` for a target). The keys are the
-deploy template's, with `auth.target` on loopback. `settings.profiles_path`
+credential on both sides and the target `tls:127.0.0.1:<TLS port>` (tts, stt,
+vlm and llm need a non-empty `[rpc] address` for a target, since that is what
+opens their mutual TLS listener). The keys are the deploy template's, with
+`auth.target` on loopback as `tls:127.0.0.1:7243`. `settings.profiles_path`
 stays `profiles.json` for a native run from `services/settings/`;
 `scripts/native-stack.sh` writes the absolute path of the repository's file
 into the sandbox copy.

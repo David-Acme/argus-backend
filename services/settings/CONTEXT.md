@@ -787,8 +787,9 @@ unreachable and retries.
 
 The callers of the enabled set (`[modules] target`/`credential`) are camera,
 guard, identity and productivity, the services that install the module gate;
-their templates carry `target = "127.0.0.1:7047"` (deploy
-`tls:argus-settings:7247`, the mutual TLS port) and `ensure_fleet_callers` pairs the credential with
+their templates carry `target = "tls:127.0.0.1:7247"` natively and
+`tls:argus-settings:7247` in deploy (the mutual TLS port in both), and
+`ensure_fleet_callers` pairs the credential with
 `[rpc.callers] <caller>` here. `ModuleStates` answers `enabled` only for an
 `active` module, with its `lifecycle` on every entry
 (`settings-module-engine-test`, "the enabled set answers enabled only for an

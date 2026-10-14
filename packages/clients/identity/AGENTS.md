@@ -121,17 +121,18 @@ header: the in-package suite, two in `packages/lib/auth`, five in
   refuses a plaintext dial to it.
 - Config: `identity.target` in the eight
   `argus-deploy/config.{auth,camera,guard,llm,notification,productivity,sync,voice}.toml.example`
-  trees (`tls:argus-identity:7240` from the compose containers, `127.0.0.1:7040`
+  trees (`tls:argus-identity:7240` from the compose containers, `tls:127.0.0.1:7240`
   in a native-dev tree) with the caller's own
   `identity.credential` beside it in each (paired with identity's
   `[rpc.callers]` entry for that caller; an older install's
   `identity.rpc_secret` is still read as the legacy fallback), and in six project templates
   (`services/{auth,guard,notification,productivity,sync,voice}/config.toml.example`,
-  all `127.0.0.1:7040`). The auth library and argus-auth also accept
+  all `tls:127.0.0.1:7240`). The auth library and argus-auth also accept
   `identity.rpc_host` / `identity.rpc_port`
   (`packages/lib/auth/src/auth/details/identity-access.cc:17-18`,
-  `services/auth/src/config/auth-config.cc:58-61`), defaulting to
-  `127.0.0.1:7040` — no template spells those two keys any more. The other
+  `services/auth/src/config/auth-config.cc:58-61`), defaulting to the plaintext
+  `127.0.0.1:7040`, a code default used only when `identity.target` is empty;
+  no template spells those two keys any more. The other
   callers read neither: argus-notification takes `identity.target` straight
   from its config and warns instead of dialling when it is empty
   (`services/notification/src/app/main.cc:148`).

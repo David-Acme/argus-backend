@@ -84,7 +84,7 @@ RPC test above and this package's own suite.
 - The endpoint is runtime config: `productivity.grpc_target`, read at
   `services/sync/src/config/sync-config.cc:40` into `SyncUpstreams`. Two files
   declare it — `services/sync/config.toml.example:50-51` and
-  `argus-deploy/config.sync.toml.example:50-51` (`tls:argus-productivity:7237`, the mutual TLS port; the native file keeps `127.0.0.1:7037`) —
+  `argus-deploy/config.sync.toml.example:50-51` (`tls:argus-productivity:7237`, the mutual TLS port; the native file carries `tls:127.0.0.1:7237`) —
   and a sync service whose key is empty logs
   "productivity leg -> unconfigured source (503)": the source is constructed
   either way and the empty target fails the dial rather than pointing

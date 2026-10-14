@@ -527,8 +527,8 @@ name `settings`, resolved by `GuardConfig::resolveRpc()` through
 with an empty settings secret starts nothing and logs why.
 `ensure_settings_owners` wires the slot as `guard rpc.callers settings rpc`,
 like llm/tts/stt/vlm, so argus-settings' `[owners.guard]` target is
-`tls:argus-guard:7339` in compose (the mutual TLS port) and `127.0.0.1:7139`
-natively (plaintext, see the native path in argus-deploy/CONTEXT.md). A native config
+`tls:argus-guard:7339` in compose and `tls:127.0.0.1:7339` natively (the mutual
+TLS port in both; see "Dial targets" in argus-deploy/CONTEXT.md). A native config
 written before the template had an address gets it filled from the template
 by `ensure_settings_owners` (setup.sh and the native-stack sandbox), so the
 owner page lists guard without a hand edit.

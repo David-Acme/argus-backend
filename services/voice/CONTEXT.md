@@ -1163,7 +1163,7 @@ cannot change settings. An empty `caller_settings`, or one equal to
   `[server].health_port` (7035) carries the minimal `/health` HTTP listener
   for the compose healthcheck. No filters, no `/sync`, no db clients.
 - `[identity].target` points at argus-identity's gRPC listener
-  (`tls:argus-identity:7240` in the deploy stack, `127.0.0.1:7040` natively).
+  (`tls:argus-identity:7240` in the deploy stack, `tls:127.0.0.1:7240` natively).
 - No alarm/siren trigger path exists here (voice reactions never carry alarm
   triggers); no camera frames, no sync-table CRUD, no schema.
 - The same gRPC services also listen with mutual TLS on 7234

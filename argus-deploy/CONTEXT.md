@@ -1079,17 +1079,30 @@ templates each dial target key carries the `tls:` scheme and the callee's
 `tls:argus-settings:7247` and so on, down the table above. The 45 keys in ten
 templates (`argus-deploy/config.*.toml.example`) are the complete set, and the
 settings owner targets that `scripts/lib/common.sh` writes for a deployment
-(`ensure_settings_owners`, deploy mode) take the owner's TLS port the same
+(`ensure_settings_owners`, every mode) take the owner's TLS port the same
 way. A `tls:` target with no installed material refuses at channel creation,
-so a deploy caller without its certificate fails at start rather than falling
-back to plaintext. Every dialing service already mounts
+so a caller without its certificate fails rather than falling back to
+plaintext. Every dialing service already mounts
 `/run/secrets/internal-tls`, so compose and `.env` carry no change for this.
 
-The plaintext listeners stay in place; in deploy the callers no longer use
-them. Native dial targets are not part of this step: the native templates
-(`services/*/config.toml.example`), the native settings-owner wiring and the
-native demo stack still dial `127.0.0.1:<plaintext port>`. Moving them to
-`tls:` is pending the owner's ruling on the native path.
+The plaintext listeners stay in place; the callers no longer use them.
+
+Natively the callers dial the same way, one path everywhere: the native
+templates (`services/*/config.toml.example`) and the native settings-owner
+wiring carry `tls:127.0.0.1:<TLS port>`. The 31 template keys and the 11 owner
+targets are one list, `internal_pki_native_dial_rows` in
+`scripts/lib/internal-pki.sh`. `scripts/setup.sh` issues the native PKI and
+then runs `migrate_native_dial_targets`, which moves each listed key still at
+`127.0.0.1:<port>` to `tls:127.0.0.1:<TLS port>` in an existing checkout and
+prints one line per key. Nothing else in a config changes, and a second run
+changes nothing. A native service needs its certificate: a config whose
+`[internal_tls] dir` is empty keeps its plaintext targets through the
+migration, `setup.sh` warns to run `scripts/setup.sh`, and the service refuses
+to start where a client is built at start (`lib/grpc` throws
+"... run scripts/setup.sh to issue the internal PKI and point [internal_tls]
+dir at it"). The native demo stack (`scripts/native-stack.sh`) copies the
+native configs, so it dials the same way with the same certificate, and its
+`prepare` refuses a service whose config has none.
 
 ## Init jobs and rule 27 (2026-10)
 
