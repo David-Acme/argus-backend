@@ -758,14 +758,23 @@ for service in $(internal_tls_services); do
   done
 done
 
-if [ -n "${ARGUS_NATS_SERVER_BIN:-}" ]; then
+source "$ROOT/scripts/lib/nats-server-binary.sh"
+nats_check_skip=""
+if nats_server_binary_find; then
   mkdir -p "$TEST_TMP/broker/js"
   cp "$permissions" "$TEST_TMP/broker/"
   nats_auth_conf "$permissions" "$TEST_TMP/broker" "$legacy" > "$TEST_TMP/broker/auth.conf"
   sed -e "s#\"/data\"#\"$TEST_TMP/broker/js\"#" "$ROOT/argus-deploy/nats.conf" > "$TEST_TMP/broker/nats.conf"
-  "$ARGUS_NATS_SERVER_BIN" -c "$TEST_TMP/broker/nats.conf" -t > "$TEST_TMP/broker/check.out" 2>&1 \
+  "$NATS_SERVER_BIN" -c "$TEST_TMP/broker/nats.conf" -t > "$TEST_TMP/broker/check.out" 2>&1 \
     || fail "nats-server refuses the provisioned configuration: $(tail -n 1 "$TEST_TMP/broker/check.out")"
   printf 'deploy-mounts-test: nats-server accepts the provisioned configuration\n'
+else
+  nats_server_binary_fail_in_ci deploy-mounts-test
+  nats_check_skip="SKIPPED: deploy-mounts-test: the nats-server check of the provisioned configuration, $NATS_SERVER_MISSING"
 fi
 
 printf 'deploy-mounts-test: ok\n'
+if [ -n "$nats_check_skip" ]; then
+  printf '%s\n' "$nats_check_skip"
+  exit 77
+fi
