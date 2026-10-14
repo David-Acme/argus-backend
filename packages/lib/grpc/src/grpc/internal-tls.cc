@@ -150,7 +150,7 @@ std::vector<ListenPort> listenPorts(const ListenInput& input)
   ports.push_back({.address = input.address,
                    .credentials = grpc::InsecureServerCredentials(),
                    .mutualTls = false});
-  if (opensMutualTls(input))
+  if (input.tls && !input.tlsAddress.empty())
     ports.push_back({.address = input.tlsAddress,
                      .credentials = internalServerCredentials(*input.tls),
                      .mutualTls = true});
