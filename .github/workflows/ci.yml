@@ -33,6 +33,12 @@ jobs:
           - voice
           - tunnel
     steps:
+      - name: Free runner disk
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
       - name: Checkout (with submodules)
         uses: actions/checkout@v4
         with:
