@@ -273,5 +273,55 @@ class RecordTest(unittest.TestCase):
             output)
 
 
+class CensusTest(unittest.TestCase):
+    def setUp(self):
+        self.work = pathlib.Path(tempfile.mkdtemp(prefix="golden-census-test-"))
+        self.baseline = self.work / "route-baseline.txt"
+        self.baseline.write_text(
+            "auth\tGET\t/recorded\t-\t-\tsource.hxx\n"
+            "auth\tGET\t/unrecorded\t-\t-\tsource.hxx\n")
+        self.fixtures = self.work / "fixtures"
+        self.fixtures.mkdir()
+        self.record({"/recorded"})
+
+    def tearDown(self):
+        shutil.rmtree(self.work)
+
+    def record(self, routes):
+        rows = [{"unit": "auth", "method": "GET", "route": route,
+                 "path": route, "probe": "plain", "request": {},
+                 "response": {"status": 200}} for route in sorted(routes)]
+        (self.fixtures / "auth.json").write_text(
+            json.dumps({"unit": "auth", "probes": rows}))
+
+    def census(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = golden.census(golden.parse_baseline(self.baseline),
+                                 self.fixtures)
+        return code, err.getvalue()
+
+    def test_a_census_route_with_no_probe_fails_and_is_listed(self):
+        code, err = self.census()
+        self.assertEqual(code, 1)
+        self.assertIn("unrecorded census route: auth GET /unrecorded", err)
+        self.assertNotIn("/recorded", err)
+
+    def test_a_census_route_with_a_probe_passes(self):
+        self.record({"/recorded", "/unrecorded"})
+        code, err = self.census()
+        self.assertEqual(code, 0)
+        self.assertEqual(err, "")
+
+    def test_the_cli_exits_nonzero_for_a_route_with_no_probe(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = golden.main(["census", "--baseline", str(self.baseline),
+                                "--fixtures", str(self.fixtures)])
+        self.assertEqual(code, 1)
+        self.assertIn("unrecorded census route: auth GET /unrecorded",
+                      err.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

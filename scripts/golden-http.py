@@ -1590,7 +1590,17 @@ def verify(fixtures, routes, bases, sessions, ids, roles, timeout, verbose,
     return 1 if failures or stale or unverified else 0
 
 
-def census(routes):
+def recorded_routes(fixtures):
+    recorded = set()
+    for path in sorted(fixtures.glob("*.json")):
+        if path.stem == "manifest":
+            continue
+        for row in json.loads(path.read_text())["probes"]:
+            recorded.add((row["method"], row["route"]))
+    return recorded
+
+
+def census(routes, fixtures):
     bases = {route["unit"]: "" for route in routes}
     plan = build_plan(routes, dict(CENSUS_IDS), ["owner", "resident", "guest"],
                       bases)
@@ -1599,6 +1609,18 @@ def census(routes):
               f"{len({entry['route'] for entry in entries})} routes")
     print(f"census: {len(plan)} probes over {len(group_by_unit(plan))} units, "
           "planned against every unit the census declares")
+    recorded = recorded_routes(fixtures)
+    owners = {(entry["method"], entry["route"]): entry["unit"] for entry in plan}
+    missing = sorted((unit, method, route)
+                     for (method, route), unit in owners.items()
+                     if (method, route) not in recorded)
+    for unit, method, route in missing:
+        print(f"unrecorded census route: {unit} {method} {route}",
+              file=sys.stderr)
+    if missing:
+        print(f"census: {len(missing)} census routes have no recording in "
+              f"{fixtures}", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -1637,7 +1659,7 @@ def main(argv):
         return 2
     routes = parse_baseline(Path(args.baseline))
     if args.command == "census":
-        return census(routes)
+        return census(routes, Path(args.fixtures))
 
     stack = Path(args.stack_dir)
     STACK_DIR = stack
