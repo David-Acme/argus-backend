@@ -1,6 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <argus/productivity/v1/sync.grpc.pb.h>
 #include <doctest/doctest.h>
+#include <grpc-test-support/mutual-tls-endpoint.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <map>
 #include <memory>
@@ -130,4 +132,25 @@ TEST_CASE("a refusal and an unreachable receiver both answer no rows")
   CHECK_FALSE(dead.pullTable(request, identityFor(7)).has_value());
 
   server->Shutdown();
+}
+
+TEST_CASE("the pull dials the mutual TLS port with the internal certificate")
+{
+  ScriptedSyncService service;
+  service.rows.mutable_reminder()->add_created()->set_id(3);
+  const argus::client::test_support::MutualTlsEndpoint endpoint(
+      {.service = "productivity", .services = {&service}});
+  REQUIRE(endpoint.tlsPort() > 0);
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("sync"));
+
+  const v1::PullTableRequest request;
+  const ProductivitySyncClient client({.target = endpoint.tlsTarget(), .credential = ""});
+  const auto rows = client.pullTable(request, identityFor(7));
+  REQUIRE(rows.has_value());
+  CHECK(rows->reminder().created(0).id() == 3);
+
+  const ProductivitySyncClient plaintext(
+      {.target = endpoint.plaintextToTlsPortTarget(), .credential = ""});
+  CHECK_FALSE(plaintext.pullTable(request, identityFor(7)).has_value());
 }

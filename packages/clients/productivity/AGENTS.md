@@ -100,3 +100,7 @@ RPC test above and this package's own suite.
   UNAVAILABLE and an unreachable target all answer an empty optional, while the
   same body under OK comes back with the row — so the empty results are the
   status's doing and not rows the client dropped.
+  A third case dials the TLS port of the same fake receiver: a `tls:` target under
+  the sync certificate returns the row, and a plaintext client to that port
+  returns no rows. The binary runs through `scripts/internal-tls-test.sh`, one
+  process per case.

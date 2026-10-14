@@ -24,8 +24,11 @@ add_executable(productivity-sync-client-test tests/unit/productivity-sync-client
 set_target_properties(productivity-sync-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(productivity-sync-client-test PRIVATE argus::clients::productivity
-    doctest::doctest)
+    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
 
 target_compile_options(productivity-sync-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME productivity-sync-client-test COMMAND productivity-sync-client-test)
+add_test(NAME productivity-sync-client-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:productivity-sync-client-test> 3)
+set_tests_properties(productivity-sync-client-test PROPERTIES SKIP_RETURN_CODE 77)
