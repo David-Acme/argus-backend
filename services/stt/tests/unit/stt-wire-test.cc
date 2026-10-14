@@ -17,10 +17,13 @@
 #include <json/reader.h>
 #include <json/value.h>
 #include <algorithm>
+#include <cerrno>
 #include <cctype>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
+#include <thread>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
@@ -69,14 +72,28 @@ HttpReply request(const WireRequest& input)
   const std::string& body = input.body;
   const std::string& contentType = input.contentType;
 
-  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-  REQUIRE(fd >= 0);
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
   addr.sin_port = htons(static_cast<uint16_t>(port));
   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-  REQUIRE(::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) ==
-          0);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  int fd = -1;
+  int connectErrno = 0;
+  while (true) {
+    fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    REQUIRE(fd >= 0);
+    if (::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0) {
+      connectErrno = 0;
+      break;
+    }
+    connectErrno = errno;
+    ::close(fd);
+    if (connectErrno != ECONNREFUSED || std::chrono::steady_clock::now() >= deadline)
+      break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  REQUIRE_MESSAGE(connectErrno == 0,
+                  "connect to 127.0.0.1:" << port << " failed: " << std::strerror(connectErrno));
 
   std::string wire = method + " " + path + " HTTP/1.1\r\nHost: 127.0.0.1\r\n";
   if (!body.empty() || !contentType.empty()) {
