@@ -58,9 +58,6 @@ jobs:
           path: ~/.conan2
           key: conan-${{ runner.os }}-${{ hashFiles('**/conanfile.txt') }}
 
-      - name: Detect Conan profile
-        run: conan profile detect
-
       - name: Install the pinned nats-server for the live suites
         run: |
           pin="$GITHUB_WORKSPACE/.github/nats-server.sha256"
