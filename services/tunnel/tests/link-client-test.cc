@@ -329,6 +329,31 @@ TEST_SUITE("home link v2 client")
     CHECK(fixture.node().state().violations.empty());
   }
 
+  TEST_CASE("the call services reach the listeners their names give")
+  {
+    const TestPki pki = makePki();
+    EchoServer rtc;
+    EchoServer turn;
+    LinkFixtureOptions options = fixtureOptions(pki.home, pki.node);
+    options.link.serviceListeners = {{link::HomeService::Rtc, rtc.port()},
+                                     {link::HomeService::Turn, turn.port()}};
+    LinkFixture fixture{options};
+    REQUIRE(fixture.waitConnected(5000));
+
+    const std::string hello = clientHelloFor(deviceNameOf("turn--"));
+    REQUIRE(fixture.node().sendFrame(link::encodeOpen(41)));
+    REQUIRE(fixture.node().sendFrame(link::encodeData(41, hello)));
+    CHECK(waitFor([&turn, &hello] { return turn.received() == hello.size(); },
+                  5000));
+    CHECK(collectData(fixture.node(),
+                      {.streamId = 41, .bytes = hello.size(), .timeoutMs = 5000}) ==
+          hello);
+    CHECK(turn.accepted() == 1);
+    CHECK(rtc.accepted() == 0);
+    CHECK(fixture.echo().accepted() == 0);
+    CHECK(fixture.node().state().violations.empty());
+  }
+
   TEST_CASE("a client hello in pieces is routed once it is whole, with the bytes "
             "behind it")
   {
@@ -399,7 +424,9 @@ TEST_SUITE("home link v2 client")
          .bytes = clientHelloFor("auth--" + std::string{kOtherHomeId} +
                                  ".argus-tunnel.lynk.page")},
         {.streamId = 35, .bytes = clientHelloFor(deviceNameOf("tv--"))},
-        {.streamId = 37, .bytes = "GET / HTTP/1.1\r\nHost: argus.local\r\n\r\n"}};
+        {.streamId = 37, .bytes = "GET / HTTP/1.1\r\nHost: argus.local\r\n\r\n"},
+        {.streamId = 39, .bytes = clientHelloFor(deviceNameOf("rtc--"))},
+        {.streamId = 43, .bytes = clientHelloFor(deviceNameOf("turn--"))}};
     for (const Refusal& refusal : refusals) {
       INFO(refusal.streamId);
       REQUIRE(fixture.node().sendFrame(link::encodeOpen(refusal.streamId)));

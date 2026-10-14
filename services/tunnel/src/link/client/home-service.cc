@@ -23,6 +23,10 @@ std::string_view homeServiceToString(HomeService service) noexcept
     return "guard";
   case HomeService::Settings:
     return "settings";
+  case HomeService::Rtc:
+    return "rtc";
+  case HomeService::Turn:
+    return "turn";
   }
   return "unknown";
 }

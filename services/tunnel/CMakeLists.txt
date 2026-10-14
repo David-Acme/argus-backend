@@ -175,6 +175,11 @@ add_executable(link-status-test
 target_link_libraries(link-status-test PRIVATE tunnel-core doctest::doctest)
 target_compile_options(link-status-test PRIVATE -Wall -Wextra)
 
+add_executable(home-service-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/home-service-test.cc)
+target_link_libraries(home-service-test PRIVATE tunnel-core doctest::doctest)
+target_compile_options(home-service-test PRIVATE -Wall -Wextra)
+
 set_target_properties(framing-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-integration-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-reconnect-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
@@ -187,6 +192,7 @@ set_target_properties(link-protocol-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(link-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(cloud-interop-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(link-status-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(home-service-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME framing-test COMMAND framing-test)
 add_test(NAME tunnel-integration-test COMMAND tunnel-integration-test)
@@ -200,3 +206,4 @@ add_test(NAME link-protocol-test COMMAND link-protocol-test)
 add_test(NAME link-client-test COMMAND link-client-test)
 add_test(NAME cloud-interop-test COMMAND cloud-interop-test)
 add_test(NAME link-status-test COMMAND link-status-test)
+add_test(NAME home-service-test COMMAND home-service-test)
