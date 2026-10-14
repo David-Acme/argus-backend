@@ -367,10 +367,11 @@ TEST_SUITE("home link v2 vectors")
       CHECK(sha256OfFile(path) == files.at(name).get<std::string>());
       listed.insert(name);
     }
+    std::set<std::string> present;
     for (const auto& file : vectorFiles())
-      CHECK(listed.contains(file.filename().string()));
+      present.insert(file.filename().string());
+    CHECK(listed == present);
     CHECK(listed.contains("device-names.json"));
-    CHECK(listed.size() >= 13);
   }
 
   TEST_CASE("every device-name vector reads as it says")
