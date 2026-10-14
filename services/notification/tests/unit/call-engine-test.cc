@@ -529,18 +529,21 @@ TEST_CASE("a call hung up before Argus spoke counts as declined and leaves a not
   CHECK(drogon::sync_wait(harness.engine.end({.callId = first,
                                               .userId = 1,
                                               .outcome = CallEndReport::Completed,
-                                              .spoken = true})) == CallEndStatus::Ended);
+                                              .spoken = true,
+                                              .sessionId = ""})) == CallEndStatus::Ended);
   CHECK(harness.notifier->all().empty());
   CHECK(stateOf(outcomeFor(rang, 1).callId) == "completed");
   CHECK(drogon::sync_wait(harness.engine.end({.callId = first,
                                               .userId = 1,
                                               .outcome = CallEndReport::Completed,
-                                              .spoken = true})) == CallEndStatus::Ended);
+                                              .spoken = true,
+                                              .sessionId = ""})) == CallEndStatus::Ended);
 
   CHECK(drogon::sync_wait(harness.engine.end({.callId = second,
                                               .userId = 2,
                                               .outcome = CallEndReport::Declined,
-                                              .spoken = false})) == CallEndStatus::Ended);
+                                              .spoken = false,
+                                              .sessionId = ""})) == CallEndStatus::Ended);
   CHECK(stateOf(outcomeFor(rang, 2).callId) == "declined");
   const auto notices = harness.notifier->all();
   REQUIRE(notices.size() == 1);
@@ -550,7 +553,41 @@ TEST_CASE("a call hung up before Argus spoke counts as declined and leaves a not
   CHECK(drogon::sync_wait(harness.engine.end({.callId = second,
                                               .userId = 1,
                                               .outcome = CallEndReport::Completed,
-                                              .spoken = true})) == CallEndStatus::NotFound);
+                                              .spoken = true,
+                                              .sessionId = ""})) == CallEndStatus::NotFound);
+}
+
+TEST_CASE("a refused decline changes nothing: an expired ring stays ringing, a taken call stays answered")
+{
+  Harness harness;
+  const auto rang = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("critical", 52), {1, 2}));
+  const std::string first = call_id::format(outcomeFor(rang, 1).callId);
+  const std::string second = call_id::format(outcomeFor(rang, 2).callId);
+
+  drogon::sync_wait(harness.engine.claim({.callId = second, .userId = 2, .sessionId = "a"}));
+  CHECK(drogon::sync_wait(harness.engine.end({.callId = second,
+                                              .userId = 2,
+                                              .outcome = CallEndReport::Declined,
+                                              .spoken = false,
+                                              .sessionId = "b"})) == CallEndStatus::Taken);
+  CHECK(stateOf(outcomeFor(rang, 2).callId) == "answered");
+
+  harness.advance(46);
+  CHECK(drogon::sync_wait(harness.engine.end({.callId = first,
+                                              .userId = 1,
+                                              .outcome = CallEndReport::Declined,
+                                              .spoken = false,
+                                              .sessionId = ""})) == CallEndStatus::Expired);
+  CHECK(stateOf(outcomeFor(rang, 1).callId) == "ringing");
+  CHECK(harness.notifier->all().empty());
+
+  CHECK(drogon::sync_wait(harness.engine.end({.callId = "call-999999",
+                                              .userId = 1,
+                                              .outcome = CallEndReport::Declined,
+                                              .spoken = false,
+                                              .sessionId = ""})) == CallEndStatus::NotFound);
+  CHECK(stateOf(outcomeFor(rang, 1).callId) == "ringing");
 }
 
 TEST_CASE("quiet hours, do not disturb and cooldown follow the user's preferences")

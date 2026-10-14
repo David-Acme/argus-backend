@@ -12,11 +12,12 @@ NotificationCallDecliner::NotificationCallDecliner(std::shared_ptr<const Notific
 RtcDecline NotificationCallDecliner::declineOf(const NotificationCallEndResult& result)
 {
   RtcDecline decline;
-  if (result.outcome != NotificationRpcOutcome::Success)
+  if (result.outcome != NotificationRpcOutcome::Success && result.outcome != NotificationRpcOutcome::Rejected)
     return decline;
   switch (result.status) {
     case argus::notification::v1::CALL_END_STATUS_ENDED:
-      decline.status = RtcDeclineStatus::Declined;
+      if (result.outcome == NotificationRpcOutcome::Success)
+        decline.status = RtcDeclineStatus::Declined;
       break;
     case argus::notification::v1::CALL_END_STATUS_TAKEN:
       decline.status = RtcDeclineStatus::Taken;

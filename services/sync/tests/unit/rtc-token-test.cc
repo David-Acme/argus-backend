@@ -3,6 +3,7 @@
 
 #include <feature/rtc/dtos/rtc-decline-dto.hxx>
 #include <feature/rtc/dtos/rtc-token-dto.hxx>
+#include <feature/rtc/infra/notification-call-decliner.hxx>
 #include <feature/rtc/infra/notification-call-claimer.hxx>
 #include <feature/rtc/services/livekit-token.hxx>
 #include <feature/rtc/services/rtc-naming.hxx>
@@ -13,6 +14,7 @@
 #include <errors/response-exception.hxx>
 #include <errors/validation-exception.hxx>
 #include <jwt-cpp/traits/nlohmann-json/defaults.h>
+#include <notification/notification-client.hxx>
 
 #include <chrono>
 #include <functional>
@@ -650,4 +652,19 @@ TEST_CASE("a decline names the caller as the callee and refuses with the claim c
   CHECK(declineStatus(RtcDeclineStatus::Expired) == 410);
   CHECK(declineStatus(RtcDeclineStatus::NotFound) == 404);
   CHECK(declineStatus(RtcDeclineStatus::Unavailable) == 503);
+}
+
+TEST_CASE("the notification's answer maps onto the decline codes, and only silence is unavailable")
+{
+  const auto mapped = [](NotificationRpcOutcome outcome, argus::notification::v1::CallEndStatus status) {
+    return NotificationCallDecliner::declineOf({.outcome = outcome, .status = status}).status;
+  };
+  using Status = argus::notification::v1::CallEndStatus;
+  CHECK(mapped(NotificationRpcOutcome::Success, Status::CALL_END_STATUS_ENDED) == RtcDeclineStatus::Declined);
+  CHECK(mapped(NotificationRpcOutcome::Rejected, Status::CALL_END_STATUS_EXPIRED) == RtcDeclineStatus::Expired);
+  CHECK(mapped(NotificationRpcOutcome::Rejected, Status::CALL_END_STATUS_TAKEN) == RtcDeclineStatus::Taken);
+  CHECK(mapped(NotificationRpcOutcome::Rejected, Status::CALL_END_STATUS_NOT_FOUND) == RtcDeclineStatus::NotFound);
+  CHECK(mapped(NotificationRpcOutcome::Rejected, Status::CALL_END_STATUS_ENDED) == RtcDeclineStatus::Unavailable);
+  CHECK(mapped(NotificationRpcOutcome::Unavailable, Status::CALL_END_STATUS_EXPIRED) == RtcDeclineStatus::Unavailable);
+  CHECK(mapped(NotificationRpcOutcome::Conflict, Status::CALL_END_STATUS_TAKEN) == RtcDeclineStatus::Unavailable);
 }
