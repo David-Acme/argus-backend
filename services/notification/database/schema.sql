@@ -38,8 +38,6 @@ CREATE TABLE IF NOT EXISTS notification_token (
     key_id      TEXT    NOT NULL  DEFAULT ''
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_uniq
-    ON notification_token (user_id, device_hash);
 
 CREATE TABLE IF NOT EXISTS notification_command (
     command_id     TEXT    NOT NULL  PRIMARY KEY,

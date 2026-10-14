@@ -44,6 +44,7 @@
 #include <settings/settings-rpc.hxx>
 #include <runtime/log-output.hxx>
 #include <config/notification-config.hxx>
+#include <shared/repositories/notification-token/notification-token-index.hxx>
 #include <feature/call/infra/nats-call-push-sink.hxx>
 #include <feature/call/infra/notification-push-device-directory.hxx>
 #include <feature/call/services/push-delivery.hxx>
@@ -98,6 +99,24 @@ bool declaresForeignUserReferences()
 
 constexpr std::chrono::milliseconds kGrpcDrainDeadline{2000};
 
+}
+
+namespace
+{
+class DrogonTokenIndexSql final : public TokenIndexSql
+{
+public:
+  int64_t countRows(std::string_view sql) override
+  {
+    const auto rows = DbService::client()->execSqlSync(std::string(sql));
+    return rows.empty() ? 0 : rows.front()[0].as<long long>();
+  }
+
+  void execute(std::string_view sql) override
+  {
+    DbService::client()->execSqlSync(std::string(sql));
+  }
+};
 }
 
 int main()
@@ -388,6 +407,7 @@ int main()
                           .trustBundlePem = loadedTls.trustBundlePem})}}));
 
   drogon::app().registerBeginningAdvice([&notificationDb, &changeSink]() {
+    DrogonTokenIndexSql tokenIndexSql;
     if (!DbService::runScriptFile(notificationDb.schemaPath)) {
       LOG_FATAL
           << "Notification database schema failed to apply — aborting startup";
@@ -458,22 +478,11 @@ int main()
         DbService::client()->execSqlSync(statement);
       }
     }
-    if (!hasColumn("notification_token", "session_id"))
-      DbService::client()->execSqlSync(
-          "ALTER TABLE notification_token ADD COLUMN session_id TEXT NOT NULL "
-          "DEFAULT ''");
-    if (!hasColumn("notification_token", "provider"))
-      DbService::client()->execSqlSync(
-          "ALTER TABLE notification_token ADD COLUMN provider TEXT NOT NULL "
-          "DEFAULT ''");
-    if (!hasColumn("notification_token", "public_key"))
-      DbService::client()->execSqlSync(
-          "ALTER TABLE notification_token ADD COLUMN public_key TEXT NOT NULL "
-          "DEFAULT ''");
-    if (!hasColumn("notification_token", "key_id"))
-      DbService::client()->execSqlSync(
-          "ALTER TABLE notification_token ADD COLUMN key_id TEXT NOT NULL "
-          "DEFAULT ''");
+    const auto tokenMigration = notification_token_index::migrate(tokenIndexSql);
+    if (tokenMigration.changed())
+      LOG_INFO << "Notification token table migrated: " << tokenMigration.columnsAdded
+               << " column(s) added, legacy index dropped: "
+               << (tokenMigration.droppedLegacyIndex ? "yes" : "no");
     if (!hasColumn("call", "push_after"))
       DbService::client()->execSqlSync(
           "ALTER TABLE call ADD COLUMN push_after INTEGER NOT NULL DEFAULT 0");

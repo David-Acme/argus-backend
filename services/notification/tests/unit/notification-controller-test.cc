@@ -173,8 +173,8 @@ void seedNotificationDb(const char* path)
        "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
        "updated_at INTEGER, session_id TEXT NOT NULL DEFAULT '')");
   exec(db.get(),
-       "CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_uniq "
-       "ON notification_token (user_id, device_hash)");
+       "CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_device "
+       "ON notification_token (user_id, device_hash, provider)");
   exec(db.get(),
        "CREATE TABLE notification_delivery ("
        "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "

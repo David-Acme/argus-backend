@@ -19,7 +19,9 @@ binary, own CMake preset, own `notification.db`.
   boot through `DbService::runScriptFile` — abort on failure. `argus.db` is
   never touched. The two legacy tables carry their own indexes —
   `idx_notification_user_created` and the token pair's unique index
-  `idx_notification_token_uniq` — and `camera_fallback_event` carries one on
+  `idx_notification_token_device` (`(user_id, device_hash, provider)`, created by
+  `notification_token_index::migrate` at every boot, see the order below), and
+  `camera_fallback_event` carries one on
   `created_at` for its retention sweep and the per-outage queries.
   `idx_notification_token_user` was dropped (2026-10): the unique
   `(user_id, device_hash)` index already leads with `user_id`.
@@ -387,7 +389,18 @@ readiness and the fallback gate — `CameraObjectNotifier`, the
 
 ## Push tokens (2026-10, audit #45)
 
-`notification_token` holds one row per `(user_id, device_hash)` and, since
+Boot order for `notification_token` (2026-10, the index ruling): `schema.sql`
+creates the table with its final columns (`provider`, `public_key`, `key_id`,
+`session_id`) and creates no provider index; then `notification_token_index::migrate`
+adds whichever of those columns an older database lacks, drops the legacy
+`idx_notification_token_uniq` (`(user_id, device_hash)`) when it exists, and
+creates `idx_notification_token_device` with `CREATE UNIQUE INDEX IF NOT EXISTS`.
+It runs at every boot, for old and new databases alike, and logs one line only
+when it changed something. A database that predates the columns therefore boots:
+the index is created after the columns it names.
+
+`notification_token` holds one row per `(user_id, device_hash, provider)`, so an iOS
+device keeps its `apns` (alert) row and its `apns_voip` (call) row side by side, and since
 2026-10, at most one row per `token`: registering a token another user (or
 another device) held first deletes that row inside the same transaction, so a
 shared phone that changes hands stops being addressed to its previous user.

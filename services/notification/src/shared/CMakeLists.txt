@@ -2,6 +2,7 @@ argus_module(NAME notification-shared
     SOURCES
         repositories/notification/notification-repository.cc
         repositories/notification-token/notification-token-repository.cc
+        repositories/notification-token/notification-token-index.cc
         schemas/notification/notification-schema.cc
         schemas/notification-token/notification-token-schema.cc
         services/notification/delivery-page.cc

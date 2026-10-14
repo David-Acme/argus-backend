@@ -12,7 +12,7 @@ inline constexpr std::string_view UPSERT =
     "INSERT INTO notification_token (user_id, device_hash, token, platform, "
     "lang, session_id, provider, public_key, key_id) "
     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) "
-    "ON CONFLICT(user_id, device_hash) DO UPDATE SET "
+    "ON CONFLICT(user_id, device_hash, provider) DO UPDATE SET "
     "token = excluded.token, platform = excluded.platform, "
     "lang = excluded.lang, session_id = excluded.session_id, "
     "provider = excluded.provider, public_key = excluded.public_key, "
@@ -28,6 +28,17 @@ inline constexpr std::string_view DELETE_FOR_SESSION =
 
 inline constexpr std::string_view DELETE_FOR_USER =
     "DELETE FROM notification_token WHERE user_id = ?";
+
+inline constexpr std::string_view LEGACY_INDEX_COUNT =
+    "SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' "
+    "AND name = 'idx_notification_token_uniq'";
+
+inline constexpr std::string_view DROP_LEGACY_INDEX =
+    "DROP INDEX IF EXISTS idx_notification_token_uniq";
+
+inline constexpr std::string_view CREATE_DEVICE_INDEX =
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_device "
+    "ON notification_token (user_id, device_hash, provider)";
 
 inline constexpr std::string_view FIND_PUSH_BY_USER =
     "SELECT * FROM notification_token WHERE user_id = ? AND is_active = 1 "
