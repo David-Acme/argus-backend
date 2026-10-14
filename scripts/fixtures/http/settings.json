@@ -704,7 +704,7 @@
           "info": {
             "owners": [
               {
-                "bytes": 315,
+                "bytes": "<BYTES>",
                 "items": [
                   {
                     "count": 1,
@@ -732,10 +732,10 @@
                 "reported": true
               },
               {
-                "bytes": 0,
+                "bytes": "<BYTES>",
                 "items": [
                   {
-                    "count": 0,
+                    "count": 3,
                     "kind": "change_history"
                   }
                 ],
@@ -2926,7 +2926,7 @@
               },
               {
                 "capabilities": [],
-                "configFile": "/home/acme/Desktop/argus/backend/build/native-stack/guard/config.toml",
+                "configFile": "<STACK>/guard/config.toml",
                 "configured": true,
                 "profile": null,
                 "reachable": true,
@@ -3432,7 +3432,7 @@
                     "step": 5.0,
                     "type": "integer",
                     "unit": "s",
-                    "value": "20"
+                    "value": "45"
                   },
                   {
                     "apply": "live",
@@ -3478,6 +3478,36 @@
                     "type": "toggle",
                     "unit": "",
                     "value": "true"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
+                    "fallback": "30",
+                    "group": "tracking",
+                    "key": "guard.posture_interval_s",
+                    "level": "advanced",
+                    "max": 600.0,
+                    "min": 5.0,
+                    "pendingRestart": false,
+                    "step": 5.0,
+                    "type": "integer",
+                    "unit": "s",
+                    "value": "30"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
+                    "fallback": "15",
+                    "group": "tracking",
+                    "key": "guard.episode_touch_publish_s",
+                    "level": "advanced",
+                    "max": 300.0,
+                    "min": 5.0,
+                    "pendingRestart": false,
+                    "step": 5.0,
+                    "type": "integer",
+                    "unit": "s",
+                    "value": "15"
                   },
                   {
                     "apply": "live",
@@ -3552,7 +3582,7 @@
                     "step": 1.0,
                     "type": "integer",
                     "unit": "days",
-                    "value": "90"
+                    "value": "30"
                   },
                   {
                     "apply": "live",
@@ -3573,7 +3603,7 @@
               },
               {
                 "capabilities": [],
-                "configFile": "/home/acme/Desktop/argus/backend/build/native-stack/camera/config.toml",
+                "configFile": "<STACK>/camera/config.toml",
                 "configured": true,
                 "profile": null,
                 "reachable": true,
@@ -3653,6 +3683,21 @@
                     "type": "integer",
                     "unit": "ms",
                     "value": "30000"
+                  },
+                  {
+                    "apply": "restart",
+                    "choices": [],
+                    "fallback": "15",
+                    "group": "alerts",
+                    "key": "operator.detection_publish_s",
+                    "level": "advanced",
+                    "max": 300.0,
+                    "min": 5.0,
+                    "pendingRestart": false,
+                    "step": 5.0,
+                    "type": "integer",
+                    "unit": "s",
+                    "value": "15"
                   },
                   {
                     "apply": "restart",
@@ -3838,7 +3883,7 @@
               },
               {
                 "capabilities": [],
-                "configFile": "/home/acme/Desktop/argus/backend/build/native-stack/notification/config.toml",
+                "configFile": "<STACK>/notification/config.toml",
                 "configured": true,
                 "profile": null,
                 "reachable": true,

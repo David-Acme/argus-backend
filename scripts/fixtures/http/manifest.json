@@ -98,6 +98,15 @@
       "unit": "settings"
     },
     {
+      "keys": [],
+      "placeholders": [
+        "owners[].bytes"
+      ],
+      "reason": "bytes is the disk size of an owner's data on the answering host, so it is read as the placeholder <BYTES> and the answer's shape is still compared; the counts stay pinned",
+      "route": "/modules/{1}/data",
+      "unit": "settings"
+    },
+    {
       "keys": [
         "data",
         "filesBytes"
@@ -134,9 +143,10 @@
     {
       "keys": [
         "at",
-        "presenceSince"
+        "presenceSince",
+        "guard"
       ],
-      "reason": "a heartbeat stamps the second it answers and the presence change it reports, so both move on every call; the interval, grace and armed state beside them stay pinned",
+      "reason": "a heartbeat stamps the second it answers and the presence change it reports, so both move on every call; guard is the state of the guard service's live presence feed (alive while it publishes, unknown on a stack where it never did), and guardSeenAt is masked beside it; the interval, grace and armed state stay pinned",
       "route": "/sync/heartbeat",
       "unit": "sync"
     }

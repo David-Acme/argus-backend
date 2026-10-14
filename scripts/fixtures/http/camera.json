@@ -3541,7 +3541,14 @@
           "info": {
             "cameras": [
               {
-                "health": "unreachable",
+                "control": {
+                  "code": 0,
+                  "credential": "",
+                  "message": "No camera account or cloud password is saved",
+                  "retryAfterSeconds": 0,
+                  "retryAt": "<masked>",
+                  "state": "no_credentials"
+                },
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,
@@ -3580,7 +3587,14 @@
           "info": {
             "cameras": [
               {
-                "health": "unreachable",
+                "control": {
+                  "code": 0,
+                  "credential": "",
+                  "message": "No camera account or cloud password is saved",
+                  "retryAfterSeconds": 0,
+                  "retryAt": "<masked>",
+                  "state": "no_credentials"
+                },
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,
@@ -3619,7 +3633,14 @@
           "info": {
             "cameras": [
               {
-                "health": "unreachable",
+                "control": {
+                  "code": 0,
+                  "credential": "",
+                  "message": "No camera account or cloud password is saved",
+                  "retryAfterSeconds": 0,
+                  "retryAt": "<masked>",
+                  "state": "no_credentials"
+                },
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,

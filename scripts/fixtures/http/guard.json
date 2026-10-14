@@ -802,7 +802,7 @@
           "errors": null,
           "info": [
             {
-              "asleep": "",
+              "asleep": "23:00-07:00",
               "cameraIds": [],
               "closedMode": "away",
               "digestHour": 21,
@@ -876,7 +876,7 @@
           "errors": null,
           "info": [
             {
-              "asleep": "",
+              "asleep": "23:00-07:00",
               "cameraIds": [],
               "closedMode": "away",
               "digestHour": 21,
