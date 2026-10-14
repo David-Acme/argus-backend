@@ -24,7 +24,7 @@ namespace fs = std::filesystem;
 using tunnel::link::FrameType;
 
 constexpr std::string_view kPinnedSha256 =
-    "6c3f3df89ecb7a5ec456efa81d527722a61b19338d9a4941492a21dda7de8a2b";
+    "6ebf00ccbaeb653eccc247242dbb622c4630b71003445d499e1de55f11c9263b";
 constexpr std::size_t kHeader = 12;
 
 std::string readFile(const fs::path& path)
@@ -121,7 +121,7 @@ TEST_CASE("every sealed push vector parses to its fields and encodes back to its
         {.type = FrameType::PushSealed, .streamId = 0, .payload = *encoded});
     CHECK(toHex(frame) == vector.at("bytesHex").get<std::string>());
   }
-  CHECK(checked == 4);
+  CHECK(checked == 5);
 }
 
 TEST_CASE("every refused sealed push vector is refused by the payload parser")
