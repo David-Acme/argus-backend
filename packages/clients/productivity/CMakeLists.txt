@@ -32,3 +32,17 @@ add_test(NAME productivity-sync-client-test
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
                  $<TARGET_FILE:productivity-sync-client-test> 3)
 set_tests_properties(productivity-sync-client-test PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(productivity-reminder-client-test tests/unit/productivity-reminder-client-test.cc)
+
+set_target_properties(productivity-reminder-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(productivity-reminder-client-test PRIVATE argus::clients::productivity
+    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
+
+target_compile_options(productivity-reminder-client-test PRIVATE -Wall -Wextra)
+
+add_test(NAME productivity-reminder-client-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:productivity-reminder-client-test> 1)
+set_tests_properties(productivity-reminder-client-test PROPERTIES SKIP_RETURN_CODE 77)
