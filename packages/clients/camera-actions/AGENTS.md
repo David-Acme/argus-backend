@@ -70,8 +70,11 @@ action-rpc suite, and eleven guard files (`main.cc`, `guard-service.cc`,
   non-empty (`addCallerCredential`); no fleet secret and no x-argus-* identity —
   measured, the `.cc` calls `setDeadline` and `addCallerCredential` and nothing
   else from the shared base. One deadline, `kCallTimeoutMs` = 60000 ms, a
-  `constexpr` in the `.cc`. The channel is plaintext (`makeChannel` is
-  `InsecureChannelCredentials`).
+  `constexpr` in the `.cc`. The channel is the one `makeChannel` builds for the
+  configured target: a `tls:` target in `camera.actions_target` runs the command
+  over mutual TLS with the process's internal certificate.
+  `camera-action-client-test` dials a fake camera service on its TLS port and
+  refuses a plaintext dial to it.
 - Config: `camera.actions_target` and `camera.actions_credential`
   (`services/guard/src/app/main.cc:145-152` is the only reader, and it skips
   the client entirely when the target is empty). Both templates in the tree

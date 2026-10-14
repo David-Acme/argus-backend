@@ -2,6 +2,8 @@
 #include <argus/camera/v1/actions.grpc.pb.h>
 #include <camera/camera-action-client.hxx>
 #include <doctest/doctest.h>
+#include <grpc-test-support/mutual-tls-endpoint.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
 #include <string>
@@ -152,4 +154,23 @@ TEST_CASE("a transport failure is classified by whether the command ran")
   CHECK_FALSE(ambiguous.rejected());
 
   server->Shutdown();
+}
+
+TEST_CASE("the announce dials the mutual TLS port with the internal certificate")
+{
+  ScriptedActionService service;
+  service.ack.set_accepted(true);
+  service.ack.set_outcome(CameraCommandOutcome::SUCCEEDED);
+  const argus::client::test_support::MutualTlsEndpoint endpoint(
+      {.service = "camera", .services = {&service}});
+  REQUIRE(endpoint.tlsPort() > 0);
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("guard"));
+
+  const CameraActionClient client({.target = endpoint.tlsTarget(), .credential = ""});
+  CHECK(client.announce({.cameraId = 4, .text = "Hola", .commandId = ""}).succeeded());
+
+  const CameraActionClient plaintext(
+      {.target = endpoint.plaintextToTlsPortTarget(), .credential = ""});
+  CHECK_FALSE(plaintext.announce({.cameraId = 4, .text = "Hola", .commandId = ""}).succeeded());
 }
