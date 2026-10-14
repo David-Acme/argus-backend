@@ -128,7 +128,7 @@ inline bool wellFormed(const PushSealedEnvelope& envelope) noexcept
          combinationAllowed(envelope.provider, envelope.kind);
 }
 
-inline std::string associatedData(const PushSealedEnvelope& envelope)
+inline std::string envelopePrefix(const PushSealedEnvelope& envelope)
 {
   std::string out;
   out.reserve(kDeliveryIdSize + 16 + envelope.collapseId.size() + envelope.token.size());
@@ -144,12 +144,22 @@ inline std::string associatedData(const PushSealedEnvelope& envelope)
   return out;
 }
 
+inline std::string hpkeInfo(std::string_view keyId, const PushSealedEnvelope& envelope)
+{
+  std::string out(kInfoPrefix);
+  out.push_back('\0');
+  out.append(keyId);
+  out.push_back('\0');
+  out.append(envelopePrefix(envelope));
+  return out;
+}
+
 inline std::optional<std::string>
 sealedPayload(const PushSealedEnvelope& envelope)
 {
   if (!wellFormed(envelope))
     return std::nullopt;
-  std::string out = associatedData(envelope);
+  std::string out = envelopePrefix(envelope);
   appendU16(out, envelope.enc.size());
   out.append(envelope.enc);
   appendU16(out, envelope.ciphertext.size());

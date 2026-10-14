@@ -74,8 +74,8 @@ TEST_CASE("a sealed payload parses back to the envelope it was built from")
   CHECK(parsed.token == envelope.token);
   CHECK(parsed.ciphertext == envelope.ciphertext);
   CHECK(parsed.ttlSeconds == 60);
-  CHECK(push_envelope::associatedData(envelope) ==
-        payload->substr(0, push_envelope::associatedData(envelope).size()));
+  CHECK(push_envelope::envelopePrefix(envelope) ==
+        payload->substr(0, push_envelope::envelopePrefix(envelope).size()));
 }
 
 TEST_CASE("a sealed payload with a trailing byte is refused")
@@ -100,4 +100,16 @@ TEST_CASE("a push result is exactly seventeen bytes with a known outcome")
   std::string unknown = *payload;
   unknown.back() = '\x06';
   CHECK_FALSE(push_envelope::parseResultPayload(unknown, parsed));
+}
+
+TEST_CASE("the HPKE info is the label, the key id and the envelope prefix, with no associated data")
+{
+  const PushSealedEnvelope envelope = validEnvelope();
+  const std::string info = push_envelope::hpkeInfo("test-key-1", envelope);
+  const std::string expected = std::string("argus.push.v1") + '\0' + "test-key-1" + '\0' + push_envelope::envelopePrefix(envelope);
+  CHECK(info == expected);
+  PushSealedEnvelope changed = envelope;
+  changed.token = "fcm-token-2";
+  CHECK(push_envelope::hpkeInfo("test-key-1", changed) != info);
+  CHECK(push_envelope::hpkeInfo("test-key-2", envelope) != info);
 }
