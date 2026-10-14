@@ -57,9 +57,11 @@ identity side never reshapes this wire.
   constructor, with no channel, exists for argus-auth's in-process
   `LocalAuthClient`, which overrides both calls; `validateToken` engages the request's device leg
   whenever `hasDeviceContext` is set, empty hash included. One deadline,
-  `kCallTimeoutMs` = 5000 ms, a `constexpr` in the `.cc`. The channel is
-  plaintext (`makeChannel` is `InsecureChannelCredentials`), like every other
-  gRPC leg in the fleet.
+  `kCallTimeoutMs` = 5000 ms, a `constexpr` in the `.cc`. The channel is the one
+  `makeChannel` builds for the configured target: a `tls:` target in the
+  callers' `auth.target` runs the verdict over mutual TLS with the internal
+  certificate, like every other gRPC leg in the fleet. The `auth-grpc-client-test`
+  binary dials the TLS port of a fake auth service and refuses a plaintext dial.
 - Config: this package resolves nothing itself — the constructor takes an
   `AuthClientConfig` and the consumer reads it. The resolver lives with the
   first consumer, `filterAuthClient()` in

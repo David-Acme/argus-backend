@@ -2,6 +2,8 @@
 #include <argus/auth/v1/auth.grpc.pb.h>
 #include <auth/auth-client.hxx>
 #include <doctest/doctest.h>
+#include <grpc-test-support/mutual-tls-endpoint.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <map>
 #include <memory>
@@ -226,4 +228,30 @@ TEST_CASE("a listener that never answers is not an answer this edge invents")
                                   .origin = {}})
                   .has_value());
   CHECK_FALSE(client.checkDeviceCredential("secret-hash").has_value());
+}
+
+TEST_CASE("the verdict dials the mutual TLS port with the internal certificate")
+{
+  ScriptedAuthService service;
+  service.verdict.set_valid(true);
+  const argus::client::test_support::MutualTlsEndpoint endpoint(
+      {.service = "auth", .services = {&service}});
+  REQUIRE(endpoint.tlsPort() > 0);
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("camera"));
+
+  const AuthClient client({.target = endpoint.tlsTarget(), .fleetSecret = kFleetSecret});
+  const auto verdict = client.validateToken({.accessToken = "live",
+                                             .deviceHash = "",
+                                             .hasDeviceContext = false,
+                                             .origin = {}});
+  REQUIRE(verdict.has_value());
+  CHECK(verdict->valid());
+
+  const AuthClient plaintext({.target = endpoint.plaintextToTlsPortTarget(), .fleetSecret = kFleetSecret});
+  CHECK_FALSE(plaintext.validateToken({.accessToken = "live",
+                                       .deviceHash = "",
+                                       .hasDeviceContext = false,
+                                       .origin = {}})
+                  .has_value());
 }

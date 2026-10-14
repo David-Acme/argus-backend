@@ -23,10 +23,13 @@ add_executable(auth-grpc-client-test tests/unit/auth-grpc-client-test.cc)
 set_target_properties(auth-grpc-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(auth-grpc-client-test PRIVATE argus::clients::auth
-    doctest::doctest)
+    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
 
 target_compile_options(auth-grpc-client-test PRIVATE -Wall -Wextra)
 
 argus_runtime_rpath(auth-grpc-client-test)
 
-add_test(NAME auth-grpc-client-test COMMAND auth-grpc-client-test)
+add_test(NAME auth-grpc-client-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:auth-grpc-client-test> 5)
+set_tests_properties(auth-grpc-client-test PROPERTIES SKIP_RETURN_CODE 77)
