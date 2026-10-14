@@ -72,3 +72,18 @@ target_include_directories(llm-client-test PRIVATE
 target_compile_options(llm-client-test PRIVATE -Wall -Wextra)
 
 add_test(NAME llm-client-test COMMAND llm-client-test)
+
+add_executable(llm-grpc-tls-test tests/unit/llm-grpc-tls-test.cc)
+
+set_target_properties(llm-grpc-tls-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(llm-grpc-tls-test PRIVATE argus::clients::llm
+    argus::contracts::llm argus::lib::grpc-test-support argus_client_grpc_base
+    doctest::doctest)
+
+target_compile_options(llm-grpc-tls-test PRIVATE -Wall -Wextra)
+
+add_test(NAME llm-grpc-tls-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:llm-grpc-tls-test> 1)
+set_tests_properties(llm-grpc-tls-test PROPERTIES SKIP_RETURN_CODE 77)

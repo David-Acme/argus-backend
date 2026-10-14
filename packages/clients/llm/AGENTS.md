@@ -167,6 +167,13 @@ the `Chat` service `packages/contracts/llm/llm.proto` declares.
   fake HTTP server's request count does not move** (no fallback when the knob
   is set), that a target set with an emptied credential is 400, and that
   clearing both knobs returns to the HTTP leg.
+- `tests/unit/llm-grpc-tls-test.cc` — its own binary, because the HTTP suite
+  shares the runtime config across cases and an install must come before any
+  channel: `llm-grpc-tls-test` runs through `scripts/internal-tls-test.sh`, one
+  process per case. A `tls:` gRPC client reads `Capabilities` from a fake llm
+  service on its mutual TLS port with the voice certificate, and a plaintext
+  client to that port is refused. The `llm.grpc_target` a deployment sets is
+  the `tls:` form, so this is the leg the voice and guard callers take.
 - `services/voice/tests/unit/voice-llm-remote-test.cc` drives the same fake
   server, adding `tests/support` to its include path (the only CMakeLists
   outside this package that does). The gRPC leg's own end-to-end suite is the
