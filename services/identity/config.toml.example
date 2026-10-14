@@ -73,11 +73,11 @@ trust_forwarded_for = false
 trusted_proxy_ips = ""
 
 [auth]
-target = "127.0.0.1:7043"
+target = "tls:127.0.0.1:7243"
 credential = ""
 
 [sync]
-control_target = "127.0.0.1:7041"
+control_target = "tls:127.0.0.1:7241"
 control_credential = ""
 
 [nats]
@@ -146,5 +146,5 @@ name = "Argus"
 address = ""
 
 [modules]
-target = "127.0.0.1:7047"
+target = "tls:127.0.0.1:7247"
 credential = ""

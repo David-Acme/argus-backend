@@ -93,7 +93,7 @@ trust_forwarded_for = false
 trusted_proxy_ips = ""
 
 [identity]
-target = "127.0.0.1:7040"
+target = "tls:127.0.0.1:7240"
 credential = ""
 
 [objects]
@@ -159,5 +159,5 @@ address = ""
 credential = ""
 
 [modules]
-target = "127.0.0.1:7047"
+target = "tls:127.0.0.1:7247"
 credential = ""

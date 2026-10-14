@@ -49,19 +49,19 @@ server_cert = "certs/server.pem"
 server_key = "certs/server.key"
 
 [camera]
-grpc_target = "127.0.0.1:7036"
+grpc_target = "tls:127.0.0.1:7236"
 credential = ""
 
 [identity]
-target = "127.0.0.1:7040"
+target = "tls:127.0.0.1:7240"
 credential = ""
 
 [productivity]
-grpc_target = "127.0.0.1:7037"
+grpc_target = "tls:127.0.0.1:7237"
 credential = ""
 
 [voice]
-target = "127.0.0.1:7034"
+target = "tls:127.0.0.1:7234"
 credential = ""
 
 [rtc]
@@ -75,7 +75,7 @@ token_ttl_seconds = 60
 max_concurrent_calls = 2
 
 [notifications]
-grpc_target = "127.0.0.1:7038"
+grpc_target = "tls:127.0.0.1:7238"
 credential = ""
 
 [jwt]
@@ -89,7 +89,7 @@ identity_mode = "credential"
 lan_networks = ""
 
 [guard]
-presence_target = "127.0.0.1:7139"
+presence_target = "tls:127.0.0.1:7339"
 presence_credential = ""
 
 [heartbeat]
@@ -117,5 +117,5 @@ address = ""
 credential = ""
 
 [modules]
-target = "127.0.0.1:7047"
+target = "tls:127.0.0.1:7247"
 credential = ""

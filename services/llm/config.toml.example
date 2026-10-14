@@ -151,19 +151,19 @@ grpc_target = ""
 credential = ""
 
 [guard]
-target = "127.0.0.1:7139"
+target = "tls:127.0.0.1:7339"
 credential = ""
 
 [productivity]
-grpc_target = "127.0.0.1:7037"
+grpc_target = "tls:127.0.0.1:7237"
 credential = ""
 
 [modules]
-target = "127.0.0.1:7047"
+target = "tls:127.0.0.1:7247"
 credential = ""
 
 [notifications]
-target = "127.0.0.1:7038"
+target = "tls:127.0.0.1:7238"
 credential = ""
 
 [identity]

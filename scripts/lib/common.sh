@@ -727,7 +727,7 @@ ensure_settings_owners() {
   local settings_config="$1"
   local mode="$2"
   local base="$3"
-  local owner table key listener owner_config host port template address
+  local owner table key listener owner_config host port plain template address
 
   [ -f "$settings_config" ] || return 0
   while read -r owner table key listener; do
@@ -761,21 +761,17 @@ ensure_settings_owners() {
       [ -z "$address" ] || replace_toml_value rpc address "$address" "$owner_config"
     fi
     [ -z "$(toml_value "$settings_config" "owners.$owner" target)" ] || continue
-    if [ "$mode" = deploy ]; then
-      port="$(settings_owner_tls_port "$owner_config")"
-      if [ -z "$port" ] && [ -f "$template" ]; then
-        port="$(settings_owner_tls_port "$template")"
-      fi
-      [ -n "$port" ] || continue
-      replace_toml_value "owners.$owner" target "tls:$host:$port" "$settings_config"
-      continue
+    plain="$(settings_owner_port "$owner_config" "$listener")"
+    if [ -z "$plain" ] && [ -f "$template" ]; then
+      plain="$(settings_owner_port "$template" "$listener")"
     fi
-    port="$(settings_owner_port "$owner_config" "$listener")"
+    [ -n "$plain" ] || continue
+    port="$(settings_owner_tls_port "$owner_config")"
     if [ -z "$port" ] && [ -f "$template" ]; then
-      port="$(settings_owner_port "$template" "$listener")"
+      port="$(settings_owner_tls_port "$template")"
     fi
     [ -n "$port" ] || continue
-    replace_toml_value "owners.$owner" target "$host:$port" "$settings_config"
+    replace_toml_value "owners.$owner" target "tls:$host:$port" "$settings_config"
   done <<'OWNERS'
 llm rpc.callers settings rpc
 voice grpc caller_settings grpc

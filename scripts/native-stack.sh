@@ -44,6 +44,11 @@ service never applies the recommended profile on its own (first_run =
 false), so a replay finds every owner's values as the copied config left
 them.
 
+Internal TLS is on in the sandbox. Each service's copy starts from its native
+config, which scripts/setup.sh configured with the internal certificate and the
+tls: dial targets, so the sandbox uses the same certificate, and prepare refuses
+a service whose config carries none.
+
 The sandbox claims the standard ports (7025-7045, plus guard's settings
 listener on 7139 and the settings module-state listener on 7047). Stop any other native
 run of these services before `up`; the docker compose stack may stay up
@@ -154,6 +159,13 @@ prepare_service() {
   mkdir -p "$STACK_DIR/$svc/database" "$STACK_DIR/logs" "$STACK_DIR/pids"
   install -m 600 "$source_config" "$config"
   adopt_wiring_keys "$template" "$config"
+
+  local tls_dir
+  tls_dir="$(toml_value "$config" internal_tls dir)"
+  if [ -z "$tls_dir" ] || [ ! -s "$tls_dir/cert.pem" ]; then
+    err "$source_config has no internal certificate; run scripts/setup.sh first"
+    return 1
+  fi
 
   if [ -n "${SECTION[$svc]}" ]; then
     local db schema

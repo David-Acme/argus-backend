@@ -137,7 +137,9 @@ ChannelPlan openChannel(const std::string& target)
   if (!material)
     throw std::runtime_error("the gRPC target " + target +
                              " asks for internal TLS, but this process "
-                             "installed no internal certificate");
+                             "installed no internal certificate; run "
+                             "scripts/setup.sh to issue the internal PKI and "
+                             "point [internal_tls] dir at it");
   return {.address = target.substr(kInternalTlsScheme.size()),
           .credentials = internalChannelCredentials(*material)};
 }

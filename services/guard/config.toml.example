@@ -150,11 +150,11 @@ timeout_ms = 8000
 max_tool_rounds = 2
 
 [camera]
-actions_target = "127.0.0.1:7036"
+actions_target = "tls:127.0.0.1:7236"
 actions_credential = ""
 
 [notifications]
-grpc_target = "127.0.0.1:7038"
+grpc_target = "tls:127.0.0.1:7238"
 credential = ""
 
 [jwt]
@@ -170,7 +170,7 @@ trust_forwarded_for = false
 trusted_proxy_ips = ""
 
 [identity]
-target = "127.0.0.1:7040"
+target = "tls:127.0.0.1:7240"
 credential = ""
 
 [nats]
@@ -185,5 +185,5 @@ address = ""
 credential = ""
 
 [modules]
-target = "127.0.0.1:7047"
+target = "tls:127.0.0.1:7247"
 credential = ""

@@ -126,7 +126,7 @@ trust_forwarded_for = false
 trusted_proxy_ips = ""
 
 [auth]
-target = "127.0.0.1:7043"
+target = "tls:127.0.0.1:7243"
 credential = ""
 
 [mdns]

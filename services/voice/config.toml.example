@@ -17,7 +17,7 @@ opening = "none"
 trace_latency = false
 
 [identity]
-target = "127.0.0.1:7040"
+target = "tls:127.0.0.1:7240"
 credential = ""
 
 [rtc]
@@ -27,7 +27,7 @@ rejoin_grace_ms = 20000
 first_join_wait_ms = 60000
 
 [notification]
-target = "127.0.0.1:7038"
+target = "tls:127.0.0.1:7238"
 credential = ""
 
 [stt]

@@ -240,6 +240,92 @@ ensure_internal_pki() {
   fi
 }
 
+internal_pki_native_dial_rows() {
+  cat <<'ROWS'
+auth identity target identity
+camera identity target identity
+camera modules target settings
+guard camera actions_target camera
+guard notifications grpc_target notification
+guard identity target identity
+guard modules target settings
+identity auth target auth
+identity sync control_target sync
+identity modules target settings
+llm guard target guard
+llm productivity grpc_target productivity
+llm modules target settings
+llm notifications target notification
+notification identity target identity
+notification sync control_target sync
+notification voice target voice
+notification modules target settings
+productivity identity target identity
+productivity notifications target notification
+productivity modules target settings
+settings auth target auth
+sync camera grpc_target camera
+sync identity target identity
+sync productivity grpc_target productivity
+sync voice target voice
+sync notifications grpc_target notification
+sync guard presence_target guard
+sync modules target settings
+voice identity target identity
+voice notification target notification
+ROWS
+  local owner
+  for owner in llm voice tts stt vlm guard camera notification identity productivity sync; do
+    printf 'settings owners.%s target %s\n' "$owner" "$owner"
+  done
+}
+
+internal_pki_tls_port_of() {
+  local root="$1"
+  local service="$2"
+  local config port
+
+  for config in "$root/services/$service/config.toml" "$root/services/$service/config.toml.example"; do
+    [ -f "$config" ] || continue
+    port="$(settings_owner_tls_port "$config")"
+    if [ -n "$port" ]; then
+      printf '%s' "$port"
+      return 0
+    fi
+  done
+  return 1
+}
+
+migrate_native_dial_targets() {
+  local root="$1"
+  local dialer table key callee config dir value tls_port
+  local -A unpaired=()
+
+  while read -r dialer table key callee; do
+    config="$root/services/$dialer/config.toml"
+    [ -f "$config" ] && toml_key_exists "$config" "$table" "$key" || continue
+    value="$(toml_value "$config" "$table" "$key")"
+    case "$value" in
+      127.0.0.1:[0-9]*) ;;
+      *) continue ;;
+    esac
+    dir="$(toml_value "$config" internal_tls dir)"
+    if [ -z "$dir" ] || [ ! -s "$dir/cert.pem" ]; then
+      if [ -z "${unpaired[$dialer]:-}" ]; then
+        unpaired[$dialer]=1
+        warn "services/$dialer/config.toml has no internal certificate, so its dial targets stay plaintext; run scripts/setup.sh to issue the internal PKI"
+      fi
+      continue
+    fi
+    tls_port="$(internal_pki_tls_port_of "$root" "$callee")" || {
+      warn "services/$callee has no [internal_tls] address; services/$dialer/config.toml [$table] $key stays plaintext"
+      continue
+    }
+    replace_toml_value "$table" "$key" "tls:127.0.0.1:$tls_port" "$config"
+    log "services/$dialer/config.toml [$table] $key: $value -> tls:127.0.0.1:$tls_port"
+  done < <(internal_pki_native_dial_rows)
+}
+
 internal_pki_configure_native() {
   local root="$1"
   local dir="$2"

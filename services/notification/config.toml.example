@@ -64,15 +64,15 @@ scheduled_late_s = 900
 retention_days = 30
 
 [identity]
-target = "127.0.0.1:7040"
+target = "tls:127.0.0.1:7240"
 credential = ""
 
 [sync]
-control_target = "127.0.0.1:7041"
+control_target = "tls:127.0.0.1:7241"
 control_credential = ""
 
 [voice]
-target = "127.0.0.1:7034"
+target = "tls:127.0.0.1:7234"
 credential = ""
 
 [jwt]
@@ -110,5 +110,5 @@ address = ""
 credential = ""
 
 [modules]
-target = "127.0.0.1:7047"
+target = "tls:127.0.0.1:7247"
 credential = ""

@@ -54,7 +54,7 @@ server_cert = "certs/server.pem"
 server_key = "certs/server.key"
 
 [identity]
-target = "127.0.0.1:7040"
+target = "tls:127.0.0.1:7240"
 credential = ""
 
 [jwt]
