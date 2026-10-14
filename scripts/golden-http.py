@@ -317,13 +317,12 @@ SESSION_KILLERS = {
 
 VOLATILE_FIELDS = {
     ("sync", "/sync/heartbeat"): {
-        "keys": ("at", "presenceSince", "guard"),
+        "keys": ("at", "presenceSince"),
         "reason": "a heartbeat stamps the second it answers and the presence "
-                  "change it reports, so both move on every call; guard is the "
-                  "state of the guard service's live presence feed (alive while "
-                  "it publishes, unknown on a stack where it never did), and "
-                  "guardSeenAt is masked beside it; the interval, grace and "
-                  "armed state stay pinned",
+                  "change it reports, so both move on every call; the guard "
+                  "state, the interval, grace and armed state stay pinned, and "
+                  "the guard state is seeded by seed-golden.py, which publishes "
+                  "one guard heartbeat before the recorder's probes",
     },
     ("settings", "/modules/{1}/data"): {
         "keys": (),

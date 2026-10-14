@@ -6,6 +6,7 @@ import hmac
 import json
 import os
 import secrets
+import socket
 import sqlite3
 import sys
 import time
@@ -197,6 +198,28 @@ def mint_sessions(auth: sqlite3.Connection, auth_config: dict, ids: dict,
     print("recorder sessions written (0600):", token_out, session_out)
 
 
+GUARD_HEARTBEAT_SUBJECT = "argus.guard.v1.heartbeat"
+
+
+def publish_guard_heartbeat(stack: Path) -> None:
+    url = tomllib.loads((stack / "guard" / "config.toml").read_text())["nats"]["url"]
+    host, port = url.removeprefix("nats://").rsplit(":", 1)
+    payload = json.dumps({"service": "argus-guard", "enabled": True,
+                          "at": int(time.time())}).encode()
+    with socket.create_connection((host, int(port)), timeout=5) as conn:
+        conn.recv(4096)
+        conn.sendall(b'CONNECT {"verbose":false,"pedantic":false}\r\n'
+                     + f"PUB {GUARD_HEARTBEAT_SUBJECT} {len(payload)}\r\n".encode()
+                     + payload + b"\r\nPING\r\n")
+        reply = b""
+        while b"PONG" not in reply:
+            chunk = conn.recv(4096)
+            if not chunk:
+                raise SystemExit("NATS closed before the guard heartbeat was acknowledged")
+            reply += chunk
+    print("guard heartbeat seeded on", GUARD_HEARTBEAT_SUBJECT)
+
+
 def seed(stack: Path, device_ip: str, token_out: Path,
          session_out: Path) -> None:
     now = int(time.time())
@@ -301,6 +324,7 @@ def seed(stack: Path, device_ip: str, token_out: Path,
 
     for name, value in counts.items():
         print(f"  {name:<36} {value}")
+    publish_guard_heartbeat(stack)
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
