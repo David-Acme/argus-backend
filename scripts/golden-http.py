@@ -58,6 +58,7 @@ ABSENT_DEPENDENCY_ANSWERS = {
 PUSH_TOKEN = "argus-golden-push-token"
 UNREGISTERED_TOKEN = "argus-golden-unregistered-token"
 RING_OPERATION = 8
+PLACEHOLDER = "<BYTES>"
 INITIAL_INFO_OPERATION = 0
 STACK_DIR = None
 OWNER_ID = None
@@ -316,10 +317,20 @@ SESSION_KILLERS = {
 
 VOLATILE_FIELDS = {
     ("sync", "/sync/heartbeat"): {
-        "keys": ("at", "presenceSince"),
+        "keys": ("at", "presenceSince", "guard"),
         "reason": "a heartbeat stamps the second it answers and the presence "
-                  "change it reports, so both move on every call; the "
-                  "interval, grace and armed state beside them stay pinned",
+                  "change it reports, so both move on every call; guard is the "
+                  "state of the guard service's live presence feed (alive while "
+                  "it publishes, unknown on a stack where it never did), and "
+                  "guardSeenAt is masked beside it; the interval, grace and "
+                  "armed state stay pinned",
+    },
+    ("settings", "/modules/{1}/data"): {
+        "keys": (),
+        "placeholders": ("owners[].bytes",),
+        "reason": "bytes is the disk size of an owner's data on the answering "
+                  "host, so it is read as the placeholder <BYTES> and the "
+                  "answer's shape is still compared; the counts stay pinned",
     },
     ("sync", "/sync/activity"): {
         "keys": ("items", "nextCursor"),
@@ -596,6 +607,12 @@ def secret_key(key):
     return key in MASKED_KEYS or key.endswith("At")
 
 
+def normalize_path(text):
+    if STACK_DIR is not None:
+        text = text.replace(str(STACK_DIR), "<STACK>")
+    return text.replace(str(REPO_ROOT), "<ROOT>")
+
+
 def normalize(value, masking=True):
     if isinstance(value, dict):
         return {
@@ -612,6 +629,8 @@ def normalize(value, masking=True):
         return "<masked-hex64>"
     if looks_like_hex32(value):
         return "<masked-hex32>"
+    if isinstance(value, str):
+        return normalize_path(value)
     return value
 
 
@@ -1280,6 +1299,8 @@ def write_manifest(fixtures, units, probe_count, deviations):
         "expectations": EXPECTATIONS,
         "volatileFields": [
             {"unit": unit, "route": route, "keys": list(fields["keys"]),
+             **({"placeholders": list(fields["placeholders"])}
+                if fields.get("placeholders") else {}),
              "reason": fields["reason"]}
             for (unit, route), fields in sorted(VOLATILE_FIELDS.items())
         ],
@@ -1454,7 +1475,24 @@ def without_volatile(entry, body, volatile):
     node = body["info"] if "info" in body else body
     for key in fields["keys"]:
         drop_path(node, key.split("."))
+    for key in fields.get("placeholders", ()):
+        replace_path(node, key.split("."), PLACEHOLDER)
     return body
+
+
+def replace_path(node, parts, value):
+    head, rest = parts[0], parts[1:]
+    if head.endswith("[]"):
+        items = node.get(head[:-2]) if isinstance(node, dict) else None
+        for item in items if isinstance(items, list) else ():
+            replace_path(item, rest, value)
+        return
+    if not isinstance(node, dict):
+        return
+    if rest:
+        replace_path(node.get(head), rest, value)
+    elif head in node:
+        node[head] = value
 
 
 def drop_path(node, parts):
