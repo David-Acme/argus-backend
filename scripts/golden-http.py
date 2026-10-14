@@ -553,9 +553,14 @@ def listener_scheme(unit):
     if not example.is_file():
         return "https"
     text = example.read_text()
-    if SERVER_CERT_RE.search(text) and SERVER_KEY_RE.search(text):
-        return "https"
-    return "http"
+    has_cert = SERVER_CERT_RE.search(text) is not None
+    has_key = SERVER_KEY_RE.search(text) is not None
+    if has_cert != has_key:
+        declared = "server_cert" if has_cert else "server_key"
+        missing = "server_key" if has_cert else "server_cert"
+        raise SystemExit(f"{example} declares {declared} but not {missing}: a "
+                         "half-written TLS listener, so no scheme can be chosen")
+    return "https" if has_cert else "http"
 
 
 def stack_base(stack, unit):

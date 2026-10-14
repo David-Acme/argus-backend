@@ -347,6 +347,24 @@ class SchemeTest(unittest.TestCase):
             with self.subTest(unit=unit):
                 self.assertEqual(golden.listener_scheme(unit), "http")
 
+    def test_a_half_declared_tls_listener_fails_and_chooses_no_scheme(self):
+        for declared, missing in (("server_cert", "server_key"),
+                                  ("server_key", "server_cert")):
+            with self.subTest(declared=declared):
+                root = pathlib.Path(tempfile.mkdtemp(prefix="golden-half-test-"))
+                try:
+                    (root / "services" / "auth").mkdir(parents=True)
+                    (root / "services" / "auth" / "config.toml.example").write_text(
+                        f'[cert]\n{declared} = "certs/x.pem"\n')
+                    with mock.patch.object(golden, "REPO_ROOT", root):
+                        with self.assertRaises(SystemExit) as raised:
+                            golden.listener_scheme("auth")
+                    self.assertIn(declared, str(raised.exception))
+                    self.assertIn(missing, str(raised.exception))
+                    self.assertIn("half-written", str(raised.exception))
+                finally:
+                    shutil.rmtree(root)
+
     def test_a_stack_base_follows_the_listener_and_no_stack_key(self):
         for unit, scheme in (("llm", "http"), ("auth", "https")):
             with self.subTest(unit=unit):
