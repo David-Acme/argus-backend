@@ -115,3 +115,9 @@ This is the only client package that links `argus::contracts::auth`
   embedded NUL, skip, a failed action result (id 3, its detail), mute on,
   stop; the server's `done` reaching the observer with
   `session_id` 4242; and `onStreamClosed` reporting an OK status.
+  The voice-client-test binary's remaining cases are the same in-process
+  server's: the stream identity, joinRoom's whole join, announce and the
+  unreachable join. The last case dials the TLS port of that server under the
+  notification certificate: a `tls:` announce answers true, and a plaintext
+  client to that port answers nothing. The binary runs through
+  `scripts/internal-tls-test.sh`, one process per case.

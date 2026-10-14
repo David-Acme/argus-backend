@@ -3,6 +3,8 @@
 #include <chrono>
 #include <condition_variable>
 #include <doctest/doctest.h>
+#include <grpc-test-support/mutual-tls-endpoint.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <map>
 #include <memory>
@@ -374,4 +376,24 @@ TEST_CASE("a user role and a language reach the voice wire as their proto values
   CHECK(voiceLanguageToProto("en") == v1::VOICE_LANGUAGE_EN);
   CHECK(voiceLanguageToProto("fr") == v1::VOICE_LANGUAGE_SYSTEM);
   CHECK(voiceLanguageToProto("") == v1::VOICE_LANGUAGE_SYSTEM);
+}
+
+TEST_CASE("announce dials the mutual TLS port with the internal certificate")
+{
+  RecordingVoiceService service;
+  const argus::client::test_support::MutualTlsEndpoint endpoint(
+      {.service = "voice", .services = {&service}});
+  REQUIRE(endpoint.tlsPort() > 0);
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("notification"));
+
+  VoiceClient client({.target = endpoint.tlsTarget(), .credential = "n-secret"});
+  CHECK(client.announce({.userId = 7, .text = "Ha llegado alguien.", .kind = "guard_episode", .callId = "call-3"}) == true);
+  {
+    std::scoped_lock lock(service.mutex);
+    CHECK(service.credential == "n-secret");
+  }
+
+  VoiceClient plaintext({.target = endpoint.plaintextToTlsPortTarget(), .credential = "n-secret"});
+  CHECK_FALSE(plaintext.announce({.userId = 7, .text = "x", .kind = "agenda", .callId = "call-4"}).has_value());
 }

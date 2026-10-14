@@ -30,8 +30,11 @@ add_executable(voice-client-test tests/unit/voice-client-test.cc)
 set_target_properties(voice-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(voice-client-test PRIVATE argus::clients::voice
-    doctest::doctest)
+    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
 
 target_compile_options(voice-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME voice-client-test COMMAND voice-client-test)
+add_test(NAME voice-client-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:voice-client-test> 10)
+set_tests_properties(voice-client-test PROPERTIES SKIP_RETURN_CODE 77)
