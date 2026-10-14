@@ -1,0 +1,150 @@
+{
+  "get-user-inactive-guest" :
+  {
+    "response" :
+    {
+      "user" :
+      {
+        "is_active" : false,
+        "lang" : "es",
+        "last_name" : "Guest",
+        "name" : "Gus",
+        "privacy" : {},
+        "role" : "guest",
+        "user_id" : "9"
+      }
+    },
+    "status" : 0
+  },
+  "get-user-invalid-id" :
+  {
+    "message" : "user_id is required",
+    "status" : 3
+  },
+  "get-user-missing" :
+  {
+    "response" : {},
+    "status" : 0
+  },
+  "get-user-owner" :
+  {
+    "response" :
+    {
+      "user" :
+      {
+        "is_active" : true,
+        "lang" : "es",
+        "last_name" : "Owner",
+        "name" : "Ada",
+        "privacy" : {},
+        "role" : "owner",
+        "user_id" : "1"
+      }
+    },
+    "status" : 0
+  },
+  "get-user-resident" :
+  {
+    "response" :
+    {
+      "user" :
+      {
+        "is_active" : true,
+        "lang" : "en",
+        "last_name" : "Resident",
+        "name" : "Rita",
+        "privacy" : {},
+        "role" : "resident",
+        "user_id" : "7"
+      }
+    },
+    "status" : 0
+  },
+  "get-user-unknown-role" :
+  {
+    "response" :
+    {
+      "user" :
+      {
+        "is_active" : true,
+        "lang" : "es",
+        "last_name" : "Janitor",
+        "name" : "Juan",
+        "privacy" : {},
+        "role" : "unknown",
+        "user_id" : "12"
+      }
+    },
+    "status" : 0
+  },
+  "get-user-without-credential" :
+  {
+    "message" : "caller credential missing or invalid",
+    "status" : 16
+  },
+  "identify-person-by-a-caller-it-refuses" :
+  {
+    "message" : "caller may not call this method",
+    "status" : 7
+  },
+  "identify-person-not-an-image" :
+  {
+    "response" :
+    {
+      "face_check" : "unavailable",
+      "face_found" : false
+    },
+    "status" : 0
+  },
+  "identify-person-without-image" :
+  {
+    "message" : "image is required",
+    "status" : 3
+  },
+  "list-users" :
+  {
+    "response" :
+    {
+      "users" :
+      [
+        {
+          "is_active" : true,
+          "lang" : "es",
+          "last_name" : "Owner",
+          "name" : "Ada",
+          "privacy" : {},
+          "role" : "owner",
+          "user_id" : "1"
+        },
+        {
+          "is_active" : true,
+          "lang" : "en",
+          "last_name" : "Resident",
+          "name" : "Rita",
+          "privacy" : {},
+          "role" : "resident",
+          "user_id" : "7"
+        },
+        {
+          "is_active" : false,
+          "lang" : "es",
+          "last_name" : "Guest",
+          "name" : "Gus",
+          "privacy" : {},
+          "role" : "guest",
+          "user_id" : "9"
+        },
+        {
+          "is_active" : true,
+          "lang" : "es",
+          "last_name" : "Janitor",
+          "name" : "Juan",
+          "privacy" : {},
+          "role" : "unknown",
+          "user_id" : "12"
+        }
+      ]
+    },
+    "status" : 0
+  }
+}
