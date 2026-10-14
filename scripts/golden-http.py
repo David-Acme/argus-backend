@@ -105,10 +105,12 @@ EXTRA_PROBES = {
         {"name": "owner-ringing-call", "auth": "owner",
          "path": "/rtc/decline",
          "before": ({"ring": {
-             "caller": "productivity", "target": "notification",
-             "method": "argus.notification.v1.CallService/AnnounceAgenda",
-             "data": {"kind": "agenda_reminder", "title": "Golden agenda",
-                      "body": "Fixture row", "lang": "es"},
+             "caller": "guard", "target": "notification",
+             "method": "argus.notification.v1.NotificationService/CreateNotifications",
+             "request": {"type": "camera", "title": "Golden panic",
+                         "body": "Fixture row"},
+             "data": {"kind": "guard_panic", "urgency": "critical",
+                      "lang": "es"},
              "remember": "ringingCall"}},),
          "body": json.dumps({"callId": "{id:ringingCall}"})},
     ),
@@ -274,6 +276,9 @@ MODULE_GATES = {
 }
 
 MODULE_WAIT_SECONDS = 90.0
+RING_WINDOW_SECONDS = 150.0
+RING_ATTEMPT_SECONDS = 12.0
+RING_RETRY_SECONDS = 4.0
 MODULE_POLL_SECONDS = 0.25
 
 CHALLENGE_DETAILS = "/auth/device-login/{1}/details"
@@ -1049,27 +1054,35 @@ def ring_hook(hook, bases, sessions, timeout):
     token = session_of("owner", sessions)
     user = OWNER_ID
     socket_ = SyncSocket(bases["sync"], token, "owner", timeout)
+    window_end = time.monotonic() + RING_WINDOW_SECONDS
+    info = None
     try:
-        deadline = time.monotonic() + timeout
-        if socket_.await_operation(INITIAL_INFO_OPERATION, deadline) is None:
+        if socket_.await_operation(INITIAL_INFO_OPERATION,
+                                   time.monotonic() + timeout) is None:
             raise SystemExit("sync sent no InitialInfo to the recorder socket")
-        data = {**hook["data"],
-                "threadKey": f"agenda:reminder:golden-{secrets.token_hex(8)}:0"}
-        rang = grpc_call(hook["caller"], hook["target"], hook["method"],
-                         {"user_ids": [user], "lead_minutes": 0,
-                          "title": data["title"], "body": data["body"],
-                          "data": json.dumps(data),
-                          "command_id": data["threadKey"]},
-                         timeout).get("rang", 0)
-        if int(rang) != 1:
-            raise SystemExit(f"the agenda announcement rang {rang} calls, "
-                             "not the one the decline needs")
-        info = socket_.await_operation(RING_OPERATION,
-                                       time.monotonic() + timeout)
+        while info is None:
+            token_key = secrets.token_hex(8)
+            data = {**hook["data"], "threadKey": f"guard:panic:golden-{token_key}"}
+            created = grpc_call(hook["caller"], hook["target"], hook["method"],
+                                {**hook["request"], "user_ids": [user],
+                                 "data": json.dumps(data),
+                                 "command_id": f"panic:golden-{token_key}"},
+                                timeout).get("created", 0)
+            if int(created) != 1:
+                raise SystemExit(f"the panic notice created {created} rows, "
+                                 "not the one that rings the owner")
+            info = socket_.await_operation(RING_OPERATION,
+                                           time.monotonic() + RING_ATTEMPT_SECONDS)
+            if info is None and time.monotonic() >= window_end:
+                raise SystemExit("the owner's ring window stayed open for "
+                                 f"{RING_WINDOW_SECONDS:.0f}s: no notice rang "
+                                 "the owner, so the decline has no call")
+            if info is None:
+                time.sleep(RING_RETRY_SECONDS)
     finally:
         socket_.close()
-    if not info or not info.get("callId"):
-        raise SystemExit("no CallIncoming frame carried a callId")
+    if not info.get("callId"):
+        raise SystemExit("the CallIncoming frame carried no callId")
     RUNTIME_IDS[hook["remember"]] = info["callId"]
 
 
