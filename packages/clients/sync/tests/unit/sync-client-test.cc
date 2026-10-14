@@ -2,6 +2,8 @@
 #include <argus/sync/v1/sync.grpc.pb.h>
 #include <array>
 #include <doctest/doctest.h>
+#include <grpc-test-support/mutual-tls-endpoint.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <map>
 #include <memory>
@@ -336,4 +338,22 @@ TEST_CASE("both frozen enums travel value for value")
   for (const auto& [cxx, wire] : operations)
     CHECK_MESSAGE(static_cast<int>(cxx) == static_cast<int>(wire),
                   "operation ", static_cast<int>(cxx));
+}
+
+TEST_CASE("the disconnect dials the mutual TLS port with the internal certificate")
+{
+  ScriptedSyncService service;
+  service.setAck(true);
+  const argus::client::test_support::MutualTlsEndpoint endpoint(
+      {.service = "sync", .services = {&service}});
+  REQUIRE(endpoint.tlsPort() > 0);
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("identity"));
+
+  const SyncClient client({.target = endpoint.tlsTarget(), .fleetSecret = kFleetSecret});
+  CHECK(client.disconnectUser(12, authContextRow(12, false)));
+
+  const SyncClient plaintext(
+      {.target = endpoint.plaintextToTlsPortTarget(), .fleetSecret = kFleetSecret});
+  CHECK_FALSE(plaintext.disconnectUser(12, authContextRow(12, false)));
 }

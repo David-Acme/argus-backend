@@ -74,8 +74,12 @@ session revocation now travel its durable change outbox
   audit, #25). Sync answers each caller only for its own methods. No caller identity
   rides this leg — the control calls are the installation's own, not an
   actor's, and §3.5 puts no user context on them. One deadline,
-  `kCallTimeoutMs` = 5000 ms, a `constexpr` in the `.cc`. The channel is
-  plaintext (`makeChannel` is `InsecureChannelCredentials`).
+  `kCallTimeoutMs` = 5000 ms, a `constexpr` in the `.cc`. The channel is the one
+  `makeChannel` builds for the configured target: a `tls:` target in
+  `identity.control_target` or `notifications.control_target` runs the control
+  calls over mutual TLS with the internal certificate. `sync-client-test` dials
+  the TLS port of its fake sync service under the identity certificate and
+  refuses a plaintext dial to it.
 - The frame mapping is the contract of this leg: `SocketEmitDto.operation` and
   `.option` cross as the **numbers** their enums carry — `contracts.proto`
   mirrors `sync-operation.hxx` and `table-name.hxx` value for value, and the

@@ -33,9 +33,12 @@ if(NOT TARGET sync-client-test)
   set_target_properties(sync-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
   target_link_libraries(sync-client-test PRIVATE argus::clients::sync
-      doctest::doctest)
+      argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
 
   target_compile_options(sync-client-test PRIVATE -Wall -Wextra)
 
-  add_test(NAME sync-client-test COMMAND sync-client-test)
+  add_test(NAME sync-client-test
+           COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                   $<TARGET_FILE:sync-client-test> 7)
+  set_tests_properties(sync-client-test PROPERTIES SKIP_RETURN_CODE 77)
 endif()
