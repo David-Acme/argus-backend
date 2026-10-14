@@ -143,6 +143,12 @@ The `rtc` and `turn` entries carry no port yet: the listeners are livekit-tls's 
 deploy track (`docs/turn.md` of argus-cloud, step C5b), so `config.toml.example` does not
 list them until those ports are fixed.
 
+`tests/vectors/push-sealed.json` is the sealed push vectors (PUSH_SEALED, PUSH_RESULT,
+their refusals and the HPKE known answers) of argus-cloud's `tests/vectors/`. It is
+not copied by `sync-vectors.sh`, which reads the cloud's protocol directory only: it is
+copied byte for byte by hand, its pin is in `pins.json`, and it belongs here because
+this client is the one that sends PUSH_SEALED (C4c).
+
 `device-names.json` is pinned with the frame vectors (2026-10-13): the device
 names of the spec's section 2.4, `<service>--<home-id>.argus-tunnel.lynk.page`,
 with the home id and service each one gives and the names that must be refused.
