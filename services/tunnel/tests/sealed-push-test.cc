@@ -13,6 +13,7 @@
 #include <nlohmann/json.hpp>
 #include <openssl/evp.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -26,7 +27,7 @@ namespace fs = std::filesystem;
 using tunnel::link::FrameType;
 
 constexpr std::string_view kPinnedSha256 =
-    "6ebf00ccbaeb653eccc247242dbb622c4630b71003445d499e1de55f11c9263b";
+    "b02008bc14b298abc3da86ae5053174bb8a2d9c49d63d7978b18a04f1671e14f";
 constexpr std::size_t kHeader = 12;
 
 std::string readFile(const fs::path& path)
@@ -70,6 +71,18 @@ std::string sha256Hex(const std::string& bytes)
   unsigned int length = 0;
   EVP_Digest(bytes.data(), bytes.size(), digest, &length, EVP_sha256(), nullptr);
   return toHex(std::string_view(reinterpret_cast<const char*>(digest), length));
+}
+
+bool isLowerHex(std::string_view text)
+{
+  return std::ranges::all_of(text, [](char symbol) {
+    return (symbol >= '0' && symbol <= '9') || (symbol >= 'a' && symbol <= 'f');
+  });
+}
+
+bool isApnsProvider(std::string_view provider)
+{
+  return provider == "apns" || provider == "apns_voip";
 }
 
 PushSealedEnvelope fcmEnvelope()
@@ -124,6 +137,30 @@ TEST_CASE("every sealed push vector parses to its fields and encodes back to its
     CHECK(toHex(frame) == vector.at("bytesHex").get<std::string>());
   }
   CHECK(checked == 5);
+}
+
+TEST_CASE("an APNs token travels as its 64 lowercase hex characters, never its 32 raw bytes")
+{
+  const nlohmann::json document = loadVectors();
+  std::size_t checked = 0;
+  for (const auto& vector : document.at("vectors")) {
+    if (vector.at("frame") != "push_sealed")
+      continue;
+    const auto& fields = vector.at("fields");
+    const std::string token = fields.at("token").get<std::string>();
+    if (!isApnsProvider(fields.at("provider").get<std::string>()))
+      continue;
+    ++checked;
+    PushSealedEnvelope parsed;
+    REQUIRE(push_envelope::parseSealedPayload(
+        fromHex(vector.at("payloadHex").get<std::string>()), parsed));
+    CHECK(parsed.token == token);
+    CHECK(parsed.token.size() == 64);
+    CHECK(isLowerHex(parsed.token));
+    CHECK(fromHex(token).size() == 32);
+    CHECK(parsed.token.size() != fromHex(token).size());
+  }
+  CHECK(checked == 2);
 }
 
 TEST_CASE("every refused sealed push vector is refused by the payload parser")
