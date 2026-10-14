@@ -1,12 +1,18 @@
 #!/usr/bin/env python3
 import argparse
+import base64
 import json
+import os
 import re
+import secrets
+import shutil
+import socket
 import ssl
 import struct
 import subprocess
 import sys
 import time
+import tomllib
 import urllib.error
 import urllib.request
 import zlib
@@ -49,6 +55,13 @@ ABSENT_DEPENDENCY_ANSWERS = {
     ("sync", "/rtc/token"): (503, "RTC_UNAVAILABLE"),
 }
 
+PUSH_TOKEN = "argus-golden-push-token"
+UNREGISTERED_TOKEN = "argus-golden-unregistered-token"
+RING_OPERATION = 8
+INITIAL_INFO_OPERATION = 0
+STACK_DIR = None
+OWNER_ID = None
+
 BODY_OVERRIDES = {
     ("auth", "PATCH", "/auth/me"): json.dumps({"name": "p" * 125}),
     ("identity", "POST", "/invitation"): json.dumps({"role": "owner"}),
@@ -60,6 +73,10 @@ BODY_OVERRIDES = {
         {"mode": "argus-probe", "environmentId": 0}),
     ("settings", "PATCH", "/settings/{1}"): json.dumps(
         {"changes": [{"key": "probe.setting", "value": "argus-probe"}]}),
+    ("notification", "POST", "/notification-token"): json.dumps(
+        {"token": PUSH_TOKEN, "platform": "android", "lang": "es"}),
+    ("notification", "DELETE", "/notification-token"): json.dumps(
+        {"token": UNREGISTERED_TOKEN}),
 }
 
 CONTROL_ROUTES = (
@@ -76,6 +93,25 @@ CONTROL_ROUTES = (
 BODY_METHODS = ("POST", "PATCH", "PUT")
 
 EXTRA_PROBES = {
+    ("notification", "DELETE", "/notification-token"): (
+        {"name": "owner-registered-token", "auth": "owner",
+         "path": "/notification-token",
+         "before": ({"method": "POST", "path": "/notification-token",
+                     "body": json.dumps({"token": UNREGISTERED_TOKEN,
+                                         "platform": "android",
+                                         "lang": "es"})},)},
+    ),
+    ("sync", "POST", "/rtc/decline"): (
+        {"name": "owner-ringing-call", "auth": "owner",
+         "path": "/rtc/decline",
+         "before": ({"ring": {
+             "caller": "productivity", "target": "notification",
+             "method": "argus.notification.v1.CallService/AnnounceAgenda",
+             "data": {"kind": "agenda_reminder", "title": "Golden agenda",
+                      "body": "Fixture row", "lang": "es"},
+             "remember": "ringingCall"}},),
+         "body": json.dumps({"callId": "{id:ringingCall}"})},
+    ),
     ("auth", "DELETE", "/auth/sessions"): (
         {"name": "resident-scope-others", "auth": "resident",
          "path": "/auth/sessions?scope=others"},
@@ -898,7 +934,148 @@ def switch_module_on(entry, bases, module, sessions, timeout):
                f"{entry['baseUnit']} to serve {module} routes again")
 
 
+def caller_config(unit):
+    return tomllib.loads((STACK_DIR / unit / "config.toml").read_text())
+
+
+def grpc_call(caller, target, method, payload, timeout):
+    callee = caller_config(target)["internal_tls"]["address"]
+    credential = caller_config(target)["grpc"][f"caller_{caller}"]
+    tls_dir = Path(caller_config(caller)["internal_tls"]["dir"])
+    grpcurl = shutil.which("grpcurl") or str(Path.home() / "go/bin/grpcurl")
+    command = [grpcurl,
+               "-cacert", str(tls_dir / "ca.pem"),
+               "-cert", str(tls_dir / "cert.pem"),
+               "-key", str(tls_dir / "key.pem"),
+               "-import-path", str(REPO_ROOT / "packages/contracts/proto"),
+               "-proto", "argus/notification/v1/notification.proto",
+               "-H", f"x-argus-credential: {credential}",
+               "-d", json.dumps(payload), callee, method]
+    result = subprocess.run(command, capture_output=True, text=True,
+                            timeout=timeout)
+    if result.returncode != 0:
+        raise SystemExit(f"{method} answered {result.returncode}: "
+                         f"{result.stderr[:200]!r}")
+    return json.loads(result.stdout or "{}")
+
+
+class SyncSocket:
+    def __init__(self, base, token, role, timeout):
+        host, port = base.split("://", 1)[1].rsplit(":", 1)
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        raw = socket.create_connection((host, int(port)), timeout=timeout)
+        self.conn = context.wrap_socket(raw, server_hostname=host)
+        self.conn.settimeout(timeout)
+        key = base64.b64encode(os.urandom(16)).decode()
+        lines = ["GET /sync HTTP/1.1", f"Host: {host}:{port}",
+                 "Upgrade: websocket", "Connection: Upgrade",
+                 f"Sec-WebSocket-Key: {key}", "Sec-WebSocket-Version: 13",
+                 f"Authorization: Bearer {token}",
+                 f"User-Agent: {RECORDER_UA}",
+                 *(f"{name}: {value}" for name, value
+                   in device_headers(role).items())]
+        self.conn.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
+        head = b""
+        while b"\r\n\r\n" not in head:
+            chunk = self.conn.recv(4096)
+            if not chunk:
+                raise SystemExit("sync closed the socket during the handshake")
+            head += chunk
+        status_line, _, rest = head.partition(b"\r\n")
+        if b" 101 " not in status_line:
+            raise SystemExit(f"sync refused the socket: {status_line!r}")
+        self.buffer = bytearray(rest.partition(b"\r\n\r\n")[2])
+
+    def _fill(self, size):
+        while len(self.buffer) < size:
+            chunk = self.conn.recv(65536)
+            if not chunk:
+                raise SystemExit("the sync socket closed")
+            self.buffer.extend(chunk)
+
+    def frame(self):
+        self._fill(2)
+        opcode, length = self.buffer[0] & 0x0F, self.buffer[1] & 0x7F
+        offset = 2
+        if length == 126:
+            self._fill(4)
+            length, offset = struct.unpack(">H", bytes(self.buffer[2:4]))[0], 4
+        elif length == 127:
+            self._fill(10)
+            length, offset = struct.unpack(">Q", bytes(self.buffer[2:10]))[0], 10
+        self._fill(offset + length)
+        payload = bytes(self.buffer[offset:offset + length])
+        del self.buffer[:offset + length]
+        return opcode, payload
+
+    def await_operation(self, operation, deadline):
+        while time.monotonic() < deadline:
+            try:
+                opcode, payload = self.frame()
+            except socket.timeout:
+                return None
+            if opcode == 0x9:
+                self.conn.sendall(b"\x8a\x80\x00\x00\x00\x00")
+                continue
+            if opcode == 0x1:
+                info = find_operation(json.loads(payload), operation)
+                if info is not None:
+                    return info
+        return None
+
+    def close(self):
+        self.conn.close()
+
+
+def find_operation(node, operation):
+    if isinstance(node, dict):
+        if node.get("operation") == operation and isinstance(node.get("info"), dict):
+            return node["info"]
+        for value in node.values():
+            found = find_operation(value, operation)
+            if found is not None:
+                return found
+    if isinstance(node, list):
+        for value in node:
+            found = find_operation(value, operation)
+            if found is not None:
+                return found
+    return None
+
+
+def ring_hook(hook, bases, sessions, timeout):
+    token = session_of("owner", sessions)
+    user = OWNER_ID
+    socket_ = SyncSocket(bases["sync"], token, "owner", timeout)
+    try:
+        deadline = time.monotonic() + timeout
+        if socket_.await_operation(INITIAL_INFO_OPERATION, deadline) is None:
+            raise SystemExit("sync sent no InitialInfo to the recorder socket")
+        data = {**hook["data"],
+                "threadKey": f"agenda:reminder:golden-{secrets.token_hex(8)}:0"}
+        rang = grpc_call(hook["caller"], hook["target"], hook["method"],
+                         {"user_ids": [user], "lead_minutes": 0,
+                          "title": data["title"], "body": data["body"],
+                          "data": json.dumps(data),
+                          "command_id": data["threadKey"]},
+                         timeout).get("rang", 0)
+        if int(rang) != 1:
+            raise SystemExit(f"the agenda announcement rang {rang} calls, "
+                             "not the one the decline needs")
+        info = socket_.await_operation(RING_OPERATION,
+                                       time.monotonic() + timeout)
+    finally:
+        socket_.close()
+    if not info or not info.get("callId"):
+        raise SystemExit("no CallIncoming frame carried a callId")
+    RUNTIME_IDS[hook["remember"]] = info["callId"]
+
+
 def run_hook(hook, entry, bases, sessions, timeout):
+    if "ring" in hook:
+        return ring_hook(hook["ring"], bases, sessions, timeout)
     base = bases[hook.get("unit", entry["baseUnit"])]
     role = hook.get("auth", "owner")
     body = fill_runtime(hook.get("body"))
@@ -957,12 +1134,12 @@ def run_probe(entry, base, sessions, timeout):
         if probe["userAgent"] == RECORDER_UA:
             headers.update(device_headers(probe["auth"]))
     payload = fill_runtime(probe["body"])
-    if payload is None:
+    if probe["body"] is None:
         described = None
-    elif isinstance(payload, bytes):
-        described = f"<{len(payload)} bytes>"
+    elif isinstance(probe["body"], bytes):
+        described = f"<{len(probe['body'])} bytes>"
     else:
-        described = payload
+        described = probe["body"]
     status, content_type, raw = send(
         base, entry["method"], resolve_path(probe["path"], base, sessions,
                                             timeout),
@@ -1070,7 +1247,7 @@ def load_manifest(fixtures):
     return json.loads(path.read_text())
 
 
-def write_manifest(fixtures, units, probes, deviations):
+def write_manifest(fixtures, units, probe_count, deviations):
     manifest = {
         "fixtures": "scripts/fixtures/http",
         "sources": "scripts/lib/route-baseline.txt (the route census)",
@@ -1107,7 +1284,7 @@ def write_manifest(fixtures, units, probes, deviations):
         ],
         "declaredDeviations": deviations,
         "units": units,
-        "probes": len(probes),
+        "probes": probe_count,
     }
     (fixtures / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n")
@@ -1123,12 +1300,44 @@ def dropped_units(fixtures, bases):
                   if unit != "shared" and unit not in bases)
 
 
-def record(fixtures, routes, bases, sessions, ids, roles, timeout, stack):
+def only_pairs(values):
+    pairs = set()
+    for value in values:
+        method, _, path = value.partition(" ")
+        if not method or not path.startswith("/"):
+            raise SystemExit(f"--only expects 'METHOD /path', got {value!r}")
+        pairs.add((method, path))
+    return pairs
+
+
+def merge_records(fixtures, unit, records):
+    path = fixture_path(fixtures, unit)
+    existing = json.loads(path.read_text())["probes"] if path.is_file() else []
+    position = {(row["method"], row["path"], row["probe"]): index
+                for index, row in enumerate(existing)}
+    for record_entry in records:
+        key = (record_entry["method"], record_entry["path"],
+               record_entry["probe"])
+        if key in position:
+            existing[position[key]] = record_entry
+        else:
+            existing.append(record_entry)
+    path.write_text(json.dumps({"unit": unit, "probes": existing},
+                               indent=2, sort_keys=True) + "\n")
+
+
+def recorded_probe_count(fixtures):
+    return sum(len(json.loads(fixture_path(fixtures, unit).read_text())["probes"])
+               for unit in recorded_units(fixtures))
+
+
+def record(fixtures, routes, bases, sessions, ids, roles, timeout, stack,
+           only=None):
     unknown = unbooted(routes, bases)
     for unit in unknown:
         print(f"skip: {unit} is not booted in this stack")
     report_unsent(routes, bases, ids, roles)
-    dropped = dropped_units(fixtures, bases)
+    dropped = [] if only is not None else dropped_units(fixtures, bases)
     if dropped:
         print("refusing to record: the stack is missing the units "
               + ", ".join(dropped) + ", whose recordings would be dropped",
@@ -1144,6 +1353,16 @@ def record(fixtures, routes, bases, sessions, ids, roles, timeout, stack):
     manifest = load_manifest(fixtures)
     deviations = manifest["declaredDeviations"]
     plan = build_plan(plan_routes(routes, bases), ids, roles, bases)
+    if only is not None:
+        planned = {(entry["method"], entry["route"]) for entry in plan}
+        absent = sorted(only - planned)
+        if absent:
+            print("refusing to record: the stack plans no row for "
+                  + ", ".join(f"{method} {path}" for method, path in absent),
+                  file=sys.stderr)
+            return 2
+        plan = [entry for entry in plan
+                if (entry["method"], entry["route"]) in only]
     failures = 0
     units = {}
     fixtures.mkdir(parents=True, exist_ok=True)
@@ -1161,10 +1380,17 @@ def record(fixtures, routes, bases, sessions, ids, roles, timeout, stack):
         if session_killed(entry, record_entry):
             sessions = remint_sessions(stack, bases["auth"], timeout)
     for unit, records in sorted(units.items()):
-        fixture_path(fixtures, unit).write_text(
-            json.dumps({"unit": unit, "probes": records},
-                       indent=2, sort_keys=True) + "\n")
-    write_manifest(fixtures, sorted(units), plan, deviations)
+        if only is None:
+            fixture_path(fixtures, unit).write_text(
+                json.dumps({"unit": unit, "probes": records},
+                           indent=2, sort_keys=True) + "\n")
+        else:
+            merge_records(fixtures, unit, records)
+    if only is None:
+        write_manifest(fixtures, sorted(units), len(plan), deviations)
+    else:
+        write_manifest(fixtures, recorded_units(fixtures),
+                       recorded_probe_count(fixtures), deviations)
     print(f"record: {len(plan)} probes over {len(units)} units, "
           f"{failures} violations, {len(unknown)} units skipped")
     return 1 if failures else 0
@@ -1345,16 +1571,26 @@ def parse_args(argv):
                              "has none answers 404 where the fixture rows are "
                              "the subject")
     parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--only", action="append", default=[],
+                        metavar="METHOD /path",
+                        help="record mode only: re-record the rows of this "
+                             "route and leave every other row byte for byte "
+                             "(repeatable)")
     return parser.parse_args(argv)
 
 
 def main(argv):
+    global STACK_DIR, OWNER_ID
     args = parse_args(argv)
+    if args.only and args.command != "record":
+        print("--only applies to record only", file=sys.stderr)
+        return 2
     routes = parse_baseline(Path(args.baseline))
     if args.command == "census":
         return census(routes)
 
     stack = Path(args.stack_dir)
+    STACK_DIR = stack
     fixtures = Path(args.fixtures)
     bases = {}
     for unit in sorted({route["unit"] for route in routes}):
@@ -1374,6 +1610,7 @@ def main(argv):
     if args.seed:
         run_seeder(stack, [])
     ids, refresh = load_sessions(stack, not args.no_mint)
+    OWNER_ID = ids.get("ownerUser")
     absent = sorted(slot for slot, value in ids.items() if not value)
     if absent:
         print("the stack has no fixture row for " + ", ".join(absent)
@@ -1393,7 +1630,8 @@ def main(argv):
     try:
         if args.command == "record":
             return record(fixtures, routes, bases, sessions, ids, roles,
-                          args.timeout, stack)
+                          args.timeout, stack,
+                          only_pairs(args.only) if args.only else None)
         return verify(fixtures, routes, bases, sessions, ids, roles,
                       args.timeout, args.verbose, stack)
     finally:
