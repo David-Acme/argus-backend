@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-TUNNEL_PKI_SERVICES="auth identity sync camera productivity notification guard settings"
+TUNNEL_PKI_SERVICES="auth identity sync camera productivity notification guard settings rtc turn"
 TUNNEL_PKI_DOMAIN="argus-tunnel.lynk.page"
 TUNNEL_PKI_LEAF_DAYS=730
 TUNNEL_PKI_RENEW_DAYS=60

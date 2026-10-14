@@ -7,7 +7,7 @@ usage() {
 usage: scripts/tunnel-pki-test.sh
 
 Issues the device-name certificates of scripts/lib/tunnel-pki.sh in a scratch
-directory and checks them: an instance CA made with this home's eight device
+directory and checks them: an instance CA made with this home's ten device
 names permitted, one 2-year certificate per service whose one SAN is
 <service>--<home-id>.argus-tunnel.lynk.page, renewal under 60 days, a key that
 no longer matches, a CA whose constraints leave the names out (refused, nothing
@@ -79,8 +79,8 @@ tunnel_config "$config" "$HOME_ID"
 [ "$(tunnel_pki_name sync "$HOME_ID")" = "sync--$HOME_ID.argus-tunnel.lynk.page" ] ||
   fail "a device name is <service>--<home-id>.argus-tunnel.lynk.page"
 names="$(tunnel_pki_ca_names "$config")"
-[ "$(wc -w <<<"$names")" -eq 8 ] || fail "the CA names are the eight services, got: $names"
-for service in auth identity sync camera productivity notification guard settings; do
+[ "$(wc -w <<<"$names")" -eq 10 ] || fail "the CA names are the ten services, got: $names"
+for service in auth identity sync camera productivity notification guard settings rtc turn; do
   grep -qw "$service--$HOME_ID.argus-tunnel.lynk.page" <<<"$names" ||
     fail "the CA names leave out $service"
 done
@@ -100,7 +100,7 @@ fi
 pki="$certs/tunnel"
 ensure_tunnel_pki "$pki" "$certs/ca.pem" "$home/ca/ca.key" "$config" > "$TEST_TMP/first.log"
 [ "$(mode_of "$pki")" = 700 ] || fail "the tunnel certificate directory is not 0700"
-for service in auth identity sync camera productivity notification guard settings; do
+for service in auth identity sync camera productivity notification guard settings rtc turn; do
   name="$service--$HOME_ID.argus-tunnel.lynk.page"
   leaf="$pki/$service"
   [ -s "$leaf/cert.pem" ] && [ -s "$leaf/key.pem" ] || fail "$service has no device-name certificate"
@@ -122,8 +122,8 @@ for service in auth identity sync camera productivity notification guard setting
     fail "$service's certificate file is not the leaf followed by the CA"
   internal_pki_pair_matches "$leaf/cert.pem" "$leaf/key.pem" || fail "$service's key does not match"
 done
-grep -q "issued 730-day device-name certificates for auth identity sync camera productivity notification guard settings" \
-  "$TEST_TMP/first.log" || fail "the first run does not report the eight certificates"
+grep -q "issued 730-day device-name certificates for auth identity sync camera productivity notification guard settings rtc turn" \
+  "$TEST_TMP/first.log" || fail "the first run does not report the ten certificates"
 
 before="$(state_of "$pki")"
 ensure_tunnel_pki "$pki" "$certs/ca.pem" "$home/ca/ca.key" "$config" > "$TEST_TMP/second.log"
@@ -188,7 +188,7 @@ server_pid=""
 narrow="$TEST_TMP/narrow"
 ensure_instance_certs "$narrow" "$narrow/certs" "" "$narrow/ca" > /dev/null
 ensure_tunnel_pki "$narrow/certs/tunnel" "$narrow/certs/ca.pem" "$narrow/ca/ca.key" "$config" > "$TEST_TMP/narrow.log"
-grep -q "does not permit the device names of auth identity sync camera productivity notification guard settings" \
+grep -q "does not permit the device names of auth identity sync camera productivity notification guard settings rtc turn" \
   "$TEST_TMP/narrow.log" || fail "a CA whose constraints leave the names out was not reported"
 [ -z "$(find "$narrow/certs/tunnel" -type f)" ] || fail "a refused certificate was left on disk"
 
