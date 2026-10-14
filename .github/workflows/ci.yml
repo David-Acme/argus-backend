@@ -73,3 +73,46 @@ jobs:
 
       - name: Build and test ${{ matrix.project }}
         run: ./scripts/build-all.sh ci --only ${{ matrix.project }}
+
+  gates:
+    name: Gates and orchestrator test
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Install the pinned nats-server for the live suites
+        run: |
+          pin="$GITHUB_WORKSPACE/.github/nats-server.sha256"
+          asset="$(awk '{print $2}' "$pin")"
+          version="${asset#nats-server-v}"
+          version="${version%-linux-amd64.tar.gz}"
+          dir="$RUNNER_TEMP/nats-server"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$dir/$asset" \
+            "https://github.com/nats-io/nats-server/releases/download/v$version/$asset"
+          (cd "$dir" && sha256sum -c "$pin")
+          tar -xzf "$dir/$asset" -C "$dir"
+          bin="$dir/${asset%.tar.gz}/nats-server"
+          "$bin" --version
+          echo "ARGUS_NATS_SERVER_BIN=$bin" >> "$GITHUB_ENV"
+
+      - name: Comments gate
+        run: ./scripts/check-comments.sh
+
+      - name: Dependency tiers gate
+        run: ./scripts/check-deps.sh
+
+      - name: Route gate
+        run: ./scripts/check-routes.sh
+
+      - name: Census gate
+        run: python3 scripts/golden-http.py census
+
+      - name: Vendored patches gate
+        run: ./scripts/check-vendored.sh
+
+      - name: Test build orchestrator
+        run: ./scripts/build-all-test.sh
