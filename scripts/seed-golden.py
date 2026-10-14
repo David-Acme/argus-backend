@@ -169,19 +169,21 @@ def mint_sessions(auth: sqlite3.Connection, auth_config: dict, ids: dict,
                 "INSERT INTO device_credential(user_id,device_hash,secret_hash)"
                 " VALUES(?,?,?)", (user_id, device_hash, binding))
             credentials[role] = credential
+        session_id = secrets.token_hex(16)
         access = mint({"iss": "argus", "sub": str(user_id), "iat": now,
                        "exp": now + 900, "typ": "access",
                        "jti": secrets.token_hex(16)}, access_secret)
         refresh = mint({"iss": "argus", "sub": str(user_id), "iat": now,
                         "exp": now + 864000, "typ": "refresh",
-                        "jti": secrets.token_hex(16)}, refresh_secret)
+                        "jti": secrets.token_hex(16), "sid": session_id},
+                       refresh_secret)
         auth.execute("DELETE FROM refresh_token WHERE user_id = ?", (user_id,))
         auth.execute(
             "INSERT INTO refresh_token(user_id,access_token,refresh_token,"
-            "device_hash,user_agent,is_valid,is_used,expires_at,created_at)"
-            " VALUES(?,?,?,?,?,1,0,?,?)",
+            "device_hash,user_agent,is_valid,is_used,expires_at,created_at,"
+            "session_id) VALUES(?,?,?,?,?,1,0,?,?,?)",
             (user_id, access, refresh, device_hash, RECORDER_UA, now + 86400,
-             now))
+             now, session_id))
         sessions[role] = refresh
     auth.commit()
 
