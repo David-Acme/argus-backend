@@ -995,7 +995,7 @@ one handshake. A service whose main used to build its server inline gets
 such a delegate.
 
 Wired so far: tts, settings, productivity, notification, sync, auth, guard,
-voice, stt, vlm and llm.
+voice, stt, vlm, llm and camera.
 - tts and settings publish no gRPC port, so 7329 and 7247 are not published
   either.
 - settings opens its mutual TLS port on the modules RPC server, beside
@@ -1044,6 +1044,10 @@ voice, stt, vlm and llm.
   published either. Its LlmRpcServer opens the plaintext 7132 and the mutual
   TLS port through startListening and mounts the internal certificate
   read-only.
+- camera publishes its plaintext gRPC 7036 on 127.0.0.1, so 7236 is published
+  there too (`CAMERA_GRPC_TLS_PORT`). Its CameraRpcServer opens both ports
+  through startCameraRpc, and a port that cannot be bound stops the start
+  (services/camera/CONTEXT.md, "Mutual TLS (S1 step 4)").
 
 The clients move to `tls:` targets in step 5, and the plaintext listeners
 go only after the owner's check. For every deploy template that declares

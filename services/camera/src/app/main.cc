@@ -25,12 +25,14 @@
 #include <auth/role-access.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
+#include <grpc/internal-tls.hxx>
 #include <http/certificate-reload.hxx>
 #include <http/cors.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
+#include <http/tls-health.hxx>
 #include <mdns/mdns-service.hxx>
 #include <feature/monitor/camera-health-monitor.hxx>
 #include <feature/monitor/camera-presence.hxx>
@@ -64,6 +66,7 @@
 
 #include <json/value.h>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -153,6 +156,16 @@ int main()
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
+  const InternalTlsConfig internalTlsConfig = InternalTlsConfig::resolve();
+  std::optional<argus::client::InternalTlsMaterial> internalTls;
+  try {
+    internalTls = argus::client::installInternalTlsFrom(internalTlsConfig.directory);
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  const auto loadedTls = internalTls.value_or(argus::client::InternalTlsMaterial{});
 
   const CameraDbConfig cameraDb = CameraConfig::resolveDb();
   const ListenerConfig listener = CameraConfig::resolveListener();
@@ -232,11 +245,15 @@ int main()
     LOG_INFO << "Camera tools RPC not served: [grpc] caller_llm is empty";
   }
 
-  CameraRpcServer rpc({.services = std::move(rpcServices)});
-  if (!rpc.listening()) {
-    LOG_FATAL << "gRPC server failed to listen on " << rpc.address();
+  CameraRpcServer rpc({.services = std::move(rpcServices),
+                       .tlsAddress = internalTlsConfig.address,
+                       .tls = internalTls});
+  if (const auto& failure = rpc.failure()) {
+    LOG_FATAL << *failure;
     return 1;
   }
+  if (rpc.tlsPort() > 0)
+    LOG_INFO << "gRPC with mutual TLS on " << internalTlsConfig.address;
 
   drogon::app().registerController(std::make_shared<CameraController>());
   drogon::app().registerController(std::make_shared<ZoneController>());
@@ -424,7 +441,10 @@ int main()
                                  if (sinkHealth == nullptr)
                                    return Json::Value(Json::objectValue);
                                  return sinkHealth->health();
-                               }}}}));
+                               }},
+                              tls_health::healthExtra(
+                                  {.certificatePem = loadedTls.certificatePem,
+                                   .trustBundlePem = loadedTls.trustBundlePem})}}));
 
   drogon::app().registerBeginningAdvice(
       [&cameraDb, &operatorService, &healthMonitor, &cameraActionRpc,

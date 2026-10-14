@@ -593,3 +593,16 @@ target_compile_options(camera-module-data-test PRIVATE -Wall -Wextra)
 set_target_properties(camera-module-data-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME camera-module-data-test COMMAND camera-module-data-test)
 argus_runtime_rpath(camera-module-data-test)
+
+add_executable(camera-rpc-server-test tests/unit/camera-rpc-server-test.cc)
+set_target_properties(camera-rpc-server-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(camera-rpc-server-test PRIVATE
+    argus::camera-rpc-server
+    argus::lib::grpc-test-support
+    doctest::doctest)
+target_compile_options(camera-rpc-server-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(camera-rpc-server-test)
+add_test(NAME camera-rpc-server-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:camera-rpc-server-test> 5)
+set_tests_properties(camera-rpc-server-test PROPERTIES SKIP_RETURN_CODE 77)

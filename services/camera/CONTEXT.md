@@ -257,6 +257,13 @@ sibling service: own binary, own CMake preset, own `camera.db`.
 - No other service opens camera.db: `[camera] db` is this service's own key
   and no other config resolves it. argus-camera stays the single owner of the
   file.
+- **Mutual TLS (S1 step 4)**: the same gRPC services also listen on
+  `[internal_tls] address` (the `[grpc]` port plus 200, 7236 in the deploy
+  stack) with mutual TLS from the internal certificate in `[internal_tls]
+  dir`. `startCameraRpc` opens both through `argus::client::startListening`
+  and `cameraRpcFailure` names both addresses when either cannot be bound,
+  which stops the start. The plaintext 7036 stays until the owner's deploy
+  check.
 
 ## The camera change feed (3a-2b)
 

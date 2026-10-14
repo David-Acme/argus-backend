@@ -8,33 +8,69 @@
 #include <mutex>
 #include <stdexcept>
 #include <thread>
+#include <utility>
 
 namespace
 {
 constexpr uint16_t kDefaultGrpcPort = 7036;
 constexpr auto kShutdownGrace = std::chrono::seconds(2);
+
+argus::client::ListenInput listenInputOf(const CameraRpcListenInput& input)
+{
+  return {.address = input.address,
+          .tlsAddress = input.tlsAddress,
+          .tls = input.tls,
+          .services = input.services,
+          .maxReceiveBytes = std::nullopt};
+}
+}
+
+argus::client::Listener startCameraRpc(const CameraRpcListenInput& input)
+{
+  if (input.services.empty() ||
+      std::ranges::any_of(input.services, [](const grpc::Service* service) {
+        return service == nullptr;
+      }))
+    throw std::invalid_argument("Invalid camera RPC configuration");
+  return argus::client::startListening(listenInputOf(input));
+}
+
+std::optional<std::string>
+cameraRpcFailure(const CameraRpcListenInput& input,
+                 const argus::client::Listener& listener)
+{
+  const auto listening = listenInputOf(input);
+  return argus::client::listenFailure(
+      {.name = "gRPC server",
+       .input = listening,
+       .listener = listener,
+       .consequence = "without it sync cannot pull the camera tables, guard "
+                      "cannot announce, listen, sound the alarm or the siren, "
+                      "or take a person crop, the llm cannot read the camera "
+                      "catalog or use the camera tools, and settings cannot "
+                      "reach camera's settings or module data"});
 }
 
 struct CameraRpcServer::Impl
 {
   explicit Impl(const CameraRpcInput& input)
   {
-    if (input.services.empty() ||
-        std::ranges::any_of(input.services, [](const grpc::Service* service) {
-          return service == nullptr;
-        }))
-      throw std::invalid_argument("Invalid camera RPC configuration");
     const GrpcListenerConfig listener =
         GrpcListenerConfig::resolve(kDefaultGrpcPort);
     address_ = listener.host + ":" + std::to_string(listener.port);
-    grpc::ServerBuilder builder;
-    builder.AddListeningPort(address_, grpc::InsecureServerCredentials());
-    for (grpc::Service* service : input.services)
-      builder.RegisterService(service);
-    server_ = builder.BuildAndStart();
+    const CameraRpcListenInput listen{.address = address_,
+                                      .tlsAddress = input.tlsAddress,
+                                      .tls = input.tls,
+                                      .services = input.services};
+    auto started = startCameraRpc(listen);
+    failure_ = cameraRpcFailure(listen, started);
+    tlsPort_ = started.tlsPort;
+    server_ = std::move(started.server);
   }
 
   std::string address_;
+  std::optional<std::string> failure_;
+  int tlsPort_{0};
   std::unique_ptr<grpc::Server> server_;
   std::mutex stopMutex_;
   std::jthread stopper_;
@@ -48,7 +84,12 @@ CameraRpcServer::CameraRpcServer(const CameraRpcInput& input)
 
 CameraRpcServer::~CameraRpcServer() { shutdown(); }
 
-bool CameraRpcServer::listening() const { return impl_->server_ != nullptr; }
+const std::optional<std::string>& CameraRpcServer::failure() const
+{
+  return impl_->failure_;
+}
+
+int CameraRpcServer::tlsPort() const { return impl_->tlsPort_; }
 
 const std::string& CameraRpcServer::address() const { return impl_->address_; }
 

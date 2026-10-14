@@ -186,6 +186,7 @@ services:
     ports:
       - "${CAMERA_PORT:-7026}:7026"
       - "127.0.0.1:${CAMERA_GRPC_PORT:-7036}:7036"
+      - "127.0.0.1:${CAMERA_GRPC_TLS_PORT:-7236}:7236"
       - "${CAMERA_WEBRTC_PORT:-8555}:8555/tcp"
       - "${CAMERA_WEBRTC_PORT:-8555}:8555/udp"
     devices:
@@ -217,6 +218,12 @@ services:
           create_host_path: false
       - ${ARGUS_DATA_DIR:-./data}/camera:/opt/argus/camera
       - camera-stream:/opt/argus/stream
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/certs/internal/camera
+        target: /run/secrets/internal-tls
+        read_only: true
+        bind:
+          create_host_path: false
       - type: bind
         source: ../services/camera/database/schema.sql
         target: /opt/argus/database/schema.sql
