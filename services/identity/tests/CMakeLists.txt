@@ -390,3 +390,24 @@ target_link_libraries(identity-rpc-golden-test PRIVATE
 target_compile_options(identity-rpc-golden-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-rpc-golden-test)
 add_test(NAME identity-rpc-golden-test COMMAND identity-rpc-golden-test)
+
+add_executable(identity-rpc-server-test unit/identity-rpc-server-test.cc)
+target_include_directories(identity-rpc-server-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/support)
+target_compile_definitions(identity-rpc-server-test PRIVATE
+    ARGUS_IDENTITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/../database/schema.sql"
+    ARGUS_IDENTITY_GOLDEN_FILE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/identity-rpc-golden.json")
+target_link_libraries(identity-rpc-server-test PRIVATE
+    argus::identity-rpc
+    argus::clients::identity
+    argus::lib::grpc-test-support
+    argus::lib::sqlite
+    argus::lib::test-support
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(identity-rpc-server-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(identity-rpc-server-test)
+add_test(NAME identity-rpc-server-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:identity-rpc-server-test> 5)
+set_tests_properties(identity-rpc-server-test PROPERTIES SKIP_RETURN_CODE 77)

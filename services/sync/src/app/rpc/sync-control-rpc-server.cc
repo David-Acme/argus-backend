@@ -29,6 +29,6 @@ syncControlRpcFailure(const SyncControlRpcListenInput& input,
       {.name = "Sync control RPC",
        .input = listening,
        .listener = listener,
-       .consequence = "without it identity, notification and guard cannot "
+       .consequence = "without it identity and notification cannot "
                       "reach a user's room"});
 }

@@ -191,6 +191,34 @@ The gRPC server raises its receive limit to 12 MiB: the auth DTOs accept a
 answered a full-resolution phone photo with `RESOURCE_EXHAUSTED`, which the
 caller reported as an unrecognized face.
 
+**The RPC must listen.** Since S1 step 4, identity does not start when its RPC
+cannot listen on 7040, or on its mutual TLS port 7240 when that one is
+configured. It logs the cause with LOG_FATAL and exits 1. It used to log a
+warning and run on, but eight services read identity over this RPC, and an
+identity running without it would fail all of them with no visible cause
+(reviewer ruling, 2026-10-13, the same reason as for sync and auth). The
+message names the services; what each one reads is:
+- auth: GetUser for a session's user context, IdentifyPerson for face sign-in,
+  RegisterUser and UpdateUser for a user's name;
+- camera: IdentifyPerson with purpose CAMERA for the known-face match
+  (the client's identifyForCamera), ListPrivacy;
+- guard: GetUser, GetPerson, ListUsers, ListNotifiableUsers, ListPrivacy,
+  TagPerson, PromotePerson;
+- notification: GetUser, GetPerson, ListUsers;
+- llm: ListPersons for its catalog, ListNotifiableUsers and GetUser to find
+  the Owner;
+- voice: UpdateUser for a spoken name, and the VoiceprintService calls;
+- sync: SyncService.PullTable for the identity tables;
+- settings: the settings-wire module data, module impact and role
+  reassignment.
+
+The server comes from startIdentityRpc (`src/app/rpc/identity-rpc-server`), a
+thin delegate to lib/grpc's startListening that carries the 12 MiB cap on both
+ports, and the decision is identityRpcFailure. identity-rpc-server-test covers
+both. Its golden case shows that GetUser, ListUsers and IdentifyPerson answer
+through it exactly as the inline server answered when the golden was
+recorded, with and without the material loaded.
+
 The listener starts before `FaceService::init()` runs, so the inference slots
 start closed and a call that arrives during boot waits for the models.
 Either way the slots open: `init()` opens them whether the models loaded or

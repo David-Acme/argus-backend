@@ -16,8 +16,10 @@
 #include <auth/valid-json-filter.hxx>
 #include <cert/cert-service.hxx>
 #include <config/config-service.hxx>
+#include <app/rpc/identity-rpc-server.hxx>
 #include <grpc/fleet-caller-gate.hxx>
 #include <grpc/grpc-server-drain.hxx>
+#include <grpc/internal-tls.hxx>
 #include <config/identity-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/face-upgrade/services/face-upgrade-service.hxx>
@@ -43,6 +45,7 @@
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
 #include <http/route-announcements.hxx>
+#include <http/tls-health.hxx>
 #include <json/value.h>
 #include <mdns/mdns-service.hxx>
 #include <memory>
@@ -57,6 +60,7 @@
 #include <shared/services/schema/secure-delete.hxx>
 #include <shared/services/storage/private-portrait-service.hxx>
 #include <sqlite/db-service.hxx>
+#include <optional>
 #include <string>
 #include <sync/identity-change-sink.hxx>
 #include <sync/sync-client.hxx>
@@ -70,7 +74,6 @@
 namespace
 {
 
-constexpr int kMaxRpcReceiveBytes = 12 * 1024 * 1024;
 constexpr std::chrono::milliseconds kRpcDrainDeadline{2000};
 constexpr double kVoiceCallSweepSeconds = 60.0;
 constexpr double kVoiceSamplePurgeSeconds = 3600.0;
@@ -132,6 +135,16 @@ int main()
   DbService::enableUriFilenames();
 
   ConfigService::load("config.toml");
+  const InternalTlsConfig internalTlsConfig = InternalTlsConfig::resolve();
+  std::optional<argus::client::InternalTlsMaterial> internalTls;
+  try {
+    internalTls = argus::client::installInternalTlsFrom(internalTlsConfig.directory);
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  const auto loadedTls = internalTls.value_or(argus::client::InternalTlsMaterial{});
 
   const IdentityDbConfig identityDb = IdentityConfig::resolveDb();
   ConfigService::setRuntimeString("database.file", identityDb.dbPath);
@@ -308,7 +321,10 @@ int main()
                                  status["indexed"] = static_cast<Json::UInt64>(
                                      VoiceprintIndex::instance().size());
                                  return status;
-                               }}}}));
+                               }},
+                              tls_health::healthExtra(
+                                  {.certificatePem = loadedTls.certificatePem,
+                                   .trustBundlePem = loadedTls.trustBundlePem})}}));
 
   const auto rpcGate = std::make_shared<const argus::client::FleetCallerGate>(
       argus::client::FleetGateConfig{
@@ -337,14 +353,8 @@ int main()
   IdentitySyncRpcService syncRpcService({.gate = rpcGate});
   IdentityVoiceprintRpcService voiceprintRpcService(
       {.gate = rpcGate, .voiceprint = voiceprint});
-  grpc::ServerBuilder rpcBuilder;
-  rpcBuilder.SetMaxReceiveMessageSize(kMaxRpcReceiveBytes);
-  rpcBuilder.AddListeningPort(rpc.listener.host + ":" +
-                                  std::to_string(rpc.listener.port),
-                              grpc::InsecureServerCredentials());
-  rpcBuilder.RegisterService(&rpcService);
-  rpcBuilder.RegisterService(&syncRpcService);
-  rpcBuilder.RegisterService(&voiceprintRpcService);
+  std::vector<grpc::Service*> rpcServices{&rpcService, &syncRpcService,
+                                          &voiceprintRpcService};
   IdentityModuleData moduleData;
   const IdentityModuleImpact moduleImpact;
   IdentityRoleReassign roleReassign;
@@ -359,28 +369,33 @@ int main()
     settingsRpc->attachModuleData(moduleData);
     settingsRpc->attachModuleImpact(moduleImpact);
     settingsRpc->attachRoleReassign(roleReassign);
-    rpcBuilder.RegisterService(settingsRpc.get());
+    rpcServices.push_back(settingsRpc.get());
   }
-  std::unique_ptr<grpc::Server> rpcServer(rpcBuilder.BuildAndStart());
-  const bool rpcListening = rpcServer != nullptr;
-  argus::client::GrpcServerDrain rpcDrain(std::move(rpcServer),
+  const IdentityRpcListenInput rpcInput{
+      .address = rpc.listener.host + ":" + std::to_string(rpc.listener.port),
+      .tlsAddress = internalTlsConfig.address,
+      .tls = internalTls,
+      .services = std::move(rpcServices)};
+  auto rpcListener = startIdentityRpc(rpcInput);
+  if (const auto failure = identityRpcFailure(rpcInput, rpcListener)) {
+    LOG_FATAL << *failure << " — aborting startup";
+    _exit(1);
+  }
+  if (rpcListener.tlsPort > 0)
+    LOG_INFO << "Identity RPC with mutual TLS on " << internalTlsConfig.address;
+  argus::client::GrpcServerDrain rpcDrain(std::move(rpcListener.server),
                                           kRpcDrainDeadline);
   shutdown_signal::onStop(shutdown_signal::drainOf(rpcDrain, "identity-rpc"));
-  if (rpcListening)
-    LOG_INFO << "Identity RPC listening on " << rpc.listener.host << ":"
-             << rpc.listener.port << " (cleartext, "
-             << (rpcGate->open() ? "loopback only, no caller credential"
-                                 : std::to_string(rpcGate->pairedCount()) +
-                                       " paired callers" +
-                                       (rpcGate->acceptsLegacy()
-                                            ? ", legacy fleet secret for the "
-                                              "unpaired ones"
-                                            : ""))
-             << ")";
-  else
-    LOG_WARN << "Identity RPC failed to listen on " << rpc.listener.host << ":"
-             << rpc.listener.port
-             << "; no service can reach this one over gRPC";
+  LOG_INFO << "Identity RPC listening on " << rpc.listener.host << ":"
+           << rpc.listener.port << " (cleartext, "
+           << (rpcGate->open() ? "loopback only, no caller credential"
+                               : std::to_string(rpcGate->pairedCount()) +
+                                     " paired callers" +
+                                     (rpcGate->acceptsLegacy()
+                                          ? ", legacy fleet secret for the "
+                                            "unpaired ones"
+                                          : ""))
+           << ")";
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
            << (listener.tls ? " (TLS" : " (plain") << ", cert "

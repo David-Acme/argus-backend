@@ -995,7 +995,7 @@ one handshake. A service whose main used to build its server inline gets
 such a delegate.
 
 Wired so far: tts, settings, productivity, notification, sync, auth, guard,
-voice, stt, vlm, llm and camera.
+voice, stt, vlm, llm, camera and identity.
 - tts and settings publish no gRPC port, so 7329 and 7247 are not published
   either.
 - settings opens its mutual TLS port on the modules RPC server, beside
@@ -1048,6 +1048,14 @@ voice, stt, vlm, llm and camera.
   there too (`CAMERA_GRPC_TLS_PORT`). Its CameraRpcServer opens both ports
   through startCameraRpc, and a port that cannot be bound stops the start
   (services/camera/CONTEXT.md, "Mutual TLS (S1 step 4)").
+- identity publishes its plaintext RPC 7040 on 127.0.0.1, so 7240 is published
+  there too (IDENTITY_RPC_PORT is not in .env.example, so no TLS variable either).
+  Its main used to build the RPC server inline and now calls startIdentityRpc
+  (services/identity/src/app/rpc/identity-rpc-server), which carries the 12 MiB
+  cap on both ports. If the RPC cannot listen on either port, identity does not
+  start (services/identity/CONTEXT.md, "The RPC must listen"): eight services
+  read it, and an identity without its RPC would fail them all with no visible
+  cause.
 
 The clients move to `tls:` targets in step 5, and the plaintext listeners
 go only after the owner's check. For every deploy template that declares
