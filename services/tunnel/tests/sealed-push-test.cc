@@ -14,6 +14,7 @@
 #include <openssl/evp.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -235,7 +236,27 @@ TEST_CASE("a sealed push is not sent before the link negotiates sealed_push")
   PollLoop loop;
   tunnel::link::LinkClient client(
       {.loop = loop,
-       .options = {.certificatePath = home.certificatePath, .keyPath = home.keyPath},
+       .options = {.host = "argus-tunnel.lynk.page",
+                   .port = 7001,
+                   .gatewayHost = "127.0.0.1",
+                   .gatewayPort = 7142,
+                   .certificatePath = home.certificatePath,
+                   .keyPath = home.keyPath,
+                   .pinnedSubjectPublicKeyDer = "",
+                   .limits = {},
+                   .keepaliveActive = std::chrono::seconds{20},
+                   .keepaliveIdle = std::chrono::seconds{90},
+                   .keepalivePongTimeout = std::chrono::seconds{15},
+                   .deadLinkTimeout = std::chrono::seconds{240},
+                   .helloTimeout = std::chrono::seconds{10},
+                   .reconnectBaseMs = 1000,
+                   .reconnectCapMs = 60000,
+                   .capabilities = tunnel::link::capability::kPushIntents |
+                                   tunnel::link::capability::kStreamCredit,
+                   .pushQueueCapacity = 256,
+                   .homeId = "",
+                   .deviceDomainSuffix = std::string{tunnel::link::kDeviceDomainSuffix},
+                   .serviceListeners = {}},
        .observer = nullptr});
   CHECK_FALSE(client.sealedPushReady());
   CHECK_FALSE(client.sendSealedPush(fcmEnvelope()));
