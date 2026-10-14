@@ -78,7 +78,7 @@ add_executable(llm-grpc-tls-test tests/unit/llm-grpc-tls-test.cc)
 set_target_properties(llm-grpc-tls-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(llm-grpc-tls-test PRIVATE argus::clients::llm
-    argus::contracts::llm argus::lib::grpc-test-support argus_client_grpc_base
+    argus::contracts::llm-wire argus::lib::grpc-test-support argus_client_grpc_base
     doctest::doctest)
 
 target_compile_options(llm-grpc-tls-test PRIVATE -Wall -Wextra)
