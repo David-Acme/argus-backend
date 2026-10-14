@@ -25,6 +25,8 @@ namespace cv
 class Mat;
 }
 
+class CameraMotionBoard;
+
 struct CameraRef
 {
   int64_t id{0};
@@ -43,6 +45,7 @@ public:
     IZoneSource* zones{nullptr};
     DetectionChangeGate* detections{nullptr};
     std::function<bool()> active{};
+    CameraMotionBoard* motion{nullptr};
   };
 
   struct Inputs
@@ -72,6 +75,8 @@ public:
   };
 
   void processFrame(const ProcessFrameInput& input);
+
+  [[nodiscard]] double currentInferenceFps(int64_t cameraId);
 
 private:
   struct FrameAnalysis;
@@ -213,8 +218,6 @@ private:
       CameraState& state, const std::vector<DetectedObject>& objects) const;
 
   PersonDwell updatePersonTracks(const PersonTrackInput& input) const;
-
-  double currentInferenceFps(int64_t cameraId);
 
   void mergePersonPending(const PersonPendingInput& input);
 

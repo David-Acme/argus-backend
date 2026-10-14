@@ -147,6 +147,7 @@ add_subdirectory(src/shared/services/camera-driver)
 add_subdirectory(src/shared/services/privacy)
 add_subdirectory(src/shared/services/stream)
 add_subdirectory(src/shared/services/event-stream)
+add_subdirectory(src/shared/services/camera-motion)
 
 file(GLOB CAMERA_FEATURE_MODULES CONFIGURE_DEPENDS
     "${CAMERA_SRC_ROOT}/feature/*/CMakeLists.txt")
@@ -198,6 +199,7 @@ set(CAMERA_UNIT_TESTS
     camera-config-test
     camera-controller-test
     camera-operator-test
+    camera-motion-board-test
     camera-health-test
     event-intelligence-test
     camera-source-registrar-test
@@ -256,7 +258,11 @@ target_link_libraries(camera-controller-test PRIVATE
 
 target_link_libraries(camera-operator-test PRIVATE
     argus::camera-operator
+    argus::camera-motion
     argus::camera-stream)
+
+target_link_libraries(camera-motion-board-test PRIVATE
+    argus::camera-motion)
 
 target_link_libraries(camera-health-test PRIVATE
     argus::camera-monitor)

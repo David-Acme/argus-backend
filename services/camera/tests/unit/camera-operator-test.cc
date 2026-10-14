@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <feature/operator/camera-operator-service.hxx>
+#include <shared/services/camera-motion/camera-motion-board.hxx>
 #include <shared/services/stream/frame-source.hxx>
 #include <feature/operator/identity-known-person-matcher.hxx>
 #include <feature/operator/known-person-matcher.hxx>
@@ -91,6 +92,12 @@ namespace
 void sleepMs(int64_t ms)
 {
   std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+}
+
+int64_t wallMs()
+{
+  return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch())
+      .count();
 }
 
 bool waitUntil(const std::function<bool()>& ready,
@@ -764,6 +771,45 @@ TEST_CASE("the motion gate skips inference on a static scene")
   std::fill(moved.rgb.begin(), moved.rgb.begin() + moved.rgb.size() / 2, 0);
   service.processFrame({.cameraId = 1, .cameraName = "Front", .frame = moved});
   CHECK(detector.calls == 2);
+}
+
+TEST_CASE("a camera's own motion raises its cadence until the hold after the end")
+{
+  StubDetector detector;
+  RecordingSink sink;
+  NoKnownPersonMatcher matcher;
+  CameraMotionBoard motion;
+
+  CameraOperatorService::Inputs inputs;
+  inputs.dependencies = {
+      .detector = &detector,
+      .source = nullptr,
+      .sink = &sink,
+      .matcher = &matcher,
+      .zones = nullptr,
+      .detections = nullptr,
+      .active = {},
+      .motion = nullptr,
+  };
+  inputs.objects.maxFpsInference = 2.0;
+  inputs.objects.activeFps = 6.0;
+  CameraOperatorService unwired(inputs);
+  inputs.dependencies.motion = &motion;
+  CameraOperatorService service(inputs);
+
+  const int64_t now = wallMs();
+  CHECK(service.currentInferenceFps(1) == doctest::Approx(2.0));
+  motion.report({.cameraId = 1, .moving = true, .atMs = now});
+  CHECK(service.currentInferenceFps(1) == doctest::Approx(6.0));
+  CHECK(service.currentInferenceFps(2) == doctest::Approx(2.0));
+  CHECK(unwired.currentInferenceFps(1) == doctest::Approx(2.0));
+  motion.report({.cameraId = 1, .moving = false, .atMs = now});
+  CHECK(service.currentInferenceFps(1) == doctest::Approx(6.0));
+
+  motion.report({.cameraId = 3, .moving = true, .atMs = now - 30000});
+  motion.report({.cameraId = 3, .moving = false, .atMs = now - CameraMotionBoard::kHoldMs - 1000});
+  CHECK(service.currentInferenceFps(3) == doctest::Approx(2.0));
+  CHECK(detector.calls == 0);
 }
 
 TEST_CASE("the static-box filter drops a frozen person")

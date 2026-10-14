@@ -1,4 +1,5 @@
 #include <feature/operator/camera-operator-service.hxx>
+#include <shared/services/camera-motion/camera-motion-board.hxx>
 #include <shared/services/privacy/privacy-mask.hxx>
 #include <drogon/HttpAppFramework.h>
 #include <drogon/utils/coroutine.h>
@@ -520,15 +521,19 @@ CameraOperatorService::PersonDwell CameraOperatorService::updatePersonTracks(
 double CameraOperatorService::currentInferenceFps(int64_t cameraId)
 {
   const int64_t stamp = nowMs();
-  std::lock_guard<std::mutex> lock(stateMutex_);
-  const auto found = states_.find(cameraId);
-  if (found == states_.end())
-    return inputs_.objects.maxFpsInference;
-  const CameraState& state = found->second;
-  if (stamp < state.burstUntilMs)
-    return inputs_.objects.burstFps;
-  if (state.presenceStreak > 0 || !state.pendingPersons.empty() ||
-      state.pendingOther.has_value() || !state.personTracks.empty())
+  {
+    const std::lock_guard<std::mutex> lock(stateMutex_);
+    const auto found = states_.find(cameraId);
+    if (found != states_.end()) {
+      const CameraState& state = found->second;
+      if (stamp < state.burstUntilMs)
+        return inputs_.objects.burstFps;
+      if (state.presenceStreak > 0 || !state.pendingPersons.empty() ||
+          state.pendingOther.has_value() || !state.personTracks.empty())
+        return inputs_.objects.activeFps;
+    }
+  }
+  if (inputs_.dependencies.motion != nullptr && inputs_.dependencies.motion->raisesCadence(cameraId, stamp))
     return inputs_.objects.activeFps;
   return inputs_.objects.maxFpsInference;
 }

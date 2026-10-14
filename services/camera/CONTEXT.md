@@ -2141,7 +2141,7 @@ Application Programmer's Guide (nonce `LKqI6G/AikKCQrN0zqZFlg==`, created
 `2010-09-16T07:50:45Z`, password `userpassword`, digest
 `tuOSpGlFlIXsozq4HFNeeGeFLEI=`).
 
-## ONVIF motion events over PullPoint (design note, 2026-10-13; the client calls are built, the subscriber is not)
+## ONVIF motion events over PullPoint (design note, 2026-10-13; the client calls and the motion board are built, the subscriber is not)
 
 Queue (ii). This note comes before any code, because it touches what guard
 sees.
@@ -2184,12 +2184,30 @@ Options:
 
 **How.**
 - **Where it runs.** There is one subscriber per ONVIF camera whose
-  `GetCapabilities` names an `Events` service; today the client keeps only
-  the device, media, PTZ and imaging paths. All subscribers share one event
+  `GetCapabilities` names an `Events` service; the client keeps the device,
+  media, PTZ, imaging and events paths. All subscribers share one event
   loop thread and use Drogon's HTTP client in coroutine form, so a 10 s long
   poll holds no blocking-lane worker. The subscriber sits beside the driver,
   not in the operator: Ruling AF stands, and the operator never touches
   hardware. It only reads a per-camera motion state.
+- **The motion board (built).** `CameraMotionBoard`
+  (`src/shared/services/camera-motion/`) keeps one motion episode per
+  camera. An onset opens an episode, an end starts the hold, and an onset
+  inside the hold continues the same episode; an end with no onset starts
+  nothing. The operator asks it in `currentInferenceFps` when it is given
+  one (`Dependencies::motion`): while it answers yes, the camera runs at
+  `active_fps`, and the burst and the operator's own presence keep their
+  place above it. The operator reads it on its next tick, at most one idle
+  interval later (0.5 s at the default `max_fps_inference` of 2). The hold
+  is 5 s: the frame-diff gate (`operator.motion_gate`, off by default)
+  compares each frame with the one before it and keeps no hold of its own,
+  so there is no value to share (ruling: one rule, not two). Guardrail
+  (ruling): an episode that lasts more than 10 continuous minutes, held on
+  or re-fired within the hold, stops raising the cadence until the camera
+  reports the end and stays quiet for the hold, which is stricter than an
+  end alone and was accepted as such; the board logs it once per episode.
+  The board is a plain object; `main.cc` owns it and hands it to the
+  operator and the subscriber when the subscriber lands.
 - **The subscription.** Only the request target of the subscription address
   is used, its path and its query (`/onvif/Subscription?Idx=3`), never its
   host or its fragment, as for the services. Every ONVIF path goes out
