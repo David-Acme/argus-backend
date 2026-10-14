@@ -1,7 +1,7 @@
 #pragma once
 
 #include <drogon/utils/coroutine.h>
-#include <feature/notification/repositories/notification-token/notification-token-repository.hxx>
+#include <shared/repositories/notification-token/notification-token-repository.hxx>
 #include <json/value.h>
 #include <nats/nats-bus.hxx>
 #include <shared/services/task-gate/task-gate.hxx>

@@ -18,7 +18,8 @@ NotificationTokenRepository::upsert(const NotificationTokenCreateInput& input) c
     co_await transaction->execSqlCoro(UPSERT.data(), input.userId,
                                       input.deviceHash, input.token,
                                       input.platform, input.lang,
-                                      input.sessionId);
+                                      input.sessionId, input.provider,
+                                      input.publicKey, input.keyId);
   }
   catch (...) {
     db_transaction::rollback(transaction);
@@ -45,6 +46,34 @@ drogon::Task<int64_t> NotificationTokenRepository::removeForSession(
 {
   const auto result = co_await DbService::client()->execSqlCoro(
       std::string(DELETE_FOR_SESSION), input.userId, input.sessionId);
+  co_return static_cast<int64_t>(result.affectedRows());
+}
+
+drogon::Task<std::vector<NotificationTokenSchema>>
+NotificationTokenRepository::findPushByUser(int64_t userId) const
+{
+  const auto result =
+      co_await DbService::client()->execSqlCoro(std::string(FIND_PUSH_BY_USER), userId);
+  std::vector<NotificationTokenSchema> tokens;
+  tokens.reserve(result.size());
+  for (const auto& row : result)
+    tokens.emplace_back(row);
+  co_return tokens;
+}
+
+drogon::Task<int64_t> NotificationTokenRepository::removeOwnToken(
+    const NotificationTokenRemoveInput& input) const
+{
+  const auto result = co_await DbService::client()->execSqlCoro(
+      std::string(DELETE_OWN_TOKEN), input.userId, input.token);
+  co_return static_cast<int64_t>(result.affectedRows());
+}
+
+drogon::Task<int64_t>
+NotificationTokenRepository::removeByToken(std::string token) const
+{
+  const auto result =
+      co_await DbService::client()->execSqlCoro(std::string(DELETE_BY_TOKEN), token);
   co_return static_cast<int64_t>(result.affectedRows());
 }
 

@@ -11,6 +11,7 @@
 #include <feature/call/services/call-policy.hxx>
 #include <feature/call/services/response-copy.hxx>
 #include <feature/call/services/call-ports.hxx>
+#include <feature/call/services/push-delivery.hxx>
 #include <feature/call/services/call-trigger-classifier.hxx>
 #include <nats/push-intent-sink.hxx>
 
@@ -44,6 +45,7 @@ struct CallEngineDependencies
   std::function<CallLocalTime(int64_t)> localTime;
   bool blockingOffLoop{true};
   std::function<bool(std::string_view)> kindAllowed{};
+  std::shared_ptr<const CallPushDelivery> sealedPush{};
 };
 
 struct CallRequest
@@ -135,12 +137,21 @@ enum class CallEndReport : uint8_t
   Failed
 };
 
+enum class CallEndStatus : uint8_t
+{
+  Ended = 0,
+  Taken,
+  Expired,
+  NotFound
+};
+
 struct CallEndRequest
 {
   std::string callId;
   int64_t userId{0};
   CallEndReport outcome{CallEndReport::Completed};
   bool spoken{false};
+  std::string sessionId;
 };
 
 struct CallScheduleRequest
@@ -232,7 +243,7 @@ public:
 
   drogon::Task<CallClaimOutcome> claim(const CallClaimRequest& request) const;
 
-  drogon::Task<bool> end(const CallEndRequest& request) const;
+  drogon::Task<CallEndStatus> end(const CallEndRequest& request) const;
 
   drogon::Task<CallScheduleOutcome>
   schedule(const CallScheduleRequest& request) const;
@@ -360,7 +371,11 @@ private:
 
   drogon::Task<bool> emit(const CallSignalInput& input) const;
 
-  void pushRing(const CallSchema& call) const;
+  drogon::Task<void> pushRing(const CallSchema& call) const;
+
+  drogon::Task<void> cancelSealed(const CallSchema& call) const;
+
+  drogon::Task<void> noteDeclined(const CallSchema& call) const;
 
   int64_t now() const;
 

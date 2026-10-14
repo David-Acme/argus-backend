@@ -33,6 +33,21 @@ v1::CallClaimStatus toProto(CallClaimStatus status)
   return v1::CALL_CLAIM_STATUS_NOT_FOUND;
 }
 
+v1::CallEndStatus toProto(CallEndStatus status)
+{
+  switch (status) {
+    case CallEndStatus::Ended:
+      return v1::CALL_END_STATUS_ENDED;
+    case CallEndStatus::Taken:
+      return v1::CALL_END_STATUS_TAKEN;
+    case CallEndStatus::Expired:
+      return v1::CALL_END_STATUS_EXPIRED;
+    case CallEndStatus::NotFound:
+      return v1::CALL_END_STATUS_NOT_FOUND;
+  }
+  return v1::CALL_END_STATUS_NOT_FOUND;
+}
+
 CallEndReport fromProto(v1::CallOutcome outcome)
 {
   switch (outcome) {
@@ -123,11 +138,14 @@ CallRpcService::EndCall(grpc::CallbackServerContext* context,
   CallEndRequest end{.callId = request->call_id(),
                      .userId = request->user_id(),
                      .outcome = fromProto(request->outcome()),
-                     .spoken = request->spoken()};
+                     .spoken = request->spoken(),
+                     .sessionId = request->session_id()};
   drogon::app().getLoop()->queueInLoop([this, reactor, response, end]() {
     drogon::async_run([this, reactor, response, end]() -> drogon::Task<void> {
       try {
-        response->set_ok(co_await engine_->end(end));
+        const CallEndStatus status = co_await engine_->end(end);
+        response->set_status(toProto(status));
+        response->set_ok(status == CallEndStatus::Ended);
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& error) {

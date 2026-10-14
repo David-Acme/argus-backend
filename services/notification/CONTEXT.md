@@ -1233,3 +1233,39 @@ Tests:
   refused.
 - Also `notification-change-outbox-sink-test`, `notification-delivery-test`,
   `notification-rpc-test` and lib/auth's `role-access-test`.
+
+## Sealed push (track 1, call mode)
+
+- argus-notification seals every push it sends to a device. The tunnel client
+  only moves the ciphertext (`push_delivery` in, `push_result` out). A device is
+  reached through its `notification_token` row (`provider`, `public_key`,
+  `key_id`); a row without the three is never sealed to.
+- The seal is OpenSSL 3 HPKE, base mode, DHKEM(X25519, HKDF-SHA256),
+  HKDF-SHA256, ChaCha20-Poly1305 (`feature/call/services/push-sealer.cc`).
+  The HPKE info is `argus.push.v1` || 0x00 || key_id || 0x00 || the envelope
+  prefix (deliveryId through token); the associated data is empty. Any change
+  to the prefix makes the device fail to open the intent.
+- Size caps, both refused before anything is published, with a typed status
+  logged and no push sent:
+  - the ciphertext is at most 2048 bytes (`IntentTooLarge`);
+  - a registered token is at most 255 characters (`TokenTooLong`). The
+    register DTO refuses a longer token with a 422 first, so the sealer's check
+    is a second barrier.
+  - Reason for the 255-character token cap: the FCM message body is
+    `{"e": base64(envelope)}` plus the token it carries, and it must stay under
+    FCM's 4096-byte limit. Measured with the 2048-byte ciphertext and a
+    255-character token: envelope 2374 bytes, body 3431 bytes. Real FCM tokens
+    are about 163 characters, so 255 is the pessimistic bound.
+- The cloud side refuses an envelope whose token goes over its own cap; that
+  test lives in argus-cloud.
+- A call rings every sealed-capable device of the user (`call-` ring intents and
+  a sealed `cancel` on `answered_elsewhere`, `expired` and `declined`); the
+  cancel goes to the devices registered at cancel time, which is a superset of
+  the devices that received the ring.
+- `push_result` with `invalid_token` or `unregistered` deletes that token's row
+  (`PushOutcomeService`); `throttled`, `token_bound` and `failed` keep it.
+- `POST /rtc/decline {callId}` and `DELETE /notification-token {token}` answer
+  `{declined: boolean}` and `{deleted: boolean}`. A second decline of a call
+  already declined is `{declined: true}`; another user's call, an expired call
+  or one answered on another device is refused with the `/rtc/token` codes
+  (404, 410, 409).

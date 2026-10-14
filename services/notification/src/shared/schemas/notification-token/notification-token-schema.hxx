@@ -15,6 +15,9 @@ struct NotificationTokenSchema
   std::string token;
   std::string platform;
   std::string lang;
+  std::string provider;
+  std::string publicKey;
+  std::string keyId;
   bool isActive{true};
   int64_t createdAt{0};
   std::optional<int64_t> updatedAt;

@@ -50,6 +50,10 @@ inline constexpr std::string_view END =
     "UPDATE call SET state = ?, ended_at = ? "
     "WHERE id = ? AND user_id = ? AND state = 'answered'";
 
+inline constexpr std::string_view DECLINE_RINGING =
+    "UPDATE call SET state = 'declined', ended_at = ? "
+    "WHERE id = ? AND user_id = ? AND state = 'ringing' AND expires_at > ?";
+
 inline constexpr std::string_view MARK_PUSHED =
     "UPDATE call SET pushed_at = ? WHERE id = ? AND state = 'ringing'";
 
@@ -129,6 +133,13 @@ struct CallEndInput
   int64_t id{0};
   int64_t userId{0};
   CallState state{CallState::Completed};
+  int64_t now{0};
+};
+
+struct CallDeclineInput
+{
+  int64_t id{0};
+  int64_t userId{0};
   int64_t now{0};
 };
 

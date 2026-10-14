@@ -10,6 +10,9 @@ NotificationTokenSchema::NotificationTokenSchema(const drogon::orm::Row& row)
   token = row["token"].as<std::string>();
   platform = row["platform"].as<std::string>();
   lang = row["lang"].as<std::string>();
+  provider = row["provider"].as<std::string>();
+  publicKey = row["public_key"].as<std::string>();
+  keyId = row["key_id"].as<std::string>();
   isActive = row["is_active"].as<int>() != 0;
   createdAt = static_cast<int64_t>(row["created_at"].as<long long>());
   if (!row["updated_at"].isNull())

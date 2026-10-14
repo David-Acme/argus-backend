@@ -14,10 +14,16 @@ public:
   ADD_METHOD_TO(NotificationTokenController::registerToken,
                 "/notification-token", drogon::Post, "DeviceFilter",
                 "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(NotificationTokenController::unregisterToken,
+                "/notification-token", drogon::Delete, "DeviceFilter",
+                "ValidJsonFilter", "JwtFilter", "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr>
   registerToken(drogon::HttpRequestPtr req);
+
+  drogon::Task<drogon::HttpResponsePtr>
+  unregisterToken(drogon::HttpRequestPtr req);
 
 private:
   NotificationTokenFeatureService service_;

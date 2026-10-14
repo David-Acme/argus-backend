@@ -327,6 +327,34 @@ target_compile_options(notification-delivery-live-test PRIVATE -Wall -Wextra)
 
 argus_nats_scratch_test(NAME notification-delivery-live-test)
 
+add_executable(push-sealer-test tests/unit/push-sealer-test.cc)
+
+set_target_properties(push-sealer-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(push-sealer-test PRIVATE
+    argus::notification-call
+    argus::contracts::push
+    argus::lib::text
+    doctest::doctest)
+
+target_compile_definitions(push-sealer-test PRIVATE
+    ARGUS_PUSH_SEALED_VECTOR_FILE="${CMAKE_CURRENT_SOURCE_DIR}/../tunnel/tests/vectors/push-sealed.json")
+target_compile_options(push-sealer-test PRIVATE -Wall -Wextra)
+
+add_test(NAME push-sealer-test COMMAND push-sealer-test)
+
+add_executable(register-notification-token-dto-test tests/unit/register-notification-token-dto-test.cc)
+
+set_target_properties(register-notification-token-dto-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(register-notification-token-dto-test PRIVATE
+    argus::notification-feature
+    doctest::doctest)
+
+target_compile_options(register-notification-token-dto-test PRIVATE -Wall -Wextra)
+
+add_test(NAME register-notification-token-dto-test COMMAND register-notification-token-dto-test)
+
 add_executable(push-intent-test tests/unit/push-intent-test.cc)
 
 set_target_properties(push-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)

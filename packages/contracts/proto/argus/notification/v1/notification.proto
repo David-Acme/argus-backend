@@ -86,15 +86,25 @@ message ClaimCallResponse {
   string urgency = 11;
 }
 
+enum CallEndStatus {
+  CALL_END_STATUS_UNSPECIFIED = 0;
+  CALL_END_STATUS_ENDED = 1;
+  CALL_END_STATUS_TAKEN = 2;
+  CALL_END_STATUS_EXPIRED = 3;
+  CALL_END_STATUS_NOT_FOUND = 4;
+}
+
 message EndCallRequest {
   string call_id = 1;
   int64 user_id = 2;
   CallOutcome outcome = 3;
   bool spoken = 4;
+  string session_id = 5;
 }
 
 message EndCallResponse {
   bool ok = 1;
+  CallEndStatus status = 2;
 }
 
 message ScheduleCallRequest {

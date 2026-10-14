@@ -529,28 +529,28 @@ TEST_CASE("a call hung up before Argus spoke counts as declined and leaves a not
   CHECK(drogon::sync_wait(harness.engine.end({.callId = first,
                                               .userId = 1,
                                               .outcome = CallEndReport::Completed,
-                                              .spoken = true})));
+                                              .spoken = true})) == CallEndStatus::Ended);
   CHECK(harness.notifier->all().empty());
   CHECK(stateOf(outcomeFor(rang, 1).callId) == "completed");
   CHECK(drogon::sync_wait(harness.engine.end({.callId = first,
                                               .userId = 1,
                                               .outcome = CallEndReport::Completed,
-                                              .spoken = true})));
+                                              .spoken = true})) == CallEndStatus::Ended);
 
   CHECK(drogon::sync_wait(harness.engine.end({.callId = second,
                                               .userId = 2,
                                               .outcome = CallEndReport::Declined,
-                                              .spoken = false})));
+                                              .spoken = false})) == CallEndStatus::Ended);
   CHECK(stateOf(outcomeFor(rang, 2).callId) == "declined");
   const auto notices = harness.notifier->all();
   REQUIRE(notices.size() == 1);
   CHECK(notices.front().userId == 2);
   CHECK(notices.front().title.starts_with("Missed call · "));
   CHECK(notices.front().body == "I called you because there was an unknown person at Patio.");
-  CHECK_FALSE(drogon::sync_wait(harness.engine.end({.callId = second,
-                                                    .userId = 1,
-                                                    .outcome = CallEndReport::Completed,
-                                                    .spoken = true})));
+  CHECK(drogon::sync_wait(harness.engine.end({.callId = second,
+                                              .userId = 1,
+                                              .outcome = CallEndReport::Completed,
+                                              .spoken = true})) == CallEndStatus::NotFound);
 }
 
 TEST_CASE("quiet hours, do not disturb and cooldown follow the user's preferences")

@@ -44,6 +44,10 @@
 #include <settings/settings-rpc.hxx>
 #include <runtime/log-output.hxx>
 #include <config/notification-config.hxx>
+#include <feature/call/infra/nats-call-push-sink.hxx>
+#include <feature/call/infra/notification-push-device-directory.hxx>
+#include <feature/call/services/push-delivery.hxx>
+#include <feature/notification/services/push-outcome/push-outcome-service.hxx>
 #include <sync/sync-client.hxx>
 #include <sync/user-change-sink.hxx>
 #include <config/config-service.hxx>
@@ -263,6 +267,16 @@ int main()
   else
     LOG_INFO << "Voice target or credential unset; calls never speak into a "
                 "live conversation and always ring";
+  std::shared_ptr<const CallPushDelivery> sealedPush;
+  if (natsBus)
+    sealedPush = std::make_shared<CallPushDelivery>(
+        std::make_shared<NotificationPushDeviceDirectory>(),
+        std::make_shared<NatsCallPushSink>(natsBus),
+        [] {
+          return std::chrono::duration_cast<std::chrono::seconds>(
+                     std::chrono::system_clock::now().time_since_epoch())
+              .count();
+        });
   const auto callEngine = std::make_shared<CallEngine>(
       NotificationConfig::resolveCalls(),
       CallEngineDependencies{
@@ -278,7 +292,8 @@ int main()
           .clock = {},
           .localTime = {},
           .blockingOffLoop = true,
-          .kindAllowed = kindAllowed});
+          .kindAllowed = kindAllowed,
+          .sealedPush = sealedPush});
   moduleGate().onChange([callEngine, tasks](const ModuleChange& change) {
     if (change.enabled)
       return;
@@ -309,6 +324,26 @@ int main()
         {.bus = natsBus,
          .service = std::make_shared<const TokenRevocationService>(),
          .tasks = tasks});
+    const auto pushOutcome = std::make_shared<const PushOutcomeService>();
+    natsBus->subscribe(
+        nats_subject::kNotificationPushResult,
+        [pushOutcome, tasks](std::string_view, std::string_view payload) {
+          const std::string text(payload);
+          drogon::app().getLoop()->queueInLoop([pushOutcome, tasks, text]() {
+            drogon::async_run([pushOutcome, tasks, text]() -> drogon::Task<void> {
+              const auto ticket = TaskGate::enter(tasks);
+              if (!ticket)
+                co_return;
+              try {
+                co_await pushOutcome->apply(text);
+              }
+              catch (const std::exception& error) {
+                LOG_WARN << "Push result: apply failed: " << error.what();
+              }
+              co_return;
+            });
+          });
+        });
   }
   call_feed::startSweep({.engine = callEngine, .tasks = tasks});
 
@@ -426,6 +461,18 @@ int main()
     if (!hasColumn("notification_token", "session_id"))
       DbService::client()->execSqlSync(
           "ALTER TABLE notification_token ADD COLUMN session_id TEXT NOT NULL "
+          "DEFAULT ''");
+    if (!hasColumn("notification_token", "provider"))
+      DbService::client()->execSqlSync(
+          "ALTER TABLE notification_token ADD COLUMN provider TEXT NOT NULL "
+          "DEFAULT ''");
+    if (!hasColumn("notification_token", "public_key"))
+      DbService::client()->execSqlSync(
+          "ALTER TABLE notification_token ADD COLUMN public_key TEXT NOT NULL "
+          "DEFAULT ''");
+    if (!hasColumn("notification_token", "key_id"))
+      DbService::client()->execSqlSync(
+          "ALTER TABLE notification_token ADD COLUMN key_id TEXT NOT NULL "
           "DEFAULT ''");
     if (!hasColumn("call", "push_after"))
       DbService::client()->execSqlSync(

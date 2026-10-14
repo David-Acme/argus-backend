@@ -52,6 +52,14 @@ struct NotificationCallEndInput
   argus::notification::v1::CallOutcome outcome{
       argus::notification::v1::CALL_OUTCOME_COMPLETED};
   bool spoken{false};
+  std::string sessionId;
+};
+
+struct NotificationCallEndResult
+{
+  NotificationRpcOutcome outcome{NotificationRpcOutcome::Unavailable};
+  argus::notification::v1::CallEndStatus status{
+      argus::notification::v1::CALL_END_STATUS_UNSPECIFIED};
 };
 
 struct NotificationCallScheduleInput
@@ -117,6 +125,9 @@ public:
 
   [[nodiscard]] virtual NotificationRpcOutcome
   endCall(const NotificationCallEndInput& input) const;
+
+  [[nodiscard]] virtual NotificationCallEndResult
+  endCallWithStatus(const NotificationCallEndInput& input) const;
 
   [[nodiscard]] virtual NotificationCallScheduleResult
   scheduleCall(const NotificationCallScheduleInput& input) const;

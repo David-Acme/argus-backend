@@ -91,6 +91,12 @@ NotificationClient::claimCall(const NotificationCallClaimInput& input) const
 NotificationRpcOutcome
 NotificationClient::endCall(const NotificationCallEndInput& input) const
 {
+  return endCallWithStatus(input).outcome;
+}
+
+NotificationCallEndResult
+NotificationClient::endCallWithStatus(const NotificationCallEndInput& input) const
+{
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
   argus::client::addCallerCredential(context, credential_);
@@ -100,13 +106,15 @@ NotificationClient::endCall(const NotificationCallEndInput& input) const
   request.set_user_id(input.userId);
   request.set_outcome(input.outcome);
   request.set_spoken(input.spoken);
+  request.set_session_id(input.sessionId);
 
   argus::notification::v1::EndCallResponse response;
   const grpc::Status status = callStub_->EndCall(&context, request, &response);
   if (!status.ok())
-    return outcomeForStatus(status.error_code());
-  return response.ok() ? NotificationRpcOutcome::Success
-                       : NotificationRpcOutcome::Rejected;
+    return {.outcome = outcomeForStatus(status.error_code())};
+  return {.outcome = response.ok() ? NotificationRpcOutcome::Success
+                                   : NotificationRpcOutcome::Rejected,
+          .status = response.status()};
 }
 
 NotificationCallScheduleResult NotificationClient::scheduleCall(

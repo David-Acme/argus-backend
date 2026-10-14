@@ -9,6 +9,9 @@ struct RegisterNotificationTokenDto
   std::string token;
   std::string platform;
   std::string lang;
+  std::string provider;
+  std::string publicKey;
+  std::string keyId;
 
   static RegisterNotificationTokenDto fromJson(const Json::Value& json);
 };

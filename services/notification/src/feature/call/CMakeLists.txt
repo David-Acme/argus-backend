@@ -1,3 +1,5 @@
+find_package(OpenSSL REQUIRED)
+
 argus_module(NAME notification-call
     SOURCES
         controllers/call-preference-controller.cc
@@ -5,7 +7,9 @@ argus_module(NAME notification-call
         dtos/response-verdict-dto.cc
         dtos/update-call-preference-dto.cc
         infra/identity-call-directory.cc
+        infra/nats-call-push-sink.cc
         infra/nats-response-verdict-sink.cc
+        infra/notification-push-device-directory.cc
         infra/notification-call-sink.cc
         infra/sync-call-signal.cc
         infra/voice-call-announcer.cc
@@ -23,6 +27,8 @@ argus_module(NAME notification-call
         services/call-policy.cc
         services/call-preference-service.cc
         services/call-trigger-classifier.cc
+        services/push-delivery.cc
+        services/push-sealer.cc
         services/response-copy.cc
     INCLUDES ../..
     DEPENDS
@@ -33,6 +39,7 @@ argus_module(NAME notification-call
         argus::clients::voice
         argus::contracts::auth
         argus::contracts::notification
+        argus::contracts::push
         argus::contracts::sync
         argus::lib::auth
         argus::lib::config
@@ -43,6 +50,7 @@ argus_module(NAME notification-call
         argus::lib::sqlite
         argus::lib::text
         argus::lib::validation
-        Drogon::Drogon)
+        Drogon::Drogon
+        OpenSSL::Crypto)
 
 target_compile_options(argus_notification-call PRIVATE -Wall -Wextra)

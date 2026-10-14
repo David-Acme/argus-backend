@@ -38,11 +38,6 @@ int64_t number(const Json::Value& data, const char* key)
   return value.isIntegral() ? value.asInt64() : 0;
 }
 
-std::string deepLink(const std::string& callId)
-{
-  return "argus://call?callId=" + callId;
-}
-
 Json::Value missedData(const CallSchema& call)
 {
   Json::Value data(Json::objectValue);
@@ -259,25 +254,49 @@ drogon::Task<bool> CallEngine::emit(const CallSignalInput& input) const
       [signal, input]() { return signal->emit(input); });
 }
 
-void CallEngine::pushRing(const CallSchema& call) const
+drogon::Task<void> CallEngine::pushRing(const CallSchema& call) const
 {
-  if (!dependencies_.push)
-    return;
-  Json::Value data(Json::objectValue);
-  data["kind"] = "call";
-  data["callId"] = call.callId();
-  data["urgency"] = call.urgency;
-  data["deepLink"] = deepLink(call.callId());
-  data["expiresAt"] = static_cast<Json::Int64>(call.expiresAt);
-  const PushCopy copy = push_copy::render(
-      {.lang = call.lang, .urgency = call.urgency, .call = true});
-  dependencies_.push->publish(PushIntent{.userId = call.userId,
-                                         .notificationId = 0,
-                                         .type = "call",
-                                         .title = copy.title,
-                                         .body = copy.body,
-                                         .createdAtMs = call.createdAt * 1000,
-                                         .data = data});
+  if (dependencies_.push) {
+    Json::Value data(Json::objectValue);
+    data["kind"] = "call";
+    data["callId"] = call.callId();
+    data["urgency"] = call.urgency;
+    data["deepLink"] = callDeepLink(call.callId());
+    data["expiresAt"] = static_cast<Json::Int64>(call.expiresAt);
+    const PushCopy copy = push_copy::render(
+        {.lang = call.lang, .urgency = call.urgency, .call = true});
+    dependencies_.push->publish(PushIntent{.userId = call.userId,
+                                           .notificationId = 0,
+                                           .type = "call",
+                                           .title = copy.title,
+                                           .body = copy.body,
+                                           .createdAtMs = call.createdAt * 1000,
+                                           .data = data});
+  }
+  if (dependencies_.sealedPush)
+    co_await dependencies_.sealedPush->ring(call);
+  co_return;
+}
+
+drogon::Task<void> CallEngine::cancelSealed(const CallSchema& call) const
+{
+  if (dependencies_.sealedPush)
+    co_await dependencies_.sealedPush->cancel(call);
+  co_return;
+}
+
+drogon::Task<void> CallEngine::noteDeclined(const CallSchema& call) const
+{
+  if (!dependencies_.notifier)
+    co_return;
+  co_await dependencies_.notifier->notify(
+      {.userId = call.userId,
+       .type = "call",
+       .title = text(call.data, kMissedTitleKey),
+       .body = call.missedLine,
+       .data = missedData(call),
+       .commandId = "call-declined:" + call.callId()});
+  co_return;
 }
 
 drogon::Task<std::vector<CallUserOutcome>>
@@ -535,7 +554,7 @@ CallEngine::finishUser(const FinishUserInput& input) const
                      .info = call_engine::incomingInfo(call)});
       if (row.pushAfter <= input.now &&
           co_await callRepository_.markPushed(call.id, input.now))
-        pushRing(call);
+        co_await pushRing(call);
       outcome.resolution = CallResolution::Rang;
       outcome.callId = *id;
       LOG_INFO << "Call engine: ringing user " << userId << " ("
@@ -641,43 +660,63 @@ CallEngine::claim(const CallClaimRequest& request) const
   co_await emit({.userId = request.userId,
                  .operation = SyncOperation::CallCancel,
                  .info = info});
+  co_await cancelSealed(claimed);
   LOG_INFO << "Call engine: " << claimed.callId() << " answered by user "
            << request.userId;
   co_await attendAnswered(claimed);
   co_return outcome;
 }
 
-drogon::Task<bool> CallEngine::end(const CallEndRequest& request) const
+drogon::Task<CallEndStatus> CallEngine::end(const CallEndRequest& request) const
 {
   const int64_t id = call_id::parse(request.callId);
   if (id <= 0 || request.userId <= 0)
-    co_return false;
+    co_return CallEndStatus::NotFound;
   const auto existing = co_await callRepository_.findById(id);
   if (!existing || existing->userId != request.userId)
-    co_return false;
-  if (existing->state != CallState::Answered)
-    co_return existing->state == CallState::Completed ||
-              existing->state == CallState::Declined;
-
+    co_return CallEndStatus::NotFound;
+  const int64_t at = now();
   const bool declined =
       request.outcome == CallEndReport::Declined || !request.spoken;
-  const int64_t at = now();
-  if (!co_await callRepository_.end(
-          {.id = id,
-           .userId = request.userId,
-           .state = declined ? CallState::Declined : CallState::Completed,
-           .now = at}))
-    co_return false;
-  if (declined && dependencies_.notifier) {
-    co_await dependencies_.notifier->notify(
-        {.userId = existing->userId,
-         .type = "call",
-         .title = text(existing->data, kMissedTitleKey),
-         .body = existing->missedLine,
-         .data = missedData(*existing),
-         .commandId = "call-declined:" + existing->callId()});
+
+  if (existing->state == CallState::Ringing) {
+    if (existing->expiresAt <= at)
+      co_return CallEndStatus::Expired;
+    if (request.outcome != CallEndReport::Declined)
+      co_return CallEndStatus::NotFound;
+    if (!co_await callRepository_.declineRinging(
+            {.id = id, .userId = request.userId, .now = at}))
+      co_return CallEndStatus::Taken;
+    Json::Value info(Json::objectValue);
+    info["callId"] = existing->callId();
+    info["reason"] = "declined";
+    co_await emit({.userId = request.userId,
+                   .operation = SyncOperation::CallCancel,
+                   .info = info});
+    co_await cancelSealed(*existing);
+    co_await noteDeclined(*existing);
+    co_return CallEndStatus::Ended;
   }
-  co_return true;
+  if (existing->state == CallState::Answered) {
+    if (declined && !request.sessionId.empty() &&
+        existing->answeredSession != request.sessionId)
+      co_return CallEndStatus::Taken;
+    if (!co_await callRepository_.end(
+            {.id = id,
+             .userId = request.userId,
+             .state = declined ? CallState::Declined : CallState::Completed,
+             .now = at}))
+      co_return CallEndStatus::Taken;
+    if (declined)
+      co_await noteDeclined(*existing);
+    co_return CallEndStatus::Ended;
+  }
+  if (existing->state == CallState::Completed ||
+      existing->state == CallState::Declined)
+    co_return CallEndStatus::Ended;
+  if (existing->state == CallState::Missed)
+    co_return CallEndStatus::Expired;
+  co_return CallEndStatus::NotFound;
 }
 
 drogon::Task<void> CallEngine::settleMissed(const MissedInput& input) const
@@ -695,6 +734,7 @@ drogon::Task<void> CallEngine::settleMissed(const MissedInput& input) const
   co_await emit({.userId = call.userId,
                  .operation = SyncOperation::CallCancel,
                  .info = info});
+  co_await cancelSealed(call);
 
   if (!input.notify || !dependencies_.notifier)
     co_return;
@@ -884,7 +924,7 @@ drogon::Task<CallSweepReport> CallEngine::sweep() const
     }
     if (call.pushedAt == 0 && call.pushAfter <= at &&
         co_await callRepository_.markPushed(call.id, at)) {
-      pushRing(call);
+      co_await pushRing(call);
       ++report.pushed;
     }
   }

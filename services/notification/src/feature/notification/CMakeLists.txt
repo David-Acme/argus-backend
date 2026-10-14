@@ -6,15 +6,17 @@ argus_module(NAME notification-feature
         dtos/notification-ack-dto.cc
         dtos/notification-read-dto.cc
         dtos/register-notification-token-dto.cc
-        repositories/notification-token/notification-token-repository.cc
-        schemas/notification-token/notification-token-schema.cc
+        dtos/unregister-notification-token-dto.cc
         services/notification-feature-service.cc
         services/notification-token-feature-service.cc
         services/notification-token/notification-token-service.cc
+        services/push-outcome/push-outcome-service.cc
         services/token-revocation/token-revocation.cc
     INCLUDES ../..
     DEPENDS
         argus::notification-shared
+        argus::contracts::push
+        argus::lib::text
         argus::notification-config
         argus::lib::auth
         argus::lib::config

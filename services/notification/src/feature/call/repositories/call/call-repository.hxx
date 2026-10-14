@@ -33,6 +33,8 @@ public:
 
   drogon::Task<bool> end(const CallEndInput& input) const;
 
+  drogon::Task<bool> declineRinging(const CallDeclineInput& input) const;
+
   drogon::Task<bool> markPushed(int64_t id, int64_t now) const;
 
   drogon::Task<std::vector<CallSchema>> findFollowups(int64_t parentId) const;

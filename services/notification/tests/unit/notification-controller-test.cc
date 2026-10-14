@@ -15,7 +15,7 @@
 #include <shared/repositories/notification/notification-repository.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/user-change-sink.hxx>
-#include <feature/notification/repositories/notification-token/notification-token-repository.hxx>
+#include <shared/repositories/notification-token/notification-token-repository.hxx>
 #include <feature/notification/services/token-revocation/token-revocation.hxx>
 #include <sync/sync-change.hxx>
 #include <sync/table-name.hxx>

@@ -110,6 +110,14 @@ drogon::Task<bool> CallRepository::end(const CallEndInput& input) const
   co_return result.affectedRows() > 0;
 }
 
+drogon::Task<bool> CallRepository::declineRinging(const CallDeclineInput& input) const
+{
+  const auto client = DbService::client();
+  const auto result = co_await client->execSqlCoro(std::string(DECLINE_RINGING), input.now, input.id,
+      input.userId, input.now);
+  co_return result.affectedRows() > 0;
+}
+
 drogon::Task<bool> CallRepository::markPushed(int64_t id, int64_t now) const
 {
   const auto client = DbService::client();

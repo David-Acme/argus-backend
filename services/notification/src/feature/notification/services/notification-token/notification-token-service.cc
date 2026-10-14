@@ -6,3 +6,9 @@ drogon::Task<void> NotificationTokenService::registerToken(
   co_await repository_.upsert(input);
   co_return;
 }
+
+drogon::Task<bool> NotificationTokenService::unregisterToken(
+    const NotificationTokenRemoveInput& input) const
+{
+  co_return co_await repository_.removeOwnToken(input) > 0;
+}
