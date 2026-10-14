@@ -27,6 +27,7 @@ mkdir -p "$MOCK_BIN"
 printf '%s\n' \
   '#!/usr/bin/env bash' \
   'printf "%s %s\n" "$(basename "$0")" "$*" >> "$ARGUS_BUILD_ALL_TEST_LOG"' \
+  'if [ -n "${ARGUS_BUILD_ALL_TEST_ENV_LOG:-}" ]; then printf "%s CONAN_HOME=%s\n" "$(basename "$0")" "${CONAN_HOME-<unset>}" >> "$ARGUS_BUILD_ALL_TEST_ENV_LOG"; fi' \
   > "$MOCK_BIN/tool"
 chmod +x "$MOCK_BIN/tool"
 ln -s tool "$MOCK_BIN/conan"
@@ -128,6 +129,51 @@ if grep -q -- '-g0' "$CALL_LOG"; then
   echo "the prod profile carries the ci flags" >&2
   exit 1
 fi
+
+ENV_LOG="$TEST_TMP/env.log"
+CI_USER_HOME="$TEST_TMP/ci-user"
+mkdir -p "$CI_USER_HOME"
+run_without_conan_home() {
+  : > "$CALL_LOG"
+  : > "$CALL_OUT"
+  : > "$ENV_LOG"
+  env -u CONAN_HOME -u CONAN_HOME_CI PATH="$MOCK_BIN:$PATH" ARGUS_BUILD_ALL_TEST_LOG="$CALL_LOG" \
+    ARGUS_BUILD_ALL_TEST_ENV_LOG="$ENV_LOG" CMAKE_BUILD_PARALLEL_LEVEL=8 HOME="$CI_USER_HOME" "$@" \
+    > "$CALL_OUT" 2>&1
+}
+conan_home_seen() {
+  grep '^conan CONAN_HOME=' "$ENV_LOG" | sed 's/^conan CONAN_HOME=//' | sort -u
+}
+
+run_without_conan_home "$ROOT/scripts/build-all.sh" dev --only cert --install-only
+[ "$(conan_home_seen)" = "<unset>" ] || { echo "the dev profile set a Conan home" >&2; exit 1; }
+if grep -q '^conan profile ' "$CALL_LOG"; then
+  echo "the dev profile ran conan profile" >&2
+  exit 1
+fi
+
+run_without_conan_home "$ROOT/scripts/build-all.sh" ci --only cert --install-only
+[ "$(conan_home_seen)" = "$CI_USER_HOME/.conan2-ci" ] \
+  || { echo "the ci profile did not take \$HOME/.conan2-ci as its Conan home" >&2; exit 1; }
+grep -q '^conan profile detect$' "$CALL_LOG" \
+  || { echo "the ci profile did not detect a profile in a Conan home that has none" >&2; exit 1; }
+[ "$(sed -n '1p' "$CALL_LOG")" = "conan profile detect" ] \
+  || { echo "the ci profile installed before it detected a profile" >&2; exit 1; }
+
+mkdir -p "$CI_USER_HOME/.conan2-ci/profiles"
+: > "$CI_USER_HOME/.conan2-ci/profiles/default"
+run_without_conan_home "$ROOT/scripts/build-all.sh" ci --only cert --install-only
+if grep -q '^conan profile ' "$CALL_LOG"; then
+  echo "the ci profile detected over a profile its Conan home already has" >&2
+  exit 1
+fi
+
+run_without_conan_home env CONAN_HOME_CI="$TEST_TMP/ci-cache" "$ROOT/scripts/build-all.sh" ci --only cert --install-only
+[ "$(conan_home_seen)" = "$TEST_TMP/ci-cache" ] || { echo "the ci profile ignored CONAN_HOME_CI" >&2; exit 1; }
+
+run_without_conan_home env CONAN_HOME="$TEST_TMP/own-home" "$ROOT/scripts/build-all.sh" ci --only cert --install-only
+[ "$(conan_home_seen)" = "$TEST_TMP/own-home" ] \
+  || { echo "the ci profile replaced a CONAN_HOME the caller set" >&2; exit 1; }
 
 if run_build_all dev --only does-not-exist; then
   echo "unknown --only project unexpectedly succeeded" >&2

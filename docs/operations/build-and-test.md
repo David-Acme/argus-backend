@@ -60,8 +60,11 @@ passes the same flags to the Conan dependencies through
 CMake. Debug information is most of a Debug tree's size, and a hosted
 runner has a fraction of a workstation's disk. Those confs do not enter
 the package id, so a `ci` package and a `dev` package of the same
-dependency share an id. Keep the two in separate Conan caches, as CI does
-by construction.
+dependency share an id. `ci` therefore keeps its own Conan home: when
+`CONAN_HOME` is unset it exports
+`CONAN_HOME="${CONAN_HOME_CI:-$HOME/.conan2-ci}"`, and it detects a default
+profile there when that home has none. A `CONAN_HOME` the caller sets is
+used as it is.
 
 The script resolves the root graph once — `conan install <root>
 --output-folder=build/<profile> -s build_type=<Debug|Release> --build=missing`

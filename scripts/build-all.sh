@@ -99,6 +99,9 @@ esac
 CONAN_PROFILE_ARGS=()
 CMAKE_PROFILE_ARGS=()
 if [ "$PROFILE" = "ci" ]; then
+  if [ -z "${CONAN_HOME+x}" ]; then
+    export CONAN_HOME="${CONAN_HOME_CI:-$HOME/.conan2-ci}"
+  fi
   CONAN_PROFILE_ARGS=(
     -c 'tools.cmake.cmaketoolchain:extra_variables={"CMAKE_C_FLAGS_DEBUG": "-O0 -g0", "CMAKE_CXX_FLAGS_DEBUG": "-O0 -g0"}'
     -c 'tools.build:cflags=["-g0"]'
@@ -176,6 +179,11 @@ fi
 
 CONAN_OUT="$ROOT/build/$PROFILE"
 GENERATORS="$CONAN_OUT/build/$BUILD_TYPE/generators"
+
+if [ "$PROFILE" = "ci" ] && [ ! -f "$CONAN_HOME/profiles/default" ]; then
+  log "=== conan profile detect (ci Conan home $CONAN_HOME) ==="
+  conan profile detect
+fi
 
 log "=== conan install (root manifest, $PROFILE) ==="
 conan install "$ROOT" --output-folder="$CONAN_OUT" -s "build_type=$BUILD_TYPE" --build=missing \
