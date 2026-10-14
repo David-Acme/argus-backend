@@ -475,7 +475,8 @@ VOLATILE_FIELDS = {
 }
 
 PORT_RE = re.compile(r"^port\s*=\s*(\d+)\s*$", re.MULTILINE)
-PLAIN_RE = re.compile(r"^plain\s*=\s*(true|false)\s*$", re.MULTILINE)
+SERVER_CERT_RE = re.compile(r"^server_cert\s*=", re.MULTILINE)
+SERVER_KEY_RE = re.compile(r"^server_key\s*=", re.MULTILINE)
 TOKEN_RE = re.compile(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+")
 HEX64_RE = re.compile(r"\b[0-9a-fA-F]{64}\b")
 HEX32_RE = re.compile(r"\b[0-9a-f]{32}\b")
@@ -547,17 +548,24 @@ def parse_baseline(path):
     return routes
 
 
+def listener_scheme(unit):
+    example = REPO_ROOT / "services" / unit / "config.toml.example"
+    if not example.is_file():
+        return "https"
+    text = example.read_text()
+    if SERVER_CERT_RE.search(text) and SERVER_KEY_RE.search(text):
+        return "https"
+    return "http"
+
+
 def stack_base(stack, unit):
     config_path = stack / unit / "config.toml"
     if not config_path.is_file():
         return None
-    text = config_path.read_text()
-    port = PORT_RE.search(text)
+    port = PORT_RE.search(config_path.read_text())
     if not port:
         return None
-    plain = PLAIN_RE.search(text)
-    scheme = "http" if plain and plain.group(1) == "true" else "https"
-    return f"{scheme}://127.0.0.1:{port.group(1)}"
+    return f"{listener_scheme(unit)}://127.0.0.1:{port.group(1)}"
 
 
 def run_seeder(stack, extra):

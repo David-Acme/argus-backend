@@ -326,5 +326,35 @@ class CensusTest(unittest.TestCase):
                       err.getvalue())
 
 
+class SchemeTest(unittest.TestCase):
+    APP_FACING = ("auth", "identity", "camera", "productivity", "notification",
+                  "sync", "guard", "settings")
+    AI = ("llm", "stt", "tts", "vlm")
+
+    def setUp(self):
+        self.stack = pathlib.Path(tempfile.mkdtemp(prefix="golden-scheme-test-"))
+
+    def tearDown(self):
+        shutil.rmtree(self.stack)
+
+    def test_the_app_facing_services_are_https_as_their_examples_declare(self):
+        for unit in self.APP_FACING:
+            with self.subTest(unit=unit):
+                self.assertEqual(golden.listener_scheme(unit), "https")
+
+    def test_the_ai_services_are_http_because_their_examples_declare_no_tls(self):
+        for unit in self.AI:
+            with self.subTest(unit=unit):
+                self.assertEqual(golden.listener_scheme(unit), "http")
+
+    def test_a_stack_base_follows_the_listener_and_no_stack_key(self):
+        for unit, scheme in (("llm", "http"), ("auth", "https")):
+            with self.subTest(unit=unit):
+                (self.stack / unit).mkdir()
+                (self.stack / unit / "config.toml").write_text(
+                    '[server]\nport = 7032\n')
+                self.assertEqual(golden.stack_base(self.stack, unit),
+                                 f"{scheme}://127.0.0.1:7032")
+
 if __name__ == "__main__":
     unittest.main()
