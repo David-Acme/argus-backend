@@ -32,9 +32,13 @@ find_package(doctest REQUIRED)
 
 add_executable(grpc-tool-transport-test tests/unit/grpc-tool-transport-test.cc)
 target_link_libraries(grpc-tool-transport-test PRIVATE argus::clients::mcp
-    argus::contracts::mcp-wire doctest::doctest)
+    argus::contracts::mcp-wire argus::lib::grpc-test-support argus_client_grpc_base
+    doctest::doctest)
 target_compile_options(grpc-tool-transport-test PRIVATE -Wall -Wextra)
-add_test(NAME grpc-tool-transport-test COMMAND grpc-tool-transport-test)
+add_test(NAME grpc-tool-transport-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:grpc-tool-transport-test> 5)
+set_tests_properties(grpc-tool-transport-test PROPERTIES SKIP_RETURN_CODE 77)
 
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)

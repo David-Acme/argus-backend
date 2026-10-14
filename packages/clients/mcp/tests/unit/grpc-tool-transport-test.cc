@@ -6,6 +6,8 @@
 #include <mcp/mcp-rpc.hxx>
 #include <mcp/schema.hxx>
 
+#include <grpc-test-support/internal-tls-probe.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 
 #include <chrono>
@@ -32,8 +34,9 @@ struct LiveServer
   std::unique_ptr<McpRpcService> service;
   std::unique_ptr<grpc::Server> server;
   int port{0};
+  int tlsPort{0};
 
-  explicit LiveServer(const std::string& secret)
+  explicit LiveServer(const std::string& secret, bool mutualTls = false)
       : tools(std::make_shared<McpServer>(ServerIdentity{.name = "argus-test", .version = "3", .instructions = ""}))
   {
     tools->addSync({.name = "memory.recall",
@@ -54,6 +57,16 @@ struct LiveServer
         .gate = std::make_shared<const argus::client::FleetCallerGate>(argus::client::FleetGateConfig{
             .expectedCallers = {}, .callerPairs = {{"llm", secret}}, .legacySecret = {}, .onFirstLegacy = {}}),
         .callers = {"llm"}});
+    if (mutualTls) {
+      auto listener = argus::client::startListening({.address = "127.0.0.1:0",
+                                                     .tlsAddress = "127.0.0.1:0",
+                                                     .tls = argus::client::test_support::pkiMaterial("camera"),
+                                                     .services = {service.get()}});
+      server = std::move(listener.server);
+      port = listener.port;
+      tlsPort = listener.tlsPort;
+      return;
+    }
     grpc::ServerBuilder builder;
     builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
     builder.RegisterService(service.get());
@@ -103,6 +116,18 @@ TEST_CASE("a wrong credential is a transport failure the caller can see, not a t
   const auto listed = client.listTools();
   CHECK_FALSE(listed.ok());
   CHECK(listed.failure.kind == Failure::Kind::Transport);
+}
+
+TEST_CASE("the tool transport dials the mutual TLS port with the internal certificate")
+{
+  LiveServer live(kSecret, true);
+  REQUIRE(live.tlsPort > 0);
+  argus::client::installInternalTls(argus::client::test_support::pkiMaterial("llm"));
+  const std::string mutual = "tls:127.0.0.1:" + std::to_string(live.tlsPort);
+  const auto described = valueOf(clientFor(mutual, kSecret).discover());
+  CHECK(described.name == "argus-test");
+  const auto plaintext = clientFor("127.0.0.1:" + std::to_string(live.tlsPort), kSecret);
+  CHECK_FALSE(plaintext.discover().ok());
 }
 
 TEST_CASE("a listener that is not there is a transport failure within the deadline")

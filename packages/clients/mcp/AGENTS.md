@@ -35,4 +35,7 @@ no protobuf header reaches a consumer through it. Its one consumer is
 `grpc-tool-transport-test` — a live listener on an ephemeral loopback port:
 discover, list and call end to end; a wrong credential and a listener that is
 not there as transport failures within the deadline; and the four refusals at
-construction.
+construction. The `tls:` target of a provider's mutual TLS port answers the same
+discover with the internal certificate, and a plaintext dial to that port is a
+transport failure. The binary runs through `scripts/internal-tls-test.sh`, one
+process per case.
