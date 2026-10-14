@@ -2,6 +2,7 @@
 
 #include <errors/response-exception.hxx>
 #include <grpc/fleet-caller-gate.hxx>
+#include <grpc/internal-tls.hxx>
 #include <tts/tts-errors.hxx>
 #include <tts.grpc.pb.h>
 #include <response/response-rpc.hxx>
@@ -19,6 +20,8 @@ namespace
 {
 namespace wire = argus::tts::v1;
 using Clock = std::chrono::system_clock;
+
+constexpr int kMaxReceiveBytes = 32768;
 
 struct StreamQueue
 {
@@ -65,19 +68,20 @@ struct TtsRpcServer::Impl final : wire::Synthesis::Service
         !std::isfinite(input_.capabilities.defaultSpeed) ||
         input_.capabilities.defaultSpeed <= 0)
       throw std::invalid_argument("Invalid TTS RPC configuration");
-    grpc::ServerBuilder builder;
-    builder.SetMaxReceiveMessageSize(32768);
-    builder.AddListeningPort(input_.address, grpc::InsecureServerCredentials(), &port_);
-    if (!input_.tlsAddress.empty() && input_.tlsCredentials)
-      builder.AddListeningPort(input_.tlsAddress, input_.tlsCredentials, &tlsPort_);
-    builder.RegisterService(this);
-    for (auto* service : input_.services)
-      builder.RegisterService(service);
-    server_ = builder.BuildAndStart();
-    if (!server_)
-      throw std::runtime_error("TTS RPC listener failed");
-    if (!input_.tlsAddress.empty() && input_.tlsCredentials && tlsPort_ == 0)
-      throw std::runtime_error("TTS RPC mutual TLS listener failed");
+    std::vector<grpc::Service*> services{this};
+    services.insert(services.end(), input_.services.begin(), input_.services.end());
+    const argus::client::ListenInput listen{.address = input_.address,
+                                            .tlsAddress = input_.tlsAddress,
+                                            .tls = input_.tls,
+                                            .services = std::move(services),
+                                            .maxReceiveBytes = kMaxReceiveBytes};
+    auto listener = argus::client::startListening(listen);
+    if (const auto failure = argus::client::listenFailure(
+            {.name = "TTS RPC", .input = listen, .listener = listener, .consequence = ""}))
+      throw std::runtime_error(*failure);
+    server_ = std::move(listener.server);
+    port_ = listener.port;
+    tlsPort_ = listener.tlsPort;
   }
 
   [[nodiscard]] float currentSpeed() const

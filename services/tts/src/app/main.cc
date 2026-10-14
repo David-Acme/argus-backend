@@ -119,10 +119,8 @@ int main()
         .slots = ThreadBudget::inferenceSlots(),
         .defaultSpeed = [&synthesis] { return synthesis.defaultSpeed(); },
         .services = std::move(services),
-        .tlsAddress = internalTls ? internalTlsConfig.address : std::string{},
-        .tlsCredentials = internalTls && !internalTlsConfig.address.empty()
-                              ? argus::client::internalServerCredentials(*internalTls)
-                              : nullptr});
+        .tlsAddress = internalTlsConfig.address,
+        .tls = internalTls});
   }
 
   if (rpc)

@@ -40,6 +40,11 @@ std::optional<std::string> readPem(const std::string& path,
   return pem;
 }
 
+bool opensMutualTls(const ListenInput& input)
+{
+  return input.tls.has_value() && !input.tlsAddress.empty();
+}
+
 }
 
 InternalTlsFiles internalTlsFilesIn(const std::string& directory)
@@ -145,7 +150,7 @@ std::vector<ListenPort> listenPorts(const ListenInput& input)
   ports.push_back({.address = input.address,
                    .credentials = grpc::InsecureServerCredentials(),
                    .mutualTls = false});
-  if (input.tls && !input.tlsAddress.empty())
+  if (opensMutualTls(input))
     ports.push_back({.address = input.tlsAddress,
                      .credentials = internalServerCredentials(*input.tls),
                      .mutualTls = true});
@@ -159,6 +164,8 @@ Listener startListening(const ListenInput& input)
   if (ports.empty())
     return listener;
   grpc::ServerBuilder builder;
+  if (input.maxReceiveBytes)
+    builder.SetMaxReceiveMessageSize(*input.maxReceiveBytes);
   for (const auto& port : ports)
     builder.AddListeningPort(port.address, port.credentials,
                              port.mutualTls ? &listener.tlsPort
@@ -177,6 +184,19 @@ Listener startListening(const ListenInput& input)
     listener.tlsPort = 0;
   }
   return listener;
+}
+
+std::optional<std::string> listenFailure(const ListenFailureInput& failure)
+{
+  if (failure.listener.server)
+    return std::nullopt;
+  std::string message = std::string(failure.name) + " failed to listen on " +
+                        failure.input.address;
+  if (opensMutualTls(failure.input))
+    message += " and " + failure.input.tlsAddress;
+  if (!failure.consequence.empty())
+    message += "; " + std::string(failure.consequence);
+  return message;
 }
 
 }

@@ -469,15 +469,13 @@ int main()
   std::vector<grpc::Service*> grpcServices{&notificationRpc, &callRpc};
   if (settingsRpc)
     grpcServices.push_back(settingsRpc.get());
-  auto grpcListening = startNotificationRpc({.address = grpcAddress,
+  const NotificationRpcListenInput grpcInput{.address = grpcAddress,
                                              .tlsAddress = internalTlsConfig.address,
                                              .tls = internalTls,
-                                             .services = std::move(grpcServices)});
-  if (!grpcListening.server) {
-    LOG_FATAL << "gRPC server failed to listen on " << grpcAddress
-              << (internalTls && !internalTlsConfig.address.empty()
-                      ? " and " + internalTlsConfig.address
-                      : std::string{});
+                                             .services = std::move(grpcServices)};
+  auto grpcListening = startNotificationRpc(grpcInput);
+  if (const auto failure = notificationRpcFailure(grpcInput, grpcListening)) {
+    LOG_FATAL << *failure;
     return 1;
   }
   if (grpcListening.tlsPort > 0)

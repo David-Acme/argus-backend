@@ -16,3 +16,7 @@ struct ModulesRpcListenInput
 
 [[nodiscard]] argus::client::Listener
 startModulesRpc(const ModulesRpcListenInput& input);
+
+[[nodiscard]] std::optional<std::string>
+modulesRpcFailure(const ModulesRpcListenInput& input,
+                  const argus::client::Listener& listener);

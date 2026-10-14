@@ -439,5 +439,5 @@ target_link_libraries(notification-rpc-server-test PRIVATE
 target_compile_options(notification-rpc-server-test PRIVATE -Wall -Wextra)
 add_test(NAME notification-rpc-server-test
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh
-                 $<TARGET_FILE:notification-rpc-server-test> 3)
+                 $<TARGET_FILE:notification-rpc-server-test> 4)
 set_tests_properties(notification-rpc-server-test PROPERTIES SKIP_RETURN_CODE 77)

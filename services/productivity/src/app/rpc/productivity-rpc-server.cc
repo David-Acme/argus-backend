@@ -21,6 +21,16 @@ std::string listenerAddress()
       GrpcListenerConfig::resolve(kDefaultGrpcPort);
   return listener.host + ":" + std::to_string(listener.port);
 }
+
+argus::client::ListenInput
+listenInputOf(const ProductivityRpcListenInput& input)
+{
+  return {.address = input.address,
+          .tlsAddress = input.tlsAddress,
+          .tls = input.tls,
+          .services = input.services,
+          .maxReceiveBytes = std::nullopt};
+}
 }
 
 argus::client::Listener
@@ -31,28 +41,42 @@ startProductivityRpc(const ProductivityRpcListenInput& input)
         return service == nullptr;
       }))
     throw std::invalid_argument("Invalid productivity RPC configuration");
-  return argus::client::startListening({.address = input.address,
-                                        .tlsAddress = input.tlsAddress,
-                                        .tls = input.tls,
-                                        .services = input.services});
+  return argus::client::startListening(listenInputOf(input));
+}
+
+std::optional<std::string>
+productivityRpcFailure(const ProductivityRpcListenInput& input,
+                       const argus::client::Listener& listener)
+{
+  const auto listening = listenInputOf(input);
+  return argus::client::listenFailure(
+      {.name = "gRPC server",
+       .input = listening,
+       .listener = listener,
+       .consequence = "without it sync cannot pull the productivity tables, "
+                      "the llm cannot create or list reminders or use the "
+                      "calendar, project and task tools, and settings cannot "
+                      "reach productivity's settings, module data or module "
+                      "impact"});
 }
 
 struct ProductivityRpcServer::Impl
 {
   explicit Impl(const ProductivityRpcInput& input) : address_(listenerAddress())
   {
-    auto listener = startProductivityRpc({.address = address_,
-                                          .tlsAddress = input.tlsAddress,
-                                          .tls = input.tls,
-                                          .services = input.services});
-    listening_ = listener.server != nullptr;
+    const ProductivityRpcListenInput listen{.address = address_,
+                                            .tlsAddress = input.tlsAddress,
+                                            .tls = input.tls,
+                                            .services = input.services};
+    auto listener = startProductivityRpc(listen);
+    failure_ = productivityRpcFailure(listen, listener);
     tlsPort_ = listener.tlsPort;
     drain_ = std::make_unique<argus::client::GrpcServerDrain>(
         std::move(listener.server), kDrainDeadline);
   }
 
   std::string address_;
-  bool listening_{false};
+  std::optional<std::string> failure_;
   int tlsPort_{0};
   std::unique_ptr<argus::client::GrpcServerDrain> drain_;
 };
@@ -64,9 +88,9 @@ ProductivityRpcServer::ProductivityRpcServer(const ProductivityRpcInput& input)
 
 ProductivityRpcServer::~ProductivityRpcServer() { shutdown(); }
 
-bool ProductivityRpcServer::listening() const
+const std::optional<std::string>& ProductivityRpcServer::failure() const
 {
-  return impl_->listening_;
+  return impl_->failure_;
 }
 
 const std::string& ProductivityRpcServer::address() const

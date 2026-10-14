@@ -12,9 +12,13 @@
 #include <tts/tts-remote.hxx>
 #include <config/config-service.hxx>
 #include <feature/synthesis/services/tts-service.hxx>
+#include <grpc-test-support/internal-tls-probe.hxx>
+#include <grpc/internal-tls.hxx>
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -48,7 +52,7 @@ TtsRpcInput serverInput()
           .defaultSpeed = {},
           .services = {},
           .tlsAddress = {},
-          .tlsCredentials = {}};
+          .tls = std::nullopt};
 }
 
 ClientConfig clientConfig(int port)
@@ -56,6 +60,30 @@ ClientConfig clientConfig(int port)
   return {.target = "127.0.0.1:" + std::to_string(port),
           .credential = kSecret,
           .timeout = std::chrono::seconds(5)};
+}
+
+ClientConfig mutualTlsConfig(int port)
+{
+  return {.target = "tls:127.0.0.1:" + std::to_string(port),
+          .credential = kSecret,
+          .timeout = std::chrono::seconds(5)};
+}
+
+grpc::StatusCode synthesisCarrying(const std::string& target, std::size_t bytes)
+{
+  const auto stub = argus::tts::v1::Synthesis::NewStub(argus::client::makeChannel(target));
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(5));
+  argus::client::addCallerCredential(context, kSecret);
+  argus::tts::v1::SynthesisRequest request;
+  request.set_text(std::string(bytes, 'a'));
+  request.set_voice("M3");
+  request.set_language("en");
+  auto reader = stub->Synthesize(&context, request);
+  argus::tts::v1::AudioChunk chunk;
+  while (reader->Read(&chunk)) {
+  }
+  return reader->Finish().error_code();
 }
 
 SynthesisInput synthesisInput(std::string text)
@@ -407,27 +435,28 @@ TEST_CASE("the mutual TLS address opens a second listener for the same calls")
 {
   TtsRpcInput input = serverInput();
   input.tlsAddress = "127.0.0.1:0";
-  input.tlsCredentials = grpc::InsecureServerCredentials();
+  input.tls = argus::client::test_support::pkiMaterial("tts");
   TtsRpcServer server(std::move(input));
   REQUIRE(server.tlsPort() > 0);
   CHECK(server.tlsPort() != server.port());
-  CHECK(Client(clientConfig(server.tlsPort())).capabilities().sampleRate == 24000);
+  argus::client::installInternalTls(argus::client::test_support::pkiMaterial("voice"));
+  CHECK(Client(mutualTlsConfig(server.tlsPort())).capabilities().sampleRate == 24000);
   CHECK(Client(clientConfig(server.port())).capabilities().sampleRate == 24000);
 }
 
-TEST_CASE("no second listener without both a TLS address and credentials")
+TEST_CASE("no second listener without both a TLS address and material")
 {
   TtsRpcServer plain(serverInput());
   CHECK(plain.tlsPort() == 0);
 
   TtsRpcInput addressOnly = serverInput();
   addressOnly.tlsAddress = "127.0.0.1:0";
-  TtsRpcServer withoutCredentials(std::move(addressOnly));
-  CHECK(withoutCredentials.tlsPort() == 0);
+  TtsRpcServer withoutMaterial(std::move(addressOnly));
+  CHECK(withoutMaterial.tlsPort() == 0);
 
-  TtsRpcInput credentialsOnly = serverInput();
-  credentialsOnly.tlsCredentials = grpc::InsecureServerCredentials();
-  TtsRpcServer withoutAddress(std::move(credentialsOnly));
+  TtsRpcInput materialOnly = serverInput();
+  materialOnly.tls = argus::client::test_support::pkiMaterial("tts");
+  TtsRpcServer withoutAddress(std::move(materialOnly));
   CHECK(withoutAddress.tlsPort() == 0);
 }
 
@@ -435,6 +464,24 @@ TEST_CASE("a mutual TLS address that cannot be bound stops the start")
 {
   TtsRpcInput input = serverInput();
   input.tlsAddress = "192.0.2.1:0";
-  input.tlsCredentials = grpc::InsecureServerCredentials();
-  CHECK_THROWS_AS(TtsRpcServer{std::move(input)}, std::runtime_error);
+  input.tls = argus::client::test_support::pkiMaterial("tts");
+  CHECK_THROWS_WITH_AS(TtsRpcServer{std::move(input)},
+                       "TTS RPC failed to listen on 127.0.0.1:0 and 192.0.2.1:0",
+                       std::runtime_error);
+}
+
+TEST_CASE("a request over the 32 KiB cap is refused on both ports")
+{
+  TtsRpcInput input = serverInput();
+  input.tlsAddress = "127.0.0.1:0";
+  input.tls = argus::client::test_support::pkiMaterial("tts");
+  TtsRpcServer server(std::move(input));
+  REQUIRE(server.tlsPort() > 0);
+  argus::client::installInternalTls(argus::client::test_support::pkiMaterial("voice"));
+  const std::string plain = "127.0.0.1:" + std::to_string(server.port());
+  const std::string mutual = "tls:127.0.0.1:" + std::to_string(server.tlsPort());
+  CHECK(synthesisCarrying(plain, 16000) == grpc::StatusCode::OK);
+  CHECK(synthesisCarrying(mutual, 16000) == grpc::StatusCode::OK);
+  CHECK(synthesisCarrying(plain, 40000) == grpc::StatusCode::RESOURCE_EXHAUSTED);
+  CHECK(synthesisCarrying(mutual, 40000) == grpc::StatusCode::RESOURCE_EXHAUSTED);
 }

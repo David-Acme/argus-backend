@@ -36,6 +36,7 @@ struct ListenInput
   std::string tlsAddress;
   std::optional<InternalTlsMaterial> tls;
   std::vector<grpc::Service*> services;
+  std::optional<int> maxReceiveBytes;
 };
 
 struct ListenPort
@@ -50,6 +51,14 @@ struct Listener
   std::unique_ptr<grpc::Server> server;
   int port{0};
   int tlsPort{0};
+};
+
+struct ListenFailureInput
+{
+  std::string_view name;
+  const ListenInput& input;
+  const Listener& listener;
+  std::string_view consequence;
 };
 
 inline constexpr std::string_view kInternalTlsScheme = "tls:";
@@ -77,5 +86,8 @@ installInternalTlsFrom(const std::string& directory);
 [[nodiscard]] std::vector<ListenPort> listenPorts(const ListenInput& input);
 
 [[nodiscard]] Listener startListening(const ListenInput& input);
+
+[[nodiscard]] std::optional<std::string>
+listenFailure(const ListenFailureInput& failure);
 
 }

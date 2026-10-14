@@ -95,7 +95,11 @@ TEST_CASE("a port that cannot be bound leaves no server, and guard must not "
   CHECK(withTls.port == 0);
   CHECK(withTls.tlsPort == 0);
   CHECK(guardRpcFailure(mutual, withTls).value_or("") ==
-        "Guard RPC listener failed to listen on 127.0.0.1:0 and 192.0.2.1:0");
+        "Guard RPC listener failed to listen on 127.0.0.1:0 and 192.0.2.1:0; "
+        "without it sync cannot read presence, the llm cannot use the guard "
+        "tools, read the duress phrase or raise a spoken duress, and settings "
+        "cannot reach guard's settings, module data, owner PIN or module "
+        "impact");
 
   const GuardRpcListenInput plain{.address = "192.0.2.1:0",
                                   .tlsAddress = "",
@@ -104,5 +108,8 @@ TEST_CASE("a port that cannot be bound leaves no server, and guard must not "
   const auto withoutTls = startGuardRpc(plain);
   CHECK(withoutTls.server == nullptr);
   CHECK(guardRpcFailure(plain, withoutTls).value_or("") ==
-        "Guard RPC listener failed to listen on 192.0.2.1:0");
+        "Guard RPC listener failed to listen on 192.0.2.1:0; without it sync "
+        "cannot read presence, the llm cannot use the guard tools, read the "
+        "duress phrase or raise a spoken duress, and settings cannot reach "
+        "guard's settings, module data, owner PIN or module impact");
 }

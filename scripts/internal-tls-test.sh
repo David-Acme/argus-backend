@@ -11,7 +11,7 @@ Issues a scratch internal CA and its service certificates with
 scripts/lib/internal-pki.sh, adds a foreign client certificate the internal CA
 did not issue, and runs the given test binary against them, with the PKI in
 ARGUS_INTERNAL_TLS_PKI and the foreign certificate in ARGUS_INTERNAL_TLS_FOREIGN.
-It fails when the binary lists fewer test cases than the minimum, 21 by
+It fails when the binary lists fewer test cases than the minimum, 25 by
 default, which is lib/grpc's internal-tls-test; a service's test of its own
 mutual TLS listener names its own count. In lib/grpc's test two services speak
 mutual TLS through argus::client::makeChannel, the client checks the server's
@@ -21,16 +21,18 @@ after a channel and empty material, and installInternalTlsFrom installs a
 service directory, installs nothing for an empty setting and throws for a
 directory without the material, and listenPorts and startListening open a
 mutual TLS port beside the plaintext one only with material and an address,
-serve a peer of the internal CA there and refuse every other client, and
-start nothing when a port cannot be bound. A process installs its
-certificate once, so every test case runs in a process of its own. Without
-openssl the test exits 77, which ctest reports as skipped.
+serve a peer of the internal CA there and refuse every other client, start
+nothing when a port cannot be bound, and refuse a message over the cap on
+both ports while serving one under it, and listenFailure names the ports
+that were asked for and the consequence only when nothing came up. A process
+installs its certificate once, so every test case runs in a process of its
+own. Without openssl the test exits 77, which ctest reports as skipped.
 USAGE
 }
 
 [ "$#" -eq 1 ] || [ "$#" -eq 2 ] || { usage >&2; exit 2; }
 test_bin="$1"
-minimum="${2:-21}"
+minimum="${2:-25}"
 case "$minimum" in ""|*[!0-9]*) usage >&2; exit 2 ;; esac
 if ! command -v openssl >/dev/null 2>&1; then
   printf 'internal-tls-test: skipped, no openssl\n'

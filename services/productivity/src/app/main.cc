@@ -153,10 +153,8 @@ int main()
 
   ProductivityRpcServer rpc(
       {.services = std::move(rpcServices), .tlsAddress = internalTlsConfig.address, .tls = internalTls});
-  if (!rpc.listening()) {
-    LOG_FATAL << "gRPC server failed to listen on " << rpc.address()
-              << (internalTls && !internalTlsConfig.address.empty() ? " and " + internalTlsConfig.address
-                                                                     : std::string{});
+  if (const auto& failure = rpc.failure()) {
+    LOG_FATAL << *failure;
     return 1;
   }
   if (rpc.tlsPort() > 0)

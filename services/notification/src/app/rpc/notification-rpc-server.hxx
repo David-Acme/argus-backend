@@ -16,3 +16,7 @@ struct NotificationRpcListenInput
 
 [[nodiscard]] argus::client::Listener
 startNotificationRpc(const NotificationRpcListenInput& input);
+
+[[nodiscard]] std::optional<std::string>
+notificationRpcFailure(const NotificationRpcListenInput& input,
+                       const argus::client::Listener& listener);

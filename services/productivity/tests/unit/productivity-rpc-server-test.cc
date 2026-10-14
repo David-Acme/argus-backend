@@ -98,3 +98,21 @@ TEST_CASE("a listener without a service, or with a null one, is refused")
                                             .services = {nullptr}})),
                   std::invalid_argument);
 }
+
+TEST_CASE("a port that cannot be bound leaves no server, and the failure "
+          "names both ports and what stops")
+{
+  AlwaysServing health;
+  const ProductivityRpcListenInput input{.address = "127.0.0.1:0",
+                                         .tlsAddress = "192.0.2.1:0",
+                                         .tls = pkiMaterial("productivity"),
+                                         .services = {&health}};
+  const auto listener = startProductivityRpc(input);
+  CHECK(listener.server == nullptr);
+  CHECK(productivityRpcFailure(input, listener).value_or("") ==
+        "gRPC server failed to listen on 127.0.0.1:0 and 192.0.2.1:0; without "
+        "it sync cannot pull the productivity tables, the llm cannot create "
+        "or list reminders or use the calendar, project and task tools, and "
+        "settings cannot reach productivity's settings, module data or "
+        "module impact");
+}

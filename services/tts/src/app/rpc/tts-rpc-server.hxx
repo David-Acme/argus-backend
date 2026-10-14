@@ -3,10 +3,11 @@
 #include <tts/tts-client.hxx>
 #include <feature/synthesis/services/tts-service.hxx>
 #include <tts/tts-wire.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/impl/service_type.h>
-#include <grpcpp/security/server_credentials.h>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -21,7 +22,7 @@ struct TtsRpcInput
   std::function<float()> defaultSpeed;
   std::vector<grpc::Service*> services;
   std::string tlsAddress;
-  std::shared_ptr<grpc::ServerCredentials> tlsCredentials;
+  std::optional<argus::client::InternalTlsMaterial> tls;
 };
 
 class TtsRpcServer

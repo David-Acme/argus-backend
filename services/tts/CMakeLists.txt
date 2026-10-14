@@ -110,7 +110,8 @@ add_test(NAME tts-wire-test COMMAND tts-wire-test)
 
 add_executable(tts-rpc-test tests/unit/tts-rpc-test.cc)
 
-target_link_libraries(tts-rpc-test PRIVATE argus::tts-rpc argus::tts-synthesis doctest::doctest)
+target_link_libraries(tts-rpc-test PRIVATE argus::tts-rpc argus::tts-synthesis
+    argus::lib::grpc-test-support doctest::doctest)
 target_compile_definitions(tts-rpc-test PRIVATE
     ARGUS_TEST_TTS_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/tts")
 argus_runtime_rpath(tts-rpc-test)
@@ -119,7 +120,10 @@ target_compile_options(tts-rpc-test PRIVATE -Wall -Wextra)
 
 set_target_properties(tts-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-add_test(NAME tts-rpc-test COMMAND tts-rpc-test)
+add_test(NAME tts-rpc-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:tts-rpc-test> 18)
+set_tests_properties(tts-rpc-test PROPERTIES SKIP_RETURN_CODE 77)
 
 add_executable(tts-speech-text-test tests/unit/tts-speech-text-test.cc)
 target_link_libraries(tts-speech-text-test PRIVATE argus::tts-speech-text doctest::doctest)

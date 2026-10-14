@@ -25,12 +25,16 @@ struct ProductivityRpcListenInput
 [[nodiscard]] argus::client::Listener
 startProductivityRpc(const ProductivityRpcListenInput& input);
 
+[[nodiscard]] std::optional<std::string>
+productivityRpcFailure(const ProductivityRpcListenInput& input,
+                       const argus::client::Listener& listener);
+
 class ProductivityRpcServer
 {
 public:
   explicit ProductivityRpcServer(const ProductivityRpcInput& input);
   ~ProductivityRpcServer();
-  [[nodiscard]] bool listening() const;
+  [[nodiscard]] const std::optional<std::string>& failure() const;
   [[nodiscard]] const std::string& address() const;
   [[nodiscard]] int tlsPort() const;
   void requestStop();

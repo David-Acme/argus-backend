@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <chrono>
+#include <cstddef>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -103,6 +104,29 @@ grpc::StatusCode healthOver(const std::shared_ptr<grpc::Channel>& channel)
   const grpc::health::v1::HealthCheckRequest request;
   grpc::health::v1::HealthCheckResponse response;
   return stub->Check(&context, request, &response).error_code();
+}
+
+grpc::StatusCode healthCarrying(const std::shared_ptr<grpc::Channel>& channel,
+                                std::size_t bytes)
+{
+  auto stub = grpc::health::v1::Health::NewStub(channel);
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::seconds(5));
+  grpc::health::v1::HealthCheckRequest request;
+  request.set_service(std::string(bytes, 'x'));
+  grpc::health::v1::HealthCheckResponse response;
+  return stub->Check(&context, request, &response).error_code();
+}
+
+std::shared_ptr<grpc::Channel>
+authChannelOn(int port,
+              const std::shared_ptr<grpc::ChannelCredentials>& credentials)
+{
+  grpc::ChannelArguments arguments;
+  arguments.SetSslTargetNameOverride("argus-auth");
+  return grpc::CreateCustomChannel("127.0.0.1:" + std::to_string(port),
+                                   credentials, arguments);
 }
 
 std::shared_ptr<grpc::Channel>
@@ -316,7 +340,8 @@ TEST_CASE("material and an address give a plaintext port and a mutual TLS "
       argus::client::listenPorts({.address = "127.0.0.1:0",
                                   .tlsAddress = "127.0.0.1:7243",
                                   .tls = materialOf(serviceDirectory("auth")),
-                                  .services = {}});
+                                  .services = {},
+                                  .maxReceiveBytes = std::nullopt});
   REQUIRE(ports.size() == 2);
   CHECK(ports[0].address == "127.0.0.1:0");
   CHECK_FALSE(ports[0].mutualTls);
@@ -329,20 +354,24 @@ TEST_CASE("material and an address give a plaintext port and a mutual TLS "
 
 TEST_CASE("without material there is a plaintext port only")
 {
-  const auto ports = argus::client::listenPorts({.address = "127.0.0.1:0",
-                                                 .tlsAddress = "",
-                                                 .tls = std::nullopt,
-                                                 .services = {}});
+  const auto ports =
+      argus::client::listenPorts({.address = "127.0.0.1:0",
+                                  .tlsAddress = "",
+                                  .tls = std::nullopt,
+                                  .services = {},
+                                  .maxReceiveBytes = std::nullopt});
   REQUIRE(ports.size() == 1);
   CHECK_FALSE(ports[0].mutualTls);
 }
 
 TEST_CASE("an address without material is a plaintext port only")
 {
-  const auto ports = argus::client::listenPorts({.address = "127.0.0.1:0",
-                                                 .tlsAddress = "127.0.0.1:7243",
-                                                 .tls = std::nullopt,
-                                                 .services = {}});
+  const auto ports =
+      argus::client::listenPorts({.address = "127.0.0.1:0",
+                                  .tlsAddress = "127.0.0.1:7243",
+                                  .tls = std::nullopt,
+                                  .services = {},
+                                  .maxReceiveBytes = std::nullopt});
   REQUIRE(ports.size() == 1);
   CHECK(ports[0].address == "127.0.0.1:0");
   CHECK_FALSE(ports[0].mutualTls);
@@ -354,7 +383,8 @@ TEST_CASE("material without an address opens no second port")
       argus::client::listenPorts({.address = "127.0.0.1:0",
                                   .tlsAddress = "",
                                   .tls = materialOf(serviceDirectory("auth")),
-                                  .services = {}});
+                                  .services = {},
+                                  .maxReceiveBytes = std::nullopt});
   REQUIRE(ports.size() == 1);
   CHECK_FALSE(ports[0].mutualTls);
 }
@@ -365,7 +395,8 @@ TEST_CASE("no plaintext address opens nothing, mutual TLS included")
                                          .tlsAddress = "127.0.0.1:0",
                                          .tls = materialOf(
                                              serviceDirectory("auth")),
-                                         .services = {}};
+                                         .services = {},
+                                         .maxReceiveBytes = std::nullopt};
   CHECK(argus::client::listenPorts(input).empty());
   const auto listener = argus::client::startListening(input);
   CHECK(listener.server == nullptr);
@@ -381,7 +412,8 @@ TEST_CASE("the mutual TLS port serves a peer of the internal CA and refuses "
       {.address = "127.0.0.1:0",
        .tlsAddress = "127.0.0.1:0",
        .tls = materialOf(serviceDirectory("auth")),
-       .services = {&health}});
+       .services = {&health},
+       .maxReceiveBytes = std::nullopt});
   REQUIRE(listener.server != nullptr);
   REQUIRE(listener.port > 0);
   REQUIRE(listener.tlsPort > 0);
@@ -425,8 +457,127 @@ TEST_CASE("a mutual TLS address that cannot be bound starts nothing")
       {.address = "127.0.0.1:0",
        .tlsAddress = "192.0.2.1:0",
        .tls = materialOf(serviceDirectory("auth")),
-       .services = {&health}});
+       .services = {&health},
+       .maxReceiveBytes = std::nullopt});
   CHECK(listener.server == nullptr);
   CHECK(listener.port == 0);
   CHECK(listener.tlsPort == 0);
+}
+
+TEST_CASE("a message over the cap is refused on both ports and one under it "
+          "is served on both")
+{
+  AlwaysServing health;
+  auto listener = argus::client::startListening(
+      {.address = "127.0.0.1:0",
+       .tlsAddress = "127.0.0.1:0",
+       .tls = materialOf(serviceDirectory("auth")),
+       .services = {&health},
+       .maxReceiveBytes = 1024});
+  REQUIRE(listener.server != nullptr);
+  REQUIRE(listener.port > 0);
+  REQUIRE(listener.tlsPort > 0);
+
+  const auto plain =
+      authChannelOn(listener.port, grpc::InsecureChannelCredentials());
+  const auto mutual =
+      authChannelOn(listener.tlsPort,
+                    argus::client::internalChannelCredentials(
+                        materialOf(serviceDirectory("camera"))));
+  CHECK(healthCarrying(plain, 16) == grpc::StatusCode::OK);
+  CHECK(healthCarrying(mutual, 16) == grpc::StatusCode::OK);
+  CHECK(healthCarrying(plain, 4096) == grpc::StatusCode::RESOURCE_EXHAUSTED);
+  CHECK(healthCarrying(mutual, 4096) == grpc::StatusCode::RESOURCE_EXHAUSTED);
+  listener.server->Shutdown(std::chrono::system_clock::now() +
+                            std::chrono::seconds(2));
+}
+
+TEST_CASE("without a cap the same message is served on both ports")
+{
+  AlwaysServing health;
+  auto listener = argus::client::startListening(
+      {.address = "127.0.0.1:0",
+       .tlsAddress = "127.0.0.1:0",
+       .tls = materialOf(serviceDirectory("auth")),
+       .services = {&health},
+       .maxReceiveBytes = std::nullopt});
+  REQUIRE(listener.server != nullptr);
+  REQUIRE(listener.tlsPort > 0);
+
+  CHECK(healthCarrying(authChannelOn(listener.port,
+                                     grpc::InsecureChannelCredentials()),
+                       4096) == grpc::StatusCode::OK);
+  CHECK(
+      healthCarrying(authChannelOn(listener.tlsPort,
+                                   argus::client::internalChannelCredentials(
+                                       materialOf(serviceDirectory("camera")))),
+                     4096) == grpc::StatusCode::OK);
+  listener.server->Shutdown(std::chrono::system_clock::now() +
+                            std::chrono::seconds(2));
+}
+
+TEST_CASE("a listener that came up is no failure")
+{
+  AlwaysServing health;
+  const argus::client::ListenInput input{.address = "127.0.0.1:0",
+                                         .tlsAddress = "",
+                                         .tls = std::nullopt,
+                                         .services = {&health},
+                                         .maxReceiveBytes = std::nullopt};
+  const auto listener = argus::client::startListening(input);
+  REQUIRE(listener.server != nullptr);
+  CHECK_FALSE(argus::client::listenFailure({.name = "Auth RPC",
+                                            .input = input,
+                                            .listener = listener,
+                                            .consequence = "nothing works"})
+                  .has_value());
+  listener.server->Shutdown(std::chrono::system_clock::now() +
+                            std::chrono::seconds(2));
+}
+
+TEST_CASE("a failure names the ports that were asked for, then the "
+          "consequence")
+{
+  const argus::client::Listener down;
+  const auto material = materialOf(serviceDirectory("auth"));
+  const argus::client::ListenInput both{.address = "127.0.0.1:7043",
+                                        .tlsAddress = "0.0.0.0:7243",
+                                        .tls = material,
+                                        .services = {},
+                                        .maxReceiveBytes = std::nullopt};
+  const argus::client::ListenInput noMaterial{.address = "127.0.0.1:7043",
+                                              .tlsAddress = "0.0.0.0:7243",
+                                              .tls = std::nullopt,
+                                              .services = {},
+                                              .maxReceiveBytes = std::nullopt};
+  const argus::client::ListenInput noTlsAddress{.address = "127.0.0.1:7043",
+                                                .tlsAddress = "",
+                                                .tls = material,
+                                                .services = {},
+                                                .maxReceiveBytes = 1024};
+
+  CHECK(argus::client::listenFailure({.name = "Auth RPC",
+                                      .input = both,
+                                      .listener = down,
+                                      .consequence = "without it nothing"})
+            .value_or("") == "Auth RPC failed to listen on 127.0.0.1:7043 and "
+                             "0.0.0.0:7243; without it nothing");
+  CHECK(argus::client::listenFailure({.name = "Auth RPC",
+                                      .input = noMaterial,
+                                      .listener = down,
+                                      .consequence = "without it nothing"})
+            .value_or("") ==
+        "Auth RPC failed to listen on 127.0.0.1:7043; without it nothing");
+  CHECK(argus::client::listenFailure({.name = "Auth RPC",
+                                      .input = noTlsAddress,
+                                      .listener = down,
+                                      .consequence = "without it nothing"})
+            .value_or("") ==
+        "Auth RPC failed to listen on 127.0.0.1:7043; without it nothing");
+  CHECK(argus::client::listenFailure({.name = "gRPC server",
+                                      .input = both,
+                                      .listener = down,
+                                      .consequence = ""})
+            .value_or("") ==
+        "gRPC server failed to listen on 127.0.0.1:7043 and 0.0.0.0:7243");
 }

@@ -79,3 +79,21 @@ TEST_CASE("the mutual TLS port answers as argus-settings to a peer of the "
         grpc::StatusCode::UNAVAILABLE);
   stop(listener);
 }
+
+TEST_CASE("a port that cannot be bound leaves no server, and the failure "
+          "names both ports and what stops")
+{
+  AlwaysServing health;
+  const ModulesRpcListenInput input{.address = "127.0.0.1:0",
+                                    .tlsAddress = "192.0.2.1:0",
+                                    .tls = pkiMaterial("settings"),
+                                    .services = {&health}};
+  const auto listener = startModulesRpc(input);
+  CHECK(listener.server == nullptr);
+  CHECK(modulesRpcFailure(input, listener).value_or("") ==
+        "Modules RPC failed to listen on 127.0.0.1:0 and 192.0.2.1:0; without "
+        "it camera, guard, identity, llm, notification, productivity and sync "
+        "read no enabled set at start and keep their last known module state "
+        "until the module feed brings it, sync cannot read the Owner's "
+        "catalog, and the llm cannot use the modules tools");
+}

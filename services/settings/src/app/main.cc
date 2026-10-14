@@ -227,14 +227,13 @@ int main()
     std::vector<grpc::Service*> rpcServices{&modulesRpc};
     if (moduleTools)
       rpcServices.push_back(moduleTools.get());
-    auto rpcListener = startModulesRpc({.address = rpc.address,
-                                        .tlsAddress = internalTlsConfig.address,
-                                        .tls = internalTls,
-                                        .services = std::move(rpcServices)});
-    if (!rpcListener.server) {
-      LOG_FATAL << "Modules RPC failed to listen on " << rpc.address
-                << (internalTls && !internalTlsConfig.address.empty() ? " and " + internalTlsConfig.address
-                                                                       : std::string{});
+    const ModulesRpcListenInput rpcInput{.address = rpc.address,
+                                         .tlsAddress = internalTlsConfig.address,
+                                         .tls = internalTls,
+                                         .services = std::move(rpcServices)};
+    auto rpcListener = startModulesRpc(rpcInput);
+    if (const auto failure = modulesRpcFailure(rpcInput, rpcListener)) {
+      LOG_FATAL << *failure;
       return 1;
     }
     LOG_INFO << "Modules RPC listening on " << rpc.address << " ("
