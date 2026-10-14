@@ -195,7 +195,7 @@ The HTTP surface terminates TLS on `7044` and the gRPC surface answers on
 `7040`. The compose publishes `7044` on the LAN, where the app dials this
 service's routes directly, and `7040` on `127.0.0.1` only, because the RPC
 listener is a fleet-internal answer gated by each caller's own credential
-(`[rpc.callers]`) and reached by its peers as `argus-identity:7040`. A request that arrives on the
+(`[rpc.callers]`) and reached by its peers as `tls:argus-identity:7240`. A request that arrives on the
 `[remote] tunnel_port` listener is what `RemoteGate` refuses for `/pairing`
 (`403 REMOTE_NOT_ALLOWED`) unless `[remote] enabled` is set.
 

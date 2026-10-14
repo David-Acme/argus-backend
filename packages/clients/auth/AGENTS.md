@@ -66,7 +66,7 @@ identity side never reshapes this wire.
   `AuthClientConfig` and the consumer reads it. The resolver lives with the
   first consumer, `filterAuthClient()` in
   `packages/lib/auth/src/auth/auth-access.cc`, reading `auth.target` (or
-  `auth.rpc_host` / `auth.rpc_port`, `127.0.0.1:7043` as the fallback) plus
+  `auth.rpc_host` / `auth.rpc_port`, `127.0.0.1:7043` as the plaintext fallback) plus
   `auth.credential` (paired with argus-auth's `[rpc.callers]` entry for the
   caller) and the legacy `auth.rpc_secret`; `argus-identity` holds the same helper's client beside its
   own RPC service.

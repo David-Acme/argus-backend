@@ -558,7 +558,7 @@ the matching `*-init` profile is the only migration path onto a volume.
   argus-productivity, argus-notification, argus-identity and argus-sync
   verify, and the
   device hash must agree across them), the `[auth] target`
-  (`argus-auth:7043`) and the `[auth] credential` each of those verifiers
+  (`tls:argus-auth:7243`) and the `[auth] credential` each of those verifiers
   carries — its own key to the session verdict, paired with argus-auth's
   `[rpc.callers]` entry for it (the fleet-wide `[auth] rpc_secret` of an
   older install is honoured only until every verifier is paired), so an
@@ -1057,8 +1057,7 @@ voice, stt, vlm, llm, camera and identity.
   read it, and an identity without its RPC would fail them all with no visible
   cause.
 
-The clients move to `tls:` targets in step 5, and the plaintext listeners
-go only after the owner's check. For every deploy template that declares
+For every deploy template that declares
 `[internal_tls]`, `deploy-mounts-test` checks:
 - its own read-only certificate mount;
 - the port plus 200 in both templates;
@@ -1071,6 +1070,26 @@ Its red controls are a borrowed, a missing and a writable mount, a port off
 by one, and a published mutual TLS port.
 `scripts/port-map-test.sh` reads `[internal_tls] address` beside the other
 listeners.
+
+### Dial targets (step 5)
+
+Every internal client dials its callee's mutual TLS port. In the deploy
+templates each dial target key carries the `tls:` scheme and the callee's
+`[internal_tls] address` port: `tls:argus-identity:7240`, `tls:argus-auth:7243`,
+`tls:argus-settings:7247` and so on, down the table above. The 45 keys in ten
+templates (`argus-deploy/config.*.toml.example`) are the complete set, and the
+settings owner targets that `scripts/lib/common.sh` writes for a deployment
+(`ensure_settings_owners`, deploy mode) take the owner's TLS port the same
+way. A `tls:` target with no installed material refuses at channel creation,
+so a deploy caller without its certificate fails at start rather than falling
+back to plaintext. Every dialing service already mounts
+`/run/secrets/internal-tls`, so compose and `.env` carry no change for this.
+
+The plaintext listeners stay in place; in deploy the callers no longer use
+them. Native dial targets are not part of this step: the native templates
+(`services/*/config.toml.example`), the native settings-owner wiring and the
+native demo stack still dial `127.0.0.1:<plaintext port>`. Moving them to
+`tls:` is pending the owner's ruling on the native path.
 
 ## Init jobs and rule 27 (2026-10)
 

@@ -121,7 +121,7 @@ header: the in-package suite, two in `packages/lib/auth`, five in
   refuses a plaintext dial to it.
 - Config: `identity.target` in the eight
   `argus-deploy/config.{auth,camera,guard,llm,notification,productivity,sync,voice}.toml.example`
-  trees (`argus-identity:7040` from the compose containers, `127.0.0.1:7040`
+  trees (`tls:argus-identity:7240` from the compose containers, `127.0.0.1:7040`
   in a native-dev tree) with the caller's own
   `identity.credential` beside it in each (paired with identity's
   `[rpc.callers]` entry for that caller; an older install's
@@ -154,7 +154,15 @@ header: the in-package suite, two in `packages/lib/auth`, five in
   (no call reaches the scripted server until a valid one does) and a call
   turn's wire (caller, device, call key, the little-endian samples and their
   rate, the fleet secret without a bearer) followed by its close. Registered
-  as `identity-voiceprint-client-test`.
+  as `identity-voiceprint-client-test`. A third case dials the TLS port of the
+  same fake service under the voice certificate: a `tls:` `identify` answers, and
+  a plaintext client to that port does not. The target is `identity.target`
+  (voice's identity leg, `tls:argus-identity:7240` in deploy).
+- `tests/unit/identity-sync-client-test.cc` — one case, registered as
+  `identity-sync-client-test`: the `IdentitySyncClient` pull dials the TLS port
+  of a fake identity sync service under the sync certificate and reads the
+  created user; a plaintext client to that port gets no rows. The target is
+  `identity.target` (sync's identity leg, `tls:argus-identity:7240` in deploy).
 - The CMakeLists registers it as `identity-grpc-client-test`, with
   `EXCLUDE_FROM_ALL FALSE` because six of the pulls that reach it are
   `EXCLUDE_FROM_ALL` (guard, llm, notification, productivity, sync, voice; auth

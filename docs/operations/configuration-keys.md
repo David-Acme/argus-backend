@@ -13,7 +13,7 @@ argus-deploy argus-camera configuration. Copy to config.camera.toml (gitignored)
 |---|---|
 | `camera.host` / `camera.port` / `camera.plain` / `camera.min_protocol` | The app-facing listener (`0.0.0.0:7026`), TLS unless `plain = true`; `[cert] server_cert` / `server_key` are the instance certificate it serves, and the compose healthcheck asks it over `https`. |
 | `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers (`path=camera`, `path=media`, `path=zone`), each carrying its own SRV port and an `https="true"` TXT key. |
-| `identity.target` | argus-identity's fleet-secret RPC listener (`argus-identity:7040`); the camera guard's face recognition and enrollment ride it. |
+| `identity.target` | argus-identity's fleet-secret RPC listener, dialled over mutual TLS as `tls:argus-identity:7240` (the plaintext port 7040 stays open beside it); the camera guard's face recognition and enrollment ride it. |
 | `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or every identity call fails. |
 | `grpc.caller_guard` | Capability credential for the guard -> camera edge (paired with guard's camera.actions_credential). |
 | `identity.identify` | Camera guard recognition; enroll/capture stay off until you enable them. `auto_enroll`, `capture_clear_faces`, `min_face_box_px`, `identify_interval_ms`, `enroll_cooldown_ms`, `best_shot_ms` and `improve_margin` ride the same table. |
@@ -43,7 +43,7 @@ argus-deploy argus-auth configuration. Copy to config.auth.toml (gitignored) nex
 | `auth.context_cache_seconds` | How long a resolved user context may be reused before identity is asked again (0 disables the cache). A change on the identity feed drops the entry immediately, so this is a load valve, not the invalidation mechanism. |
 | `auth.refresh_reuse_grace_seconds` | How long after a rotation the token it replaced may come back from the same device as a benign race (plain 401, 30 s). Outside that window, or from another binding, a rotated refresh token revokes its whole session and is audited as `refreshTokenReuse`. |
 | `device.trust_forwarded_for` / `device.trusted_proxy_ips` | `X-Forwarded-For` is read only when the immediate peer is in the list (exact addresses or CIDRs, comma-separated; loopback is not implicit). Nothing in the stack writes the header, so the template ships `false` and an empty list; name an address only for a real reverse proxy that writes it. |
-| `identity.target` | The identity call behind a session verdict; `argus-identity:7040`, the fleet-secret RPC leg. |
+| `identity.target` | The identity call behind a session verdict; `tls:argus-identity:7240`, the fleet-secret RPC leg over mutual TLS. |
 | `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or every validation of a live session fails. |
 | `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
 
@@ -70,7 +70,7 @@ Optional keys the template does not set:
 
 | Key | Example | Notes |
 |---|---|---|
-| `auth.rpc_host` / `auth.rpc_port` | `"127.0.0.1"` / `7043` | The split alternative to `auth.target`; `auth.target` wins when it is non-empty. |
+| `auth.rpc_host` / `auth.rpc_port` | `"127.0.0.1"` / `7043` | The split alternative to `auth.target`; `auth.target` wins when it is non-empty. The fallback is plaintext: the deploy template sets `auth.target` to `tls:`, so the fallback is reached only when that key is cleared. |
 | `jwt.access_ttl_minutes` / `jwt.refresh_ttl_days` | `60` / `7` | Read by the shared `JwtService` constructor; this service never mints or rotates a token, so the defaults are inert here. |
 | `memory.create_face_vec` | `true` | Whether the face vec0 index is built from the schema's JSON column (unset behaves as true). |
 | `remote.hostname` | `""` | The extra DNS SAN `lib/cert` appends when it rotates the instance leaf; this service's own config carries the key, and a leaf rotated without it loses that SAN. |
@@ -156,7 +156,7 @@ argus-settings deploy configuration; `provision-host.sh` fills it.
 | `settings.host` / `settings.port` / `settings.plain` / `settings.min_protocol` | The app-facing TLS listener (`0.0.0.0:7045`); `[cert]` carries the certificate served and `[mdns]` the `settings` route announcement. No database, no gRPC listener. |
 | `settings.list_timeout_ms` / `settings.update_timeout_ms` | Per-owner deadlines: 1500 ms for each catalog read of `GET /settings` (owners are read in parallel, so one dead owner costs one deadline), 5000 ms for a forwarded update. Values outside 1..120000 fall back to these. |
 | `settings.profiles_path` | The owner profiles file (`services/settings/profiles.json`, baked into the image at `/opt/argus/profiles.json`): the three profiles, the keys each sets per owner and the hardware recommendation thresholds. Relative paths resolve against the working directory; absent means `profiles.json`. A missing or invalid file is logged at boot and the profile routes answer 503; `GET /settings` and `PATCH /settings/{owner}` keep working. |
-| `owners.<owner>.target` / `owners.<owner>.credential` | One table per settings owner (`llm`, `voice`, `tts`, `stt`, `vlm`, `guard`, `camera`, `notification`, also the display order). An empty target leaves the owner out. Provisioning sets the target to `argus-<owner>:<grpc port>` and mints the credential into both this file and the owner's caller slot (`[rpc.callers] settings`, or `[grpc] caller_settings` for voice, camera and notification), but only for an owner whose config carries that slot. |
+| `owners.<owner>.target` / `owners.<owner>.credential` | One table per settings owner (`llm`, `voice`, `tts`, `stt`, `vlm`, `guard`, `camera`, `notification`, also the display order). An empty target leaves the owner out. Provisioning sets the target to `tls:argus-<owner>:<TLS port>` (the owner's `[internal_tls] address` port) in deploy, and `127.0.0.1:<grpc port>` for a native run, and mints the credential into both this file and the owner's caller slot (`[rpc.callers] settings`, or `[grpc] caller_settings` for voice, camera and notification), but only for an owner whose config carries that slot. |
 
 ## `argus-deploy/config.stt.toml.example`
 
@@ -172,7 +172,7 @@ argus-deploy argus-sync configuration. Copy to config.sync.toml (gitignored) nex
 | `sync.audit_retention_days` | The audit TTL: rows older than the window are compacted into the nearest newer old row of the same key and a client whose cursor is older is refused with 409 so it re-bootstraps. Values <= 0 keep every row by stopping the sweep; cursors behind what an earlier sweep already deleted stay refused. |
 | `sync.control_secret` | Must match the same key in every producer service's config: the control RPC injects frames into any user's room, and the service refuses to start when this listener is reachable beyond loopback without it. |
 | `voice.target` | The voice service the /sync forwarder relays voice:* frames and PCM to. |
-| `identity.target` | argus-identity's fleet-secret RPC listener (`argus-identity:7040`): the user directory the socket resolves names through and the identity pull source beside it. |
+| `identity.target` | argus-identity's fleet-secret RPC listener, `tls:argus-identity:7240` over mutual TLS: the user directory the socket resolves names through and the identity pull source beside it. |
 | `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or the directory and the identity pull both fail. |
 | `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
 | `notifications.credential` | Caller capability credential for the sync -> notification pull edge; must match argus-notification's [grpc] caller_sync, and provision-host.sh pairs the two. |
@@ -219,14 +219,14 @@ argus-deploy argus-voice configuration. Copy to config.voice.toml (gitignored) n
 
 | Key | Notes |
 |---|---|
-| `identity.target` | The identity RPC behind the spoken-name lookup (`argus-identity:7040`). |
+| `identity.target` | The identity RPC behind the spoken-name lookup (`tls:argus-identity:7240`). |
 | `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or the spoken-name persist fails. |
 
 ## `services/identity/config.toml.example`
 
 argus-identity configuration. Copy to config.toml (gitignored) to run.
 
-- **`[server]`** — The gRPC listener: `host` is loopback by default, and `grpc_port` must match the port the peers' `identity.target` names.
+- **`[server]`** — The gRPC listener: `host` is loopback by default. `grpc_port` is the plaintext port; the peers' `identity.target` names its mutual TLS port (`grpc_port` + 200 under `[internal_tls] address`) in deploy, and `127.0.0.1:<grpc_port>` natively.
 - **`[drogon.app]`** — The HTTP listener and db_clients are built by the service itself.
 - **`[cert]`** — The instance CA and server certificate; the HTTPS surface needs both.
 - **`[face]`** — The face engine runs in this process: the vec0 index lives in identity.db and no crop leaves the host.
@@ -238,7 +238,7 @@ argus-identity configuration. Copy to config.toml (gitignored) to run.
 | `identity.port` | The TLS HTTP surface (7044): the app-facing listener the `/user`, `/invitation`, `/portrait-preview`, `/voiceprint` and `/pairing` prefixes serve on. It is also the port the pairing and invitation answers publish, and the one the app writes into every later invitation QR. |
 | `identity.db` / `identity.schema` | `database/identity.db` and this owner's `database/schema.sql`, applied at boot. |
 | `identity.rpc_secret` | Gates the gRPC listener; empty is legal only while `[server] host` is loopback, and the service refuses to start otherwise. |
-| `auth.target` / `auth.rpc_secret` | The session-verdict leg the filter chain asks (`argus-auth:7043`). |
+| `auth.target` / `auth.rpc_secret` | The session-verdict leg the filter chain asks (`tls:argus-auth:7243` in deploy, `127.0.0.1:7043` natively). |
 | `sync.control_target` / `sync.control_secret` | The sync control plane: a role update rides `replaceRoleRooms` before the `AuthContextChanged` emit. |
 | `pairing.paired` | The QR pairing state the frontend's onboarding reads; `ConfigService::setBool` persists it, so this file must stay writable. |
 | `nats.url` | The broker the change feed publishes to; empty disables the publish. |

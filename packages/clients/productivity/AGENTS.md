@@ -42,6 +42,12 @@ RPC test above and this package's own suite.
   legs; the receiver acts on the identity's user and never on a body field,
   and only on that user's own reminders
   (`services/productivity/CONTEXT.md`, "Reminders: core, own rows only").
+- `tests/unit/productivity-reminder-client-test.cc` — one case, registered as
+  `productivity-reminder-client-test`: a `tls:` `create` under the llm
+  certificate returns the reminder with its id, and a plaintext client to the
+  TLS port does not succeed. The target is `productivity.grpc_target` (llm's
+  reminder leg, `tls:argus-productivity:7237` in deploy). Its binary runs
+  through `scripts/internal-tls-test.sh`, one process per case.
 - `tests/unit/productivity-sync-client-test.cc` — the suite below.
 
 ## Rules
@@ -78,7 +84,7 @@ RPC test above and this package's own suite.
 - The endpoint is runtime config: `productivity.grpc_target`, read at
   `services/sync/src/config/sync-config.cc:40` into `SyncUpstreams`. Two files
   declare it — `services/sync/config.toml.example:50-51` and
-  `argus-deploy/config.sync.toml.example:50-51` (`argus-productivity:7037`) —
+  `argus-deploy/config.sync.toml.example:50-51` (`tls:argus-productivity:7237`, the mutual TLS port; the native file keeps `127.0.0.1:7037`) —
   and a sync service whose key is empty logs
   "productivity leg -> unconfigured source (503)": the source is constructed
   either way and the empty target fails the dial rather than pointing

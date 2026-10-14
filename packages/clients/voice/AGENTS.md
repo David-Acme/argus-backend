@@ -87,7 +87,7 @@ This is the only client package that links `argus::contracts::auth`
   `VoiceGrpcConfig::resolve` at
   `services/sync/src/feature/transport/infra/voice-grpc-relay.cc:55`.
   `argus-deploy/config.sync.toml.example:53-54` declares it
-  (`argus-voice:7034`, the `grpc_port` argus-voice listens on), as does
+  (`tls:argus-voice:7234`, argus-voice's mutual TLS port; its plaintext `grpc_port` is 7034), as does
   `services/sync/config.toml.example:53-54` for the native tree; an empty
   target leaves the leg logging "voice leg -> unconfigured (503)".
 - §2.3 gives a client `AGENTS.md`, `CMakeLists.txt`,

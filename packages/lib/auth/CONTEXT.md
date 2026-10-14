@@ -208,9 +208,9 @@ widening changes visible rows instead of slipping through.
 ## The two targets
 
 `filterAuthClient()` resolves `auth.target` (`auth.rpc_host` /
-`auth.rpc_port` as the fallback, default `127.0.0.1:7043`) and
+`auth.rpc_port` as the fallback, default `127.0.0.1:7043`; the fallback is plaintext, and deploy always sets `auth.target` to `tls:`) and
 `filterIdentityClient()` resolves `identity.target` the same way
-(`identity.rpc_host` / `identity.rpc_port`, default `127.0.0.1:7040`). Each
+(`identity.rpc_host` / `identity.rpc_port`, default `127.0.0.1:7040`, plaintext: the same fallback caveat applies). Each
 presents the service's own credential, `auth.credential` and
 `identity.credential`, falling back to the legacy `auth.rpc_secret` /
 `identity.rpc_secret` only while that credential is empty (2026-10-05 audit,

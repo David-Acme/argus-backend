@@ -27,7 +27,7 @@ exact JSON/binary the app expects is argus-sync's
   (`stt_failed` reaction, logged TTS/LLM fallbacks), never a crash.
 - **The identity write** (`GrpcVoiceIdentity`): the spoken-name persist is a
   typed `IdentityService.UpdateUser` call to argus-identity's gRPC listener
-  (`identity.target`, `argus-identity:7040`). argus-voice owns NO database —
+  (`identity.target`, `tls:argus-identity:7240`). argus-voice owns NO database —
   zero DB clients. The identity feature owns identity.db and emits the change
   through its own NATS sink, whose payloads argus-sync's fan-out dispatches
   onto `/sync` (the publisher of that emit is the identity surface, not this
@@ -1163,7 +1163,7 @@ cannot change settings. An empty `caller_settings`, or one equal to
   `[server].health_port` (7035) carries the minimal `/health` HTTP listener
   for the compose healthcheck. No filters, no `/sync`, no db clients.
 - `[identity].target` points at argus-identity's gRPC listener
-  (`argus-identity:7040` in the deploy stack, `127.0.0.1:7040` natively).
+  (`tls:argus-identity:7240` in the deploy stack, `127.0.0.1:7040` natively).
 - No alarm/siren trigger path exists here (voice reactions never carry alarm
   triggers); no camera frames, no sync-table CRUD, no schema.
 - The same gRPC services also listen with mutual TLS on 7234

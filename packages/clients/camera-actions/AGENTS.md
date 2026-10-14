@@ -79,7 +79,7 @@ action-rpc suite, and eleven guard files (`main.cc`, `guard-service.cc`,
   (`services/guard/src/app/main.cc:145-152` is the only reader, and it skips
   the client entirely when the target is empty). Both templates in the tree
   declare the pair — `argus-deploy/config.guard.toml.example:115-116`
-  (`argus-camera:7036` plus a `CHANGE_ME_GUARD_CAMERA` placeholder) and
+  (`tls:argus-camera:7236` plus a `CHANGE_ME_GUARD_CAMERA` placeholder) and
   `services/guard/config.toml.example:119-120` (a loopback target with an
   empty credential) — and `scripts/lib/common.sh:312` mints the deploy pair's
   real secret, so the header travels wherever provisioning filled it.

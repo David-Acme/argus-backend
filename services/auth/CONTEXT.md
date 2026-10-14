@@ -405,7 +405,8 @@ server) both with and without the mutual TLS material loaded.
 **Ports.** 7042 is this service's HTTP subroute (TLS with the instance
 certificate), 7043 its RPC listener. The compose publishes 7042 on the LAN,
 where the app dials `/auth` directly, and 7043 on `127.0.0.1` only, where the
-fleet reaches it as `argus-auth:7043` over the bridge. `RemoteGate` sits in
+fleet reaches it as `tls:argus-auth:7243` over the bridge (mutual TLS; the
+plaintext 7043 stays published on the same loopback beside it). `RemoteGate` sits in
 front of the whole surface as a pre-routing advice: a request that arrives on
 the `[remote] tunnel_port` listener is refused `REMOTE_NOT_ALLOWED` for
 `/pairing` and `/auth/register` unless `[remote] enabled` is set. The service

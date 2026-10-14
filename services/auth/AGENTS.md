@@ -33,7 +33,8 @@ auth-service code; when in doubt, the root file wins.
    listener is bound to loopback, which is the native default; `main.cc`
    refuses to start when the listener is reachable beyond loopback without
    a paired caller or a legacy secret. The deploy template binds `0.0.0.0` behind that secret, which is what
-   lets the peer containers reach `argus-auth:7043`; the compose publishes that
+   lets the peer containers reach argus-auth's mutual TLS port, which they dial as
+   `tls:argus-auth:7243`; the compose publishes the plaintext 7043 that
    port on `127.0.0.1` only, and the HTTP surface on the LAN.
 6. **Never serialize an invitation, portrait or credential secret** — a device
    credential is looked up by the SHA-256 the caller already holds
@@ -128,7 +129,7 @@ The HTTP surface terminates TLS on `7042` and the RPC listener answers on
 `7043`. The compose publishes `7042` on the LAN, where the app dials this
 service's routes directly, and `7043` on `127.0.0.1` only, because the session
 verdict is a fleet-internal answer gated by each caller's own credential
-(`[rpc.callers]`) and reached over the bridge as `argus-auth:7043`. A request that arrives on the
+(`[rpc.callers]`) and reached over the bridge as `tls:argus-auth:7243`. A request that arrives on the
 `[remote] tunnel_port` listener is what `RemoteGate` refuses for `/pairing` and
 `/auth/register` (`403 REMOTE_NOT_ALLOWED`) unless `[remote] enabled` is set.
 
