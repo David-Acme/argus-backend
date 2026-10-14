@@ -52,3 +52,17 @@ add_test(NAME identity-voiceprint-client-test
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
                  $<TARGET_FILE:identity-voiceprint-client-test> 3)
 set_tests_properties(identity-voiceprint-client-test PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(identity-sync-client-test tests/unit/identity-sync-client-test.cc)
+
+set_target_properties(identity-sync-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(identity-sync-client-test PRIVATE argus::clients::identity
+    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
+
+target_compile_options(identity-sync-client-test PRIVATE -Wall -Wextra)
+
+add_test(NAME identity-sync-client-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:identity-sync-client-test> 1)
+set_tests_properties(identity-sync-client-test PROPERTIES SKIP_RETURN_CODE 77)
