@@ -6,7 +6,7 @@
       "probe": "no-token",
       "request": {
         "auth": "none",
-        "body": "{}",
+        "body": "{\"token\": \"argus-golden-push-token\", \"platform\": \"android\", \"lang\": \"es\"}",
         "contentType": "application/json",
         "userAgent": "recorder"
       },
@@ -58,7 +58,7 @@
       "probe": "other-device",
       "request": {
         "auth": "owner",
-        "body": "{}",
+        "body": "{\"token\": \"argus-golden-push-token\", \"platform\": \"android\", \"lang\": \"es\"}",
         "contentType": "application/json",
         "userAgent": "other"
       },
@@ -84,27 +84,21 @@
       "probe": "role-resident",
       "request": {
         "auth": "resident",
-        "body": "{}",
+        "body": "{\"token\": \"argus-golden-push-token\", \"platform\": \"android\", \"lang\": \"es\"}",
         "contentType": "application/json",
         "userAgent": "recorder"
       },
       "response": {
         "contentType": "application/json",
         "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "fields": {
-              "token": [
-                "token must not be empty"
-              ]
-            },
-            "message": "Validation failed"
+          "errors": null,
+          "info": {
+            "registered": true
           },
-          "info": null,
-          "status": 422
+          "status": 200
         },
         "pretty": true,
-        "status": 422
+        "status": 200
       },
       "route": "/notification-token",
       "unit": "notification"
@@ -115,27 +109,21 @@
       "probe": "role-guest",
       "request": {
         "auth": "guest",
-        "body": "{}",
+        "body": "{\"token\": \"argus-golden-push-token\", \"platform\": \"android\", \"lang\": \"es\"}",
         "contentType": "application/json",
         "userAgent": "recorder"
       },
       "response": {
         "contentType": "application/json",
         "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "fields": {
-              "token": [
-                "token must not be empty"
-              ]
-            },
-            "message": "Validation failed"
+          "errors": null,
+          "info": {
+            "registered": true
           },
-          "info": null,
-          "status": 422
+          "status": 200
         },
         "pretty": true,
-        "status": 422
+        "status": 200
       },
       "route": "/notification-token",
       "unit": "notification"
@@ -146,27 +134,21 @@
       "probe": "owner",
       "request": {
         "auth": "owner",
-        "body": "{}",
+        "body": "{\"token\": \"argus-golden-push-token\", \"platform\": \"android\", \"lang\": \"es\"}",
         "contentType": "application/json",
         "userAgent": "recorder"
       },
       "response": {
         "contentType": "application/json",
         "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "fields": {
-              "token": [
-                "token must not be empty"
-              ]
-            },
-            "message": "Validation failed"
+          "errors": null,
+          "info": {
+            "registered": true
           },
-          "info": null,
-          "status": 422
+          "status": 200
         },
         "pretty": true,
-        "status": 422
+        "status": 200
       },
       "route": "/notification-token",
       "unit": "notification"
