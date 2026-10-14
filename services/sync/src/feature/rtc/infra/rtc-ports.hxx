@@ -48,6 +48,34 @@ struct RtcFarewellInput
   std::chrono::milliseconds deadline{0};
 };
 
+enum class RtcDeclineStatus : uint8_t
+{
+  Declined,
+  Taken,
+  Expired,
+  NotFound,
+  Unavailable
+};
+
+struct RtcDeclineInput
+{
+  std::string callId;
+  int64_t userId{0};
+  std::string sessionId;
+};
+
+struct RtcDecline
+{
+  RtcDeclineStatus status{RtcDeclineStatus::Unavailable};
+};
+
+class RtcCallDecliner
+{
+public:
+  virtual ~RtcCallDecliner() = default;
+  virtual drogon::Task<RtcDecline> decline(RtcDeclineInput input) const = 0;
+};
+
 class RtcVoiceJoiner
 {
 public:

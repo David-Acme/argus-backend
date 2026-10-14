@@ -6,6 +6,7 @@
 #include <auth/request-context.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
+#include <feature/rtc/dtos/rtc-decline-dto.hxx>
 #include <http/api-response.hxx>
 
 #include <utility>
@@ -24,5 +25,13 @@ drogon::Task<drogon::HttpResponsePtr> RtcController::token(drogon::HttpRequestPt
   const auto& caller = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   const auto result = co_await service_.issue(
       {.body = body, .caller = caller, .host = req->getHeader("host")});
+  co_return ApiResponse::ok(result.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr> RtcController::decline(drogon::HttpRequestPtr req)
+{
+  const auto body = RtcDeclineDto::fromJson(*req->getJsonObject());
+  const auto& caller = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const auto result = co_await service_.decline({.body = body, .caller = caller});
   co_return ApiResponse::ok(result.toJson());
 }

@@ -16,6 +16,23 @@
 namespace
 {
 
+void throwForDecline(RtcDeclineStatus status)
+{
+  switch (status) {
+    case RtcDeclineStatus::Declined:
+      return;
+    case RtcDeclineStatus::Taken:
+      throw ResponseException(RtcErrors::CallTaken);
+    case RtcDeclineStatus::Expired:
+      throw ResponseException(RtcErrors::CallExpired);
+    case RtcDeclineStatus::NotFound:
+      throw ResponseException(RtcErrors::CallNotFound);
+    case RtcDeclineStatus::Unavailable:
+      break;
+  }
+  throw ResponseException(RtcErrors::RtcUnavailable);
+}
+
 void throwForClaim(RtcClaimStatus status)
 {
   switch (status) {
@@ -40,7 +57,8 @@ RtcTokenService::RtcTokenService(RtcTokenServiceInput input)
       voice_(std::move(input.voice)),
       calls_(std::move(input.calls)),
       directory_(std::move(input.directory)),
-      rooms_(std::move(input.rooms))
+      rooms_(std::move(input.rooms)),
+      decliner_(std::move(input.decliner))
 {
 }
 
@@ -71,6 +89,17 @@ RtcTokenService::reserveCall(RtcCallSlotInput input) const
                            if (found != calls->byUser.end() && --found->second <= 0)
                              calls->byUser.erase(found);
                          })};
+}
+
+drogon::Task<ResponseRtcDeclineDto> RtcTokenService::decline(RtcDeclineRequest request) const
+{
+  if (!config_.enabled || !decliner_ || request.caller.sessionId.empty())
+    throw ResponseException(RtcErrors::RtcUnavailable);
+  const RtcDecline result = co_await decliner_->decline(
+      {.callId = request.body.callId, .userId = request.caller.sub, .sessionId = request.caller.sessionId});
+  throwForDecline(result.status);
+  LOG_INFO << "RTC: call " << request.body.callId << " declined by user " << request.caller.sub;
+  co_return ResponseRtcDeclineDto{};
 }
 
 drogon::Task<ResponseRtcTokenDto> RtcTokenService::issue(RtcTokenRequest request) const

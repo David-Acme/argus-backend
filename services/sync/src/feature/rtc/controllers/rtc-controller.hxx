@@ -15,9 +15,12 @@ public:
   METHOD_LIST_BEGIN
   ADD_METHOD_TO(RtcController::token, "/rtc/token", drogon::Post,
                 "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(RtcController::decline, "/rtc/decline", drogon::Post,
+                "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> token(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> decline(drogon::HttpRequestPtr req);
 
 private:
   RtcTokenService service_;

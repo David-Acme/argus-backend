@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <feature/rtc/dtos/rtc-decline-dto.hxx>
 #include <feature/rtc/dtos/rtc-token-dto.hxx>
 #include <feature/rtc/infra/notification-call-claimer.hxx>
 #include <feature/rtc/services/livekit-token.hxx>
@@ -287,7 +288,7 @@ TEST_CASE("a new call asks argus-voice to join first, then hands the caller its 
 {
   const auto voice = std::make_shared<FakeVoice>(true);
   const auto rooms = std::make_shared<FakeRooms>();
-  const RtcTokenService service({.config = enabledConfig(), .voice = voice, .calls = nullptr, .directory = nullptr, .rooms = rooms});
+  const RtcTokenService service({.config = enabledConfig(), .voice = voice, .calls = nullptr, .directory = nullptr, .rooms = rooms, .decliner = nullptr});
   const ResponseRtcTokenDto response = drogon::sync_wait(
       service.issue({.body = bodyOf("{}"), .caller = caller(), .host = "argus.local:7025"}));
 
@@ -325,7 +326,7 @@ TEST_CASE("a room LiveKit refuses to create is never handed to the agent")
   const auto rooms = std::make_shared<FakeRooms>();
   rooms->createOk = false;
   const RtcTokenService service(
-      {.config = enabledConfig(), .voice = voice, .calls = nullptr, .directory = nullptr, .rooms = rooms});
+      {.config = enabledConfig(), .voice = voice, .calls = nullptr, .directory = nullptr, .rooms = rooms, .decliner = nullptr});
   CHECK(statusOf([&] {
           (void)drogon::sync_wait(service.issue({.body = bodyOf("{}"), .caller = caller(), .host = "argus.local"}));
         }) == 503);
@@ -342,7 +343,7 @@ TEST_CASE("a user holds at most the configured number of calls at once")
   SyncRtcConfig config = enabledConfig();
   config.maxConcurrentCalls = 2;
   const RtcTokenService service(
-      {.config = config, .voice = voice, .calls = nullptr, .directory = nullptr, .rooms = rooms});
+      {.config = config, .voice = voice, .calls = nullptr, .directory = nullptr, .rooms = rooms, .decliner = nullptr});
   const auto issue = [&service](const std::string& body) {
     return drogon::sync_wait(
         service.issue({.body = bodyOf(body), .caller = caller(), .host = "argus.local"}));
@@ -384,7 +385,7 @@ TEST_CASE("a user holds at most the configured number of calls at once")
 TEST_CASE("a resume keeps the room and tells the agent not to greet")
 {
   const auto voice = std::make_shared<FakeVoice>(true);
-  const RtcTokenService service({.config = enabledConfig(), .voice = voice, .calls = nullptr, .directory = nullptr, .rooms = nullptr});
+  const RtcTokenService service({.config = enabledConfig(), .voice = voice, .calls = nullptr, .directory = nullptr, .rooms = nullptr, .decliner = nullptr});
   const std::string callId = rtc_naming::mintUserCallId();
   const auto response = drogon::sync_wait(service.issue(
       {.body = bodyOf(R"({"callId":")" + callId + R"(","resume":true,"mode":"half"})"),
@@ -407,7 +408,7 @@ TEST_CASE("a proactive call is claimed first, and the opening line goes to the a
                                                           .cameraId = 6,
                                                           .cameraName = "Patio",
                                                           .episodeId = 41});
-  const RtcTokenService service({.config = enabledConfig(), .voice = voice, .calls = calls, .directory = nullptr, .rooms = nullptr});
+  const RtcTokenService service({.config = enabledConfig(), .voice = voice, .calls = calls, .directory = nullptr, .rooms = nullptr, .decliner = nullptr});
   const auto response = drogon::sync_wait(
       service.issue({.body = bodyOf(R"({"callId":"call-41"})"), .caller = caller(), .host = "argus.local"}));
   CHECK(calls->last.callId == "call-41");
@@ -439,7 +440,7 @@ TEST_CASE("a claim that fails maps to the call outcome, never to a token")
                                                                                   .cameraId = 0,
                                                                                   .cameraName = {},
                                                                                   .episodeId = 0}),
-                                   .directory = nullptr, .rooms = nullptr});
+                                   .directory = nullptr, .rooms = nullptr, .decliner = nullptr});
     return statusOf([&] {
       (void)drogon::sync_wait(
           service.issue({.body = bodyOf(R"({"callId":"call-9"})"), .caller = caller(), .host = "argus.local"}));
@@ -462,16 +463,16 @@ TEST_CASE("without LiveKit, without the agent or without a session id the route 
   };
   SyncRtcConfig disabled = enabledConfig();
   disabled.enabled = false;
-  CHECK(refused({.config = disabled, .voice = std::make_shared<FakeVoice>(true), .calls = nullptr, .directory = nullptr, .rooms = nullptr},
+  CHECK(refused({.config = disabled, .voice = std::make_shared<FakeVoice>(true), .calls = nullptr, .directory = nullptr, .rooms = nullptr, .decliner = nullptr},
                 caller()) == 503);
-  CHECK(refused({.config = enabledConfig(), .voice = std::make_shared<FakeVoice>(false), .calls = nullptr, .directory = nullptr, .rooms = nullptr},
+  CHECK(refused({.config = enabledConfig(), .voice = std::make_shared<FakeVoice>(false), .calls = nullptr, .directory = nullptr, .rooms = nullptr, .decliner = nullptr},
                 caller()) == 503);
-  CHECK(refused({.config = enabledConfig(), .voice = nullptr, .calls = nullptr, .directory = nullptr, .rooms = nullptr}, caller()) == 503);
+  CHECK(refused({.config = enabledConfig(), .voice = nullptr, .calls = nullptr, .directory = nullptr, .rooms = nullptr, .decliner = nullptr}, caller()) == 503);
   JwtContext legacy = caller();
   legacy.sessionId.clear();
-  CHECK(refused({.config = enabledConfig(), .voice = std::make_shared<FakeVoice>(true), .calls = nullptr, .directory = nullptr, .rooms = nullptr},
+  CHECK(refused({.config = enabledConfig(), .voice = std::make_shared<FakeVoice>(true), .calls = nullptr, .directory = nullptr, .rooms = nullptr, .decliner = nullptr},
                 legacy) == 503);
-  CHECK(refused({.config = enabledConfig(), .voice = std::make_shared<FakeVoice>(true), .calls = nullptr, .directory = nullptr, .rooms = nullptr},
+  CHECK(refused({.config = enabledConfig(), .voice = std::make_shared<FakeVoice>(true), .calls = nullptr, .directory = nullptr, .rooms = nullptr, .decliner = nullptr},
                 caller()) == 200);
 }
 
@@ -586,4 +587,67 @@ TEST_CASE("the goodbye never stretches the revocation past its budget")
                                                      .end = {.userId = 7, .sessionId = std::string("s1"), .cause = ""},
                                                      .farewellBudget = RtcSessionRevoker::kFarewellBudget,
        .listRetries = {}})) == 1);
+}
+
+namespace
+{
+class FakeDecliner final : public RtcCallDecliner
+{
+public:
+  explicit FakeDecliner(RtcDeclineStatus answer) : answer_(answer) {}
+
+  drogon::Task<RtcDecline> decline(RtcDeclineInput input) const override
+  {
+    last = std::move(input);
+    co_return RtcDecline{.status = answer_};
+  }
+
+  mutable RtcDeclineInput last;
+
+private:
+  RtcDeclineStatus answer_;
+};
+
+RtcDeclineDto declineBodyOf(const std::string& raw)
+{
+  Json::Value json;
+  Json::CharReaderBuilder builder;
+  const std::unique_ptr<Json::CharReader> reader(builder.newCharReader());
+  REQUIRE(reader->parse(raw.data(), raw.data() + raw.size(), &json, nullptr));
+  return RtcDeclineDto::fromJson(json);
+}
+}
+
+TEST_CASE("a decline answers declined, and a second decline of the same call is answered the same way")
+{
+  const auto decliner = std::make_shared<FakeDecliner>(RtcDeclineStatus::Declined);
+  const RtcTokenService service({.config = enabledConfig(), .voice = nullptr, .calls = nullptr,
+                                 .directory = nullptr, .rooms = nullptr, .decliner = decliner});
+  const auto first = drogon::sync_wait(
+      service.decline({.body = declineBodyOf(R"({"callId":"call-9"})"), .caller = caller()}));
+  CHECK(first.declined);
+  CHECK(statusOf([&] {
+    (void)drogon::sync_wait(
+        service.decline({.body = declineBodyOf(R"({"callId":"call-9"})"), .caller = caller()}));
+  }) == 200);
+}
+
+TEST_CASE("a decline names the caller as the callee and refuses with the claim codes")
+{
+  const auto declineStatus = [](RtcDeclineStatus answer) {
+    const auto decliner = std::make_shared<FakeDecliner>(answer);
+    const RtcTokenService service({.config = enabledConfig(), .voice = nullptr, .calls = nullptr,
+                                   .directory = nullptr, .rooms = nullptr, .decliner = decliner});
+    const int status = statusOf([&] {
+      (void)drogon::sync_wait(
+          service.decline({.body = declineBodyOf(R"({"callId":"call-9"})"), .caller = caller()}));
+    });
+    CHECK(decliner->last.userId == 7);
+    CHECK(decliner->last.callId == "call-9");
+    return status;
+  };
+  CHECK(declineStatus(RtcDeclineStatus::Taken) == 409);
+  CHECK(declineStatus(RtcDeclineStatus::Expired) == 410);
+  CHECK(declineStatus(RtcDeclineStatus::NotFound) == 404);
+  CHECK(declineStatus(RtcDeclineStatus::Unavailable) == 503);
 }

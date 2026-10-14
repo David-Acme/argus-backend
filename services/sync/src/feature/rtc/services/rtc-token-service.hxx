@@ -3,7 +3,9 @@
 #include <auth/jwt-filter.hxx>
 #include <auth/user-directory.hxx>
 #include <config/sync-config.hxx>
+#include <feature/rtc/dtos/response-rtc-decline-dto.hxx>
 #include <feature/rtc/dtos/response-rtc-token-dto.hxx>
+#include <feature/rtc/dtos/rtc-decline-dto.hxx>
 #include <feature/rtc/dtos/rtc-token-dto.hxx>
 #include <feature/rtc/infra/livekit-room-client.hxx>
 #include <feature/rtc/infra/rtc-ports.hxx>
@@ -23,6 +25,7 @@ struct RtcTokenServiceInput
   std::shared_ptr<const RtcCallClaimer> calls;
   std::shared_ptr<const IUserDirectory> directory;
   std::shared_ptr<const LiveKitRoomClient> rooms;
+  std::shared_ptr<const RtcCallDecliner> decliner;
 };
 
 struct RtcTokenRequest
@@ -30,6 +33,12 @@ struct RtcTokenRequest
   RtcTokenDto body;
   JwtContext caller;
   std::string host;
+};
+
+struct RtcDeclineRequest
+{
+  RtcDeclineDto body;
+  JwtContext caller;
 };
 
 struct RtcCallSlotInput
@@ -44,6 +53,8 @@ public:
   explicit RtcTokenService(RtcTokenServiceInput input);
 
   drogon::Task<ResponseRtcTokenDto> issue(RtcTokenRequest request) const;
+
+  drogon::Task<ResponseRtcDeclineDto> decline(RtcDeclineRequest request) const;
 
 private:
   struct InFlightCalls
@@ -64,5 +75,6 @@ private:
   std::shared_ptr<const RtcCallClaimer> calls_;
   std::shared_ptr<const IUserDirectory> directory_;
   std::shared_ptr<const LiveKitRoomClient> rooms_;
+  std::shared_ptr<const RtcCallDecliner> decliner_;
   std::shared_ptr<InFlightCalls> inFlight_ = std::make_shared<InFlightCalls>();
 };

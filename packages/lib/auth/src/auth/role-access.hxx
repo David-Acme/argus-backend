@@ -31,7 +31,7 @@ using TableAccess = std::unordered_map<TableName, PermSet>;
 inline const PermSet kRead{RolePermission::Read};
 inline const PermSet kReadUpdateDelete{RolePermission::Read, RolePermission::Update,
                                        RolePermission::Delete};
-inline const PermSet kCreateOwn{RolePermission::Create};
+inline const PermSet kCreateDeleteOwn{RolePermission::Create, RolePermission::Delete};
 inline const PermSet kFull{RolePermission::Read, RolePermission::Create,
                            RolePermission::Update, RolePermission::Delete};
 
@@ -54,7 +54,7 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::AuditLog, kRead},
       {TableName::UserAuditLog, kRead},
       {TableName::Notification, kReadUpdateDelete},
-      {TableName::NotificationToken, kCreateOwn},
+      {TableName::NotificationToken, kCreateDeleteOwn},
       {TableName::Memory, kFull}}},
     {UserRole::Guard,
      {{TableName::Camera, kRead},
@@ -68,7 +68,7 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::AuditLog, kRead},
       {TableName::UserAuditLog, kRead},
       {TableName::Notification, kReadUpdateDelete},
-      {TableName::NotificationToken, kCreateOwn}}},
+      {TableName::NotificationToken, kCreateDeleteOwn}}},
     {UserRole::Guest,
      {{TableName::Camera, kRead},
       {TableName::Reminder, kFull},
@@ -77,7 +77,7 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::AuditLog, kRead},
       {TableName::UserAuditLog, kRead},
       {TableName::Notification, kReadUpdateDelete},
-      {TableName::NotificationToken, kCreateOwn}}},
+      {TableName::NotificationToken, kCreateDeleteOwn}}},
 };
 
 struct GuardRouteAccess
@@ -199,8 +199,9 @@ inline constexpr std::array<AuthRouteAccess, 7> kSessionAccess = {{
     {.path = "/auth/users/{id}/sessions/{id}", .method = drogon::Delete, .roles = kOwnerOnly},
 }};
 
-inline constexpr std::array<AuthRouteAccess, 1> kRtcAccess = {{
+inline constexpr std::array<AuthRouteAccess, 2> kRtcAccess = {{
     {.path = "/rtc/token", .method = drogon::Post, .roles = kEveryRoleBaseline},
+    {.path = "/rtc/decline", .method = drogon::Post, .roles = kEveryRoleBaseline},
 }};
 
 inline constexpr std::array<AuthRouteAccess, 1> kSyncAccess = {{

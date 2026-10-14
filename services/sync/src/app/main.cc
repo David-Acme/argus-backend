@@ -20,6 +20,7 @@
 #include <feature/rtc/controllers/rtc-controller.hxx>
 #include <feature/rtc/infra/livekit-room-client.hxx>
 #include <feature/rtc/infra/notification-call-claimer.hxx>
+#include <feature/rtc/infra/notification-call-decliner.hxx>
 #include <feature/rtc/infra/voice-room-joiner.hxx>
 #include <feature/rtc/services/rtc-session-revoker.hxx>
 #include <feature/transport/infra/cached-user-directory.hxx>
@@ -232,16 +233,21 @@ int main()
     rtcVoice = std::make_shared<VoiceRoomJoiner>(std::make_shared<VoiceClient>(
         VoiceClientConfig{.target = voice.target, .credential = voice.credential}));
   std::shared_ptr<const RtcCallClaimer> rtcCalls;
-  if (!upstreams.notification.empty())
-    rtcCalls = std::make_shared<NotificationCallClaimer>(std::make_shared<NotificationClient>(
+  std::shared_ptr<const RtcCallDecliner> rtcDecliner;
+  if (!upstreams.notification.empty()) {
+    const auto notificationClient = std::make_shared<NotificationClient>(
         NotificationClientConfig{.target = upstreams.notification,
-                                 .credential = ConfigService::getString("notifications.credential")}));
+                                 .credential = ConfigService::getString("notifications.credential")});
+    rtcCalls = std::make_shared<NotificationCallClaimer>(notificationClient);
+    rtcDecliner = std::make_shared<NotificationCallDecliner>(notificationClient);
+  }
   std::shared_ptr<const LiveKitRoomClient> rtcRooms;
   if (rtc.enabled)
     rtcRooms = std::make_shared<LiveKitRoomClient>(
         LiveKitAdminConfig{.serverUrl = rtc.serverUrl, .apiKey = rtc.apiKey, .apiSecret = rtc.apiSecret});
   drogon::app().registerController(std::make_shared<RtcController>(RtcTokenServiceInput{
-      .config = rtc, .voice = rtcVoice, .calls = rtcCalls, .directory = userDirectory, .rooms = rtcRooms}));
+      .config = rtc, .voice = rtcVoice, .calls = rtcCalls, .directory = userDirectory, .rooms = rtcRooms,
+      .decliner = rtcDecliner}));
   if (rtcRooms) {
     const auto revoker = std::make_shared<RtcSessionRevoker>(rtcRooms, rtcVoice);
     sync_fan_out::onSessionEnd([revoker](const sync_fan_out::SessionEndNotice& notice) {
