@@ -98,27 +98,27 @@ n_ctx = 2048
 max_tokens = 512
 
 [identity]
-target = "argus-identity:7040"
+target = "tls:argus-identity:7240"
 credential = "CHANGE_ME_LLM_IDENTITY"
 
 [camera]
-grpc_target = "argus-camera:7036"
+grpc_target = "tls:argus-camera:7236"
 credential = "CHANGE_ME_LLM_CAMERA"
 
 [guard]
-target = "argus-guard:7139"
+target = "tls:argus-guard:7339"
 credential = "CHANGE_ME_LLM_GUARD"
 
 [productivity]
-grpc_target = "argus-productivity:7037"
+grpc_target = "tls:argus-productivity:7237"
 credential = "CHANGE_ME_LLM_PRODUCTIVITY"
 
 [modules]
-target = "argus-settings:7047"
+target = "tls:argus-settings:7247"
 credential = "CHANGE_ME_LLM_MODULES"
 
 [notifications]
-target = "argus-notification:7038"
+target = "tls:argus-notification:7238"
 credential = "CHANGE_ME_LLM_NOTIFICATION"
 
 [nats]

@@ -701,6 +701,16 @@ settings_owner_port() {
   esac
 }
 
+settings_owner_tls_port() {
+  local config="$1"
+  local address
+
+  address="$(toml_value "$config" internal_tls address)"
+  case "$address" in
+    *:*) printf '%s' "${address##*:}" ;;
+  esac
+}
+
 settings_owner_template() {
   local mode="$1"
   local base="$2"
@@ -751,6 +761,15 @@ ensure_settings_owners() {
       [ -z "$address" ] || replace_toml_value rpc address "$address" "$owner_config"
     fi
     [ -z "$(toml_value "$settings_config" "owners.$owner" target)" ] || continue
+    if [ "$mode" = deploy ]; then
+      port="$(settings_owner_tls_port "$owner_config")"
+      if [ -z "$port" ] && [ -f "$template" ]; then
+        port="$(settings_owner_tls_port "$template")"
+      fi
+      [ -n "$port" ] || continue
+      replace_toml_value "owners.$owner" target "tls:$host:$port" "$settings_config"
+      continue
+    fi
     port="$(settings_owner_port "$owner_config" "$listener")"
     if [ -z "$port" ] && [ -f "$template" ]; then
       port="$(settings_owner_port "$template" "$listener")"

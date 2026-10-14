@@ -49,19 +49,19 @@ server_cert = "certs/server.pem"
 server_key = "certs/server.key"
 
 [camera]
-grpc_target = "argus-camera:7036"
+grpc_target = "tls:argus-camera:7236"
 credential = "CHANGE_ME_SYNC_CAMERA"
 
 [identity]
-target = "argus-identity:7040"
+target = "tls:argus-identity:7240"
 credential = "CHANGE_ME_SYNC_IDENTITY"
 
 [productivity]
-grpc_target = "argus-productivity:7037"
+grpc_target = "tls:argus-productivity:7237"
 credential = "CHANGE_ME_SYNC_PRODUCTIVITY"
 
 [voice]
-target = "argus-voice:7034"
+target = "tls:argus-voice:7234"
 credential = "CHANGE_ME_SYNC_VOICE"
 
 [rtc]
@@ -75,7 +75,7 @@ token_ttl_seconds = 60
 max_concurrent_calls = 2
 
 [notifications]
-grpc_target = "argus-notification:7038"
+grpc_target = "tls:argus-notification:7238"
 credential = "CHANGE_ME_SYNC_NOTIFICATION"
 
 [jwt]
@@ -91,11 +91,11 @@ trust_forwarded_for = false
 trusted_proxy_ips = ""
 
 [auth]
-target = "argus-auth:7043"
+target = "tls:argus-auth:7243"
 credential = "CHANGE_ME_SYNC_AUTH"
 
 [guard]
-presence_target = "argus-guard:7139"
+presence_target = "tls:argus-guard:7339"
 presence_credential = "CHANGE_ME_PRESENCE_SYNC"
 
 [heartbeat]
@@ -125,5 +125,5 @@ name = "Argus"
 address = ""
 
 [modules]
-target = "argus-settings:7047"
+target = "tls:argus-settings:7247"
 credential = "CHANGE_ME_SYNC_MODULES"

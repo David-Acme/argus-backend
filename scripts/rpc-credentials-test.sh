@@ -39,9 +39,9 @@ llm:modules:credential:settings
 llm:guard:credential:guard
 sync:modules:credential:settings"
 
-DATA_OWNERS="identity:rpc.callers:settings:7040
-productivity:grpc:caller_settings:7037
-sync:rpc.callers:settings:7041"
+DATA_OWNERS="identity:rpc.callers:settings:7240
+productivity:grpc:caller_settings:7237
+sync:rpc.callers:settings:7241"
 
 check_data_owners() {
   local deploy_dir="$1"
@@ -51,8 +51,8 @@ check_data_owners() {
     served="$(toml_value "$deploy_dir/config.$owner.toml" "$table" "$key")"
     [ "${#credential}" -eq 64 ] || fail "deploy: settings has no credential for the data owner $owner"
     [ "$credential" = "$served" ] || fail "deploy: settings and $owner disagree on [$table] $key"
-    [ "$(toml_value "$deploy_dir/config.settings.toml" "owners.$owner" target)" = "argus-$owner:$port" ] ||
-      fail "deploy: settings does not target the data owner $owner on $port"
+    [ "$(toml_value "$deploy_dir/config.settings.toml" "owners.$owner" target)" = "tls:argus-$owner:$port" ] ||
+      fail "deploy: settings does not target the data owner $owner on its TLS port $port"
     if grep -Fxq "$credential" "$TEST_TMP/seen-deploy"; then
       fail "deploy: the data owner $owner reuses another pair's credential"
     fi
@@ -92,8 +92,8 @@ ensure_deploy_configs "$deploy" > "$TEST_TMP/deploy-first.log" 2>&1 || fail "ens
 check_pairs deploy "$deploy"
 check_data_owners "$deploy"
 for service in camera guard identity llm notification productivity sync; do
-  [ "$(toml_value "$deploy/config.$service.toml" modules target)" = "argus-settings:7047" ] ||
-    fail "deploy: $service does not read the enabled set from argus-settings:7047"
+  [ "$(toml_value "$deploy/config.$service.toml" modules target)" = "tls:argus-settings:7247" ] ||
+    fail "deploy: $service does not read the enabled set from tls:argus-settings:7247"
 done
 llm_tools="$(toml_value "$deploy/config.llm.toml" productivity credential)"
 [ "${#llm_tools}" -eq 64 ] || fail "deploy: llm has no productivity credential"

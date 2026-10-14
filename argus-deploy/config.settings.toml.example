@@ -131,7 +131,7 @@ trust_forwarded_for = false
 trusted_proxy_ips = ""
 
 [auth]
-target = "argus-auth:7043"
+target = "tls:argus-auth:7243"
 credential = "CHANGE_ME_SETTINGS_AUTH"
 
 [mdns]

@@ -142,11 +142,11 @@ timeout_ms = 8000
 max_tool_rounds = 2
 
 [camera]
-actions_target = "argus-camera:7036"
+actions_target = "tls:argus-camera:7236"
 actions_credential = "CHANGE_ME_GUARD_CAMERA"
 
 [notifications]
-grpc_target = "argus-notification:7038"
+grpc_target = "tls:argus-notification:7238"
 credential = "CHANGE_ME_GUARD_NOTIFICATION"
 
 [jwt]
@@ -162,11 +162,11 @@ trust_forwarded_for = false
 trusted_proxy_ips = ""
 
 [auth]
-target = "argus-auth:7043"
+target = "tls:argus-auth:7243"
 credential = "CHANGE_ME_GUARD_AUTH"
 
 [identity]
-target = "argus-identity:7040"
+target = "tls:argus-identity:7240"
 credential = "CHANGE_ME_GUARD_IDENTITY"
 
 [nats]
@@ -194,13 +194,13 @@ name = "Argus"
 address = ""
 
 [vlm]
-grpc_target = "argus-vlm:7131"
+grpc_target = "tls:argus-vlm:7331"
 grpc_credential = "CHANGE_ME_GUARD_VLM"
 
 [llm]
-grpc_target = "argus-llm:7132"
+grpc_target = "tls:argus-llm:7332"
 grpc_credential = "CHANGE_ME_GUARD_LLM"
 
 [modules]
-target = "argus-settings:7047"
+target = "tls:argus-settings:7247"
 credential = "CHANGE_ME_GUARD_MODULES"

@@ -54,7 +54,7 @@ server_cert = "certs/server.pem"
 server_key = "certs/server.key"
 
 [identity]
-target = "argus-identity:7040"
+target = "tls:argus-identity:7240"
 credential = "CHANGE_ME_AUTH_IDENTITY"
 
 [jwt]

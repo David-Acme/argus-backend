@@ -17,7 +17,7 @@ opening = "none"
 trace_latency = false
 
 [identity]
-target = "argus-identity:7040"
+target = "tls:argus-identity:7240"
 credential = "CHANGE_ME_VOICE_IDENTITY"
 
 [rtc]
@@ -27,25 +27,25 @@ rejoin_grace_ms = 20000
 first_join_wait_ms = 60000
 
 [notification]
-target = "argus-notification:7038"
+target = "tls:argus-notification:7238"
 credential = "CHANGE_ME_VOICE_NOTIFICATION"
 
 [stt]
 remote_url = ""
-grpc_target = "argus-stt:7130"
+grpc_target = "tls:argus-stt:7330"
 grpc_credential = "CHANGE_ME_VOICE_STT"
 remote_timeout_ms = 30000
 language = "es"
 
 [tts]
 remote_url = ""
-grpc_target = "argus-tts:7129"
+grpc_target = "tls:argus-tts:7329"
 grpc_credential = "CHANGE_ME_VOICE_TTS"
 remote_timeout_ms = 30000
 
 [llm]
 remote_url = ""
-grpc_target = "argus-llm:7132"
+grpc_target = "tls:argus-llm:7332"
 grpc_credential = "CHANGE_ME_VOICE_LLM"
 remote_timeout_ms = 120000
 

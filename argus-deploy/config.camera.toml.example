@@ -70,7 +70,7 @@ max_total_viewers = 8
 
 [tts]
 remote_url = ""
-grpc_target = "argus-tts:7129"
+grpc_target = "tls:argus-tts:7329"
 grpc_credential = "CHANGE_ME_CAMERA_TTS"
 remote_timeout_ms = 30000
 
@@ -97,11 +97,11 @@ trust_forwarded_for = false
 trusted_proxy_ips = ""
 
 [auth]
-target = "argus-auth:7043"
+target = "tls:argus-auth:7243"
 credential = "CHANGE_ME_CAMERA_AUTH"
 
 [identity]
-target = "argus-identity:7040"
+target = "tls:argus-identity:7240"
 credential = "CHANGE_ME_CAMERA_IDENTITY"
 identify = false
 auto_enroll = false
@@ -161,7 +161,7 @@ scene_diff = 0.35
 
 [stt]
 remote_url = ""
-grpc_target = "argus-stt:7130"
+grpc_target = "tls:argus-stt:7330"
 grpc_credential = "CHANGE_ME_CAMERA_STT"
 remote_timeout_ms = 30000
 language = "es"
@@ -183,5 +183,5 @@ name = "Argus"
 address = ""
 
 [modules]
-target = "argus-settings:7047"
+target = "tls:argus-settings:7247"
 credential = "CHANGE_ME_CAMERA_MODULES"
