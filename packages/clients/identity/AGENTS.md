@@ -114,8 +114,11 @@ header: the in-package suite, two in `packages/lib/auth`, five in
   `updateUserName`; `promotePerson` adds `authorization: Bearer <accessToken>`
   and `x-argus-device` only when the deviceHash is non-empty. One deadline per
   call, `kCallTimeoutMs` = 5000 ms (the sync pull's `kPullTimeoutMs` is the
-  same), a `constexpr` in the `.cc`. The channel is plaintext (`makeChannel` is
-  `InsecureChannelCredentials`).
+  same), a `constexpr` in the `.cc`. The channel is the one `makeChannel`
+  builds for the configured target: a `tls:` target in `identity.target` makes
+  every call run over mutual TLS with the process's internal certificate.
+  `identity-grpc-client-test` dials the TLS port of a fake identity service and
+  refuses a plaintext dial to it.
 - Config: `identity.target` in the eight
   `argus-deploy/config.{auth,camera,guard,llm,notification,productivity,sync,voice}.toml.example`
   trees (`argus-identity:7040` from the compose containers, `127.0.0.1:7040`

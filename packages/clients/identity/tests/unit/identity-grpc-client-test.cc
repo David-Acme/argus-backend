@@ -1,6 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <argus/identity/v1/identity.grpc.pb.h>
 #include <doctest/doctest.h>
+#include <grpc-test-support/mutual-tls-endpoint.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <identity/identity-client.hxx>
 #include <map>
@@ -173,4 +175,24 @@ TEST_CASE("the optional legs of an answer decide the profile")
   CHECK(known->userId == 42);
 
   server->Shutdown();
+}
+
+TEST_CASE("the client dials the mutual TLS port with the internal certificate")
+{
+  ScriptedIdentityService service;
+  service.person.mutable_person()->set_person_id(12);
+  const argus::client::test_support::MutualTlsEndpoint endpoint(
+      {.service = "identity", .services = {&service}});
+  REQUIRE(endpoint.tlsPort() > 0);
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("camera"));
+
+  const IdentityClient client(endpoint.tlsTarget(), kFleetSecret);
+  const auto served = client.getPerson(4);
+  REQUIRE(served);
+  CHECK(served->personId == 12);
+
+  const IdentityClient plaintext(endpoint.plaintextToTlsPortTarget(),
+                                 kFleetSecret);
+  CHECK_FALSE(plaintext.getPerson(4).has_value());
 }

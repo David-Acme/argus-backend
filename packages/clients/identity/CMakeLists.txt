@@ -27,11 +27,14 @@ add_executable(identity-grpc-client-test tests/unit/identity-grpc-client-test.cc
 set_target_properties(identity-grpc-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(identity-grpc-client-test PRIVATE argus::clients::identity
-    doctest::doctest)
+    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
 
 target_compile_options(identity-grpc-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME identity-grpc-client-test COMMAND identity-grpc-client-test)
+add_test(NAME identity-grpc-client-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:identity-grpc-client-test> 5)
+set_tests_properties(identity-grpc-client-test PROPERTIES SKIP_RETURN_CODE 77)
 
 add_executable(identity-voiceprint-client-test
     tests/unit/voiceprint-client-test.cc)
