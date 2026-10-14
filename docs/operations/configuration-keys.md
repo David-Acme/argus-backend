@@ -13,12 +13,15 @@ Every internal caller dials its callee over mutual TLS: the dial keys carry
 path in both. The native keys are one list, `internal_pki_native_dial_rows`
 in `scripts/lib/internal-pki.sh`. `scripts/setup.sh` issues the native
 internal PKI and migrates an existing `config.toml` whose listed key still
-holds `127.0.0.1:<port>`, printing one line per key. A native service with no
-certificate (`[internal_tls] dir` empty) keeps its plaintext values, setup.sh
-warns, and the service refuses to start with a client built from a `tls:`
-target: the message names `scripts/setup.sh`. The `auth.rpc_*` and
-`identity.rpc_*` fallbacks below are code defaults used only when the target
-key is empty; they remain plaintext.
+holds `127.0.0.1:<port>`, printing one line per key. Keys a developer added by
+hand stay as they are. A native service with no certificate (`[internal_tls]
+dir` empty) keeps its plaintext values, setup.sh warns, and the service refuses
+to start with a client built from a `tls:` target: the message names
+`scripts/setup.sh`. An empty `auth.target` or `identity.target` is a boot error
+(`... is empty; run scripts/setup.sh`), never a plaintext dial. The one
+plaintext default left is the auth service's own `identity.rpc_host` /
+`identity.rpc_port` fallback (`127.0.0.1:7040`), read only when
+`identity.target` is empty in `services/auth`.
 
 ## `argus-deploy/config.camera.toml.example`
 
@@ -85,7 +88,6 @@ Optional keys the template does not set:
 
 | Key | Example | Notes |
 |---|---|---|
-| `auth.rpc_host` / `auth.rpc_port` | `"127.0.0.1"` / `7043` | The split alternative to `auth.target`; `auth.target` wins when it is non-empty. The fallback is plaintext: the deploy template sets `auth.target` to `tls:`, so the fallback is reached only when that key is cleared. |
 | `jwt.access_ttl_minutes` / `jwt.refresh_ttl_days` | `60` / `7` | Read by the shared `JwtService` constructor; this service never mints or rotates a token, so the defaults are inert here. |
 | `memory.create_face_vec` | `true` | Whether the face vec0 index is built from the schema's JSON column (unset behaves as true). |
 | `remote.hostname` | `""` | The extra DNS SAN `lib/cert` appends when it rotates the instance leaf; this service's own config carries the key, and a leaf rotated without it loses that SAN. |
@@ -276,7 +278,6 @@ Optional keys the template does not set:
 
 | Key | Example | Notes |
 |---|---|---|
-| `auth.rpc_host` / `auth.rpc_port` | `"127.0.0.1"` / `7043` | The split alternative to `auth.target`; `auth.target` wins when it is non-empty. |
 | `jwt.access_ttl_minutes` / `jwt.refresh_ttl_days` | `60` / `7` | Read by the shared `JwtService` constructor; this service never mints or rotates a token, so the defaults are inert here. |
 | `memory.create_face_vec` | `true` | Whether the face vec0 index is built from the schema's JSON column (unset behaves as true). |
 | `remote.hostname` | `""` | The extra DNS SAN `lib/cert` appends when it rotates the instance leaf; this service's own config carries the key, and a leaf rotated without it loses that SAN. |
@@ -400,7 +401,7 @@ argus-auth configuration. Copy to config.toml (gitignored) to run.
 | `auth.rpc_secret` | Fleet secret for the session-verdict RPC. Required whenever its listener is reachable beyond loopback: an unauthenticated caller could read any session's verdict. Empty means loopback-only and ungated. |
 | `auth.context_cache_seconds` | How long a resolved user context may be reused before identity is asked again (0 disables the cache); a change on the identity feed drops the entry immediately. |
 | `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
-| `identity.target` | The identity RPC behind a session verdict. An empty value falls back to `identity.rpc_host` / `identity.rpc_port`, which default to the plaintext `127.0.0.1:7040` (a code default, used only when the target is empty), so the leg is always dialled. |
+| `identity.target` | The identity RPC behind a session verdict. An empty value falls back to `identity.rpc_host` / `identity.rpc_port`, which default to the plaintext `127.0.0.1:7040` in this service's own resolver (services/auth/src/config/auth-config.cc). The auth library itself refuses an empty target. |
 
 ## `services/productivity/config.toml.example`
 

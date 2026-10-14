@@ -1089,13 +1089,14 @@ The plaintext listeners stay in place; the callers no longer use them.
 
 Natively the callers dial the same way, one path everywhere: the native
 templates (`services/*/config.toml.example`) and the native settings-owner
-wiring carry `tls:127.0.0.1:<TLS port>`. The 31 template keys and the 11 owner
+wiring carry `tls:127.0.0.1:<TLS port>`. The 35 template keys and the 11 owner
 targets are one list, `internal_pki_native_dial_rows` in
 `scripts/lib/internal-pki.sh`. `scripts/setup.sh` issues the native PKI and
 then runs `migrate_native_dial_targets`, which moves each listed key still at
 `127.0.0.1:<port>` to `tls:127.0.0.1:<TLS port>` in an existing checkout and
 prints one line per key. Nothing else in a config changes, and a second run
-changes nothing. A native service needs its certificate: a config whose
+changes nothing. Keys a developer added by hand stay as they are; only the
+listed keys move. A native service needs its certificate: a config whose
 `[internal_tls] dir` is empty keeps its plaintext targets through the
 migration, `setup.sh` warns to run `scripts/setup.sh`, and the service refuses
 to start where a client is built at start (`lib/grpc` throws
@@ -1222,6 +1223,9 @@ in order:
 | 7034 gRPC + 7035 plain | 127.0.0.1 (compose publish) | argus-voice voice wire + `/health` (F6-3) |
 | 7036 gRPC | 127.0.0.1 (compose publish) | argus-camera camera-domain sync wire (F6-5) |
 | 7046 TLS | 0.0.0.0 (host network) | livekit-tls: LiveKit signalling for the apps (`wss://`, the instance certificate) |
+| 7234 / 7236 / 7237 / 7238 / 7240 / 7241 / 7243 mutual TLS | 127.0.0.1 (compose publish, `*_TLS_PORT`) | argus-voice, camera, productivity, notification, identity, sync and auth: the mutual TLS port beside each published plaintext gRPC port |
+| 7247 / 7329 / 7330 / 7331 / 7332 / 7339 mutual TLS | not published | argus-settings, tts, stt, vlm, llm and guard: internal-network only, reached by their callers over the bridge |
+| 7234 to 7339 mutual TLS, native | 127.0.0.1 (native run) | the thirteen listeners of a native dev run, each its service's plaintext port + 200 (`scripts/setup.sh` configures them). The argus-cutover-* containers predate these ports and publish none of them, so they do not conflict |
 | 7880 plain | 127.0.0.1 + 172.19.0.1 (host network) | livekit HTTP API + signalling, for argus-sync, argus-voice and the TLS front only |
 | 7881 tcp / 7882 udp | 0.0.0.0 (host network) | livekit ICE over TCP / muxed ICE over UDP (call media, DTLS-SRTP) |
 | `[remote] tunnel_port` TLS | argus-auth / argus-identity host port | their second (remote) listener (default 0 = disabled; the instance sets a port when the tunnel profile is on — the listener is config-file-driven, not env-driven, see the tunnel section) |

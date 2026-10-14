@@ -207,11 +207,16 @@ widening changes visible rows instead of slipping through.
 
 ## The two targets
 
-`filterAuthClient()` resolves `auth.target` (`auth.rpc_host` /
-`auth.rpc_port` as the fallback, default `127.0.0.1:7043`; the fallback is plaintext, and deploy always sets `auth.target` to `tls:`) and
-`filterIdentityClient()` resolves `identity.target` the same way
-(`identity.rpc_host` / `identity.rpc_port`, default `127.0.0.1:7040`, plaintext: the same fallback caveat applies). Each
-presents the service's own credential, `auth.credential` and
+`filterAuthClient()` dials `auth.target` and `filterIdentityClient()` dials
+`identity.target`. An empty target is a configuration error, never a plaintext
+dial: the resolver throws `auth.target is empty; run scripts/setup.sh` (or
+`identity.target is empty; run scripts/setup.sh`). The split `rpc_host` and
+`rpc_port` alternative is gone from lib/auth.
+
+The check runs at boot. `requireAuthTarget()` is called in the mains of the
+services that mount `JwtFilter`, and `requireIdentityTarget()` in the mains
+that hold an `IdentityUserDirectory` (sync and productivity). argus-auth
+installs its local client first, so it needs no target. Each presents the service's own credential, `auth.credential` and
 `identity.credential`, falling back to the legacy `auth.rpc_secret` /
 `identity.rpc_secret` only while that credential is empty (2026-10-05 audit,
 #25). `installLocalAuthClient` lets the session authority itself (argus-auth)

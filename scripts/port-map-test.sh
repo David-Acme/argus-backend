@@ -178,7 +178,10 @@ declared() {
   awk -F '\t' -v port="$1" -v owner="$2" '$1 == port && $2 == owner { found = 1 } END { exit !found }' "$TEST_TMP/ports.tsv"
 }
 for expected in "7042 auth" "7043 auth" "7129 tts" "7880 livekit" "7046 livekit-tls" "4222 nats" \
-    "9000 rustfs" "7100 relay" "7104 tunnel" "8555 camera" "7035 voice"; do
+    "9000 rustfs" "7100 relay" "7104 tunnel" "8555 camera" "7035 voice" \
+    "7234 voice" "7236 camera" "7237 productivity" "7238 notification" "7240 identity" \
+    "7241 sync" "7243 auth" "7247 settings" "7329 tts" "7330 stt" "7331 vlm" "7332 llm" \
+    "7339 guard"; do
   declared ${expected% *} ${expected#* } || fail "the inventory misses port ${expected% *} of ${expected#* }"
 done
 ! awk -F '\t' '$3 ~ /\] ([a-z_]*target|[a-z_]*url|endpoint|relay_port|gateway_port)$/ { found = 1 } END { exit !found }' \

@@ -65,8 +65,8 @@ identity side never reshapes this wire.
 - Config: this package resolves nothing itself — the constructor takes an
   `AuthClientConfig` and the consumer reads it. The resolver lives with the
   first consumer, `filterAuthClient()` in
-  `packages/lib/auth/src/auth/auth-access.cc`, reading `auth.target` (or
-  `auth.rpc_host` / `auth.rpc_port`, `127.0.0.1:7043` as the plaintext fallback) plus
+  `packages/lib/auth/src/auth/auth-access.cc`, reading `auth.target` (an empty value
+  is a boot error, never a plaintext fallback) plus
   `auth.credential` (paired with argus-auth's `[rpc.callers]` entry for the
   caller) and the legacy `auth.rpc_secret`; `argus-identity` holds the same helper's client beside its
   own RPC service.
