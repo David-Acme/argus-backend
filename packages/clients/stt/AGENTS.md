@@ -167,3 +167,9 @@ façade; `services/stt` consumes the gRPC client to serve the protocol.
 - The fake server has four includers: this suite and three consumer suites —
   `services/voice`'s two remote suites and `services/camera`'s action-rpc
   suite.
+- `tests/unit/stt-grpc-tls-test.cc` — its own binary, because the HTTP suite
+  shares the runtime config across cases and an install must come before any
+  channel: `stt-grpc-tls-test` runs through `scripts/internal-tls-test.sh`, one
+  process per case. A `tls:` gRPC client reads `Capabilities` from a fake stt
+  service on its mutual TLS port with the voice certificate, and a plaintext
+  client to that port is refused.
