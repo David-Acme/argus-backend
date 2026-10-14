@@ -3,11 +3,12 @@
 #include <config/config-service.hxx>
 #include <grpc/fleet-caller-gate.hxx>
 
+#include <stdexcept>
+
 namespace
 {
 constexpr int64_t kDefaultContextCacheSeconds = 30;
 constexpr int64_t kDefaultRefreshReuseGraceSeconds = 30;
-constexpr int kDefaultIdentityPort = 7040;
 constexpr uint16_t kDefaultAuthPort = 7042;
 constexpr uint16_t kDefaultRpcPort = 7043;
 constexpr int kDefaultRateLimitWindowSeconds = 60;
@@ -82,15 +83,8 @@ AuthIdentityConfig AuthConfig::resolveIdentity()
 {
   AuthIdentityConfig config;
   config.target = ConfigService::getString("identity.target");
-  if (config.target.empty()) {
-    std::string host = ConfigService::getString("identity.rpc_host");
-    if (host.empty())
-      host = "127.0.0.1";
-    const int port = ConfigService::getInt("identity.rpc_port");
-    config.target =
-        host + ":" +
-        std::to_string(port > 0 ? port : kDefaultIdentityPort);
-  }
+  if (config.target.empty())
+    throw std::runtime_error("identity.target is empty; run scripts/setup.sh");
   config.credential = ConfigService::getString("identity.credential");
   config.secret = ConfigService::getString("identity.rpc_secret");
   return config;

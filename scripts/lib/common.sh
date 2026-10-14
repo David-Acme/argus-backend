@@ -449,8 +449,6 @@ auth target
 auth credential
 identity target
 identity proxy_url
-identity rpc_host
-identity rpc_port
 identity credential
 camera actions_credential
 notifications target

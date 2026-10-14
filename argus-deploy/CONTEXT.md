@@ -1082,7 +1082,9 @@ settings owner targets that `scripts/lib/common.sh` writes for a deployment
 (`ensure_settings_owners`, every mode) take the owner's TLS port the same
 way. A `tls:` target with no installed material refuses at channel creation,
 so a caller without its certificate fails rather than falling back to
-plaintext. Every dialing service already mounts
+plaintext. An empty `auth.target` or `identity.target` is a boot error with
+the message `... is empty; run scripts/setup.sh` (the lib/auth resolvers and
+the auth service's `resolveIdentity`), and no plaintext default is left. Every dialing service already mounts
 `/run/secrets/internal-tls`, so compose and `.env` carry no change for this.
 
 The plaintext listeners stay in place; the callers no longer use them.

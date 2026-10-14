@@ -127,12 +127,10 @@ header: the in-package suite, two in `packages/lib/auth`, five in
   `[rpc.callers]` entry for that caller; an older install's
   `identity.rpc_secret` is still read as the legacy fallback), and in six project templates
   (`services/{auth,guard,notification,productivity,sync,voice}/config.toml.example`,
-  all `tls:127.0.0.1:7240`). The auth library and argus-auth also accept
-  `identity.rpc_host` / `identity.rpc_port`
-  (`services/auth/src/config/auth-config.cc:81-95`), defaulting to the plaintext
-  `127.0.0.1:7040` when `identity.target` is empty. The auth library no longer
-  reads those keys: an empty `identity.target` is a boot error there. No
-  template spells those two keys any more. The other
+  all `tls:127.0.0.1:7240`). The auth library and argus-auth read `identity.target`
+  only: an empty value is a boot error in both
+  (`services/auth/src/config/auth-config.cc`, `resolveIdentity`), and no
+  `identity.rpc_host` or `identity.rpc_port` key is read any more. The other
   callers read neither: argus-notification takes `identity.target` straight
   from its config and warns instead of dialling when it is empty
   (`services/notification/src/app/main.cc:148`).

@@ -68,6 +68,18 @@ target_compile_options(auth-rate-gate-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(auth-rate-gate-test)
 add_test(NAME auth-rate-gate-test COMMAND auth-rate-gate-test)
 
+add_executable(auth-identity-config-test unit/auth-identity-config-test.cc)
+target_link_libraries(auth-identity-config-test PRIVATE
+    argus::auth-config
+    argus::lib::config
+    argus::lib::errors
+    argus::lib::http
+    Drogon::Drogon
+    doctest::doctest)
+target_compile_options(auth-identity-config-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(auth-identity-config-test)
+add_test(NAME auth-identity-config-test COMMAND auth-identity-config-test)
+
 add_executable(auth-migration-test unit/auth-migration-test.cc)
 target_link_libraries(auth-migration-test PRIVATE
     auth-migration

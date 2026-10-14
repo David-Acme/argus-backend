@@ -18,10 +18,8 @@ hand stay as they are. A native service with no certificate (`[internal_tls]
 dir` empty) keeps its plaintext values, setup.sh warns, and the service refuses
 to start with a client built from a `tls:` target: the message names
 `scripts/setup.sh`. An empty `auth.target` or `identity.target` is a boot error
-(`... is empty; run scripts/setup.sh`), never a plaintext dial. The one
-plaintext default left is the auth service's own `identity.rpc_host` /
-`identity.rpc_port` fallback (`127.0.0.1:7040`), read only when
-`identity.target` is empty in `services/auth`.
+(`... is empty; run scripts/setup.sh`) in every service that reads it, never a
+plaintext dial. No plaintext target default is left.
 
 ## `argus-deploy/config.camera.toml.example`
 
@@ -401,7 +399,7 @@ argus-auth configuration. Copy to config.toml (gitignored) to run.
 | `auth.rpc_secret` | Fleet secret for the session-verdict RPC. Required whenever its listener is reachable beyond loopback: an unauthenticated caller could read any session's verdict. Empty means loopback-only and ungated. |
 | `auth.context_cache_seconds` | How long a resolved user context may be reused before identity is asked again (0 disables the cache); a change on the identity feed drops the entry immediately. |
 | `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
-| `identity.target` | The identity RPC behind a session verdict. An empty value falls back to `identity.rpc_host` / `identity.rpc_port`, which default to the plaintext `127.0.0.1:7040` in this service's own resolver (services/auth/src/config/auth-config.cc). The auth library itself refuses an empty target. |
+| `identity.target` | The identity RPC behind a session verdict, `tls:127.0.0.1:7240` natively and `tls:argus-identity:7240` in deploy. An empty value is a boot error: argus-auth refuses to start with the message `identity.target is empty; run scripts/setup.sh`. |
 
 ## `services/productivity/config.toml.example`
 
