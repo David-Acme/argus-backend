@@ -33,6 +33,11 @@ if(PROJECT_IS_TOP_LEVEL)
                          ${CMAKE_BINARY_DIR}/contracts/notification)
     endif()
 
+    if(NOT TARGET argus::contracts::push)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/push
+                         ${CMAKE_BINARY_DIR}/contracts/push)
+    endif()
+
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
     find_package(tomlplusplus REQUIRED)
