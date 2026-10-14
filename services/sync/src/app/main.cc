@@ -31,6 +31,7 @@
 #include <feature/transport/infra/sync-socket-registrar.hxx>
 #include <feature/transport/infra/voice-grpc-relay.hxx>
 #include <feature/transport/services/connection-lanes.hxx>
+#include <auth/auth-access.hxx>
 #include <auth/details/identity-access.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/module-feed.hxx>
@@ -170,6 +171,7 @@ int main()
       IdentitySyncClientConfig{.target = upstreams.identity,
                                .credential = upstreams.identityCredential,
                                .fleetSecret = upstreams.identitySecret});
+  requireAuthTarget();
   requireIdentityTarget();
   const auto userDirectory = std::make_shared<CachedUserDirectory>(
       std::make_shared<IdentityUserDirectory>(),

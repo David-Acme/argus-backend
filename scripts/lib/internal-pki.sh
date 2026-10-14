@@ -268,6 +268,7 @@ productivity identity target identity
 productivity notifications target notification
 productivity modules target settings
 settings auth target auth
+sync auth target auth
 sync camera grpc_target camera
 sync identity target identity
 sync productivity grpc_target productivity

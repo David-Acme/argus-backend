@@ -114,6 +114,7 @@ name = "Argus"
 address = ""
 
 [auth]
+target = "tls:127.0.0.1:7243"
 credential = ""
 
 [modules]
