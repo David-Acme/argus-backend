@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<env:Envelope xmlns:env="http://www.w3.org/2003/05/soap-envelope" xmlns:wsnt="http://docs.oasis-open.org/wsn/b-2">
+  <env:Body>
+    <wsnt:RenewResponse>
+      <wsnt:TerminationTime>2026-10-13T12:06:00-05:00</wsnt:TerminationTime>
+      <wsnt:CurrentTime>2026-10-13T17:05:00Z</wsnt:CurrentTime>
+    </wsnt:RenewResponse>
+  </env:Body>
+</env:Envelope>

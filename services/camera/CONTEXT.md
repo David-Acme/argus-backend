@@ -2141,7 +2141,7 @@ Application Programmer's Guide (nonce `LKqI6G/AikKCQrN0zqZFlg==`, created
 `2010-09-16T07:50:45Z`, password `userpassword`, digest
 `tuOSpGlFlIXsozq4HFNeeGeFLEI=`).
 
-## ONVIF motion events over PullPoint (design note, 2026-10-13; not built)
+## ONVIF motion events over PullPoint (design note, 2026-10-13; the client calls are built, the subscriber is not)
 
 Queue (ii). This note comes before any code, because it touches what guard
 sees.
@@ -2190,24 +2190,38 @@ Options:
   poll holds no blocking-lane worker. The subscriber sits beside the driver,
   not in the operator: Ruling AF stands, and the operator never touches
   hardware. It only reads a per-camera motion state.
-- **The subscription.** Only the path of the subscription address is used,
-  never its host, as for the services. The WS-Addressing `To` and `Action`
-  headers and the subscription's reference parameters are echoed, because
-  some devices require them. `InitialTerminationTime` is PT60S, with a
-  `Renew` at half-life. `PullMessages` uses `Timeout` PT10S and
-  `MessageLimit` 10.
+- **The subscription.** Only the request target of the subscription address
+  is used, its path and its query (`/onvif/Subscription?Idx=3`), never its
+  host or its fragment, as for the services. Every ONVIF path goes out
+  exactly as the camera wrote it: Drogon's path encoding is off, because it
+  would turn the colons of a manager path such as
+  `PullSubManager_2026-10-13T17:04:30Z_0` into `%3A`, and the Digest `uri`
+  must equal the request target the camera reads. The WS-Addressing `To` and
+  `Action` headers and the subscription's reference parameters are echoed,
+  because some devices require them; each reference parameter carries the
+  namespace declarations it uses, since a camera may declare them on its
+  envelope. `InitialTerminationTime` is PT60S, with a `Renew` at half-life.
+  `PullMessages` uses `Timeout` PT10S and `MessageLimit` 10.
 - **When it ends.** The subscription is unsubscribed when the camera is
   removed, disabled or edited (the registry's `forget`), and at shutdown
   through a `shutdown_signal` drain.
 - **The messages.** A `PropertyOperation` of `Initialized` or `Changed` is
-  read. `IsMotion` or `State` true is an onset, false is an end. `UtcTime`
-  is corrected by the camera's clock offset. The source token is ignored in
-  this version, which handles one video source.
+  read. `IsMotion` or `State` true is an onset, false is an end. A message
+  counts from the moment Argus receives it; its `UtcTime` is not read
+  (reviewer ruling, 2026-10-13, replacing the earlier "corrected by the
+  camera's clock offset"). The event only wakes the operator, so what
+  matters is when Argus learns of it, not the camera's clock: an
+  `Initialized` message can carry the moment its state began, a camera's
+  clock drifts, and a pull returns as soon as a message is queued, so
+  receipt follows the event within one round trip. The source token is
+  ignored in this version, which handles one video source.
 - **Failures.** A fault, a refused account or no answer drops the
   subscription and re-creates it from `GetCapabilities` after a backoff of
   5 s rising to 60 s. This is the same rule as the session of 1b0d8f42. A
   camera without the events service, or without either topic, gets no
-  subscriber.
+  subscriber. The topics come from `GetEventProperties`: only a topic set
+  that names neither motion topic keeps a camera out, and a camera that
+  cannot answer `GetEventProperties` is subscribed anyway.
 - **Budget.** Many cameras cap their pull points, often at 2 to 5. Argus
   holds one per camera.
 - **Tapo cameras.** Their ONVIF service on port 2020 offers the same

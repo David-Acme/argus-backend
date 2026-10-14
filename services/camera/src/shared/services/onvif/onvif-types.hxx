@@ -80,6 +80,7 @@ struct OnvifServices
   std::string media;
   std::string ptz;
   std::string imaging;
+  std::string events;
 };
 
 struct OnvifDeviceInfo
@@ -120,4 +121,23 @@ struct OnvifDevice
   bool ptz{false};
   bool presets{false};
   int64_t clockOffsetSeconds{0};
+};
+
+struct OnvifSubscription
+{
+  std::string address;
+  std::string path;
+  std::string references;
+  int64_t lifetimeSeconds{0};
+};
+
+struct OnvifMotion
+{
+  bool moving{false};
+};
+
+struct OnvifPull
+{
+  std::vector<OnvifMotion> motions;
+  int64_t lifetimeSeconds{0};
 };

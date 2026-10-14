@@ -47,7 +47,10 @@ OnvifDriver::OnvifDriver(const CameraSchema& camera, std::shared_ptr<IOnvifTrans
 OnvifDriver::OnvifDriver(OnvifDriverParts parts)
     : camera_(std::move(parts.camera)),
       recorder_(parts.recorder),
-      client_({.endpoint = endpointOf(camera_), .transport = std::move(parts.transport), .clock = {}})
+      client_({.endpoint = endpointOf(camera_),
+               .transport = std::move(parts.transport),
+               .asyncTransport = {},
+               .clock = {}})
 {
 }
 

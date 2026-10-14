@@ -71,6 +71,10 @@ std::string_view onvif_soap::prefixOf(OnvifService service)
       return "trt";
     case OnvifService::Ptz:
       return "tptz";
+    case OnvifService::Events:
+      return "tev";
+    case OnvifService::Notification:
+      return "wsnt";
   }
   return "tds";
 }
@@ -84,6 +88,10 @@ std::string_view onvif_soap::namespaceOf(OnvifService service)
       return "http://www.onvif.org/ver10/media/wsdl";
     case OnvifService::Ptz:
       return "http://www.onvif.org/ver20/ptz/wsdl";
+    case OnvifService::Events:
+      return "http://www.onvif.org/ver10/events/wsdl";
+    case OnvifService::Notification:
+      return "http://docs.oasis-open.org/wsn/b-2";
   }
   return "http://www.onvif.org/ver10/device/wsdl";
 }
@@ -116,9 +124,12 @@ std::string onvif_soap::envelope(const OnvifEnvelopeInput& input)
   auto root = document.append_child("s:Envelope");
   root.append_attribute("xmlns:s") = kSoapNamespace;
   root.append_attribute("xmlns:tt") = kSchemaNamespace;
-  if (input.security) {
+  if (input.security || input.header) {
     auto header = root.append_child("s:Header");
-    appendSecurity(header, *input.security);
+    if (input.security)
+      appendSecurity(header, *input.security);
+    if (input.header)
+      input.header(header);
   }
   auto body = root.append_child("s:Body");
   const std::string prefix(prefixOf(input.service));

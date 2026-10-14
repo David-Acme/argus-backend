@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://www.w3.org/2003/05/soap-envelope" xmlns:wsa5="http://www.w3.org/2005/08/addressing" xmlns:tt="http://www.onvif.org/ver10/schema" xmlns:wsnt="http://docs.oasis-open.org/wsn/b-2" xmlns:tev="http://www.onvif.org/ver10/events/wsdl" xmlns:tns1="http://www.onvif.org/ver10/topics">
+  <SOAP-ENV:Header>
+    <wsa5:Action SOAP-ENV:mustUnderstand="true">http://www.onvif.org/ver10/events/wsdl/PullPointSubscription/PullMessagesResponse</wsa5:Action>
+  </SOAP-ENV:Header>
+  <SOAP-ENV:Body>
+    <tev:PullMessagesResponse>
+      <tev:CurrentTime>2026-10-13T17:04:40.250Z</tev:CurrentTime>
+      <tev:TerminationTime>2026-10-13T17:05:40Z</tev:TerminationTime>
+      <wsnt:NotificationMessage>
+        <wsnt:Topic Dialect="http://www.onvif.org/ver10/tev/topicExpression/ConcreteSet">tns1:RuleEngine/CellMotionDetector/Motion</wsnt:Topic>
+        <wsnt:Message>
+          <tt:Message UtcTime="2026-10-13T17:04:31Z" PropertyOperation="Initialized">
+            <tt:Source>
+              <tt:SimpleItem Name="VideoSourceConfigurationToken" Value="vsconf"/>
+              <tt:SimpleItem Name="VideoAnalyticsConfigurationToken" Value="VideoAnalyticsToken"/>
+              <tt:SimpleItem Name="Rule" Value="MyMotionDetectorRule"/>
+            </tt:Source>
+            <tt:Data>
+              <tt:SimpleItem Name="IsMotion" Value="false"/>
+            </tt:Data>
+          </tt:Message>
+        </wsnt:Message>
+      </wsnt:NotificationMessage>
+      <wsnt:NotificationMessage>
+        <wsnt:Topic Dialect="http://www.onvif.org/ver10/tev/topicExpression/ConcreteSet">tns1:RuleEngine/TamperDetector/Tamper</wsnt:Topic>
+        <wsnt:Message>
+          <tt:Message UtcTime="2026-10-13T17:04:33Z" PropertyOperation="Changed">
+            <tt:Source>
+              <tt:SimpleItem Name="VideoSourceConfigurationToken" Value="vsconf"/>
+            </tt:Source>
+            <tt:Data>
+              <tt:SimpleItem Name="IsTamper" Value="true"/>
+            </tt:Data>
+          </tt:Message>
+        </wsnt:Message>
+      </wsnt:NotificationMessage>
+      <wsnt:NotificationMessage>
+        <wsnt:Topic Dialect="http://www.onvif.org/ver10/tev/topicExpression/ConcreteSet">tns1:RuleEngine/CellMotionDetector/Motion</wsnt:Topic>
+        <wsnt:Message>
+          <tt:Message UtcTime="2026-10-13T17:04:35.500Z" PropertyOperation="Changed">
+            <tt:Source>
+              <tt:SimpleItem Name="VideoSourceConfigurationToken" Value="vsconf"/>
+              <tt:SimpleItem Name="Rule" Value="MyMotionDetectorRule"/>
+            </tt:Source>
+            <tt:Data>
+              <tt:SimpleItem Name="IsMotion" Value="true"/>
+            </tt:Data>
+          </tt:Message>
+        </wsnt:Message>
+      </wsnt:NotificationMessage>
+      <wsnt:NotificationMessage>
+        <wsnt:Topic Dialect="http://www.onvif.org/ver10/tev/topicExpression/ConcreteSet">tns1:VideoSource/MotionAlarm</wsnt:Topic>
+        <wsnt:Message>
+          <tt:Message UtcTime="2026-10-13T12:04:36-05:00" PropertyOperation="Changed">
+            <tt:Source>
+              <tt:SimpleItem Name="Source" Value="VideoSource_1"/>
+            </tt:Source>
+            <tt:Data>
+              <tt:SimpleItem Name="State" Value="1"/>
+            </tt:Data>
+          </tt:Message>
+        </wsnt:Message>
+      </wsnt:NotificationMessage>
+      <wsnt:NotificationMessage>
+        <wsnt:Topic Dialect="http://www.onvif.org/ver10/tev/topicExpression/ConcreteSet">tns1:RuleEngine/CellMotionDetector/Motion</wsnt:Topic>
+        <wsnt:Message>
+          <tt:Message UtcTime="2026-10-13T17:04:37Z" PropertyOperation="Deleted">
+            <tt:Source>
+              <tt:SimpleItem Name="Rule" Value="MyMotionDetectorRule"/>
+            </tt:Source>
+            <tt:Data>
+              <tt:SimpleItem Name="IsMotion" Value="true"/>
+            </tt:Data>
+          </tt:Message>
+        </wsnt:Message>
+      </wsnt:NotificationMessage>
+      <wsnt:NotificationMessage>
+        <wsnt:Topic Dialect="http://www.onvif.org/ver10/tev/topicExpression/ConcreteSet">tns1:RuleEngine/CellMotionDetector/Motion</wsnt:Topic>
+        <wsnt:Message>
+          <tt:Message UtcTime="2026-10-13T17:04:38Z" PropertyOperation="Changed">
+            <tt:Source>
+              <tt:SimpleItem Name="Rule" Value="MyMotionDetectorRule"/>
+            </tt:Source>
+            <tt:Data>
+              <tt:SimpleItem Name="IsMotion" Value="maybe"/>
+            </tt:Data>
+          </tt:Message>
+        </wsnt:Message>
+      </wsnt:NotificationMessage>
+      <wsnt:NotificationMessage>
+        <wsnt:Topic Dialect="http://www.onvif.org/ver10/tev/topicExpression/ConcreteSet">tns1:RuleEngine/CellMotionDetector/Motion</wsnt:Topic>
+        <wsnt:Message>
+          <tt:Message UtcTime="2026-10-13T17:04:39Z" PropertyOperation="Changed">
+            <tt:Source>
+              <tt:SimpleItem Name="Rule" Value="MyMotionDetectorRule"/>
+            </tt:Source>
+            <tt:Data>
+              <tt:SimpleItem Name="IsMotion" Value="0"/>
+            </tt:Data>
+          </tt:Message>
+        </wsnt:Message>
+      </wsnt:NotificationMessage>
+    </tev:PullMessagesResponse>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>

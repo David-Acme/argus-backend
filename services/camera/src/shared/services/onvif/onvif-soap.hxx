@@ -16,7 +16,9 @@ enum class OnvifService : uint8_t
 {
   Device = 0,
   Media,
-  Ptz
+  Ptz,
+  Events,
+  Notification
 };
 
 inline std::string onvifServiceToString(OnvifService service)
@@ -28,6 +30,10 @@ inline std::string onvifServiceToString(OnvifService service)
       return "media";
     case OnvifService::Ptz:
       return "ptz";
+    case OnvifService::Events:
+      return "events";
+    case OnvifService::Notification:
+      return "notification";
   }
   return "device";
 }
@@ -38,6 +44,10 @@ inline OnvifService onvifServiceFromString(std::string_view text)
     return OnvifService::Media;
   if (text == "ptz")
     return OnvifService::Ptz;
+  if (text == "events")
+    return OnvifService::Events;
+  if (text == "notification")
+    return OnvifService::Notification;
   return OnvifService::Device;
 }
 
@@ -57,6 +67,7 @@ struct OnvifEnvelopeInput
   std::string operation;
   OnvifBodyWriter body;
   std::optional<OnvifSecurity> security;
+  OnvifBodyWriter header;
 };
 
 struct OnvifReply
@@ -72,6 +83,7 @@ namespace onvif_soap
 {
 inline constexpr const char* kSoapNamespace = "http://www.w3.org/2003/05/soap-envelope";
 inline constexpr const char* kSchemaNamespace = "http://www.onvif.org/ver10/schema";
+inline constexpr const char* kAddressingNamespace = "http://www.w3.org/2005/08/addressing";
 inline constexpr const char* kPasswordDigestType =
     "http://docs.oasis-open.org/wss/2004/01/oasis-200401-wss-username-token-profile-1.0#PasswordDigest";
 

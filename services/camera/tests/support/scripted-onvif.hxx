@@ -36,7 +36,7 @@ inline std::string operationOf(const std::string& action)
   return slash == std::string::npos ? action : action.substr(slash + 1);
 }
 
-class ScriptedOnvif final : public IOnvifTransport
+class ScriptedOnvif final : public IOnvifTransport, public IOnvifAsyncTransport
 {
 public:
   void always(const std::string& operation, OnvifHttpResponse response)
@@ -61,6 +61,11 @@ public:
     if (const auto standing = always_.find(operation); standing != always_.end())
       return standing->second;
     return {.status = 0, .body = {}, .challenge = {}, .error = "no fixture answers " + operation};
+  }
+
+  drogon::Task<OnvifHttpResponse> send(OnvifHttpRequest request) override
+  {
+    co_return post(request);
   }
 
   [[nodiscard]] std::vector<std::string> operations() const

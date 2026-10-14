@@ -3,8 +3,14 @@
 #include <shared/services/onvif/onvif-soap.hxx>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <chrono>
+#include <ostream>
+#include <set>
+#include <sstream>
+#include <text/iso-time.hxx>
+#include <vector>
 
 namespace
 {
@@ -28,6 +34,110 @@ std::string pathAt(const pugi::xml_node& capabilities, std::string_view service)
 bool plainPathCharacter(char c)
 {
   return c > ' ' && c < 0x7F;
+}
+
+std::string_view afterAuthority(std::string_view address)
+{
+  const auto scheme = address.find("://");
+  if (scheme == std::string_view::npos)
+    return address;
+  address.remove_prefix(scheme + 3);
+  const auto slash = address.find('/');
+  return slash == std::string_view::npos ? std::string_view("/") : address.substr(slash);
+}
+
+std::string checkedTarget(std::string_view target)
+{
+  if (target.empty() || target.front() != '/' || target.size() > kMaxPathLength ||
+      !std::ranges::all_of(target, plainPathCharacter))
+    return {};
+  return std::string(target);
+}
+
+std::string declarationFor(std::string_view qualified)
+{
+  const auto colon = qualified.find(':');
+  return colon == std::string_view::npos ? std::string("xmlns") : "xmlns:" + std::string(qualified.substr(0, colon));
+}
+
+bool declares(std::string_view attribute)
+{
+  return attribute == "xmlns" || attribute.starts_with("xmlns:");
+}
+
+std::set<std::string> declarationsUsed(const pugi::xml_node& root)
+{
+  std::set<std::string> used;
+  std::vector<pugi::xml_node> pending{root};
+  while (!pending.empty()) {
+    const pugi::xml_node node = pending.back();
+    pending.pop_back();
+    used.insert(declarationFor(node.name()));
+    for (const auto attribute : node.attributes()) {
+      const std::string_view name = attribute.name();
+      if (!declares(name) && name.find(':') != std::string_view::npos)
+        used.insert(declarationFor(name));
+    }
+    for (const auto child : node.children()) {
+      if (child.type() == pugi::node_element)
+        pending.push_back(child);
+    }
+  }
+  return used;
+}
+
+void printSelfContained(const pugi::xml_node& node, std::ostream& out)
+{
+  pugi::xml_document fragment;
+  auto copy = fragment.append_copy(node);
+  for (const std::string& declaration : declarationsUsed(node)) {
+    if (copy.attribute(declaration.c_str()))
+      continue;
+    for (pugi::xml_node scope = node.parent(); scope; scope = scope.parent()) {
+      if (const auto inScope = scope.attribute(declaration.c_str())) {
+        copy.append_attribute(declaration.c_str()) = inScope.value();
+        break;
+      }
+    }
+  }
+  copy.print(out, "", pugi::format_raw);
+}
+
+constexpr std::array<std::string_view, 2> kMotionTopics{"RuleEngine/CellMotionDetector/Motion",
+                                                       "VideoSource/MotionAlarm"};
+constexpr std::array<std::string_view, 2> kMotionItems{"IsMotion", "State"};
+
+bool motionTopic(std::string_view topic)
+{
+  return std::ranges::any_of(kMotionTopics, [topic](std::string_view wanted) { return topic.ends_with(wanted); });
+}
+
+bool namesTopic(const pugi::xml_node& set, std::string_view topic)
+{
+  pugi::xml_node node = set;
+  while (node && !topic.empty()) {
+    const auto slash = topic.find('/');
+    node = onvif_soap::child(node, topic.substr(0, slash));
+    topic = slash == std::string_view::npos ? std::string_view() : topic.substr(slash + 1);
+  }
+  return !node.empty();
+}
+
+std::optional<bool> motionValue(const pugi::xml_node& data)
+{
+  for (const auto item : data.children()) {
+    if (item.type() != pugi::node_element || onvif_soap::localName(item) != "SimpleItem")
+      continue;
+    const std::string_view name = item.attribute("Name").value();
+    if (std::ranges::find(kMotionItems, name) == kMotionItems.end())
+      continue;
+    const std::string_view value = item.attribute("Value").value();
+    if (value == "true" || value == "1")
+      return true;
+    if (value == "false" || value == "0")
+      return false;
+  }
+  return std::nullopt;
 }
 }
 
@@ -66,6 +176,7 @@ OnvifServices onvif_parse::services(const pugi::xml_node& response)
   out.media = pathAt(capabilities, "Media");
   out.ptz = pathAt(capabilities, "PTZ");
   out.imaging = pathAt(capabilities, "Imaging");
+  out.events = pathAt(capabilities, "Events");
   return out;
 }
 
@@ -119,18 +230,80 @@ std::string onvif_parse::presetToken(const pugi::xml_node& response)
 
 std::string onvif_parse::pathOf(std::string_view xaddr)
 {
-  std::string_view rest = xaddr;
-  if (const auto scheme = rest.find("://"); scheme != std::string_view::npos) {
-    rest.remove_prefix(scheme + 3);
-    const auto slash = rest.find('/');
-    if (slash == std::string_view::npos)
-      return "/";
-    rest.remove_prefix(slash);
+  const std::string_view rest = afterAuthority(xaddr);
+  return checkedTarget(rest.substr(0, rest.find_first_of("?#")));
+}
+
+std::string onvif_parse::targetOf(std::string_view address)
+{
+  const std::string_view rest = afterAuthority(address);
+  return checkedTarget(rest.substr(0, rest.find('#')));
+}
+
+std::optional<int64_t> onvif_parse::epochOf(std::string_view dateTime)
+{
+  std::string plain(dateTime);
+  if (const auto dot = plain.find('.'); dot != std::string::npos && dot > plain.find('T')) {
+    auto end = dot + 1;
+    while (end < plain.size() && plain[end] >= '0' && plain[end] <= '9')
+      ++end;
+    plain.erase(dot, end - dot);
   }
-  if (const auto query = rest.find_first_of("?#"); query != std::string_view::npos)
-    rest = rest.substr(0, query);
-  if (rest.empty() || rest.front() != '/' || rest.size() > kMaxPathLength ||
-      !std::ranges::all_of(rest, plainPathCharacter))
-    return {};
-  return std::string(rest);
+  return iso_time::parse(plain);
+}
+
+int64_t onvif_parse::lifetimeOf(const pugi::xml_node& response)
+{
+  const auto current = epochOf(onvif_soap::textOf(onvif_soap::child(response, "CurrentTime")));
+  const auto termination = epochOf(onvif_soap::textOf(onvif_soap::child(response, "TerminationTime")));
+  if (!current || !termination || *termination <= *current)
+    return 0;
+  return *termination - *current;
+}
+
+std::optional<OnvifSubscription> onvif_parse::subscription(const pugi::xml_node& response)
+{
+  const pugi::xml_node reference = onvif_soap::child(response, "SubscriptionReference");
+  const std::string address = onvif_soap::textOf(onvif_soap::child(reference, "Address"));
+  std::string path = targetOf(address);
+  if (path.empty())
+    return std::nullopt;
+  std::ostringstream references;
+  for (const auto node : onvif_soap::child(reference, "ReferenceParameters").children()) {
+    if (node.type() == pugi::node_element)
+      printSelfContained(node, references);
+  }
+  return OnvifSubscription{.address = address,
+                           .path = std::move(path),
+                           .references = references.str(),
+                           .lifetimeSeconds = lifetimeOf(response)};
+}
+
+std::optional<bool> onvif_parse::publishesMotion(const pugi::xml_node& response)
+{
+  const pugi::xml_node set = onvif_soap::child(response, "TopicSet");
+  if (!set)
+    return std::nullopt;
+  return std::ranges::any_of(kMotionTopics, [&set](std::string_view topic) { return namesTopic(set, topic); });
+}
+
+OnvifPull onvif_parse::pulled(const pugi::xml_node& response)
+{
+  OnvifPull out{.motions = {}, .lifetimeSeconds = lifetimeOf(response)};
+  for (const auto notification : response.children()) {
+    if (notification.type() != pugi::node_element ||
+        onvif_soap::localName(notification) != "NotificationMessage")
+      continue;
+    if (!motionTopic(onvif_soap::textOf(onvif_soap::child(notification, "Topic"))))
+      continue;
+    const pugi::xml_node message = onvif_soap::path(notification, {"Message", "Message"});
+    const std::string_view operation = message.attribute("PropertyOperation").value();
+    if (operation == "Deleted")
+      continue;
+    const auto moving = motionValue(onvif_soap::child(message, "Data"));
+    if (!moving)
+      continue;
+    out.motions.push_back({.moving = *moving});
+  }
+  return out;
 }

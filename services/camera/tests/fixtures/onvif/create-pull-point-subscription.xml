@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://www.w3.org/2003/05/soap-envelope" xmlns:wsa5="http://www.w3.org/2005/08/addressing" xmlns:wsnt="http://docs.oasis-open.org/wsn/b-2" xmlns:tev="http://www.onvif.org/ver10/events/wsdl">
+  <SOAP-ENV:Header>
+    <wsa5:Action SOAP-ENV:mustUnderstand="true">http://www.onvif.org/ver10/events/wsdl/EventPortType/CreatePullPointSubscriptionResponse</wsa5:Action>
+  </SOAP-ENV:Header>
+  <SOAP-ENV:Body>
+    <tev:CreatePullPointSubscriptionResponse>
+      <tev:SubscriptionReference>
+        <wsa5:Address>http://192.168.1.64/onvif/Events/PullSubManager_2026-10-13T17:04:30Z_0</wsa5:Address>
+      </tev:SubscriptionReference>
+      <wsnt:CurrentTime>2026-10-13T17:04:30Z</wsnt:CurrentTime>
+      <wsnt:TerminationTime>2026-10-13T17:05:30Z</wsnt:TerminationTime>
+    </tev:CreatePullPointSubscriptionResponse>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>

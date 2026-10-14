@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<SOAP-ENV:Envelope xmlns:SOAP-ENV="http://www.w3.org/2003/05/soap-envelope" xmlns:wsa="http://www.w3.org/2005/08/addressing" xmlns:wsnt="http://docs.oasis-open.org/wsn/b-2" xmlns:tev="http://www.onvif.org/ver10/events/wsdl" xmlns:dom0="http://www.axis.com/2009/event">
+  <SOAP-ENV:Body>
+    <tev:CreatePullPointSubscriptionResponse>
+      <tev:SubscriptionReference>
+        <wsa:Address>http://192.168.1.64:8000/onvif/Subscription?Idx=3#pull</wsa:Address>
+        <wsa:ReferenceParameters>
+          <dom0:SubscriptionId>3</dom0:SubscriptionId>
+        </wsa:ReferenceParameters>
+      </tev:SubscriptionReference>
+      <wsnt:CurrentTime>2026-10-13T17:04:30.125Z</wsnt:CurrentTime>
+      <wsnt:TerminationTime>2026-10-13T17:05:30.125Z</wsnt:TerminationTime>
+    </tev:CreatePullPointSubscriptionResponse>
+  </SOAP-ENV:Body>
+</SOAP-ENV:Envelope>

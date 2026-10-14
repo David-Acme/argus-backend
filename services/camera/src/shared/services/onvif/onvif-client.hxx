@@ -6,6 +6,7 @@
 #include <shared/services/tapo/tapo-crypto.hxx>
 
 #include <cstdint>
+#include <drogon/utils/coroutine.h>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -16,6 +17,7 @@ struct OnvifClientConfig
 {
   OnvifEndpoint endpoint;
   std::shared_ptr<IOnvifTransport> transport;
+  std::shared_ptr<IOnvifAsyncTransport> asyncTransport;
   std::function<int64_t()> clock;
 };
 
@@ -35,6 +37,12 @@ public:
   OnvifOutcome<bool> relativeMove(const OnvifVector& translation);
   OnvifOutcome<bool> stop();
 
+  [[nodiscard]] drogon::Task<OnvifOutcome<bool>> openEvents();
+  [[nodiscard]] drogon::Task<OnvifOutcome<OnvifSubscription>> subscribe();
+  [[nodiscard]] drogon::Task<OnvifOutcome<OnvifPull>> pull(OnvifSubscription subscription);
+  [[nodiscard]] drogon::Task<OnvifOutcome<int64_t>> renew(OnvifSubscription subscription);
+  [[nodiscard]] drogon::Task<OnvifOutcome<bool>> unsubscribe(OnvifSubscription subscription);
+
 private:
   struct Call
   {
@@ -44,6 +52,14 @@ private:
     bool secured{true};
   };
 
+  struct Route
+  {
+    std::string path;
+    std::string action;
+    OnvifBodyWriter header;
+    double timeoutSeconds{0.0};
+  };
+
   struct Settled
   {
     bool retry{false};
@@ -51,9 +67,10 @@ private:
   };
 
   static Call presetsCall(const std::string& profile);
-  OnvifOutcome<OnvifHttpRequest> prepared(const Call& request);
+  OnvifOutcome<OnvifHttpRequest> prepared(const Call& request, const Route& route);
   Settled settled(const OnvifHttpResponse& response, int attempt);
   OnvifOutcome<OnvifReply> call(const Call& request);
+  drogon::Task<OnvifOutcome<OnvifReply>> callAsync(Call request, Route route);
   OnvifOutcome<OnvifReply> ptzCall(const Call& request);
   void forget();
   [[nodiscard]] std::string pathFor(OnvifService service) const;

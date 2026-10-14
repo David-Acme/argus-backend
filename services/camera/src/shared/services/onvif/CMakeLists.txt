@@ -8,6 +8,7 @@ argus_module(NAME camera-onvif
         ../../..
     DEPENDS
         argus::camera-tapo
+        argus::lib::text
         pugixml::pugixml
         Drogon::Drogon)
 
