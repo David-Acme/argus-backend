@@ -1,7 +1,9 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
+#include <grpc-test-support/mutual-tls-endpoint.hxx>
 #include <grpc/grpc-client-base.hxx>
 #include <grpc/grpc-server-identity.hxx>
+#include <grpc/internal-tls.hxx>
 #include <guard/guard-duress-client.hxx>
 
 #include <memory>
@@ -151,5 +153,27 @@ TEST_CASE("a guard that does not answer is no key and an unavailable raise")
   const GuardDuressClient client({.target = "127.0.0.1:1", .credential = kCredential});
   CHECK_FALSE(client.phraseKey().has_value());
   CHECK(client.raiseSpoken({.userId = 9, .role = "owner", .key = "phrase-key", .saidAt = 0}) ==
+        SpokenDuressReply::Unavailable);
+}
+
+TEST_CASE("the duress client dials the mutual TLS port with the internal certificate")
+{
+  ScriptedDuressService service;
+  const argus::client::test_support::MutualTlsEndpoint endpoint(
+      {.service = "guard", .services = {&service}});
+  REQUIRE(endpoint.tlsPort() > 0);
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("llm"));
+
+  const GuardDuressClient client({.target = endpoint.tlsTarget(), .credential = kCredential});
+  const auto key = client.phraseKey();
+  REQUIRE(key.has_value());
+  CHECK(*key == "phrase-key");
+  CHECK(client.raiseSpoken({.userId = 9, .role = "resident", .key = "phrase-key", .saidAt = 0}) ==
+        SpokenDuressReply::Raised);
+
+  const GuardDuressClient plaintext({.target = endpoint.plaintextToTlsPortTarget(), .credential = kCredential});
+  CHECK_FALSE(plaintext.phraseKey().has_value());
+  CHECK(plaintext.raiseSpoken({.userId = 9, .role = "resident", .key = "phrase-key", .saidAt = 0}) ==
         SpokenDuressReply::Unavailable);
 }

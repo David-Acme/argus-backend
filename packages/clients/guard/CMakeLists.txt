@@ -47,9 +47,13 @@ if(NOT TARGET guard-duress-client-test)
       EXCLUDE_FROM_ALL FALSE)
 
   target_link_libraries(guard-duress-client-test PRIVATE
-      argus::clients::guard doctest::doctest)
+      argus::clients::guard argus::lib::grpc-test-support argus_client_grpc_base
+      doctest::doctest)
 
   target_compile_options(guard-duress-client-test PRIVATE -Wall -Wextra)
 
-  add_test(NAME guard-duress-client-test COMMAND guard-duress-client-test)
+  add_test(NAME guard-duress-client-test
+           COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                   $<TARGET_FILE:guard-duress-client-test> 5)
+  set_tests_properties(guard-duress-client-test PROPERTIES SKIP_RETURN_CODE 77)
 endif()
