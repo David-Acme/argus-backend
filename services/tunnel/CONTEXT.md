@@ -54,8 +54,9 @@ this repository holds its second implementation, under `src/link/`.
   DATA and a normal CLOSE, so the app reads the alert and then the end of the
   connection. No local socket is opened for a refused stream. The services are
   a closed vocabulary (`HomeService`: auth, identity, sync, camera,
-  productivity, notification, guard, settings), each entry a port on
-  `gateway_host`. With no `[link.services]` at all, every stream dials the
+  productivity, notification, guard, settings, and the call services rtc and
+  turn, `docs/turn.md` of argus-cloud), each entry a listener port named under
+  `[link.services]`. With no `[link.services]` at all, every stream dials the
   gateway as soon as it opens, as it always did, so an instance config written
   before this step keeps working unchanged; `config.toml.example` lists the two
   services whose remote listener has a port today, auth (7142) and identity
@@ -72,15 +73,15 @@ this repository holds its second implementation, under `src/link/`.
   issues one certificate per service whose one SAN is
   `<service>--<home-id>.argus-tunnel.lynk.page`, the name the app dials. The
   home id is `[link] home_id`. The subject is `CN=Argus tunnel <service>`,
-  not the name, because a common name holds at most 64 characters and five of
-  the eight names are longer. Clients verify the SAN. Each is signed by the instance CA the app
+  not the name, because a common name holds at most 64 characters and four of
+  the ten names are longer. Clients verify the SAN. Each is signed by the instance CA the app
   already pins, with ECDSA P-256 and `serverAuth` only, valid for 730 days and
   re-issued under 60 or when its key, its name or its CA changed.
   `provision-host.sh` writes them under `${ARGUS_DATA_DIR}/certs/tunnel/<service>/`
   (`cert.pem` is the leaf followed by the CA, `key.pem` is 0600). `setup.sh`
   writes them under `certs/tunnel/` and names them in each native config's
   `[remote] tunnel_cert` and `tunnel_key`. A CA created from now on, once the
-  home has its id, permits exactly this home's eight names (through
+  home has its id, permits exactly this home's ten names (through
   `ARGUS_CA_EXTRA_DNS`), so a stolen CA key still cannot sign another home's
   names. A CA made before carries the constraints it was made with: if they
   leave the names out, issuance refuses with a warning and writes nothing, and
@@ -133,6 +134,14 @@ fake node, and `tests/cloud-interop-test.cc` runs it against the real
 argus-relay binary named by `ARGUS_CLOUD_RELAY_BIN`, with a device TLS session
 crossing the relay into a home listener. `scripts/sync-vectors.sh --cloud <dir>`
 copies the cloud's vectors and rewrites the pins in one step.
+
+`tests/home-service-test.cc` pins the closed set to exactly its ten names, checks that
+each one round-trips through its enumerator and that a name outside the set is refused.
+`tests/link-client-test.cc` routes an `rtc` and a `turn` device name to the listeners
+their `[link.services]` entries give, and refuses both on a home that configures neither.
+The `rtc` and `turn` entries carry no port yet: the listeners are livekit-tls's on the
+deploy track (`docs/turn.md` of argus-cloud, step C5b), so `config.toml.example` does not
+list them until those ports are fixed.
 
 `device-names.json` is pinned with the frame vectors (2026-10-13): the device
 names of the spec's section 2.4, `<service>--<home-id>.argus-tunnel.lynk.page`,
