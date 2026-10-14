@@ -87,7 +87,11 @@ public:
     const auto settled = std::make_shared<bool>(false);
     auto client = drogon::HttpClient::newHttpClient(
         transport_.endpoint_.host, static_cast<uint16_t>(transport_.endpoint_.port), false, transport_.loop_);
-    client->setSockOptCallback([socket](int fd) { *socket = fd; });
+    client->setSockOptCallback([transport = &transport_, socket, settled](int fd) {
+      *socket = fd;
+      if (!*settled)
+        transport->pendingFd_ = fd;
+    });
     client->sendRequest(
         closingRequestOf(request_),
         [this, handle, socket, settled](drogon::ReqResult result, const drogon::HttpResponsePtr& response) {
@@ -104,8 +108,6 @@ public:
           transport_.loop_->queueInLoop([handle] { handle.resume(); });
         },
         timeoutOf(request_, transport_.endpoint_));
-    if (!*settled)
-      transport_.pendingFd_ = *socket;
   }
 
 private:
@@ -155,6 +157,11 @@ void OnvifAsyncHttpTransport::cancel()
 int64_t OnvifAsyncHttpTransport::closedConnections() const
 {
   return closed_.load();
+}
+
+bool OnvifAsyncHttpTransport::hasPendingConnection() const
+{
+  return pendingFd_ >= 0;
 }
 
 void OnvifAsyncHttpTransport::close(int fd)

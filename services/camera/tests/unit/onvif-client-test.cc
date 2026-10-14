@@ -1331,7 +1331,12 @@ TEST_CASE("over real sockets each events request has its own connection, and two
     onLoop(eventsLoop.getLoop(), [&held] { drogon::async_run([&held] { return pullInto(held); }); });
     REQUIRE(waitFor([&camera] { return camera->heldCount() == 1; }));
     const auto cancelledAt = std::chrono::steady_clock::now();
-    onLoop(eventsLoop.getLoop(), [&transport] { transport->cancel(); });
+    bool armedAtCancel = false;
+    onLoop(eventsLoop.getLoop(), [&transport, &armedAtCancel] {
+      armedAtCancel = transport->hasPendingConnection();
+      transport->cancel();
+    });
+    CHECK(armedAtCancel);
     REQUIRE(waitFor([&held] { return held.done.load(); }));
     CHECK(std::chrono::steady_clock::now() - cancelledAt < std::chrono::seconds(1));
     CHECK(held.outcome.failure == OnvifFailure::Transport);

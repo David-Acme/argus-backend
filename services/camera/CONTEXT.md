@@ -2286,6 +2286,9 @@ never holds two connections to a camera:
 - **Every shutdown checks the socket first.** `getsockname` and
   `getpeername` must both succeed and the peer must be the camera's host and
   port. A socket that does not match is left alone and logged once.
+  The guarded close needs the camera configured by IP, which the catalog
+  stores as a literal address. With a hostname the camera address stays
+  unspecified, `close` refuses every socket, and the refusal is logged once.
 
 **When it ends.** At shutdown (a `shutdown_signal` drain), and for a
 removed, disabled or edited camera:

@@ -69,6 +69,7 @@ public:
   void cancel() override;
 
   [[nodiscard]] int64_t closedConnections() const;
+  [[nodiscard]] bool hasPendingConnection() const;
 
 private:
   class Exchange;
