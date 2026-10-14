@@ -191,8 +191,45 @@ talks_to_auth() {
     < /dev/null > "$TEST_TMP/client.out" 2>&1 && grep -q 'Verify return code: 0 (ok)' "$TEST_TMP/client.out"
 }
 
-openssl x509 -help 2>&1 | grep -q -- '-not_before' \
-  || fail "openssl $(openssl version) cannot set notBefore, which the rotation test needs (OpenSSL 3.4 or later)"
+issue_dated_cert() {
+  local key="$1" subject="$2" start="$3" end="$4" out="$5"
+  local dir="$TEST_TMP/dated-$(basename "$out")"
+
+  mkdir -p "$dir/newcerts"
+  : > "$dir/index.txt"
+  printf '01\n' > "$dir/serial"
+  cat > "$dir/ca.cnf" <<CNF
+[ ca ]
+default_ca = fixture_ca
+
+[ fixture_ca ]
+database = $dir/index.txt
+new_certs_dir = $dir/newcerts
+serial = $dir/serial
+default_md = sha256
+unique_subject = no
+copy_extensions = none
+preserve = yes
+policy = fixture_policy
+
+[ fixture_policy ]
+organizationName = optional
+organizationalUnitName = optional
+commonName = supplied
+
+[ fixture_ca_ext ]
+basicConstraints = critical,CA:TRUE,pathlen:0
+keyUsage = critical,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid
+CNF
+  openssl req -new -key "$key" -subj "$subject" -out "$dir/req.csr" 2> "$dir/req.log" \
+    || { cat "$dir/req.log" >&2; return 1; }
+  openssl ca -selfsign -batch -config "$dir/ca.cnf" -keyfile "$key" -in "$dir/req.csr" \
+    -startdate "$start" -enddate "$end" -extensions fixture_ca_ext -notext -out "$out" \
+    2> "$dir/ca.log" || { cat "$dir/ca.log" >&2; return 1; }
+}
+
 internal_pki_issue_ca "$pki" 30
 rm -f "$pki/ca-previous.pem"
 current="$(fingerprint "$pki/ca.pem")"
@@ -219,9 +256,9 @@ ensure_internal_pki "$pki" > "$TEST_TMP/rotate-wait.out" 2>&1 || fail "a pass be
 grep -q 'a day or more after it joined the trust bundles' "$TEST_TMP/rotate-wait.out" \
   || fail "a pass before the next CA was a day old did not say when it takes over"
 
-openssl x509 -in "$pki/ca-next.pem" -key "$pki/ca-next.key" \
-  -not_before "$(date -u -d '2 days ago' +%Y%m%d%H%M%SZ)" -not_after "$(date -u -d '3648 days' +%Y%m%d%H%M%SZ)" \
-  -out "$pki/ca-next.pem.aged"
+issue_dated_cert "$pki/ca-next.key" "/O=Argus/OU=internal-v1/CN=$(openssl x509 -in "$pki/ca-next.pem" -noout -subject -nameopt RFC2253 | sed 's/^subject=CN=//; s/,OU=.*$//')" \
+  "$(date -u -d '2 days ago' +%Y%m%d%H%M%SZ)" "$(date -u -d '3648 days' +%Y%m%d%H%M%SZ)" \
+  "$pki/ca-next.pem.aged" || fail "the aged next CA could not be issued"
 mv "$pki/ca-next.pem.aged" "$pki/ca-next.pem"
 [ -z "$(find "$pki/ca-next.pem" -mmin +5)" ] || fail "the aged next CA does not have a fresh file time"
 next="$(fingerprint "$pki/ca-next.pem")"
@@ -270,15 +307,11 @@ ensure_internal_pki "$pki" > "$TEST_TMP/rotate-late-next.out" 2>&1 \
   || fail "a young next CA did not take over from a CA expiring within a day"
 grep -q 'expires within a day' "$TEST_TMP/rotate-late-next.out" || fail "the early takeover did not say why"
 
-if openssl x509 -help 2>&1 | grep -q -- '-not_after'; then
-  openssl req -x509 -new -key "$pki/ca.key" -subj "/CN=expired" -not_before 20200101000000Z -not_after 20200102000000Z \
-    -out "$pki/ca-previous.pem" 2>/dev/null
-  ensure_internal_pki "$pki" > /dev/null 2>&1 || fail "the run after the previous CA expired failed"
-  [ ! -e "$pki/ca-previous.pem" ] || fail "an expired previous CA was kept"
-  cmp -s "$pki/ca.pem" "$pki/trust.pem" || fail "an expired previous CA stayed in the trust bundle"
-else
-  printf 'internal-pki-test: openssl has no -not_after, so the expired previous CA case is skipped\n'
-fi
+issue_dated_cert "$pki/ca.key" "/CN=expired" 20200101000000Z 20200102000000Z "$pki/ca-previous.pem" \
+  || fail "the expired previous CA could not be issued"
+ensure_internal_pki "$pki" > /dev/null 2>&1 || fail "the run after the previous CA expired failed"
+[ ! -e "$pki/ca-previous.pem" ] || fail "an expired previous CA was kept"
+cmp -s "$pki/ca.pem" "$pki/trust.pem" || fail "an expired previous CA stayed in the trust bundle"
 
 serve_once
 openssl s_client -connect "127.0.0.1:$port" -cert "$pki/camera/cert.pem" -key "$pki/camera/key.pem" \
