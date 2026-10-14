@@ -28,11 +28,15 @@ if(NOT TARGET guard-presence-client-test)
       EXCLUDE_FROM_ALL FALSE)
 
   target_link_libraries(guard-presence-client-test PRIVATE
-      argus::clients::guard doctest::doctest)
+      argus::clients::guard argus::lib::grpc-test-support argus_client_grpc_base
+      doctest::doctest)
 
   target_compile_options(guard-presence-client-test PRIVATE -Wall -Wextra)
 
-  add_test(NAME guard-presence-client-test COMMAND guard-presence-client-test)
+  add_test(NAME guard-presence-client-test
+           COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                   $<TARGET_FILE:guard-presence-client-test> 3)
+  set_tests_properties(guard-presence-client-test PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 
 if(NOT TARGET guard-duress-client-test)

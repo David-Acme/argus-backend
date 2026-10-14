@@ -1,7 +1,9 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
+#include <grpc-test-support/mutual-tls-endpoint.hxx>
 #include <grpc/grpc-client-base.hxx>
 #include <grpc/grpc-server-identity.hxx>
+#include <grpc/internal-tls.hxx>
 #include <guard/guard-presence-client.hxx>
 
 #include <memory>
@@ -94,4 +96,24 @@ TEST_CASE("a guard that does not answer is no answer")
   const GuardPresenceClient client(
       {.target = "127.0.0.1:1", .credential = kCredential});
   CHECK_FALSE(client.listPresence({}).has_value());
+}
+
+TEST_CASE("the presence client dials the mutual TLS port with the internal certificate")
+{
+  ScriptedPresenceService service;
+  const argus::client::test_support::MutualTlsEndpoint endpoint(
+      {.service = "guard", .services = {&service}});
+  REQUIRE(endpoint.tlsPort() > 0);
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("sync"));
+
+  const GuardPresenceClient client(
+      {.target = endpoint.tlsTarget(), .credential = kCredential});
+  const auto answer = client.listPresence({7});
+  REQUIRE(answer.has_value());
+  CHECK(service.asked() == std::vector<int64_t>{7});
+
+  const GuardPresenceClient plaintext(
+      {.target = endpoint.plaintextToTlsPortTarget(), .credential = kCredential});
+  CHECK_FALSE(plaintext.listPresence({7}).has_value());
 }
