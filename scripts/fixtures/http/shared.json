@@ -219,6 +219,110 @@
       },
       "route": "/health",
       "unit": "shared"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "probe": "plain-llm",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "service": "argus-llm",
+            "uptimeSeconds": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/health",
+      "unit": "shared"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "probe": "plain-stt",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "service": "argus-stt",
+            "uptimeSeconds": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/health",
+      "unit": "shared"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "probe": "plain-tts",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "service": "argus-tts",
+            "uptimeSeconds": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/health",
+      "unit": "shared"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "probe": "plain-vlm",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "service": "argus-vlm",
+            "uptimeSeconds": "<masked>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/health",
+      "unit": "shared"
     }
   ],
   "unit": "shared"
