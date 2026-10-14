@@ -40,8 +40,12 @@ add_executable(settings-client-test tests/unit/settings-client-test.cc)
 set_target_properties(settings-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(settings-client-test PRIVATE argus::clients::settings
-    argus::contracts::settings-wire doctest::doctest)
+    argus::contracts::settings-wire argus::lib::grpc-test-support argus_client_grpc_base
+    doctest::doctest)
 
 target_compile_options(settings-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME settings-client-test COMMAND settings-client-test)
+add_test(NAME settings-client-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:settings-client-test> 12)
+set_tests_properties(settings-client-test PROPERTIES SKIP_RETURN_CODE 77)

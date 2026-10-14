@@ -1,5 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
+#include <grpc-test-support/mutual-tls-endpoint.hxx>
+#include <grpc/internal-tls.hxx>
 
 #include <config/config-service.hxx>
 #include <errors/response-exception.hxx>
@@ -503,4 +505,22 @@ TEST_CASE("impact, role reassignment and module request answer nothing without a
   REQUIRE(asked.has_value());
   CHECK(asked.value_or(ModuleRequestOutcome{}).duplicate);
   CHECK(asked.value_or(ModuleRequestOutcome{}).notified == 1);
+}
+
+TEST_CASE("the modules client dials the mutual TLS port with the internal certificate")
+{
+  FakeModules service;
+  const argus::client::test_support::MutualTlsEndpoint endpoint(
+      {.service = "settings", .services = {&service}});
+  REQUIRE(endpoint.tlsPort() > 0);
+  argus::client::installInternalTls(argus::client::test_support::pkiMaterial("sync"));
+
+  const ModulesClient client({.target = endpoint.tlsTarget(), .credential = kSecret, .timeout = std::chrono::seconds(5)});
+  const auto reply = client.moduleStates();
+  REQUIRE(reply.modules.size() == 1);
+  CHECK(reply.version == 7);
+
+  const ModulesClient plaintext(
+      {.target = endpoint.plaintextToTlsPortTarget(), .credential = kSecret, .timeout = std::chrono::seconds(5)});
+  CHECK(statusOf([&plaintext] { static_cast<void>(plaintext.moduleStates()); }) == 503);
 }

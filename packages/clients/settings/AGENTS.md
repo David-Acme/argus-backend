@@ -55,3 +55,7 @@ reaches a consumer through it. Its one consumer is `services/settings`.
   (`SettingsRpcService` over a `SettingsRegistry` on `127.0.0.1:0`), and the
   refusals: a wrong credential (401), an empty update (400) and a dead owner
   (503 or 504).
+  The modules client also dials the TLS port of the fake modules service under
+  the sync certificate: a `tls:` target answers the enabled set, and a plaintext
+  client to that port is an unreachable owner (503). The binary runs through
+  `scripts/internal-tls-test.sh`, one process per case.
