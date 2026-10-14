@@ -191,7 +191,8 @@ target_link_libraries(home-service-test PRIVATE tunnel-core doctest::doctest)
 target_compile_options(home-service-test PRIVATE -Wall -Wextra)
 
 add_executable(sealed-push-test
-               ${CMAKE_CURRENT_SOURCE_DIR}/tests/sealed-push-test.cc)
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/sealed-push-test.cc
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-test-cert.cc)
 target_include_directories(sealed-push-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 target_link_libraries(sealed-push-test PRIVATE tunnel-core doctest::doctest

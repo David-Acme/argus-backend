@@ -1,6 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include "link-test-cert.hxx"
+
 #include <link/client/link-client.hxx>
 #include <link/protocol/frames.hxx>
 #include <link/push/sealed-push-bridge.hxx>
@@ -178,8 +180,14 @@ TEST_CASE("a home does not seal a ciphertext over the 2048-byte cap")
 
 TEST_CASE("a sealed push is not sent before the link negotiates sealed_push")
 {
+  const auto directory = tunnel::test::makeTempDirectory("argus-tunnel-sealed");
+  const auto home = tunnel::test::mintIdentity(
+      {.directory = directory, .name = "home", .commonName = "home.argus-sim.test"});
   PollLoop loop;
-  tunnel::link::LinkClient client({.loop = loop, .options = {}, .observer = nullptr});
+  tunnel::link::LinkClient client(
+      {.loop = loop,
+       .options = {.certificatePath = home.certificatePath, .keyPath = home.keyPath},
+       .observer = nullptr});
   CHECK_FALSE(client.sealedPushReady());
   CHECK_FALSE(client.sendSealedPush(fcmEnvelope()));
 }
