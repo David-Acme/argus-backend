@@ -1,0 +1,107 @@
+{
+  "probes": [
+    {
+      "method": "POST",
+      "path": "/llm/v1/chat",
+      "probe": "plain",
+      "request": {
+        "auth": "none",
+        "body": "{\"messages\": [{\"role\": \"user\", \"content\": \"Responde con una sola palabra: hola.\"}], \"max_tokens\": 8, \"temperature\": 0.0, \"reset_context\": true, \"tools\": false}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "text": "<GENERATED>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/llm/v1/chat",
+      "unit": "llm"
+    },
+    {
+      "method": "POST",
+      "path": "/llm/v1/chat-stream",
+      "probe": "plain",
+      "request": {
+        "auth": "none",
+        "body": "{\"messages\": [{\"role\": \"user\", \"content\": \"Responde con una sola palabra: hola.\"}], \"max_tokens\": 8, \"temperature\": 0.0, \"reset_context\": true, \"tools\": false}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "text/plain",
+        "json": null,
+        "pretty": false,
+        "status": 200,
+        "text": "<GENERATED>"
+      },
+      "route": "/llm/v1/chat-stream",
+      "unit": "llm"
+    },
+    {
+      "method": "GET",
+      "path": "/llm/v1/config",
+      "probe": "plain",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "contextSize": 32768,
+            "decisions": [],
+            "defaultMaxTokens": 256,
+            "defaultTemperature": 0.30000001192092896,
+            "lastDecodedTokens": "<GENERATED>",
+            "lastPromptTokens": "<GENERATED>",
+            "lastReusedTokens": "<GENERATED>",
+            "loaded": true
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/llm/v1/config",
+      "unit": "llm"
+    },
+    {
+      "method": "POST",
+      "path": "/llm/v1/screen",
+      "probe": "plain",
+      "request": {
+        "auth": "none",
+        "body": "{\"text\": \"Hola, \\u00bfqu\\u00e9 hay de nuevo?\"}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "text": "<GENERATED>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/llm/v1/screen",
+      "unit": "llm"
+    }
+  ],
+  "unit": "llm"
+}

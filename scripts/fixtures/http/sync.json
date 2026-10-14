@@ -1220,13 +1220,11 @@
           "errors": null,
           "info": {
             "armed": false,
-            "at": 1791266272,
             "graceSeconds": 2700,
-            "guard": "unknown",
+            "guard": "alive",
             "guardSeenAt": "<masked>",
             "intervalSeconds": 60,
             "presence": "unknown",
-            "presenceSince": 0,
             "socketGraceSeconds": 180
           },
           "status": 200
@@ -1253,13 +1251,11 @@
           "errors": null,
           "info": {
             "armed": false,
-            "at": 1791266272,
             "graceSeconds": 2700,
-            "guard": "unknown",
+            "guard": "alive",
             "guardSeenAt": "<masked>",
             "intervalSeconds": 60,
             "presence": "unknown",
-            "presenceSince": 0,
             "socketGraceSeconds": 180
           },
           "status": 200
@@ -1286,13 +1282,11 @@
           "errors": null,
           "info": {
             "armed": false,
-            "at": 1791266272,
             "graceSeconds": 2700,
-            "guard": "unknown",
+            "guard": "alive",
             "guardSeenAt": "<masked>",
             "intervalSeconds": 60,
             "presence": "unknown",
-            "presenceSince": 0,
             "socketGraceSeconds": 180
           },
           "status": 200

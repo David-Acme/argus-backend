@@ -61,11 +61,15 @@ UNREGISTERED_TOKEN = "argus-golden-unregistered-token"
 RING_OPERATION = 8
 PRIMED_ROUTES = {("sync", "/sync/heartbeat")}
 PLACEHOLDER = "<BYTES>"
-GOLDEN_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAAFk0lEQVR42u3UV0MIDACF4WNkVWZR2VvLTPYmIyFCRnY0iGwqexWyVWRXNOyt7E1WoihZlS2bEr6fcb6L8wveq+cFgEKFChUpUqR48eJGRkalSpUqW7asqampmZlZxYoVq1SpUr169Vq1atWtW9fKysrW1rZhw4ZNmjSxt7dv0aJF69at27Vr17Fjxy5dunTr1s3R0bFXr17Ozs4uLi4DBw4cPHiwm5vbiBEjRo8ePXbsWE9Pz/Hjx0+cOHHy5MnTpk2bOXOmn5/fnDlz5s+fv2jRoqVLlwYFBa1cuXL16tXr1q3buHFjWFhYeHj4tm3bdu7cGRkZuWfPntjY2H379h08ePDIkSPHjx8/derU6dOnz507d/HixStXrly/fj0xMfHOnTtJSUkPHjxITU1NS0vLyMh4/vx5Zmbmq1ev3r59++HDh0+fPn39+vXHjx+5ubn5+fn//v0rWLCggYFBsWLFDA0NS5YsWaZMGRMTkwoVKlhYWFSuXLlatWo1a9asU6eOpaWljY1NgwYNGjdu3LRp0+bNm7dq1apt27YdOnTo3Llz165de/To4eTk1KdPn379+g0YMGDQoEFDhw4dPnz4qFGj3N3dPTw8vL29fXx8fH19p06dOmPGjNmzZwcEBIDYnjdv3sKFC5csWRIYGLhixYpVq1atXbt2w4YNoaGhmzdv3rp1644dOyIiInbv3h0TE7N3794DBw4cPnz42LFjJ0+eTEhIOHv27IULFy5fvnzt2rWbN2/evn373r17ycnJKSkpjx8/fvLkybNnz16+fJmdnf3mzZv379/n5OR8+fLl+/fvv379+v3799+/fwsUKFC4cOGiRYuWKFHC2Ni4dOnS5cqVK1++vLm5eaVKlapWrVqjRo3atWvXq1fP2tq6fv36jRo1srOza9asWcuWLdu0adO+fftOnTo5ODh07969Z8+evXv37tu3b//+/V1dXYcMGTJs2LCRI0eOGTNm3LhxXl5eEyZMmDRp0pQpU6ZPnz5r1ix/f/+5c+cuWLAAxPbixYuXLVu2fPny4ODgNWvWrF+/PiQkZNOmTVu2bNm+ffuuXbuioqKio6Pj4uL2799/6NCho0ePnjhxIj4+/syZM+fPn7906dLVq1dv3Lhx69atu3fv3r9//+HDh48ePUpPT3/69OmLFy+ysrJev3797t27jx8/fv78+du3bz9//szLy/vz58//xz30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53Dd6zlk99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc9/8Bdmx7ksh49jgAAAAASUVORK5CYII="
+GOLDEN_JPEG_B64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCABAAEADASIAAhEBAxEB/8QAFwABAQEBAAAAAAAAAAAAAAAAAAMECP/EABUQAQEAAAAAAAAAAAAAAAAAAAAS/8QAFwEBAQEBAAAAAAAAAAAAAAAAAAYDB//EABYRAQEBAAAAAAAAAAAAAAAAAAAUYf/aAAwDAQACEQMRAD8A5/gheCHertZxoQQvBBdpGhBC8EF2kaEELwQXaRtMELwQjrtVcaEELwQXaRoQQvBBdpGhBC8EF2kbTBC8EI27VZGhBC8EF2kaEELwQXaRoQQvBBdpG0QQ0wQjrtVcbNBDTBBdpGzQQ0wQXaRs0ENMEF2kb//Z"
 GENERATED = "<GENERATED>"
 INITIAL_INFO_OPERATION = 0
 STACK_DIR = None
 OWNER_ID = None
+
+CONTENT_TYPE_OVERRIDES = {
+    ("stt", "POST", "/stt/v1/transcribe"): "audio/x-argus-pcm-s16",
+}
 
 BODY_OVERRIDES = {
     ("auth", "PATCH", "/auth/me"): json.dumps({"name": "p" * 125}),
@@ -95,7 +99,7 @@ BODY_OVERRIDES = {
     ("tts", "POST", "/tts/v1/synthesize-stream"): json.dumps(
         {"text": "Hola.", "style_id": "M3", "lang": "es"}),
     ("vlm", "POST", "/vlm/v1/describe"): json.dumps(
-        {"image_b64": GOLDEN_PNG_B64, "prompt": "Describe la imagen en una palabra."}),
+        {"image_b64": GOLDEN_JPEG_B64, "prompt": "Describe la imagen en una palabra."}),
     ("stt", "POST", "/stt/v1/transcribe"): "\x00" * 32000,
 }
 
@@ -418,6 +422,55 @@ VOLATILE_FIELDS = {
                   "own and whose days left move every day, so it is never "
                   "pinned here; lib/http's tls-health-test pins its content, "
                   "and status and service stay pinned",
+    },
+    ("llm", "/llm/v1/chat"): {
+        "keys": (),
+        "generated": ("text",),
+        "reason": "the model's reply is generated text, so its value is "
+                  "<GENERATED>; the envelope, the key and the string type stay "
+                  "compared, and an error answer is compared in full",
+    },
+    ("llm", "/llm/v1/screen"): {
+        "keys": (),
+        "generated": ("text",),
+        "reason": "the screen answer is generated text",
+    },
+    ("llm", "/llm/v1/chat-stream"): {
+        "keys": (),
+        "generatedText": True,
+        "reason": "the streamed reply is generated text on a 2xx answer, so the "
+                  "body is <GENERATED>; the content type and status stay compared",
+    },
+    ("llm", "/llm/v1/config"): {
+        "keys": (),
+        "generated": ("lastDecodedTokens", "lastPromptTokens", "lastReusedTokens"),
+        "reason": "the last-turn token counters are the model's own bookkeeping "
+                  "of the reply it generated, so they are <GENERATED>; the loaded "
+                  "model, its context and its defaults stay compared",
+    },
+    ("tts", "/tts/v1/synthesize"): {
+        "keys": (),
+        "generatedText": True,
+        "reason": "the synthesized audio is model output, so the 2xx body is "
+                  "<GENERATED>; the audio's content type stays compared",
+    },
+    ("tts", "/tts/v1/synthesize-stream"): {
+        "keys": (),
+        "generatedText": True,
+        "reason": "the streamed audio is model output, so the 2xx body is "
+                  "<GENERATED>; the audio's content type stays compared",
+    },
+    ("vlm", "/vlm/v1/describe"): {
+        "keys": (),
+        "generated": ("caption",),
+        "reason": "the caption is generated text, so its value is "
+                  "<GENERATED>; the envelope and the string type stay compared",
+    },
+    ("stt", "/stt/v1/transcribe"): {
+        "keys": (),
+        "generated": ("text",),
+        "reason": "the transcript is the recognizer's output for one second of "
+                  "silence, so its value is <GENERATED>",
     },
 }
 
@@ -767,7 +820,9 @@ def probe_plan(route, ids, roles):
     if guarded:
         add("owner", auth="owner", body=body)
     else:
-        add("plain", body=body)
+        add("plain", body=body,
+            content_type=CONTENT_TYPE_OVERRIDES.get(
+                (route["unit"], method, route["path"]), "application/json"))
     if "{1}" in route["path"] and slot_id(route, ids) != MISSING_ID:
         add("owner-missing", auth="owner" if guarded else None, body=body,
             missing=True)

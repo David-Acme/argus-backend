@@ -1,0 +1,128 @@
+{
+  "probes": [
+    {
+      "method": "GET",
+      "path": "/tts/v1/config",
+      "probe": "plain",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "defaultSpeed": 1.0,
+            "engines": {
+              "en": "pocket",
+              "es": "pocket"
+            },
+            "loaded": true,
+            "sampleRate": 44100
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/tts/v1/config",
+      "unit": "tts"
+    },
+    {
+      "method": "POST",
+      "path": "/tts/v1/synthesize",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/tts/v1/synthesize",
+      "unit": "tts"
+    },
+    {
+      "method": "POST",
+      "path": "/tts/v1/synthesize",
+      "probe": "plain",
+      "request": {
+        "auth": "none",
+        "body": "{\"text\": \"Hola.\", \"style_id\": \"M3\", \"lang\": \"es\"}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "audio/x-argus-pcm-f32",
+        "json": null,
+        "pretty": true,
+        "status": 200,
+        "text": "<GENERATED>"
+      },
+      "route": "/tts/v1/synthesize",
+      "unit": "tts"
+    },
+    {
+      "method": "POST",
+      "path": "/tts/v1/synthesize-stream",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/tts/v1/synthesize-stream",
+      "unit": "tts"
+    },
+    {
+      "method": "POST",
+      "path": "/tts/v1/synthesize-stream",
+      "probe": "plain",
+      "request": {
+        "auth": "none",
+        "body": "{\"text\": \"Hola.\", \"style_id\": \"M3\", \"lang\": \"es\"}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "audio/x-argus-pcm-f32",
+        "json": null,
+        "pretty": true,
+        "status": 200,
+        "text": "<GENERATED>"
+      },
+      "route": "/tts/v1/synthesize-stream",
+      "unit": "tts"
+    }
+  ],
+  "unit": "tts"
+}

@@ -42,7 +42,7 @@
       "errors"
     ]
   },
-  "probes": 808,
+  "probes": 821,
   "sessions": "scripts/seed-golden.py --roles (owner, resident, guest)",
   "sources": "scripts/lib/route-baseline.txt (the route census)",
   "units": [
@@ -50,11 +50,15 @@
     "camera",
     "guard",
     "identity",
+    "llm",
     "notification",
     "productivity",
     "settings",
     "shared",
-    "sync"
+    "stt",
+    "sync",
+    "tts",
+    "vlm"
   ],
   "volatileFields": [
     {
@@ -72,6 +76,42 @@
       "reason": "guard's own /health has no envelope and carries internalTls at its top level, beside status and service; it describes the internal certificate the answering process loaded, whose CA's subject is the installation's own and whose days left move every day, so it is never pinned here; lib/http's tls-health-test pins its content, and status and service stay pinned",
       "route": "/health",
       "unit": "guard"
+    },
+    {
+      "generated": [
+        "text"
+      ],
+      "keys": [],
+      "reason": "the model's reply is generated text, so its value is <GENERATED>; the envelope, the key and the string type stay compared, and an error answer is compared in full",
+      "route": "/llm/v1/chat",
+      "unit": "llm"
+    },
+    {
+      "generatedText": true,
+      "keys": [],
+      "reason": "the streamed reply is generated text on a 2xx answer, so the body is <GENERATED>; the content type and status stay compared",
+      "route": "/llm/v1/chat-stream",
+      "unit": "llm"
+    },
+    {
+      "generated": [
+        "lastDecodedTokens",
+        "lastPromptTokens",
+        "lastReusedTokens"
+      ],
+      "keys": [],
+      "reason": "the last-turn token counters are the model's own bookkeeping of the reply it generated, so they are <GENERATED>; the loaded model, its context and its defaults stay compared",
+      "route": "/llm/v1/config",
+      "unit": "llm"
+    },
+    {
+      "generated": [
+        "text"
+      ],
+      "keys": [],
+      "reason": "the screen answer is generated text",
+      "route": "/llm/v1/screen",
+      "unit": "llm"
     },
     {
       "keys": [
@@ -132,6 +172,15 @@
       "unit": "shared"
     },
     {
+      "generated": [
+        "text"
+      ],
+      "keys": [],
+      "reason": "the transcript is the recognizer's output for one second of silence, so its value is <GENERATED>",
+      "route": "/stt/v1/transcribe",
+      "unit": "stt"
+    },
+    {
       "keys": [
         "items",
         "nextCursor"
@@ -148,6 +197,29 @@
       "reason": "a heartbeat stamps the second it answers and the presence change it reports, so both move on every call; the guard state, the interval, grace and armed state stay pinned, and the guard state is seeded by seed-golden.py, which publishes one guard heartbeat before the recorder's probes",
       "route": "/sync/heartbeat",
       "unit": "sync"
+    },
+    {
+      "generatedText": true,
+      "keys": [],
+      "reason": "the synthesized audio is model output, so the 2xx body is <GENERATED>; the audio's content type stays compared",
+      "route": "/tts/v1/synthesize",
+      "unit": "tts"
+    },
+    {
+      "generatedText": true,
+      "keys": [],
+      "reason": "the streamed audio is model output, so the 2xx body is <GENERATED>; the audio's content type stays compared",
+      "route": "/tts/v1/synthesize-stream",
+      "unit": "tts"
+    },
+    {
+      "generated": [
+        "caption"
+      ],
+      "keys": [],
+      "reason": "the caption is generated text, so its value is <GENERATED>; the envelope and the string type stay compared",
+      "route": "/vlm/v1/describe",
+      "unit": "vlm"
     }
   ]
 }

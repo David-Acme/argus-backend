@@ -1,0 +1,57 @@
+{
+  "probes": [
+    {
+      "method": "GET",
+      "path": "/vlm/v1/config",
+      "probe": "plain",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "defaultMaxTokens": 64,
+            "loaded": true,
+            "maxInputPx": 384
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/vlm/v1/config",
+      "unit": "vlm"
+    },
+    {
+      "method": "POST",
+      "path": "/vlm/v1/describe",
+      "probe": "plain",
+      "request": {
+        "auth": "none",
+        "body": "{\"image_b64\": \"/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCABAAEADASIAAhEBAxEB/8QAFwABAQEBAAAAAAAAAAAAAAAAAAMECP/EABUQAQEAAAAAAAAAAAAAAAAAAAAS/8QAFwEBAQEBAAAAAAAAAAAAAAAAAAYDB//EABYRAQEBAAAAAAAAAAAAAAAAAAAUYf/aAAwDAQACEQMRAD8A5/gheCHertZxoQQvBBdpGhBC8EF2kaEELwQXaRtMELwQjrtVcaEELwQXaRoQQvBBdpGhBC8EF2kbTBC8EI27VZGhBC8EF2kaEELwQXaRoQQvBBdpG0QQ0wQjrtVcbNBDTBBdpGzQQ0wQXaRs0ENMEF2kb//Z\", \"prompt\": \"Describe la imagen en una palabra.\"}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "caption": "<GENERATED>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/vlm/v1/describe",
+      "unit": "vlm"
+    }
+  ],
+  "unit": "vlm"
+}
