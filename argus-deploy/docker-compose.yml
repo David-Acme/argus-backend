@@ -810,6 +810,12 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/certs/internal/llm
+        target: /run/secrets/internal-tls
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       nats:
         condition: service_healthy

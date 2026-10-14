@@ -234,13 +234,16 @@ target_compile_definitions(llm-rpc-test PRIVATE
     ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/llm")
 
 target_link_libraries(llm-rpc-test PRIVATE argus::llm-rpc argus::llm
-    doctest::doctest)
+    argus::lib::grpc-test-support doctest::doctest)
 
 target_compile_options(llm-rpc-test PRIVATE -Wall -Wextra)
 
 set_target_properties(llm-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-add_test(NAME llm-rpc-test COMMAND llm-rpc-test)
+add_test(NAME llm-rpc-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:llm-rpc-test> 30)
+set_tests_properties(llm-rpc-test PROPERTIES SKIP_RETURN_CODE 77)
 
 add_executable(llm-settings-test tests/unit/llm-settings-test.cc)
 

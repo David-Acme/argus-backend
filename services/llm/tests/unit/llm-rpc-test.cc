@@ -5,7 +5,9 @@
 #include <config/config-service.hxx>
 #include <errors/response-exception.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
+#include <grpc-test-support/internal-tls-probe.hxx>
 #include <grpc/grpc-client-base.hxx>
+#include <grpc/internal-tls.hxx>
 #include <llama.h>
 #include <llm.grpc.pb.h>
 #include <llm/llm-client.hxx>
@@ -16,6 +18,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdio>
 #include <fstream>
 #include <latch>
@@ -140,7 +143,9 @@ LlmRpcInput serverInput()
           .chatStream = streamed,
           .screen = {},
           .slots = 1,
-          .services = {}};
+          .services = {},
+          .tlsAddress = {},
+          .tls = std::nullopt};
 }
 
 ClientConfig clientConfig(int port,
@@ -150,6 +155,13 @@ ClientConfig clientConfig(int port,
   return {.target = "127.0.0.1:" + std::to_string(port),
           .credential = kSecret,
           .timeout = timeout};
+}
+
+ClientConfig mutualTlsConfig(int port)
+{
+  return {.target = "tls:127.0.0.1:" + std::to_string(port),
+          .credential = kSecret,
+          .timeout = std::chrono::seconds(5)};
 }
 
 ChatRequest ask()
@@ -1217,4 +1229,81 @@ TEST_CASE("a listener whose callers are all placeholders refuses to start")
   LlmRpcInput input = serverInput();
   input.credentials = {{"voice", "CHANGE_ME_VOICE_LLM"}, {"settings", "CHANGE_ME_SETTINGS_LLM"}};
   CHECK_THROWS_AS(LlmRpcServer{std::move(input)}, std::invalid_argument);
+}
+
+grpc::StatusCode chatCarrying(const std::string& target, std::size_t bytes)
+{
+  const auto stub =
+      argus::llm::v1::Chat::NewStub(argus::client::makeChannel(target));
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::seconds(30));
+  argus::client::addCallerCredential(context, kSecret);
+  argus::llm::v1::ChatRequest request;
+  auto* message = request.add_messages();
+  message->set_role("user");
+  message->set_content(std::string(bytes, 'a'));
+  request.set_max_tokens(16);
+  argus::llm::v1::ChatResponse response;
+  return stub->Chat(&context, request, &response).error_code();
+}
+
+TEST_CASE("the mutual TLS address opens a second listener for the same calls")
+{
+  LlmRpcInput input = serverInput();
+  input.tlsAddress = "127.0.0.1:0";
+  input.tls = argus::client::test_support::pkiMaterial("llm");
+  LlmRpcServer server(std::move(input));
+  REQUIRE(server.tlsPort() > 0);
+  CHECK(server.tlsPort() != server.port());
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("voice"));
+  CHECK(Client(mutualTlsConfig(server.tlsPort())).capabilities().contextSize ==
+        4096);
+  CHECK(Client(clientConfig(server.port())).capabilities().contextSize == 4096);
+}
+
+TEST_CASE("no second listener without both a TLS address and material")
+{
+  LlmRpcServer plain(serverInput());
+  CHECK(plain.tlsPort() == 0);
+
+  LlmRpcInput addressOnly = serverInput();
+  addressOnly.tlsAddress = "127.0.0.1:0";
+  LlmRpcServer withoutMaterial(std::move(addressOnly));
+  CHECK(withoutMaterial.tlsPort() == 0);
+
+  LlmRpcInput materialOnly = serverInput();
+  materialOnly.tls = argus::client::test_support::pkiMaterial("llm");
+  LlmRpcServer withoutAddress(std::move(materialOnly));
+  CHECK(withoutAddress.tlsPort() == 0);
+}
+
+TEST_CASE("a mutual TLS address that cannot be bound stops the start")
+{
+  LlmRpcInput input = serverInput();
+  input.tlsAddress = "192.0.2.1:0";
+  input.tls = argus::client::test_support::pkiMaterial("llm");
+  CHECK_THROWS_WITH_AS(
+      LlmRpcServer{std::move(input)},
+      "LLM RPC failed to listen on 127.0.0.1:0 and 192.0.2.1:0",
+      std::runtime_error);
+}
+
+TEST_CASE("a request over the 8 MiB cap is refused on both ports")
+{
+  LlmRpcInput input = serverInput();
+  input.tlsAddress = "127.0.0.1:0";
+  input.tls = argus::client::test_support::pkiMaterial("llm");
+  LlmRpcServer server(std::move(input));
+  REQUIRE(server.tlsPort() > 0);
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("voice"));
+  const std::string plain = "127.0.0.1:" + std::to_string(server.port());
+  const std::string mutual = "tls:127.0.0.1:" + std::to_string(server.tlsPort());
+  constexpr std::size_t kOver = std::size_t{8} * 1024 * 1024 + 1024;
+  CHECK(chatCarrying(plain, 16) == grpc::StatusCode::OK);
+  CHECK(chatCarrying(mutual, 16) == grpc::StatusCode::OK);
+  CHECK(chatCarrying(plain, kOver) == grpc::StatusCode::RESOURCE_EXHAUSTED);
+  CHECK(chatCarrying(mutual, kOver) == grpc::StatusCode::RESOURCE_EXHAUSTED);
 }

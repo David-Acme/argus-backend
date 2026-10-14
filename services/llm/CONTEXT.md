@@ -177,8 +177,13 @@ scaffolds.
   `[server]` (loopback listener, default 7032) + `[rpc]`/`[rpc.callers]`
   (the gRPC face). The `[server]`
   listener is internal-network only: the wire is never announced or
-  published; so is the gRPC one, which is plaintext and gated by the caller
-  credential alone. The database is `[memory]` (`db_file =
+  published; so is the gRPC one, whose plaintext leg is gated by the caller
+  credential alone. The same Chat service also listens on `[internal_tls]
+  address` (`rpc.address` plus 200, 7332 in the deploy stack) with mutual TLS
+  from the internal certificate in `[internal_tls] dir`; `LlmRpcServer` opens
+  both through `argus::client::startListening`, caps a message at 8 MiB on
+  both, and throws when a port cannot be bound. The plaintext leg stays until
+  the owner's deploy check. The database is `[memory]` (`db_file =
   "database/memory.db"`, `schema_file = "database/schema.sql"`) with the
   extractor's `[extract]` beside it, and `[nats]` is the bus the catalog
   replica and the guard feed read; no JWT/device key lives here.

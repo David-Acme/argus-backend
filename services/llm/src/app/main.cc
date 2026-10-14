@@ -25,9 +25,11 @@
 #include <feature/settings/llm-settings.hxx>
 #include <settings/settings-rpc.hxx>
 #include <drogon/drogon.h>
+#include <grpc/internal-tls.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
+#include <http/tls-health.hxx>
 #include <identity/identity-client.hxx>
 #include <llm/llm-client.hxx>
 #include <feature/memory/infra/catalog-replica.hxx>
@@ -59,8 +61,10 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
+#include <unistd.h>
 #include <utility>
 #include <vector>
 
@@ -253,10 +257,23 @@ int main()
 {
   log_output::flushEachLine();
   ConfigService::load("config.toml");
+  const InternalTlsConfig internalTlsConfig = InternalTlsConfig::resolve();
+  std::optional<argus::client::InternalTlsMaterial> internalTls;
+  try {
+    internalTls = argus::client::installInternalTlsFrom(internalTlsConfig.directory);
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  const auto loadedTls = internalTls.value_or(argus::client::InternalTlsMaterial{});
 
   const ListenerConfig listener = LlmConfig::resolveListener();
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-llm", .extras = {}}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{
+      .serviceName = "argus-llm",
+      .extras = {tls_health::healthExtra({.certificatePem = loadedTls.certificatePem,
+                                          .trustBundlePem = loadedTls.trustBundlePem})}}));
   const auto llm = std::make_shared<LlmController>();
   drogon::app().registerController(llm);
   TurnEngines engines;
@@ -412,8 +429,12 @@ int main()
           return llm->screenText(request);
         },
         .slots = ThreadBudget::inferenceSlots(),
-        .services = std::move(services)});
+        .services = std::move(services),
+        .tlsAddress = internalTlsConfig.address,
+        .tls = internalTls});
     LOG_INFO << "argus-llm gRPC chat listening on " << rpcConfig.address;
+    if (rpc->tlsPort() > 0)
+      LOG_INFO << "argus-llm gRPC chat with mutual TLS on " << internalTlsConfig.address;
   }
 
   std::shared_ptr<NatsBus> bus;

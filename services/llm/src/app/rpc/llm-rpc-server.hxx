@@ -2,10 +2,12 @@
 
 #include <feature/llm/controllers/llm-controller.hxx>
 #include <llm/llm-client.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/impl/service_type.h>
 #include <atomic>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <thread>
 #include <utility>
@@ -21,6 +23,8 @@ struct LlmRpcInput
   std::function<std::string(const ChatRequest&)> screen;
   int slots{1};
   std::vector<grpc::Service*> services;
+  std::string tlsAddress;
+  std::optional<argus::client::InternalTlsMaterial> tls;
 };
 
 class LlmRpcServer
@@ -29,6 +33,7 @@ public:
   explicit LlmRpcServer(LlmRpcInput input);
   ~LlmRpcServer();
   int port() const;
+  [[nodiscard]] int tlsPort() const;
   void shutdown();
   void requestStop();
   [[nodiscard]] bool drained() const;
