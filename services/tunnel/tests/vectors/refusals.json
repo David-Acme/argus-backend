@@ -21,9 +21,9 @@
       "bytesHex": "55a702000700000000000000"
     },
     {
-      "name": "unknown-frame-type-ten",
+      "name": "unknown-frame-type-twelve",
       "error": "unknown_frame_type",
-      "bytesHex": "55a7020a0000000000000000"
+      "bytesHex": "55a7020c0000000000000000"
     },
     {
       "name": "unknown-frame-type-255",
