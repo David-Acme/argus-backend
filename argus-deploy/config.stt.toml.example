@@ -5,6 +5,10 @@ port = 7030
 [rpc]
 address = "0.0.0.0:7130"
 
+[internal_tls]
+dir = "/run/secrets/internal-tls"
+address = "0.0.0.0:7330"
+
 [rpc.callers]
 voice = "CHANGE_ME_VOICE_STT"
 camera = "CHANGE_ME_CAMERA_STT"

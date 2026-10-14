@@ -5,9 +5,11 @@
 #include <feature/settings/stt-components.hxx>
 #include <feature/settings/stt-settings.hxx>
 #include <feature/stt/services/stt-service.hxx>
+#include <grpc/internal-tls.hxx>
 #include <http/error-handler.hxx>
 #include <http/health-controller.hxx>
 #include <http/listener-config.hxx>
+#include <http/tls-health.hxx>
 #include <runtime/thread-budget.hxx>
 #include <runtime/log-output.hxx>
 #include <stt/stt-remote.hxx>
@@ -16,7 +18,9 @@
 
 #include <json/value.h>
 #include <memory>
+#include <optional>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 namespace
@@ -36,10 +40,23 @@ int main()
 {
   log_output::flushEachLine();
   ConfigService::load("config.toml");
+  const InternalTlsConfig internalTlsConfig = InternalTlsConfig::resolve();
+  std::optional<argus::client::InternalTlsMaterial> internalTls;
+  try {
+    internalTls = argus::client::installInternalTlsFrom(internalTlsConfig.directory);
+  }
+  catch (const std::exception& error) {
+    LOG_FATAL << error.what() << " — aborting startup";
+    _exit(1);
+  }
+  const auto loadedTls = internalTls.value_or(argus::client::InternalTlsMaterial{});
 
   const ListenerConfig listener = SttConfig::resolveListener();
 
-  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{.serviceName = "argus-stt", .extras = {}}));
+  drogon::app().registerController(std::make_shared<HealthController>(HealthStatus{
+      .serviceName = "argus-stt",
+      .extras = {tls_health::healthExtra({.certificatePem = loadedTls.certificatePem,
+                                          .trustBundlePem = loadedTls.trustBundlePem})}}));
   drogon::app().registerController(std::make_shared<SttController>());
 
   drogon::app().loadConfigJson(drogonConfig(listener));
@@ -92,12 +109,16 @@ int main()
           return stt.transcribe(request);
         },
         .slots = ThreadBudget::inferenceSlots(),
-        .services = std::move(services)});
+        .services = std::move(services),
+        .tlsAddress = internalTlsConfig.address,
+        .tls = internalTls});
   }
 
   if (rpc)
     LOG_INFO << "argus-stt gRPC transcription listening on "
              << rpcConfig.address;
+  if (rpc && rpc->tlsPort() > 0)
+    LOG_INFO << "argus-stt gRPC transcription with mutual TLS on " << internalTlsConfig.address;
 
   LOG_INFO << "argus-stt listening on " << listener.host << ":"
            << listener.port;

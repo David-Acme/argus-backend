@@ -5,7 +5,9 @@
 #include <config/config-service.hxx>
 #include <errors/response-exception.hxx>
 #include <feature/stt/services/stt-service.hxx>
+#include <grpc-test-support/internal-tls-probe.hxx>
 #include <grpc/grpc-client-base.hxx>
+#include <grpc/internal-tls.hxx>
 #include <response.pb.h>
 #include <response/response-rpc.hxx>
 #include <stt.grpc.pb.h>
@@ -16,6 +18,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <algorithm>
 #include <latch>
@@ -104,7 +107,9 @@ SttRpcInput serverInput()
                        " " + std::to_string(request.samples.size());
               },
           .slots = 1,
-          .services = {}};
+          .services = {},
+          .tlsAddress = {},
+          .tls = std::nullopt};
 }
 
 struct HeldEngine
@@ -129,6 +134,13 @@ SttRpcInput heldInput(const HeldEngine& engine)
 ClientConfig clientConfig(int port)
 {
   return {.target = "127.0.0.1:" + std::to_string(port),
+          .credential = kSecret,
+          .timeout = std::chrono::seconds(5)};
+}
+
+ClientConfig mutualTlsConfig(int port)
+{
+  return {.target = "tls:127.0.0.1:" + std::to_string(port),
           .credential = kSecret,
           .timeout = std::chrono::seconds(5)};
 }
@@ -821,4 +833,75 @@ TEST_CASE("a listener whose callers are all placeholders refuses to start")
   SttRpcInput input = serverInput();
   input.credentials = {{"voice", "CHANGE_ME_VOICE_STT"}, {"settings", "CHANGE_ME_SETTINGS_STT"}};
   CHECK_THROWS_AS(SttRpcServer{std::move(input)}, std::invalid_argument);
+}
+
+grpc::StatusCode transcriptionCarrying(const std::string& target, std::size_t samples)
+{
+  const auto stub = wire::Transcription::NewStub(argus::client::makeChannel(target));
+  grpc::ClientContext context;
+  context.set_deadline(std::chrono::system_clock::now() + std::chrono::seconds(30));
+  argus::client::addCallerCredential(context, kSecret);
+  wire::TranscribeRequest request;
+  request.mutable_samples()->Resize(static_cast<int>(samples), 0.25F);
+  request.set_sample_rate(16000);
+  request.set_language("es");
+  wire::TranscribeResponse response;
+  return stub->Transcribe(&context, request, &response).error_code();
+}
+
+TEST_CASE("the mutual TLS address opens a second listener for the same calls")
+{
+  SttRpcInput input = serverInput();
+  input.tlsAddress = "127.0.0.1:0";
+  input.tls = argus::client::test_support::pkiMaterial("stt");
+  SttRpcServer server(std::move(input));
+  REQUIRE(server.tlsPort() > 0);
+  CHECK(server.tlsPort() != server.port());
+  argus::client::installInternalTls(argus::client::test_support::pkiMaterial("voice"));
+  CHECK(Client(mutualTlsConfig(server.tlsPort())).capabilities().sampleRate == kWireSampleRate);
+  CHECK(Client(clientConfig(server.port())).capabilities().sampleRate == kWireSampleRate);
+}
+
+TEST_CASE("no second listener without both a TLS address and material")
+{
+  SttRpcServer plain(serverInput());
+  CHECK(plain.tlsPort() == 0);
+
+  SttRpcInput addressOnly = serverInput();
+  addressOnly.tlsAddress = "127.0.0.1:0";
+  SttRpcServer withoutMaterial(std::move(addressOnly));
+  CHECK(withoutMaterial.tlsPort() == 0);
+
+  SttRpcInput materialOnly = serverInput();
+  materialOnly.tls = argus::client::test_support::pkiMaterial("stt");
+  SttRpcServer withoutAddress(std::move(materialOnly));
+  CHECK(withoutAddress.tlsPort() == 0);
+}
+
+TEST_CASE("a mutual TLS address that cannot be bound stops the start")
+{
+  SttRpcInput input = serverInput();
+  input.tlsAddress = "192.0.2.1:0";
+  input.tls = argus::client::test_support::pkiMaterial("stt");
+  CHECK_THROWS_WITH_AS(SttRpcServer{std::move(input)},
+                       "STT RPC failed to listen on 127.0.0.1:0 and 192.0.2.1:0",
+                       std::runtime_error);
+}
+
+TEST_CASE("a request over the 64 MiB cap is refused on both ports")
+{
+  SttRpcInput input = serverInput();
+  input.tlsAddress = "127.0.0.1:0";
+  input.tls = argus::client::test_support::pkiMaterial("stt");
+  SttRpcServer server(std::move(input));
+  REQUIRE(server.tlsPort() > 0);
+  argus::client::installInternalTls(argus::client::test_support::pkiMaterial("voice"));
+  const std::string plain = "127.0.0.1:" + std::to_string(server.port());
+  const std::string mutual = "tls:127.0.0.1:" + std::to_string(server.tlsPort());
+  constexpr std::size_t kUnder = 16000;
+  constexpr std::size_t kOver = (std::size_t{64} * 1024U * 1024U) / sizeof(float) + 1024U;
+  CHECK(transcriptionCarrying(plain, kUnder) == grpc::StatusCode::OK);
+  CHECK(transcriptionCarrying(mutual, kUnder) == grpc::StatusCode::OK);
+  CHECK(transcriptionCarrying(plain, kOver) == grpc::StatusCode::RESOURCE_EXHAUSTED);
+  CHECK(transcriptionCarrying(mutual, kOver) == grpc::StatusCode::RESOURCE_EXHAUSTED);
 }

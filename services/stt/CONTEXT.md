@@ -69,6 +69,13 @@ pattern (F4-2) one engine later.
   else becomes a 500 with no leaked detail). The wire's rates are the
   client's: the samples are float in [-1, 1] at `kWireSampleRate`, the same
   form the voice session works in.
+- **Mutual TLS (S1 step 4)**: the same `Capabilities` and `Transcribe` also
+  listen on `[internal_tls] address` (`rpc.address` plus 200, 7330 in the
+  deploy stack) with mutual TLS from the internal certificate in
+  `[internal_tls] dir`. `SttRpcServer` opens both ports through
+  `argus::client::startListening`, caps a message at 64 MiB on both, and
+  throws when a port cannot be bound. The plaintext leg stays until the
+  owner's deploy check.
 - **Config**: `[stt]` (engine knobs, mirroring the legacy block) +
   `[server]` (loopback listener, default 7030) + `[rpc]`
   (`address`/`callers`, both empty in the template) only. No database, no

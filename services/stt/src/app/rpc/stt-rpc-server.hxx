@@ -2,9 +2,11 @@
 
 #include <feature/stt/services/stt-service.hxx>
 #include <stt/stt-client.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/impl/service_type.h>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -18,6 +20,8 @@ struct SttRpcInput
   std::function<std::string(const TranscribeRequest&)> transcribe;
   int slots{1};
   std::vector<grpc::Service*> services;
+  std::string tlsAddress;
+  std::optional<argus::client::InternalTlsMaterial> tls;
 };
 
 class SttRpcServer
@@ -26,6 +30,7 @@ public:
   explicit SttRpcServer(SttRpcInput input);
   ~SttRpcServer();
   [[nodiscard]] int port() const;
+  [[nodiscard]] int tlsPort() const;
   void shutdown();
 private:
   struct Impl;

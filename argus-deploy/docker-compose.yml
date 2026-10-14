@@ -680,6 +680,12 @@ services:
         read_only: true
         bind:
           create_host_path: false
+      - type: bind
+        source: ${ARGUS_DATA_DIR:-./data}/certs/internal/stt
+        target: /run/secrets/internal-tls
+        read_only: true
+        bind:
+          create_host_path: false
     healthcheck:
       test: ["CMD-SHELL", "curl -fs http://127.0.0.1:7030/health >/dev/null"]
       interval: 10s

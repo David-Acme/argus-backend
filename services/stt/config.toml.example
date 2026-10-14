@@ -5,6 +5,10 @@ port = 7030
 [rpc]
 address = ""
 
+[internal_tls]
+dir = ""
+address = "127.0.0.1:7330"
+
 [rpc.callers]
 voice = ""
 camera = ""

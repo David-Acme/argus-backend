@@ -140,7 +140,8 @@ add_executable(stt-rpc-test tests/unit/stt-rpc-test.cc)
 target_include_directories(stt-rpc-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 
-target_link_libraries(stt-rpc-test PRIVATE argus::stt-rpc doctest::doctest)
+target_link_libraries(stt-rpc-test PRIVATE argus::stt-rpc
+    argus::lib::grpc-test-support doctest::doctest)
 target_compile_definitions(stt-rpc-test PRIVATE
     ARGUS_TEST_STT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/stt")
 argus_runtime_rpath(stt-rpc-test)
@@ -149,7 +150,10 @@ target_compile_options(stt-rpc-test PRIVATE -Wall -Wextra)
 
 set_target_properties(stt-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-add_test(NAME stt-rpc-test COMMAND stt-rpc-test)
+add_test(NAME stt-rpc-test
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:stt-rpc-test> 23)
+set_tests_properties(stt-rpc-test PROPERTIES SKIP_RETURN_CODE 77)
 
 add_executable(stt-settings-test tests/unit/stt-settings-test.cc)
 
