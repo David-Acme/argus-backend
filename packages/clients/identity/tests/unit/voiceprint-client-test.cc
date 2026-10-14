@@ -2,6 +2,8 @@
 #include <argus/identity/v1/voiceprint.grpc.pb.h>
 #include <array>
 #include <doctest/doctest.h>
+#include <grpc-test-support/mutual-tls-endpoint.hxx>
+#include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <identity/voiceprint-client.hxx>
 #include <map>
@@ -221,4 +223,26 @@ TEST_CASE("a call turn travels with its caller, device and call key")
   CHECK(service.lastClosed() == "call-1");
 
   running.server->Shutdown();
+}
+
+TEST_CASE("the voiceprint client dials the mutual TLS port with the internal certificate")
+{
+  ScriptedVoiceprintService service;
+  const argus::client::test_support::MutualTlsEndpoint endpoint(
+      {.service = "identity", .services = {&service}});
+  REQUIRE(endpoint.tlsPort() > 0);
+  argus::client::installInternalTls(
+      argus::client::test_support::pkiMaterial("voice"));
+  const VoiceClipView clip{.samples = kClip, .sampleRate = 16000};
+
+  const VoiceprintClient client(
+      {.target = endpoint.tlsTarget(), .fleetSecret = kFleetSecret});
+  const auto answer = client.identify(clip);
+  REQUIRE(answer.has_value());
+  CHECK(answer->user_id() == 7);
+  CHECK(service.seen().count("x-argus-fleet") == 1);
+
+  const VoiceprintClient plaintext(
+      {.target = endpoint.plaintextToTlsPortTarget(), .fleetSecret = kFleetSecret});
+  CHECK_FALSE(plaintext.identify(clip).has_value());
 }

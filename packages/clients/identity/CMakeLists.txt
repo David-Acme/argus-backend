@@ -43,9 +43,12 @@ set_target_properties(identity-voiceprint-client-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(identity-voiceprint-client-test PRIVATE
-    argus::clients::identity doctest::doctest)
+    argus::clients::identity argus::lib::grpc-test-support argus_client_grpc_base
+    doctest::doctest)
 
 target_compile_options(identity-voiceprint-client-test PRIVATE -Wall -Wextra)
 
 add_test(NAME identity-voiceprint-client-test
-         COMMAND identity-voiceprint-client-test)
+         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                 $<TARGET_FILE:identity-voiceprint-client-test> 3)
+set_tests_properties(identity-voiceprint-client-test PROPERTIES SKIP_RETURN_CODE 77)
