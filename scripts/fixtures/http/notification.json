@@ -1736,6 +1736,266 @@
       },
       "route": "/notification-token",
       "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification/thread/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/thread/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification/thread/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/thread/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification/thread/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Notification not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/notification/thread/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification/thread/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Notification not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/notification/thread/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification/thread/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Notification not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/notification/thread/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Notification not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/notification/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Notification not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/notification/{1}",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Notification not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/notification/{1}",
+      "unit": "notification"
     }
   ],
   "unit": "notification"

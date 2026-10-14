@@ -3090,6 +3090,177 @@
       },
       "route": "/reminder/{1}",
       "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/reminder/999999/snooze",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/reminder/{1}/snooze",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/reminder/999999/snooze",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/reminder/{1}/snooze",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/reminder/999999/snooze",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/reminder/{1}/snooze",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/reminder/999999/snooze",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "minutes": [
+                "snooze needs exactly one of minutes or tomorrow"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/reminder/{1}/snooze",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/reminder/999999/snooze",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "minutes": [
+                "snooze needs exactly one of minutes or tomorrow"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/reminder/{1}/snooze",
+      "unit": "productivity"
+    },
+    {
+      "method": "POST",
+      "path": "/reminder/999999/snooze",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "minutes": [
+                "snooze needs exactly one of minutes or tomorrow"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/reminder/{1}/snooze",
+      "unit": "productivity"
     }
   ],
   "unit": "productivity"
