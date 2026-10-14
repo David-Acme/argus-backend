@@ -190,6 +190,14 @@ add_executable(home-service-test
 target_link_libraries(home-service-test PRIVATE tunnel-core doctest::doctest)
 target_compile_options(home-service-test PRIVATE -Wall -Wextra)
 
+execute_process(
+    COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-parse --path-format=absolute --git-common-dir
+    OUTPUT_VARIABLE ARGUS_GIT_COMMON_DIR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+get_filename_component(ARGUS_MAIN_CHECKOUT "${ARGUS_GIT_COMMON_DIR}/.." ABSOLUTE)
+get_filename_component(ARGUS_CLOUD_CHECKOUT "${ARGUS_MAIN_CHECKOUT}/../argus-cloud" ABSOLUTE)
+
 add_executable(sealed-push-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/sealed-push-test.cc
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-test-cert.cc)
@@ -201,7 +209,7 @@ target_link_libraries(sealed-push-test PRIVATE tunnel-core doctest::doctest
 target_compile_options(sealed-push-test PRIVATE -Wall -Wextra)
 target_compile_definitions(sealed-push-test PRIVATE
     ARGUS_SEALED_PUSH_VECTOR_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/vectors/push-sealed.json"
-    ARGUS_CLOUD_SEALED_PUSH_VECTOR_FILE="${CMAKE_CURRENT_SOURCE_DIR}/../../../argus-cloud/tests/vectors/push-sealed.json")
+    ARGUS_CLOUD_SEALED_PUSH_VECTOR_FILE="${ARGUS_CLOUD_CHECKOUT}/tests/vectors/push-sealed.json")
 
 set_target_properties(framing-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-integration-test PROPERTIES EXCLUDE_FROM_ALL FALSE)

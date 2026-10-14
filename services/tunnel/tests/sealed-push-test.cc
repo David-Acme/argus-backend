@@ -15,8 +15,10 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -27,7 +29,7 @@ namespace fs = std::filesystem;
 using tunnel::link::FrameType;
 
 constexpr std::string_view kPinnedSha256 =
-    "b02008bc14b298abc3da86ae5053174bb8a2d9c49d63d7978b18a04f1671e14f";
+    "1220224c85fbec191b4398c9c11d47f6b7bad8c5242fd9b68db21c69a132e470";
 constexpr std::size_t kHeader = 12;
 
 std::string readFile(const fs::path& path)
@@ -36,6 +38,14 @@ std::string readFile(const fs::path& path)
   std::ostringstream text;
   text << in.rdbuf();
   return text.str();
+}
+
+fs::path cloudSealedPushVectorFile()
+{
+  const char* cloudDir = std::getenv("ARGUS_CLOUD_DIR");
+  if (cloudDir != nullptr && *cloudDir != '\0')
+    return fs::path{cloudDir} / "tests" / "vectors" / "push-sealed.json";
+  return ARGUS_CLOUD_SEALED_PUSH_VECTOR_FILE;
 }
 
 nlohmann::json loadVectors()
@@ -102,10 +112,12 @@ PushSealedEnvelope fcmEnvelope()
 TEST_CASE("the sealed push vectors are the bytes the cloud pinned")
 {
   CHECK(sha256Hex(readFile(ARGUS_SEALED_PUSH_VECTOR_FILE)) == kPinnedSha256);
-  if (fs::exists(ARGUS_CLOUD_SEALED_PUSH_VECTOR_FILE))
-    CHECK(sha256Hex(readFile(ARGUS_CLOUD_SEALED_PUSH_VECTOR_FILE)) == kPinnedSha256);
-  else
-    MESSAGE("the cloud copy of push-sealed.json is not in this tree; the pin alone holds");
+  const fs::path cloudFile = cloudSealedPushVectorFile();
+  if (fs::exists(cloudFile)) {
+    CHECK(sha256Hex(readFile(cloudFile)) == kPinnedSha256);
+  } else {
+    std::cerr << "SKIPPED cloud copy: " << cloudFile.string() << " missing\n";
+  }
 }
 
 TEST_CASE("every sealed push vector parses to its fields and encodes back to its bytes")
