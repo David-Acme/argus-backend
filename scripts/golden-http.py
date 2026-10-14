@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import base64
+import importlib.util
 import json
 import os
 import re
@@ -58,7 +59,10 @@ ABSENT_DEPENDENCY_ANSWERS = {
 PUSH_TOKEN = "argus-golden-push-token"
 UNREGISTERED_TOKEN = "argus-golden-unregistered-token"
 RING_OPERATION = 8
+PRIMED_ROUTES = {("sync", "/sync/heartbeat")}
 PLACEHOLDER = "<BYTES>"
+GOLDEN_PNG_B64 = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAIAAABMXPacAAAFk0lEQVR42u3UV0MIDACF4WNkVWZR2VvLTPYmIyFCRnY0iGwqexWyVWRXNOyt7E1WoihZlS2bEr6fcb6L8wveq+cFgEKFChUpUqR48eJGRkalSpUqW7asqampmZlZxYoVq1SpUr169Vq1atWtW9fKysrW1rZhw4ZNmjSxt7dv0aJF69at27Vr17Fjxy5dunTr1s3R0bFXr17Ozs4uLi4DBw4cPHiwm5vbiBEjRo8ePXbsWE9Pz/Hjx0+cOHHy5MnTpk2bOXOmn5/fnDlz5s+fv2jRoqVLlwYFBa1cuXL16tXr1q3buHFjWFhYeHj4tm3bdu7cGRkZuWfPntjY2H379h08ePDIkSPHjx8/derU6dOnz507d/HixStXrly/fj0xMfHOnTtJSUkPHjxITU1NS0vLyMh4/vx5Zmbmq1ev3r59++HDh0+fPn39+vXHjx+5ubn5+fn//v0rWLCggYFBsWLFDA0NS5YsWaZMGRMTkwoVKlhYWFSuXLlatWo1a9asU6eOpaWljY1NgwYNGjdu3LRp0+bNm7dq1apt27YdOnTo3Llz165de/To4eTk1KdPn379+g0YMGDQoEFDhw4dPnz4qFGj3N3dPTw8vL29fXx8fH19p06dOmPGjNmzZwcEBIDYnjdv3sKFC5csWRIYGLhixYpVq1atXbt2w4YNoaGhmzdv3rp1644dOyIiInbv3h0TE7N3794DBw4cPnz42LFjJ0+eTEhIOHv27IULFy5fvnzt2rWbN2/evn373r17ycnJKSkpjx8/fvLkybNnz16+fJmdnf3mzZv379/n5OR8+fLl+/fvv379+v3799+/fwsUKFC4cOGiRYuWKFHC2Ni4dOnS5cqVK1++vLm5eaVKlapWrVqjRo3atWvXq1fP2tq6fv36jRo1srOza9asWcuWLdu0adO+fftOnTo5ODh07969Z8+evXv37tu3b//+/V1dXYcMGTJs2LCRI0eOGTNm3LhxXl5eEyZMmDRp0pQpU6ZPnz5r1ix/f/+5c+cuWLAAxPbixYuXLVu2fPny4ODgNWvWrF+/PiQkZNOmTVu2bNm+ffuuXbuioqKio6Pj4uL2799/6NCho0ePnjhxIj4+/syZM+fPn7906dLVq1dv3Lhx69atu3fv3r9//+HDh48ePUpPT3/69OmLFy+ysrJev3797t27jx8/fv78+du3bz9//szLy/vz58//xz30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53Dd6zlk99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc99BzuO6h53DdQ8/huoeew3UPPYfrHnoO1z30HK576Dlc9/8Bdmx7ksh49jgAAAAASUVORK5CYII="
+GENERATED = "<GENERATED>"
 INITIAL_INFO_OPERATION = 0
 STACK_DIR = None
 OWNER_ID = None
@@ -78,6 +82,21 @@ BODY_OVERRIDES = {
         {"token": PUSH_TOKEN, "platform": "android", "lang": "es"}),
     ("notification", "DELETE", "/notification-token"): json.dumps(
         {"token": UNREGISTERED_TOKEN}),
+    ("llm", "POST", "/llm/v1/chat"): json.dumps(
+        {"messages": [{"role": "user", "content": "Responde con una sola palabra: hola."}],
+         "max_tokens": 8, "temperature": 0.0, "reset_context": True, "tools": False}),
+    ("llm", "POST", "/llm/v1/chat-stream"): json.dumps(
+        {"messages": [{"role": "user", "content": "Responde con una sola palabra: hola."}],
+         "max_tokens": 8, "temperature": 0.0, "reset_context": True, "tools": False}),
+    ("llm", "POST", "/llm/v1/screen"): json.dumps(
+        {"text": "Hola, ¿qué hay de nuevo?"}),
+    ("tts", "POST", "/tts/v1/synthesize"): json.dumps(
+        {"text": "Hola.", "style_id": "M3", "lang": "es"}),
+    ("tts", "POST", "/tts/v1/synthesize-stream"): json.dumps(
+        {"text": "Hola.", "style_id": "M3", "lang": "es"}),
+    ("vlm", "POST", "/vlm/v1/describe"): json.dumps(
+        {"image_b64": GOLDEN_PNG_B64, "prompt": "Describe la imagen en una palabra."}),
+    ("stt", "POST", "/stt/v1/transcribe"): "\x00" * 32000,
 }
 
 CONTROL_ROUTES = (
@@ -1125,7 +1144,18 @@ def run_hook(hook, entry, bases, sessions, timeout):
         RUNTIME_IDS[slot] = dig(json.loads(raw), where)
 
 
+def prime_guard_feed(entry):
+    if (entry["unit"], entry["route"]) not in PRIMED_ROUTES:
+        return
+    spec = importlib.util.spec_from_file_location(
+        "seed_golden", REPO_ROOT / "scripts" / "seed-golden.py")
+    seeder = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(seeder)
+    seeder.publish_guard_heartbeat(STACK_DIR)
+
+
 def run_entry(entry, bases, sessions, timeout):
+    prime_guard_feed(entry)
     base = bases[entry["baseUnit"]]
     probe = entry["probe"]
     off = probe.get("modulesOff") or []
@@ -1201,7 +1231,10 @@ def run_probe(entry, base, sessions, timeout):
         parsed = json.loads(body)
     except json.JSONDecodeError:
         record["response"]["json"] = None
-        record["response"]["text"] = mask_text(body)[:TEXT_LIMIT]
+        generated_text = ((entry["unit"], entry["route"]) in GENERATED_TEXT_ROUTES
+                          and 200 <= status < 300)
+        record["response"]["text"] = (GENERATED if generated_text
+                                      else mask_text(body)[:TEXT_LIMIT])
     else:
         record["response"]["json"] = normalize(parsed)
         if probe.get("remember") and 200 <= status < 300:
@@ -1300,6 +1333,9 @@ def write_manifest(fixtures, units, probe_count, deviations):
             {"unit": unit, "route": route, "keys": list(fields["keys"]),
              **({"placeholders": list(fields["placeholders"])}
                 if fields.get("placeholders") else {}),
+            **({"generated": list(fields["generated"])}
+                if fields.get("generated") else {}),
+            **({"generatedText": True} if fields.get("generatedText") else {}),
              "reason": fields["reason"]}
             for (unit, route), fields in sorted(VOLATILE_FIELDS.items())
         ],
@@ -1464,6 +1500,10 @@ def differences(expected, actual, prefix=""):
     return []
 
 
+GENERATED_TEXT_ROUTES = {key for key, fields in VOLATILE_FIELDS.items()
+                         if fields.get("generatedText")}
+
+
 def without_volatile(entry, body, volatile):
     fields = volatile.get((entry["unit"], entry["route"]))
     if not fields or not isinstance(body, dict):
@@ -1476,6 +1516,8 @@ def without_volatile(entry, body, volatile):
         drop_path(node, key.split("."))
     for key in fields.get("placeholders", ()):
         replace_path(node, key.split("."), PLACEHOLDER)
+    for key in fields.get("generated", ()):
+        replace_path(node, key.split("."), GENERATED)
     return body
 
 

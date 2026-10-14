@@ -74,6 +74,9 @@ def manifest_entries():
     return [{"unit": unit, "route": route, "keys": list(fields["keys"]),
              **({"placeholders": list(fields["placeholders"])}
                 if fields.get("placeholders") else {}),
+             **({"generated": list(fields["generated"])}
+                if fields.get("generated") else {}),
+             **({"generatedText": True} if fields.get("generatedText") else {}),
              "reason": fields["reason"]}
             for (unit, route), fields in sorted(golden.VOLATILE_FIELDS.items())]
 
