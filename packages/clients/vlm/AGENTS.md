@@ -177,3 +177,9 @@ the gRPC client's types to serve the protocol.
   from the wire, the façade over gRPC and the real engine — is pinned by
   `services/vlm/tests/unit/vlm-rpc-test.cc`, not here, because only that
   project can compose the server. The guard live suites need argus-vlm running.
+- `tests/unit/vlm-grpc-tls-test.cc` — its own binary, because the suite above
+  shares the runtime config across cases and an install must come before any
+  channel: `vlm-grpc-tls-test` runs through `scripts/internal-tls-test.sh`, one
+  process per case. A `tls:` gRPC client reads `Capabilities` from a fake vlm
+  service on its mutual TLS port with the guard certificate, and a plaintext
+  client to that port is refused.
