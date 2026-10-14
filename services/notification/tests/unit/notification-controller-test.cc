@@ -13,6 +13,8 @@
 #include <auth/jwt-filter.hxx>
 #include <notification/notification-errors.hxx>
 #include <shared/repositories/notification/notification-repository.hxx>
+#include <shared/repositories/notification-token/notification-token-index.hxx>
+#include "../support/sqlite-token-index-sql.hxx"
 #include <sqlite/db-service.hxx>
 #include <sync/user-change-sink.hxx>
 #include <shared/repositories/notification-token/notification-token-repository.hxx>
@@ -172,9 +174,10 @@ void seedNotificationDb(const char* path)
        "is_active INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)), "
        "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
        "updated_at INTEGER, session_id TEXT NOT NULL DEFAULT '')");
-  exec(db.get(),
-       "CREATE UNIQUE INDEX IF NOT EXISTS idx_notification_token_device "
-       "ON notification_token (user_id, device_hash, provider)");
+  SqliteTokenIndexSql tokenIndex(db.get());
+  const auto tokenMigration = notification_token_index::migrate(tokenIndex);
+  REQUIRE(tokenMigration.changed());
+  REQUIRE(tokenIndex.countRows("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_notification_token_device'") == 1);
   exec(db.get(),
        "CREATE TABLE notification_delivery ("
        "id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT, "
