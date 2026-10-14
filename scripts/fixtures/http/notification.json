@@ -1584,6 +1584,158 @@
       },
       "route": "/notification/responses/{1}",
       "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification-token",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{\"token\": \"argus-golden-unregistered-token\"}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification-token",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification-token",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{\"token\": \"argus-golden-unregistered-token\"}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/notification-token",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification-token",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{\"token\": \"argus-golden-unregistered-token\"}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "deleted": false
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/notification-token",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification-token",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{\"token\": \"argus-golden-unregistered-token\"}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "deleted": false
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/notification-token",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification-token",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{\"token\": \"argus-golden-unregistered-token\"}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "deleted": false
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/notification-token",
+      "unit": "notification"
+    },
+    {
+      "method": "DELETE",
+      "path": "/notification-token",
+      "probe": "owner-registered-token",
+      "request": {
+        "auth": "owner",
+        "body": "{\"token\": \"argus-golden-unregistered-token\"}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "deleted": true
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/notification-token",
+      "unit": "notification"
     }
   ],
   "unit": "notification"
