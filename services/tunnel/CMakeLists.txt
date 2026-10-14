@@ -148,6 +148,14 @@ target_include_directories(tunnel-health-test PRIVATE
 target_link_libraries(tunnel-health-test PRIVATE tunnel-core doctest::doctest)
 target_compile_options(tunnel-health-test PRIVATE -Wall -Wextra)
 
+execute_process(
+    COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-parse --path-format=absolute --git-common-dir
+    OUTPUT_VARIABLE ARGUS_GIT_COMMON_DIR
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+get_filename_component(ARGUS_MAIN_CHECKOUT "${ARGUS_GIT_COMMON_DIR}/.." ABSOLUTE)
+get_filename_component(ARGUS_CLOUD_CHECKOUT "${ARGUS_MAIN_CHECKOUT}/../argus-cloud" ABSOLUTE)
+
 add_executable(link-protocol-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-protocol-test.cc
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/tls-hello.cc)
@@ -158,7 +166,7 @@ target_link_libraries(link-protocol-test PRIVATE tunnel-core doctest::doctest
 target_compile_options(link-protocol-test PRIVATE -Wall -Wextra)
 target_compile_definitions(link-protocol-test PRIVATE
     ARGUS_LINK_VECTOR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/vectors"
-    ARGUS_CLOUD_LINK_VECTOR_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../../argus-cloud/tests/protocol/vectors")
+    ARGUS_CLOUD_LINK_VECTOR_DIR="${ARGUS_CLOUD_CHECKOUT}/tests/protocol/vectors")
 
 add_executable(link-client-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-client-test.cc
@@ -189,14 +197,6 @@ add_executable(home-service-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/home-service-test.cc)
 target_link_libraries(home-service-test PRIVATE tunnel-core doctest::doctest)
 target_compile_options(home-service-test PRIVATE -Wall -Wextra)
-
-execute_process(
-    COMMAND git -C "${CMAKE_CURRENT_SOURCE_DIR}" rev-parse --path-format=absolute --git-common-dir
-    OUTPUT_VARIABLE ARGUS_GIT_COMMON_DIR
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET)
-get_filename_component(ARGUS_MAIN_CHECKOUT "${ARGUS_GIT_COMMON_DIR}/.." ABSOLUTE)
-get_filename_component(ARGUS_CLOUD_CHECKOUT "${ARGUS_MAIN_CHECKOUT}/../argus-cloud" ABSOLUTE)
 
 add_executable(sealed-push-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/sealed-push-test.cc

@@ -12,8 +12,10 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <random>
 #include <set>
 #include <string>
@@ -113,9 +115,12 @@ nlohmann::json pins()
   return loadFile(std::filesystem::path{ARGUS_LINK_VECTOR_DIR} / "pins.json");
 }
 
-bool cloudVectorsAvailable()
+std::filesystem::path cloudLinkVectorDirectory()
 {
-  return std::filesystem::exists(ARGUS_CLOUD_LINK_VECTOR_DIR);
+  const char* cloudDir = std::getenv("ARGUS_CLOUD_DIR");
+  if (cloudDir != nullptr && *cloudDir != '\0')
+    return std::filesystem::path{cloudDir} / "tests" / "protocol" / "vectors";
+  return ARGUS_CLOUD_LINK_VECTOR_DIR;
 }
 
 std::string kindOf(const nlohmann::json& vector)
@@ -435,21 +440,23 @@ TEST_SUITE("home link v2 vectors")
               tunnel::link::kUnrecognizedNameAlert)) == "15030300020270");
   }
 
-  TEST_CASE("the cloud's vectors are the ones this test pinned"
-            * doctest::skip(!cloudVectorsAvailable()))
+  TEST_CASE("the cloud's vectors are the ones this test pinned")
   {
+    const std::filesystem::path cloudDirectory = cloudLinkVectorDirectory();
+    if (!std::filesystem::exists(cloudDirectory)) {
+      std::cerr << "SKIPPED cloud link vectors: " << cloudDirectory.string() << " missing\n";
+      return;
+    }
     const nlohmann::json pinned = pins().at("files");
     std::set<std::string> cloud;
-    for (const auto& entry :
-         std::filesystem::directory_iterator{ARGUS_CLOUD_LINK_VECTOR_DIR}) {
+    for (const auto& entry : std::filesystem::directory_iterator{cloudDirectory}) {
       if (entry.path().extension() == ".json" &&
           entry.path().filename() != "pins.json")
         cloud.insert(entry.path().filename().string());
     }
     CHECK_FALSE(cloud.empty());
     for (const auto& name : cloud) {
-      const std::filesystem::path path =
-          std::filesystem::path{ARGUS_CLOUD_LINK_VECTOR_DIR} / name;
+      const std::filesystem::path path = cloudDirectory / name;
       REQUIRE_MESSAGE(pinned.contains(name),
                       "the cloud holds a vector this repository never pinned: "
                           << name);
