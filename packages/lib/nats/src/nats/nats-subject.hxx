@@ -77,6 +77,12 @@ inline constexpr const char* kNotificationDelivery =
 inline constexpr const char* kNotificationPushIntent =
     "argus.notification.v1.push_intent";
 
+inline constexpr const char* kNotificationPushDelivery =
+    "argus.notification.v1.push_delivery";
+
+inline constexpr const char* kNotificationPushResult =
+    "argus.notification.v1.push_result";
+
 inline constexpr const char* kSettingsModule = "argus.settings.v1.module";
 inline constexpr const char* kSettingsModuleStream = "ARGUS_SETTINGS_MODULE";
 

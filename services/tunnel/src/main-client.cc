@@ -9,6 +9,7 @@
 
 #include <client/tunnel-client.hxx>
 #include <link/client/link-client.hxx>
+#include <link/push/sealed-push-bridge.hxx>
 #include <link/status/link-status.hxx>
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
@@ -51,12 +52,49 @@ public:
     LOG_INFO << "argus-tunnel: push intent of " << intent.size() << " bytes";
   }
 
+  void onPushResult(const PushResultEnvelope& result) override
+  {
+    if (sealed != nullptr)
+      sealed->onPushResult(result);
+  }
+
   void onWireError(tunnel::link::WireError error) override
   {
     LOG_WARN << "argus-tunnel: wire error "
              << tunnel::link::wireErrorToString(error);
   }
+
+  tunnel::link::SealedPushBridge* sealed{nullptr};
 };
+
+struct SealedPushWiring
+{
+  std::shared_ptr<NatsBus> bus;
+  std::unique_ptr<tunnel::link::SealedPushBridge> bridge;
+};
+
+SealedPushWiring sealedPushWiring(PollLoop& loop)
+{
+  const std::string natsUrl = ConfigService::getString("nats.url");
+  if (natsUrl.empty()) {
+    LOG_INFO << "argus-tunnel: no nats.url, so sealed pushes stay off";
+    return {};
+  }
+  auto bus = std::make_shared<NatsBus>();
+  if (!bus->connect()) {
+    LOG_WARN << "argus-tunnel: NATS unavailable at " << natsUrl << "; sealed pushes stay off";
+    return {};
+  }
+  auto bridge = std::make_unique<tunnel::link::SealedPushBridge>(loop, bus);
+  if (!bridge->subscribe()) {
+    LOG_WARN << "argus-tunnel: cannot subscribe to " << nats_subject::kNotificationPushDelivery
+             << "; sealed pushes stay off";
+    return {};
+  }
+  LOG_INFO << "argus-tunnel: sealed pushes come from " << nats_subject::kNotificationPushDelivery
+           << " and results go to " << nats_subject::kNotificationPushResult;
+  return {.bus = std::move(bus), .bridge = std::move(bridge)};
+}
 
 struct ClientRunner
 {
@@ -172,12 +210,19 @@ int main()
   PollLoop loop;
   tunnel::TunnelClient legacyClient(loop, config.tunnel);
   LinkLogObserver observer;
+  SealedPushWiring sealed = config.linkEnabled ? sealedPushWiring(loop) : SealedPushWiring{};
+  observer.sealed = sealed.bridge.get();
+  tunnel::link::LinkOptions linkOptions = config.link;
+  if (sealed.bridge)
+    linkOptions.capabilities |= tunnel::link::capability::kSealedPush;
   std::unique_ptr<tunnel::link::LinkClient> linkClient;
   if (config.linkEnabled) {
     linkClient = std::make_unique<tunnel::link::LinkClient>(
         tunnel::link::LinkClient::Deps{.loop = loop,
-                                       .options = config.link,
+                                       .options = linkOptions,
                                        .observer = &observer});
+    if (sealed.bridge)
+      sealed.bridge->attach(*linkClient);
   }
   const HealthStatus status = linkClient
                                   ? tunnel::linkHealthStatus(*linkClient)
@@ -200,12 +245,16 @@ int main()
         if (linkState.timer)
           drogon::app().getLoop()->invalidateTimer(*linkState.timer);
         linkState.timer.reset();
+        if (sealed.bridge)
+          sealed.bridge->unsubscribe();
         if (linkClient)
           linkClient->stop();
         else
           legacyClient.stop();
         if (linkState.bus)
           linkState.bus->drain();
+        if (sealed.bus)
+          sealed.bus->drain();
       }};
 
   if (config.linkEnabled) {

@@ -1,5 +1,7 @@
 #include <link/protocol/frames.hxx>
 
+#include <push/push-envelope.hxx>
+
 #include <algorithm>
 #include <array>
 #include <optional>
@@ -16,7 +18,7 @@ struct Named
   T value;
 };
 
-constexpr std::array<Named<FrameType>, 9> kFrameTypes{{
+constexpr std::array<Named<FrameType>, 11> kFrameTypes{{
     {.name = "hello", .value = FrameType::Hello},
     {.name = "open", .value = FrameType::Open},
     {.name = "data", .value = FrameType::Data},
@@ -26,6 +28,8 @@ constexpr std::array<Named<FrameType>, 9> kFrameTypes{{
     {.name = "push", .value = FrameType::Push},
     {.name = "goaway", .value = FrameType::GoAway},
     {.name = "credit", .value = FrameType::Credit},
+    {.name = "push_sealed", .value = FrameType::PushSealed},
+    {.name = "push_result", .value = FrameType::PushResult},
 }};
 
 constexpr std::array<Named<CloseReason>, 5> kCloseReasons{{
@@ -127,6 +131,8 @@ bool isControlFrame(FrameType type)
   case FrameType::Pong:
   case FrameType::Push:
   case FrameType::GoAway:
+  case FrameType::PushSealed:
+  case FrameType::PushResult:
     return true;
   case FrameType::Open:
   case FrameType::Data:
@@ -163,6 +169,8 @@ std::optional<WireError> lengthRefusal(FrameType type, uint32_t length)
                        : std::optional{WireError::MalformedCredit};
   case FrameType::Data:
   case FrameType::Push:
+  case FrameType::PushSealed:
+  case FrameType::PushResult:
     return std::nullopt;
   }
   return std::nullopt;
@@ -367,7 +375,7 @@ void FrameParser::parse()
     }
     const auto rawType = static_cast<uint8_t>(header[3]);
     if (rawType < static_cast<uint8_t>(FrameType::Hello) ||
-        rawType > static_cast<uint8_t>(FrameType::Credit)) {
+        rawType > static_cast<uint8_t>(FrameType::PushResult)) {
       refuse(WireError::UnknownFrameType);
       return;
     }
@@ -443,6 +451,8 @@ void FrameParser::parse()
     case FrameType::Ping:
     case FrameType::Pong:
     case FrameType::Push:
+    case FrameType::PushSealed:
+    case FrameType::PushResult:
       break;
     }
     frames_.push_back(std::move(frame));

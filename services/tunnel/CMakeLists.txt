@@ -34,6 +34,14 @@ if(NOT TARGET Drogon::Drogon)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/runtime
                          ${CMAKE_BINARY_DIR}/runtime)
     endif()
+    if(NOT TARGET argus::lib::text)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/text
+                         ${CMAKE_BINARY_DIR}/text)
+    endif()
+    if(NOT TARGET argus::contracts::push)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/push
+                         ${CMAKE_BINARY_DIR}/push)
+    endif()
 endif()
 
 find_package(doctest REQUIRED)
@@ -52,6 +60,7 @@ add_library(tunnel-core STATIC
     ${TUNNEL_SRC_ROOT}/link/tls/host-resolver.cc
     ${TUNNEL_SRC_ROOT}/link/client/home-service.cc
     ${TUNNEL_SRC_ROOT}/link/client/link-client.cc
+    ${TUNNEL_SRC_ROOT}/link/push/sealed-push-bridge.cc
     ${TUNNEL_SRC_ROOT}/link/status/link-status.cc
     ${TUNNEL_SRC_ROOT}/core/tunnel-mux.cc
     ${TUNNEL_SRC_ROOT}/client/tunnel-client.cc
@@ -63,7 +72,8 @@ add_library(tunnel-core STATIC
 target_include_directories(tunnel-core PUBLIC ${TUNNEL_SRC_ROOT})
 
 target_link_libraries(tunnel-core PUBLIC argus::lib::config argus::lib::http
-    argus::lib::runtime argus::contracts::routes OpenSSL::SSL OpenSSL::Crypto)
+    argus::lib::runtime argus::lib::nats argus::lib::text argus::contracts::routes
+    argus::contracts::push OpenSSL::SSL OpenSSL::Crypto)
 
 target_compile_options(tunnel-core PRIVATE -Wall -Wextra)
 
@@ -180,6 +190,18 @@ add_executable(home-service-test
 target_link_libraries(home-service-test PRIVATE tunnel-core doctest::doctest)
 target_compile_options(home-service-test PRIVATE -Wall -Wextra)
 
+add_executable(sealed-push-test
+               ${CMAKE_CURRENT_SOURCE_DIR}/tests/sealed-push-test.cc)
+target_include_directories(sealed-push-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests)
+target_link_libraries(sealed-push-test PRIVATE tunnel-core doctest::doctest
+                                               nlohmann_json::nlohmann_json
+                                               OpenSSL::Crypto)
+target_compile_options(sealed-push-test PRIVATE -Wall -Wextra)
+target_compile_definitions(sealed-push-test PRIVATE
+    ARGUS_SEALED_PUSH_VECTOR_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/vectors/push-sealed.json"
+    ARGUS_CLOUD_SEALED_PUSH_VECTOR_FILE="${CMAKE_CURRENT_SOURCE_DIR}/../../../argus-cloud/tests/vectors/push-sealed.json")
+
 set_target_properties(framing-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-integration-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-reconnect-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
@@ -193,6 +215,7 @@ set_target_properties(link-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(cloud-interop-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(link-status-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(home-service-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+set_target_properties(sealed-push-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME framing-test COMMAND framing-test)
 add_test(NAME tunnel-integration-test COMMAND tunnel-integration-test)
@@ -207,3 +230,4 @@ add_test(NAME link-client-test COMMAND link-client-test)
 add_test(NAME cloud-interop-test COMMAND cloud-interop-test)
 add_test(NAME link-status-test COMMAND link-status-test)
 add_test(NAME home-service-test COMMAND home-service-test)
+add_test(NAME sealed-push-test COMMAND sealed-push-test)

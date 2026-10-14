@@ -231,6 +231,12 @@ void LinkClient::dispatchFrame(const Frame& frame)
   case FrameType::Push:
     handlePush(frame);
     break;
+  case FrameType::PushSealed:
+    handlePushSealed(frame);
+    break;
+  case FrameType::PushResult:
+    handlePushResult(frame);
+    break;
   case FrameType::GoAway:
     handleGoAway(frame);
     break;
@@ -487,6 +493,58 @@ void LinkClient::handlePush(const Frame& frame)
   else
     LOG_WARN << "argus-tunnel: push queue full; intent dropped ("
              << pushQueue_.dropped() << " total)";
+}
+
+bool LinkClient::sealedPushReady() const
+{
+  return connected_.load() && channel_ && !channel_->closed() &&
+         (remoteCapabilities_.load() & capability::kSealedPush) != 0 &&
+         (localCapabilities_ & capability::kSealedPush) != 0;
+}
+
+bool LinkClient::sendSealedPush(const PushSealedEnvelope& envelope)
+{
+  if (!sealedPushReady()) {
+    LOG_WARN << "argus-tunnel: protocol_error: sealed push without sealed_push negotiated; not sent";
+    return false;
+  }
+  const auto payload = push_envelope::sealedPayload(envelope);
+  if (!payload) {
+    LOG_WARN << "argus-tunnel: protocol_error: sealed push is not well formed; not sent";
+    return false;
+  }
+  sendFrameToNode({.frame = encodeFrame({.type = FrameType::PushSealed,
+                                         .streamId = 0,
+                                         .payload = *payload})});
+  return true;
+}
+
+void LinkClient::handlePushSealed(const Frame&)
+{
+  protocolRefusal("the cloud node sent a sealed push, which only the home sends");
+}
+
+void LinkClient::handlePushResult(const Frame& frame)
+{
+  if ((remoteCapabilities_.load() & capability::kSealedPush) == 0 ||
+      (localCapabilities_ & capability::kSealedPush) == 0) {
+    protocolRefusal("push result without sealed_push negotiated");
+    return;
+  }
+  PushResultEnvelope result;
+  if (!push_envelope::parseResultPayload(frame.payload, result)) {
+    protocolRefusal("push result is not seventeen bytes with a known outcome");
+    return;
+  }
+  if (observer_ != nullptr)
+    observer_->onPushResult(result);
+}
+
+void LinkClient::protocolRefusal(std::string_view detail)
+{
+  LOG_WARN << "argus-tunnel: protocol_error: " << detail;
+  sendFrameToNode({.frame = encodeGoAway(GoAwayReason::ProtocolError, 0)});
+  closeLink("protocol_error");
 }
 
 void LinkClient::handleGoAway(const Frame& frame)

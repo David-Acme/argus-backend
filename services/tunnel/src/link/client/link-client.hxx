@@ -83,6 +83,7 @@ public:
     (void)seconds;
   }
   virtual void onPushIntent(std::string_view intent) { (void)intent; }
+  virtual void onPushResult(const PushResultEnvelope& result) { (void)result; }
   virtual void onWireError(WireError error) { (void)error; }
 };
 
@@ -121,6 +122,9 @@ public:
   [[nodiscard]] size_t pushQueued() const { return pushQueue_.size(); }
   [[nodiscard]] uint64_t pushReceived() const { return pushQueue_.received(); }
   [[nodiscard]] uint64_t pushDropped() const { return pushQueue_.dropped(); }
+
+  [[nodiscard]] bool sealedPushReady() const;
+  bool sendSealedPush(const PushSealedEnvelope& envelope);
 
 private:
   struct Stream
@@ -166,8 +170,11 @@ private:
   void handlePing(const Frame& frame);
   void handlePong(const Frame& frame);
   void handlePush(const Frame& frame);
+  void handlePushSealed(const Frame&);
+  void handlePushResult(const Frame& frame);
   void handleGoAway(const Frame& frame);
   void handleCredit(const Frame& frame);
+  void protocolRefusal(std::string_view detail);
 
   Stream* findStream(uint32_t streamId);
   void openStream(uint32_t streamId);

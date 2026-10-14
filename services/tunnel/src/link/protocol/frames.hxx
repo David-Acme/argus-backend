@@ -1,5 +1,7 @@
 #pragma once
 
+#include <push/push-envelope.hxx>
+
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -20,6 +22,8 @@ enum class FrameType : uint8_t
   Push = 7,
   GoAway = 8,
   Credit = 9,
+  PushSealed = 10,
+  PushResult = 11,
 };
 
 enum class CloseReason : uint8_t
@@ -66,7 +70,8 @@ namespace capability
 {
 inline constexpr uint32_t kPushIntents = 0x00000001;
 inline constexpr uint32_t kStreamCredit = 0x00000002;
-inline constexpr uint32_t kKnown = kPushIntents | kStreamCredit;
+inline constexpr uint32_t kSealedPush = 0x00000004;
+inline constexpr uint32_t kKnown = kPushIntents | kStreamCredit | kSealedPush;
 }
 
 inline constexpr uint16_t kMagic = 0xA755;
