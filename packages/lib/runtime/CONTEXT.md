@@ -48,3 +48,10 @@ A fatal exit is synchronous: LOG_FATAL writes to stdout with fwrite and
 trantor flushes it before _exit(1), and log_output::flushEachLine() keeps
 stdout line-buffered. No service configures an async or file logger, so the
 line is not lost, and no separate flush is needed before _exit.
+
+## trantor's FATAL errno=107 line is benign (2026-10-14)
+
+trantor's `FATAL ... errno=107 sockets::shutdownWrite` is the LOG_SYSERR label
+for a half-close on a socket the peer already closed; it is benign, and the
+process keeps running. A real crash is judged by the process exit and the
+service's own error, never by this line.
