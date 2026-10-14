@@ -533,7 +533,7 @@ double CameraOperatorService::currentInferenceFps(int64_t cameraId)
         return inputs_.objects.activeFps;
     }
   }
-  if (inputs_.dependencies.motion != nullptr && inputs_.dependencies.motion->raisesCadence(cameraId, stamp))
+  if (inputs_.dependencies.motion != nullptr && inputs_.dependencies.motion->raisesCadence({.cameraId = cameraId, .nowMs = stamp}))
     return inputs_.objects.activeFps;
   return inputs_.objects.maxFpsInference;
 }

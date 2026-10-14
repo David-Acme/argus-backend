@@ -147,17 +147,17 @@ TEST_CASE("a watch subscribes, and the camera's onset and end reach the board at
   CHECK(rig.camera->operations() ==
         std::vector<std::string>{"GetSystemDateAndTime", "GetCapabilities", "GetEventPropertiesRequest",
                                  "CreatePullPointSubscriptionRequest", "PullMessagesRequest"});
-  CHECK_FALSE(rig.board.raisesCadence(7, kStart));
+  CHECK_FALSE(rig.board.raisesCadence({.cameraId = 7, .nowMs = kStart}));
 
   rig.deliver("pull-messages-onset.xml", kStart + 20 * kSecond);
   REQUIRE(waitUntil([&rig] { return rig.pulling(); }));
-  CHECK(rig.board.raisesCadence(7, kStart + 20 * kSecond));
-  CHECK(rig.board.raisesCadence(7, kStart + 25 * kSecond));
+  CHECK(rig.board.raisesCadence({.cameraId = 7, .nowMs = kStart + 20 * kSecond}));
+  CHECK(rig.board.raisesCadence({.cameraId = 7, .nowMs = kStart + 25 * kSecond}));
 
   rig.deliver("pull-messages-end.xml", kStart + 28 * kSecond);
   REQUIRE(waitUntil([&rig] { return rig.pulling(); }));
-  CHECK(rig.board.raisesCadence(7, kStart + 28 * kSecond + CameraMotionBoard::kHoldMs - 1));
-  CHECK_FALSE(rig.board.raisesCadence(7, kStart + 28 * kSecond + CameraMotionBoard::kHoldMs));
+  CHECK(rig.board.raisesCadence({.cameraId = 7, .nowMs = kStart + 28 * kSecond + CameraMotionBoard::kHoldMs - 1}));
+  CHECK_FALSE(rig.board.raisesCadence({.cameraId = 7, .nowMs = kStart + 28 * kSecond + CameraMotionBoard::kHoldMs}));
   CHECK(rig.camera->peak() == 1);
 }
 
@@ -202,8 +202,8 @@ TEST_CASE("a drain cancels the pull in flight at once, then unsubscribes on a ne
   CHECK(rig.camera->peak() == 1);
   CHECK(rig.camera->open() == 0);
   CHECK(rig.camera->operations().back() == "UnsubscribeRequest");
-  CHECK(rig.board.raisesCadence(7, kStart + 2 * kSecond + CameraMotionBoard::kHoldMs - 1));
-  CHECK_FALSE(rig.board.raisesCadence(7, kStart + 2 * kSecond + CameraMotionBoard::kHoldMs));
+  CHECK(rig.board.raisesCadence({.cameraId = 7, .nowMs = kStart + 2 * kSecond + CameraMotionBoard::kHoldMs - 1}));
+  CHECK_FALSE(rig.board.raisesCadence({.cameraId = 7, .nowMs = kStart + 2 * kSecond + CameraMotionBoard::kHoldMs}));
 }
 
 TEST_CASE("a refused connection is not retried in a loop: the watch waits out its backoff, and a stop wakes it")
@@ -242,8 +242,8 @@ TEST_CASE("a pull that fails ends the motion it had reported, frees the pull poi
   REQUIRE(waitUntil([&rig] { return rig.camera->operations().back() == "UnsubscribeRequest"; }));
   std::this_thread::sleep_for(std::chrono::milliseconds(300));
   CHECK(rig.camera->operations().back() == "UnsubscribeRequest");
-  CHECK(rig.board.raisesCadence(7, kStart + 3 * kSecond + CameraMotionBoard::kHoldMs - 1));
-  CHECK_FALSE(rig.board.raisesCadence(7, kStart + 3 * kSecond + CameraMotionBoard::kHoldMs));
+  CHECK(rig.board.raisesCadence({.cameraId = 7, .nowMs = kStart + 3 * kSecond + CameraMotionBoard::kHoldMs - 1}));
+  CHECK_FALSE(rig.board.raisesCadence({.cameraId = 7, .nowMs = kStart + 3 * kSecond + CameraMotionBoard::kHoldMs}));
   CHECK(rig.camera->peak() == 1);
 }
 

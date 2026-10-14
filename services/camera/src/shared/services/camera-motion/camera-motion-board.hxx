@@ -11,6 +11,12 @@ struct CameraMotionReport
   int64_t atMs{0};
 };
 
+struct RaisesCadenceInput
+{
+  int64_t cameraId{0};
+  int64_t nowMs{0};
+};
+
 class CameraMotionBoard
 {
 public:
@@ -18,7 +24,7 @@ public:
   static constexpr int64_t kStuckMs = 600000;
 
   void report(const CameraMotionReport& report);
-  [[nodiscard]] bool raisesCadence(int64_t cameraId, int64_t nowMs);
+  [[nodiscard]] bool raisesCadence(const RaisesCadenceInput& input);
   void forget(int64_t cameraId);
   [[nodiscard]] int64_t mutedEpisodes() const;
 

@@ -23,7 +23,7 @@ struct Motion
 
   void end(int64_t cameraId = kCamera) { board.report({.cameraId = cameraId, .moving = false, .atMs = nowMs}); }
 
-  [[nodiscard]] bool raises(int64_t cameraId = kCamera) { return board.raisesCadence(cameraId, nowMs); }
+  [[nodiscard]] bool raises(int64_t cameraId = kCamera) { return board.raisesCadence({.cameraId = cameraId, .nowMs = nowMs}); }
 };
 }
 

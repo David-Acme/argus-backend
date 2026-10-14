@@ -27,8 +27,9 @@ void CameraMotionBoard::report(const CameraMotionReport& report)
     episode.moving = true;
 }
 
-bool CameraMotionBoard::raisesCadence(int64_t cameraId, int64_t nowMs)
+bool CameraMotionBoard::raisesCadence(const RaisesCadenceInput& input)
 {
+  const auto [cameraId, nowMs] = input;
   const std::scoped_lock lock(mutex_);
   const auto found = cameras_.find(cameraId);
   if (found == cameras_.end() || !found->second.active)
