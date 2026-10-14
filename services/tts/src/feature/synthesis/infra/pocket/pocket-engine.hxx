@@ -19,6 +19,7 @@ struct PocketEngineConfig
   std::filesystem::path directory;
   std::string precision;
   int threads{1};
+  std::function<bool()> stopRequested;
 };
 
 struct PocketGeneration

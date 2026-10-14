@@ -410,6 +410,17 @@ and arrived 0.3 s later than the lazy path. A shutdown during the warm-up waits 
 model being loaded (about 1.7 s here), then the thread stops without loading
 the next.
 
+The Pocket load checks the stop flag between its components (`runPocketLoad`
+in `infra/pocket/pocket-load.cc`: the text conditioner, the flow model, the
+flow step, the Mimi decoder, the voice encoder), so a stop request ends the load
+before the next component instead of after all of them. The warm-up is a
+`shutdown_signal` drain: `TtsService::requestStop()` sets the flags without
+taking a lock, and the drain is done once the warm-up thread has returned, so
+the quit no longer waits for a whole Pocket load. The bound is one component:
+a single ONNX session creation cannot be interrupted, so the longest wait is
+that component's load time. `tts-pocket-load-test` pins the stop between
+components and a drain started mid-load.
+
 A settings change to engine, variant or voice is not warmed: the new selection
 loads on its first request, as before. Warming it would need a worker that
 outlives each change, and it would take the engine lock for a whole load at a

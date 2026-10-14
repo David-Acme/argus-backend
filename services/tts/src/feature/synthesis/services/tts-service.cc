@@ -2,6 +2,7 @@
 
 #include <feature/synthesis/infra/pocket/pcm-rate-converter.hxx>
 #include <feature/synthesis/infra/pocket/pocket-engine.hxx>
+#include <feature/synthesis/infra/pocket/pocket-load.hxx>
 #include <feature/synthesis/infra/pocket/reference-audio.hxx>
 #include <feature/synthesis/infra/supertonic/onnx-utils.hxx>
 #include <feature/synthesis/infra/supertonic/style.hxx>
@@ -166,6 +167,12 @@ void TtsService::init()
     loaded_ = false;
     stopping_.store(true);
   }
+}
+
+void TtsService::requestStop()
+{
+  stopping_.store(true);
+  generation_.fetch_add(1);
 }
 
 void TtsService::shutdown()
@@ -461,7 +468,11 @@ PocketEngine* TtsService::pocketEngine(const PocketSelection& selection)
     if (precision != "fp32")
       precision = "int8";
     auto engine = std::make_unique<PocketEngine>(PocketEngineConfig{
-        .env = env_, .directory = selection.directory, .precision = precision, .threads = threads_});
+        .env = env_,
+        .directory = selection.directory,
+        .precision = precision,
+        .threads = threads_,
+        .stopRequested = [this] { return stopping_.load(); }});
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - start);
     LOG_INFO << "Pocket TTS loaded: " << selection.variant << " (" << precision << ", threads=" << threads_
              << ", voice cloning " << (engine->canClone() ? "available" : "not exported") << ", "
@@ -469,6 +480,10 @@ PocketEngine* TtsService::pocketEngine(const PocketSelection& selection)
     auto* const loaded = engine.get();
     pocketEngines_.emplace(selection.variant, std::move(engine));
     return loaded;
+  }
+  catch (const PocketLoadStopped&) {
+    LOG_INFO << "Pocket TTS " << selection.variant << " load stopped for shutdown";
+    return nullptr;
   }
   catch (const std::exception& error) {
     pocketFailures_.insert(selection.variant);

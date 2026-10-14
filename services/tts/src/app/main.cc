@@ -19,6 +19,7 @@
 #include <settings/settings-rpc.hxx>
 
 #include <json/value.h>
+#include <atomic>
 #include <cstdlib>
 #include <filesystem>
 #include <optional>
@@ -131,7 +132,14 @@ int main()
   LOG_INFO << "argus-tts listening on " << listener.host << ":"
            << listener.port;
 
-  std::jthread warmUp([] { TtsService::instance().warmUp(); });
+  std::atomic<bool> warmUpDone{false};
+  shutdown_signal::onStop({.name = "tts-warm-up",
+                           .requestStop = [] { TtsService::instance().requestStop(); },
+                           .drained = [&warmUpDone] { return warmUpDone.load(std::memory_order_acquire); }});
+  std::jthread warmUp([&warmUpDone] {
+    TtsService::instance().warmUp();
+    warmUpDone.store(true, std::memory_order_release);
+  });
 
   drogon::app()
       .setThreadNum(0)

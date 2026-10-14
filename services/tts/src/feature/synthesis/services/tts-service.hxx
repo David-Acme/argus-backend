@@ -76,6 +76,7 @@ public:
   static TtsService& instance();
 
   void init();
+  void requestStop();
   void shutdown();
   bool isLoaded() const;
 

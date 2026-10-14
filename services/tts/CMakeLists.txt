@@ -147,6 +147,12 @@ target_compile_options(tts-pocket-test PRIVATE -Wall -Wextra)
 set_target_properties(tts-pocket-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME tts-pocket-test COMMAND tts-pocket-test)
 
+add_executable(tts-pocket-load-test tests/unit/tts-pocket-load-test.cc)
+target_link_libraries(tts-pocket-load-test PRIVATE argus::tts-pocket-load doctest::doctest)
+target_compile_options(tts-pocket-load-test PRIVATE -Wall -Wextra)
+set_target_properties(tts-pocket-load-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME tts-pocket-load-test COMMAND tts-pocket-load-test)
+
 add_executable(tts-provisioning-test tests/unit/tts-provisioning-test.cc)
 target_link_libraries(tts-provisioning-test PRIVATE argus::tts-provisioning argus::tts-settings doctest::doctest)
 argus_runtime_rpath(tts-provisioning-test)

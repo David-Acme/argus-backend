@@ -7,6 +7,13 @@ argus_module(NAME tts-speech-text
 
 target_compile_options(argus_tts-speech-text PRIVATE -Wall -Wextra)
 
+argus_module(NAME tts-pocket-load
+    SOURCES
+        infra/pocket/pocket-load.cc
+    INCLUDES ../..)
+
+target_compile_options(argus_tts-pocket-load PRIVATE -Wall -Wextra)
+
 argus_module(NAME tts-synthesis
     SOURCES
         services/tts-service.cc
@@ -24,6 +31,7 @@ argus_module(NAME tts-synthesis
     INCLUDES ../..
     DEPENDS
         argus::tts-speech-text
+        argus::tts-pocket-load
         argus::lib::audio
         argus::lib::config argus::lib::runtime
         argus::clients::tts

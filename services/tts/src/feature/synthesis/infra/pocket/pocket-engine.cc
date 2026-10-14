@@ -1,5 +1,6 @@
 #include "pocket-engine.hxx"
 
+#include "pocket-load.hxx"
 #include "pocket-prompt.hxx"
 #include "unigram-tokenizer.hxx"
 
@@ -294,13 +295,23 @@ struct PocketEngine::Impl
     const auto openLight = [&](const std::string& name) {
       return openSession({.env = config.env, .path = config.directory / name, .options = lightOptions});
     };
-    textConditioner = openLight("text_conditioner.onnx");
-    flowMain = open("flow_lm_main" + suffix + ".onnx");
-    flowStep = openLight("flow_lm_flow" + suffix + ".onnx");
-    mimiDecoder = openSession(
-        {.env = config.env, .path = config.directory / ("mimi_decoder" + suffix + ".onnx"), .options = decoderOptions});
-    if (bundle.voiceCloning && std::filesystem::is_regular_file(config.directory / "voice_encoder.onnx"))
-      voiceEncoder = open("voice_encoder.onnx");
+    runPocketLoad(
+        {
+            {.name = "the text conditioner", .load = [&] { textConditioner = openLight("text_conditioner.onnx"); }},
+            {.name = "the flow model", .load = [&] { flowMain = open("flow_lm_main" + suffix + ".onnx"); }},
+            {.name = "the flow step", .load = [&] { flowStep = openLight("flow_lm_flow" + suffix + ".onnx"); }},
+            {.name = "the Mimi decoder",
+             .load = [&] {
+               mimiDecoder = openSession(
+                   {.env = config.env, .path = config.directory / ("mimi_decoder" + suffix + ".onnx"), .options = decoderOptions});
+             }},
+            {.name = "the voice encoder",
+             .load = [&] {
+               if (bundle.voiceCloning && std::filesystem::is_regular_file(config.directory / "voice_encoder.onnx"))
+                 voiceEncoder = open("voice_encoder.onnx");
+             }},
+        },
+        config.stopRequested);
     if (flowMain->GetInputCount() != bundle.flowStates.size() + 2 ||
         mimiDecoder->GetInputCount() != bundle.mimiStates.size() + 1)
       throw std::runtime_error("Pocket graphs do not match their bundle manifest");
