@@ -1,4 +1,5 @@
 #include <feature/call/services/push-delivery.hxx>
+#include <feature/call/services/call-push-routing.hxx>
 
 #include <shared/services/notification/push-copy.hxx>
 #include <text/json-util.hxx>
@@ -96,12 +97,7 @@ drogon::Task<int64_t> CallPushDelivery::deliver(const CallSchema& call, bool can
   const uint32_t ttl = cancelling ? kCancelTtlSeconds : remainingSeconds(call.expiresAt, now);
 
   int64_t published = 0;
-  for (const auto& device : devices) {
-    if (!push_envelope::combinationAllowed(device.provider, PushKind::Call)) {
-      LOG_INFO << "Call push: " << std::string(pushProviderToString(device.provider))
-               << " carries no call; skipped";
-      continue;
-    }
+  for (const auto& device : call_push_routing::devicesForCall(devices)) {
     const std::string deliveryId = randomBytes(kDeliveryIdSize);
     if (deliveryId.size() != kDeliveryIdSize)
       continue;

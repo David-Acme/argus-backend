@@ -327,6 +327,19 @@ target_compile_options(notification-delivery-live-test PRIVATE -Wall -Wextra)
 
 argus_nats_scratch_test(NAME notification-delivery-live-test)
 
+add_executable(call-push-routing-test tests/unit/call-push-routing-test.cc)
+
+set_target_properties(call-push-routing-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(call-push-routing-test PRIVATE
+    argus::notification-call
+    argus::contracts::push
+    doctest::doctest)
+
+target_compile_options(call-push-routing-test PRIVATE -Wall -Wextra)
+
+add_test(NAME call-push-routing-test COMMAND call-push-routing-test)
+
 add_executable(push-sealer-test tests/unit/push-sealer-test.cc)
 
 set_target_properties(push-sealer-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
