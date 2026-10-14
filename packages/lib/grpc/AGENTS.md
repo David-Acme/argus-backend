@@ -136,3 +136,12 @@ issue, a client without one and a plaintext client, a `tls:` target with
 nothing installed throws, a plain target stays plaintext while a certificate
 is installed, and the install refuses a second call, a call after
 `makeChannel` or `makeStreamingChannel`, and empty material.
+
+`tests/support/grpc-test-support/mutual-tls-endpoint.hxx` — `MutualTlsEndpoint`,
+the one test fixture every client's mutual TLS case uses: a loopback
+`startListening` with a plaintext port and a mutual TLS port, serving the given
+services with the named service's material. It exposes the plain target, the
+`tls:` target and the plaintext dial to the TLS port. Its test,
+`tests/unit/mutual-tls-endpoint-test.cc`, runs through the same script: a
+`makeChannel` `tls:` channel reaches the TLS port with the internal certificate,
+and a plaintext channel to that port is refused while the plain port serves.

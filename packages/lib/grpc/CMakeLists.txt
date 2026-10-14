@@ -86,6 +86,21 @@ add_test(NAME internal-tls-test
                  $<TARGET_FILE:internal-tls-test>)
 set_tests_properties(internal-tls-test PROPERTIES SKIP_RETURN_CODE 77)
 
+add_executable(mutual-tls-endpoint-test tests/unit/mutual-tls-endpoint-test.cc)
+
+set_target_properties(mutual-tls-endpoint-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(mutual-tls-endpoint-test PRIVATE
+    argus_client_grpc_base
+    argus::lib::grpc-test-support
+    doctest::doctest)
+target_compile_options(mutual-tls-endpoint-test PRIVATE -Wall -Wextra)
+add_test(NAME mutual-tls-endpoint-test
+         COMMAND bash ${ARGUS_GRPC_REPO_ROOT}/scripts/internal-tls-test.sh
+                 $<TARGET_FILE:mutual-tls-endpoint-test> 2)
+set_tests_properties(mutual-tls-endpoint-test PROPERTIES SKIP_RETURN_CODE 77)
+
 get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                     INTERFACE_INCLUDE_DIRECTORIES)
 if(DOCTEST_INCLUDE_DIRS)
