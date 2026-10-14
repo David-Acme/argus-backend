@@ -16,6 +16,8 @@
 #include <feature/reminder/controllers/reminder-controller.hxx>
 #include <feature/reminder/reminder-rpc-service.hxx>
 #include <shared/repositories/reminder/reminder-repository.hxx>
+#include <auth/auth-access.hxx>
+#include <auth/details/identity-access.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/module-feed.hxx>
@@ -173,6 +175,8 @@ int main()
       .extras = {tls_health::healthExtra(
           {.certificatePem = loadedTls.certificatePem, .trustBundlePem = loadedTls.trustBundlePem})}}));
 
+  requireIdentityTarget();
+  requireAuthTarget();
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
   drogon::app().registerFilter(std::make_shared<JwtFilter>());

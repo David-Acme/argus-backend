@@ -1,5 +1,6 @@
 #include <app/rpc/modules-rpc-server.hxx>
 #include <app/rpc/modules-rpc-service.hxx>
+#include <auth/auth-access.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/role-filter.hxx>
@@ -257,6 +258,7 @@ int main()
       {.gateway = firstRunGateway, .catalog = profiles, .hardware = hardware, .config = SettingsConfig::resolveFirstRun()});
   shutdown_signal::onStop(shutdown_signal::drainOf(firstRun, "settings-first-run"));
 
+  requireAuthTarget();
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
   drogon::app().registerFilter(std::make_shared<JwtFilter>());

@@ -188,6 +188,7 @@ int main()
                     .listener = listener,
                     .remote = remote}));
 
+  requireAuthTarget();
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
   drogon::app().registerFilter(std::make_shared<JwtFilter>());

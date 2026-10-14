@@ -3,6 +3,7 @@
 #include <identity/identity-client.hxx>
 #include <mutex>
 #include <config/config-service.hxx>
+#include <stdexcept>
 #include <string>
 
 namespace
@@ -11,16 +12,16 @@ namespace
 std::string resolveTarget()
 {
   auto target = ConfigService::getString("identity.target");
-  if (!target.empty())
-    return target;
-
-  auto host = ConfigService::getString("identity.rpc_host");
-  const int port = ConfigService::getInt("identity.rpc_port");
-  if (host.empty())
-    host = "127.0.0.1";
-  return host + ":" + std::to_string(port > 0 ? port : 7040);
+  if (target.empty())
+    throw std::runtime_error("identity.target is empty; run scripts/setup.sh");
+  return target;
 }
 
+}
+
+void requireIdentityTarget()
+{
+  static_cast<void>(resolveTarget());
 }
 
 std::shared_ptr<const IdentityClient> filterIdentityClient()

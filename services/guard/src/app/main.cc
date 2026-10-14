@@ -32,6 +32,7 @@
 #include <feature/presence/infra/nats-presence-publisher.hxx>
 #include <feature/presence/services/presence-service.hxx>
 #include <feature/settings/guard-settings.hxx>
+#include <auth/auth-access.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/module-feed.hxx>
@@ -432,6 +433,7 @@ int main()
 
   registerHealth({.certificatePem = loadedTls.certificatePem,
                   .trustBundlePem = loadedTls.trustBundlePem});
+  requireAuthTarget();
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
   drogon::app().registerFilter(std::make_shared<JwtFilter>());

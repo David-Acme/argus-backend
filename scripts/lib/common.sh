@@ -446,8 +446,6 @@ device identity_mode
 device trust_forwarded_for
 device trusted_proxy_ips
 auth target
-auth rpc_host
-auth rpc_port
 auth credential
 identity target
 identity proxy_url

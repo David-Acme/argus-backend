@@ -5,3 +5,5 @@
 class IdentityClient;
 
 std::shared_ptr<const IdentityClient> filterIdentityClient();
+
+void requireIdentityTarget();

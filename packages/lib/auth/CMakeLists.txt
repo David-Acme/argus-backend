@@ -161,3 +161,8 @@ if(DOCTEST_INCLUDE_DIRS)
     set_target_properties(doctest::doctest PROPERTIES
         INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
 endif()
+
+add_executable(auth-target-test tests/unit/auth-target-test.cc)
+target_link_libraries(auth-target-test PRIVATE argus::lib::auth doctest::doctest)
+target_compile_options(auth-target-test PRIVATE -Wall -Wextra)
+add_test(NAME auth-target-test COMMAND auth-target-test)

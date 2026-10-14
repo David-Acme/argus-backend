@@ -605,6 +605,7 @@ TEST_CASE("the activity history is journaled with its module and read with filte
   journaledEventsCarryTheirModule();
   anInsertedActionReachesTheActivityScreen();
 
+  ConfigService::setRuntimeString("auth.target", "127.0.0.1:1");
   ConfigService::setRuntimeString("jwt.secret", "sync-activity-test-secret-0123456789abcdef");
   ConfigService::setRuntimeString("jwt.refresh_secret", "sync-activity-test-refresh-0123456789abc");
   const auto device = std::make_shared<DeviceFilter>();

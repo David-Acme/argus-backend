@@ -105,6 +105,7 @@ template <typename T>
 
 void setConfig()
 {
+  ConfigService::setRuntimeString("auth.target", "127.0.0.1:1");
   ConfigService::setRuntimeString("jwt.secret", kJwtSecret);
   ConfigService::setRuntimeString("jwt.refresh_secret", kRefreshSecret);
   ConfigService::setRuntimeString("jwt.access_ttl_minutes", "60");

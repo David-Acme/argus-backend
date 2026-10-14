@@ -3,6 +3,7 @@
 #include <auth/auth-client.hxx>
 #include <config/config-service.hxx>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <utility>
 
@@ -12,14 +13,9 @@ namespace
 std::string resolveTarget()
 {
   auto target = ConfigService::getString("auth.target");
-  if (!target.empty())
-    return target;
-
-  auto host = ConfigService::getString("auth.rpc_host");
-  const int port = ConfigService::getInt("auth.rpc_port");
-  if (host.empty())
-    host = "127.0.0.1";
-  return host + ":" + std::to_string(port > 0 ? port : 7043);
+  if (target.empty())
+    throw std::runtime_error("auth.target is empty; run scripts/setup.sh");
+  return target;
 }
 
 std::mutex& localMutex()
@@ -34,6 +30,11 @@ std::shared_ptr<const AuthClient>& localClient()
   return client;
 }
 
+}
+
+void requireAuthTarget()
+{
+  static_cast<void>(resolveTarget());
 }
 
 void installLocalAuthClient(std::shared_ptr<const AuthClient> client)

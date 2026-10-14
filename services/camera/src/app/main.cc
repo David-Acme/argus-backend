@@ -19,6 +19,7 @@
 #include <feature/module-data/services/camera-module-impact.hxx>
 #include <feature/settings/camera-settings.hxx>
 #include <feature/sync/camera-sync-rpc-service.hxx>
+#include <auth/auth-access.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/module-feed.hxx>
@@ -262,6 +263,7 @@ int main()
   drogon::app().registerController(std::make_shared<CameraControlController>());
   drogon::app().registerController(std::make_shared<CameraWebRtcController>());
 
+  requireAuthTarget();
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
   drogon::app().registerFilter(std::make_shared<ValidJsonFilter>());
   drogon::app().registerFilter(std::make_shared<JwtFilter>());
