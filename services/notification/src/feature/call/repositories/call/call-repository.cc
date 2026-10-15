@@ -7,6 +7,11 @@ using namespace call_query;
 
 namespace
 {
+drogon::orm::DbClient* executor(drogon::orm::DbClient* given, const drogon::orm::DbClientPtr& pool)
+{
+  return given != nullptr ? given : pool.get();
+}
+
 std::vector<CallSchema> rowsOf(const drogon::orm::Result& result)
 {
   std::vector<CallSchema> calls;
@@ -89,16 +94,16 @@ CallRepository::ringStats(const CallRingStatsInput& input) const
 
 drogon::Task<bool> CallRepository::claim(const CallClaimInput& input) const
 {
-  const auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(std::string(CLAIM), input.now, input.sessionId, input.id, input.userId,
-      input.now);
+  const auto pool = DbService::client();
+  const auto result = co_await executor(input.client, pool)->execSqlCoro(std::string(CLAIM), input.now, input.sessionId,
+      input.id, input.userId, input.now);
   co_return result.affectedRows() > 0;
 }
 
-drogon::Task<bool> CallRepository::markMissed(int64_t id, int64_t now) const
+drogon::Task<bool> CallRepository::markMissed(const CallMissedInput& input) const
 {
-  const auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(std::string(MARK_MISSED), now, id);
+  const auto pool = DbService::client();
+  const auto result = co_await executor(input.client, pool)->execSqlCoro(std::string(MARK_MISSED), input.now, input.id);
   co_return result.affectedRows() > 0;
 }
 
@@ -112,16 +117,16 @@ drogon::Task<bool> CallRepository::end(const CallEndInput& input) const
 
 drogon::Task<bool> CallRepository::declineRinging(const CallDeclineInput& input) const
 {
-  const auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(std::string(DECLINE_RINGING), input.now, input.id,
-      input.userId, input.now);
+  const auto pool = DbService::client();
+  const auto result = co_await executor(input.client, pool)->execSqlCoro(std::string(DECLINE_RINGING), input.now,
+      input.id, input.userId, input.now);
   co_return result.affectedRows() > 0;
 }
 
-drogon::Task<bool> CallRepository::markPushed(int64_t id, int64_t now) const
+drogon::Task<bool> CallRepository::markPushed(const CallPushedInput& input) const
 {
-  const auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(std::string(MARK_PUSHED), now, id);
+  const auto pool = DbService::client();
+  const auto result = co_await executor(input.client, pool)->execSqlCoro(std::string(MARK_PUSHED), input.now, input.id);
   co_return result.affectedRows() > 0;
 }
 
@@ -135,9 +140,9 @@ CallRepository::findFollowups(int64_t parentId) const
 drogon::Task<int64_t>
 CallRepository::settleFollowups(const CallSettleInput& input) const
 {
-  const auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(std::string(SETTLE_FOLLOWUPS), callStateToString(input.state), input.now,
-      input.parentId);
+  const auto pool = DbService::client();
+  const auto result = co_await executor(input.client, pool)->execSqlCoro(std::string(SETTLE_FOLLOWUPS),
+      callStateToString(input.state), input.now, input.parentId);
   co_return static_cast<int64_t>(result.affectedRows());
 }
 

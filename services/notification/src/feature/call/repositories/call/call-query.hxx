@@ -3,6 +3,8 @@
 #include <feature/call/vocabulary/call-state.hxx>
 #include <feature/call/vocabulary/call-trigger.hxx>
 
+#include <drogon/orm/DbClient.h>
+
 #include <cstdint>
 #include <string>
 #include <string_view>
@@ -126,6 +128,7 @@ struct CallClaimInput
   int64_t userId{0};
   std::string sessionId;
   int64_t now{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct CallEndInput
@@ -141,6 +144,21 @@ struct CallDeclineInput
   int64_t id{0};
   int64_t userId{0};
   int64_t now{0};
+  drogon::orm::DbClient* client{nullptr};
+};
+
+struct CallPushedInput
+{
+  int64_t id{0};
+  int64_t now{0};
+  drogon::orm::DbClient* client{nullptr};
+};
+
+struct CallMissedInput
+{
+  int64_t id{0};
+  int64_t now{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct CallSettleInput
@@ -148,6 +166,7 @@ struct CallSettleInput
   int64_t parentId{0};
   CallState state{CallState::Missed};
   int64_t now{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct CallCancelForKeyInput

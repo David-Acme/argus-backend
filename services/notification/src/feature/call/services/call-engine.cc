@@ -2,9 +2,13 @@
 
 #include <shared/vocabulary/notification-kind.hxx>
 
+#include <errors/response-exception.hxx>
 #include <feature/call/services/response-copy.hxx>
+#include <notification/notification-errors.hxx>
 #include <runtime/blocking-task.hxx>
 #include <shared/services/notification/push-copy.hxx>
+#include <sqlite/db-service.hxx>
+#include <sqlite/transaction.hxx>
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
 
@@ -254,7 +258,74 @@ drogon::Task<bool> CallEngine::emit(const CallSignalInput& input) const
       [signal, input]() { return signal->emit(input); });
 }
 
-drogon::Task<void> CallEngine::pushRing(const CallSchema& call) const
+drogon::Task<bool> CallEngine::pushRingOnce(const CallSchema& call, int64_t at) const
+{
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    if (!co_await callRepository_.markPushed({.id = call.id, .now = at, .client = transaction.get()})) {
+      db_transaction::rollback(transaction);
+      co_return false;
+    }
+    if (dependencies_.sealedPush)
+      static_cast<void>(co_await dependencies_.sealedPush->ring(call, transaction.get()));
+    if (!co_await db_transaction::Commit(std::move(transaction))) {
+      LOG_WARN << "Call engine: the ring of " << call.callId()
+               << " did not commit; the next sweep pushes it";
+      co_return false;
+    }
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  publishLegacyRing(call);
+  co_return true;
+}
+
+drogon::Task<bool> CallEngine::declineRingingAndCancel(const CallSchema& call, int64_t at) const
+{
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    if (!co_await callRepository_.declineRinging(
+            {.id = call.id, .userId = call.userId, .now = at, .client = transaction.get()})) {
+      db_transaction::rollback(transaction);
+      co_return false;
+    }
+    if (dependencies_.sealedPush)
+      static_cast<void>(co_await dependencies_.sealedPush->cancel(call, transaction.get()));
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(NotificationErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_return true;
+}
+
+drogon::Task<bool> CallEngine::missRingingAndCancel(const CallSchema& call, int64_t at) const
+{
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    if (!co_await callRepository_.markMissed({.id = call.id, .now = at, .client = transaction.get()})) {
+      db_transaction::rollback(transaction);
+      co_return false;
+    }
+    co_await callRepository_.settleFollowups(
+        {.parentId = call.id, .state = CallState::Missed, .now = at, .client = transaction.get()});
+    if (dependencies_.sealedPush)
+      static_cast<void>(co_await dependencies_.sealedPush->cancel(call, transaction.get()));
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(NotificationErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_return true;
+}
+
+void CallEngine::publishLegacyRing(const CallSchema& call) const
 {
   if (dependencies_.push) {
     Json::Value data(Json::objectValue);
@@ -273,16 +344,6 @@ drogon::Task<void> CallEngine::pushRing(const CallSchema& call) const
                                            .createdAtMs = call.createdAt * 1000,
                                            .data = data});
   }
-  if (dependencies_.sealedPush)
-    co_await dependencies_.sealedPush->ring(call);
-  co_return;
-}
-
-drogon::Task<void> CallEngine::cancelSealed(const CallSchema& call) const
-{
-  if (dependencies_.sealedPush)
-    co_await dependencies_.sealedPush->cancel(call);
-  co_return;
 }
 
 drogon::Task<void> CallEngine::noteDeclined(const CallSchema& call) const
@@ -552,9 +613,8 @@ CallEngine::finishUser(const FinishUserInput& input) const
       co_await emit({.userId = userId,
                      .operation = SyncOperation::CallIncoming,
                      .info = call_engine::incomingInfo(call)});
-      if (row.pushAfter <= input.now &&
-          co_await callRepository_.markPushed(call.id, input.now))
-        co_await pushRing(call);
+      if (row.pushAfter <= input.now)
+        static_cast<void>(co_await pushRingOnce(call, input.now));
       outcome.resolution = CallResolution::Rang;
       outcome.callId = *id;
       LOG_INFO << "Call engine: ringing user " << userId << " ("
@@ -619,18 +679,42 @@ CallEngine::claim(const CallClaimRequest& request) const
     outcome.status = CallClaimStatus::Expired;
     co_return outcome;
   }
-  if (!co_await callRepository_.claim({.id = id,
-                                       .userId = request.userId,
-                                       .sessionId = request.sessionId,
-                                       .now = at})) {
-    const auto raced = co_await callRepository_.findById(id);
-    outcome.status = raced && raced->state == CallState::Missed
-                         ? CallClaimStatus::Expired
-                         : CallClaimStatus::Taken;
-    co_return outcome;
+  CallSchema claimed = *existing;
+  claimed.state = CallState::Answered;
+  claimed.answeredAt = at;
+  claimed.answeredSession = request.sessionId;
+
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  std::vector<CallSchema> followups;
+  try {
+    if (!co_await callRepository_.claim({.id = id,
+                                         .userId = request.userId,
+                                         .sessionId = request.sessionId,
+                                         .now = at,
+                                         .client = transaction.get()})) {
+      db_transaction::rollback(transaction);
+      const auto raced = co_await callRepository_.findById(id);
+      outcome.status = raced && raced->state == CallState::Missed
+                           ? CallClaimStatus::Expired
+                           : CallClaimStatus::Taken;
+      co_return outcome;
+    }
+    followups = co_await callRepository_.findFollowups(id);
+    if (!followups.empty())
+      co_await callRepository_.settleFollowups({.parentId = id,
+                                                .state = CallState::Injected,
+                                                .now = at,
+                                                .client = transaction.get()});
+    if (dependencies_.sealedPush)
+      static_cast<void>(co_await dependencies_.sealedPush->cancel(claimed, transaction.get()));
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(NotificationErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
   }
 
-  const auto followups = co_await callRepository_.findFollowups(id);
   std::vector<std::string> lines;
   lines.reserve(followups.size());
   for (const auto& followup : followups) {
@@ -641,14 +725,6 @@ CallEngine::claim(const CallClaimRequest& request) const
                                              .now = at});
     lines.push_back(copy.followupLine);
   }
-  if (!followups.empty())
-    co_await callRepository_.settleFollowups(
-        {.parentId = id, .state = CallState::Injected, .now = at});
-
-  CallSchema claimed = *existing;
-  claimed.state = CallState::Answered;
-  claimed.answeredAt = at;
-  claimed.answeredSession = request.sessionId;
   outcome.status = CallClaimStatus::Claimed;
   outcome.openingLine = call_copy::joinFollowups(existing->openingLine, lines);
   outcome.call = claimed;
@@ -660,7 +736,6 @@ CallEngine::claim(const CallClaimRequest& request) const
   co_await emit({.userId = request.userId,
                  .operation = SyncOperation::CallCancel,
                  .info = info});
-  co_await cancelSealed(claimed);
   LOG_INFO << "Call engine: " << claimed.callId() << " answered by user "
            << request.userId;
   co_await attendAnswered(claimed);
@@ -684,8 +759,7 @@ drogon::Task<CallEndStatus> CallEngine::end(const CallEndRequest& request) const
       co_return CallEndStatus::Expired;
     if (request.outcome != CallEndReport::Declined)
       co_return CallEndStatus::NotFound;
-    if (!co_await callRepository_.declineRinging(
-            {.id = id, .userId = request.userId, .now = at}))
+    if (!co_await declineRingingAndCancel(*existing, at))
       co_return CallEndStatus::Taken;
     Json::Value info(Json::objectValue);
     info["callId"] = existing->callId();
@@ -693,7 +767,6 @@ drogon::Task<CallEndStatus> CallEngine::end(const CallEndRequest& request) const
     co_await emit({.userId = request.userId,
                    .operation = SyncOperation::CallCancel,
                    .info = info});
-    co_await cancelSealed(*existing);
     co_await noteDeclined(*existing);
     co_return CallEndStatus::Ended;
   }
@@ -722,11 +795,9 @@ drogon::Task<CallEndStatus> CallEngine::end(const CallEndRequest& request) const
 drogon::Task<void> CallEngine::settleMissed(const MissedInput& input) const
 {
   const CallSchema& call = input.call;
-  if (!co_await callRepository_.markMissed(call.id, input.now))
-    co_return;
   const auto followups = co_await callRepository_.findFollowups(call.id);
-  co_await callRepository_.settleFollowups(
-      {.parentId = call.id, .state = CallState::Missed, .now = input.now});
+  if (!co_await missRingingAndCancel(call, input.now))
+    co_return;
 
   Json::Value info(Json::objectValue);
   info["callId"] = call.callId();
@@ -734,7 +805,6 @@ drogon::Task<void> CallEngine::settleMissed(const MissedInput& input) const
   co_await emit({.userId = call.userId,
                  .operation = SyncOperation::CallCancel,
                  .info = info});
-  co_await cancelSealed(call);
 
   if (!input.notify || !dependencies_.notifier)
     co_return;
@@ -922,11 +992,8 @@ drogon::Task<CallSweepReport> CallEngine::sweep() const
       ++report.missed;
       continue;
     }
-    if (call.pushedAt == 0 && call.pushAfter <= at &&
-        co_await callRepository_.markPushed(call.id, at)) {
-      co_await pushRing(call);
+    if (call.pushedAt == 0 && call.pushAfter <= at && co_await pushRingOnce(call, at))
       ++report.pushed;
-    }
   }
 
   for (const auto& due :

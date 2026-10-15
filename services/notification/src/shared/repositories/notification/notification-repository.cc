@@ -302,6 +302,10 @@ NotificationRepository::createManyWithCommand(
       }
       const auto& deliveryArgsRef = deliveryArgs;
       co_await transaction->execSqlCoro(deliverySql, deliveryArgsRef);
+      if (input.alerts)
+        co_await input.alerts->write({.inputs = normalized,
+                                      .notificationIds = ids,
+                                      .client = transaction.get()});
     }
   }
   catch (const std::exception&) {

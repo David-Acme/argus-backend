@@ -7,9 +7,7 @@ argus_module(NAME notification-call
         dtos/response-verdict-dto.cc
         dtos/update-call-preference-dto.cc
         infra/identity-call-directory.cc
-        infra/nats-call-push-sink.cc
         infra/nats-response-verdict-sink.cc
-        infra/notification-push-device-directory.cc
         infra/notification-call-sink.cc
         infra/sync-call-signal.cc
         infra/voice-call-announcer.cc
@@ -28,11 +26,11 @@ argus_module(NAME notification-call
         services/call-preference-service.cc
         services/call-trigger-classifier.cc
         services/push-delivery.cc
-        services/push-sealer.cc
         services/response-copy.cc
     INCLUDES ../..
     DEPENDS
         argus::notification-shared
+        argus::notification-push-delivery
         argus::notification-config
         argus::clients::identity
         argus::clients::sync

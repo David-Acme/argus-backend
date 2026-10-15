@@ -41,6 +41,11 @@ outboxConfig(const NatsNotificationChangeSink::Config& config)
                              nats_subject::kNotificationChange)},
       .maxAgeNs = stream_retention::kRetentionNs,
       .duplicatesNs = stream_retention::kDuplicatesNs};
+  NatsBus::StreamInput pushStream{
+      .name = std::string(nats_subject::kNotificationPushStream),
+      .subjects = {std::string(nats_subject::kNotificationPushDelivery)},
+      .maxAgeNs = push_delivery_retention::kMaxAgeNs,
+      .duplicatesNs = stream_retention::kDuplicatesNs};
   return {.label = "Notification change outbox",
           .client = [] { return DbService::client(); },
           .defaultSubject = stream.subjects.front(),
@@ -48,11 +53,11 @@ outboxConfig(const NatsNotificationChangeSink::Config& config)
               std::string(NatsNotificationChangeSink::kEventIdPrefix),
           .refusal = NotificationErrors::ChangeNotRecorded,
           .ensureStreams =
-              [stream = std::move(stream)](NatsBus& bus) {
-                if (!bus.ensureStream(stream))
+              [stream = std::move(stream), pushStream = std::move(pushStream)](NatsBus& bus) {
+                if (!bus.ensureStream(stream) || !bus.ensureStream(pushStream))
                   return false;
-                LOG_INFO << "Notification change outbox: stream "
-                         << stream.name << " ready";
+                LOG_INFO << "Notification change outbox: streams "
+                         << stream.name << " and " << pushStream.name << " ready";
                 return true;
               },
           .timing = {.retryMs = config.retryMs,
@@ -101,7 +106,7 @@ drogon::Task<void> NatsNotificationChangeSink::publishAudit(
   event.users = std::move(recipients);
   event.eventTimestamp = nowMs();
   std::string payload = json_util::toString(event.toJson());
-  co_await record({.table = input.tableName,
+  co_await recordChange({.table = input.tableName,
                    .recordId = input.recordId,
                    .discriminator = payload,
                    .payload = std::move(payload),
@@ -123,14 +128,14 @@ NatsNotificationChangeSink::emitUsers(const UserEmitInput& input) const
   std::string transition =
       payload + '|' + std::to_string(nowMs()) + '|' +
       std::to_string(transitions_.fetch_add(1, std::memory_order_relaxed));
-  co_await record({.table = input.body.option,
+  co_await recordChange({.table = input.body.option,
                    .recordId = recordId.asInt64(),
                    .discriminator = std::move(transition),
                    .payload = std::move(payload),
                    .client = input.client});
 }
 
-drogon::Task<void> NatsNotificationChangeSink::record(RecordInput input) const
+drogon::Task<void> NatsNotificationChangeSink::recordChange(RecordInput input) const
 {
   std::string eventId =
       outbox::transitionId({.prefix = kEventIdPrefix,
@@ -141,6 +146,15 @@ drogon::Task<void> NatsNotificationChangeSink::record(RecordInput input) const
                                              .subject = subject_,
                                              .payload = std::move(input.payload),
                                              .client = input.client}));
+}
+
+drogon::Task<void>
+NatsNotificationChangeSink::record(PushDeliveryRecord entry) const
+{
+  static_cast<void>(co_await outbox_.record({.eventId = std::move(entry.eventId),
+                                             .subject = std::string(nats_subject::kNotificationPushDelivery),
+                                             .payload = std::move(entry.payload),
+                                             .client = entry.client}));
 }
 
 void NatsNotificationChangeSink::reconcile()

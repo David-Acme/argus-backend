@@ -371,9 +371,13 @@ private:
 
   drogon::Task<bool> emit(const CallSignalInput& input) const;
 
-  drogon::Task<void> pushRing(const CallSchema& call) const;
+  drogon::Task<bool> pushRingOnce(const CallSchema& call, int64_t at) const;
 
-  drogon::Task<void> cancelSealed(const CallSchema& call) const;
+  drogon::Task<bool> declineRingingAndCancel(const CallSchema& call, int64_t at) const;
+
+  drogon::Task<bool> missRingingAndCancel(const CallSchema& call, int64_t at) const;
+
+  void publishLegacyRing(const CallSchema& call) const;
 
   drogon::Task<void> noteDeclined(const CallSchema& call) const;
 

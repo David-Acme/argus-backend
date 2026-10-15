@@ -66,6 +66,7 @@ public:
     std::shared_ptr<const NotificationDeliverySink> deliverySink;
     std::shared_ptr<const push_intent::PushIntentSink> pushSink;
     bool pushRequired{false};
+    std::shared_ptr<const NotificationAlertWriter> alerts;
     std::function<bool(std::string_view)> kindAllowed{};
   };
 

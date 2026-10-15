@@ -1,6 +1,8 @@
 #pragma once
 #include <drogon/orm/DbClient.h>
+#include <drogon/utils/coroutine.h>
 #include <json/value.h>
+#include <memory>
 #include <optional>
 #include <shared/schemas/notification/notification-schema.hxx>
 #include <stdexcept>
@@ -224,11 +226,28 @@ struct NotificationCreateInput
   Json::Value data;
 };
 
+struct NotificationAlertRound
+{
+  std::vector<NotificationCreateInput> inputs;
+  std::vector<int64_t> notificationIds;
+  drogon::orm::DbClient* client{nullptr};
+};
+
+class NotificationAlertWriter
+{
+public:
+  virtual ~NotificationAlertWriter() = default;
+
+  [[nodiscard]] virtual drogon::Task<void>
+  write(NotificationAlertRound round) const = 0;
+};
+
 struct NotificationBatchCommitInput
 {
   std::vector<NotificationCreateInput> inputs;
   std::string commandId;
   int64_t at{0};
+  std::shared_ptr<const NotificationAlertWriter> alerts;
 };
 
 struct NotificationSchemaBuildInput

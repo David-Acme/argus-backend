@@ -6,6 +6,7 @@ argus_module(NAME notification-change-sink
     DEPENDS
         argus::contracts::notification
         argus::contracts::sync
+        argus::notification-push-delivery
         argus::lib::errors
         argus::lib::nats
         argus::lib::runtime

@@ -108,7 +108,8 @@ drogon::Task<NotificationCreateOutcome> NotificationService::createManyAndEmit(
       co_await repository_.createManyWithCommand(
           {.inputs = std::move(inputs),
            .commandId = input.commandId,
-           .at = static_cast<int64_t>(std::time(nullptr))});
+           .at = static_cast<int64_t>(std::time(nullptr)),
+           .alerts = dependencies_.alerts});
   outcome.duplicate = committed.duplicate;
   outcome.createdCount = committed.expectedCount;
   const DeliverPendingOutcome pendingOutcome = co_await deliverPending();

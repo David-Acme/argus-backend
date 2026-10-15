@@ -1,9 +1,10 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <feature/call/infra/nats-call-push-sink.hxx>
 #include <feature/call/services/push-delivery.hxx>
+#include <shared/services/push-delivery/push-delivery-wire.hxx>
 #include <text/base64.hxx>
+#include <text/json-util.hxx>
 
 #include <drogon/utils/coroutine.h>
 
@@ -11,6 +12,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace
@@ -42,28 +44,28 @@ std::string base64UrlOf(const std::string& bytes)
   return text;
 }
 
-class OneFcmDevice final : public CallPushDeviceDirectory
+class OneFcmDevice final : public PushDeviceDirectory
 {
 public:
-  drogon::Task<std::vector<CallPushDevice>> devicesOf(int64_t) const override
+  drogon::Task<std::vector<PushDevice>> devicesOf(int64_t) const override
   {
-    co_return std::vector<CallPushDevice>{{.provider = PushProvider::Fcm,
-                                           .token = "fcm-token-0001",
-                                           .publicKey = base64UrlOf(fromHex(kRecipientPublicHex)),
-                                           .keyId = "key-0001"}};
+    co_return std::vector<PushDevice>{{.provider = PushProvider::Fcm,
+                                       .token = "fcm-token-0001",
+                                       .publicKey = base64UrlOf(fromHex(kRecipientPublicHex)),
+                                       .keyId = "key-0001"}};
   }
 };
 
-class RecordingCallSink final : public CallPushSink
+class RecordingOutbox final : public PushDeliveryOutbox
 {
 public:
-  bool publish(const CallPushMessage& message) const override
+  drogon::Task<void> record(PushDeliveryRecord entry) const override
   {
-    messages.push_back(message);
-    return true;
+    entries.push_back(std::move(entry));
+    co_return;
   }
 
-  mutable std::vector<CallPushMessage> messages;
+  mutable std::vector<PushDeliveryRecord> entries;
 };
 
 CallSchema ringingCall(int64_t expiresAt)
@@ -81,51 +83,60 @@ CallSchema ringingCall(int64_t expiresAt)
   return call;
 }
 
-CallPushDelivery deliveryOver(const std::shared_ptr<RecordingCallSink>& sink)
+CallPushDelivery deliveryOver(const std::shared_ptr<RecordingOutbox>& outbox)
 {
-  return CallPushDelivery(std::make_shared<OneFcmDevice>(), sink, [] { return kNow; });
+  return CallPushDelivery(CallPushDeliveryDependencies{.devices = std::make_shared<OneFcmDevice>(),
+                                                       .outbox = outbox,
+                                                       .clock = [] { return kNow; }});
+}
+
+Json::Value payloadOf(const PushDeliveryRecord& entry)
+{
+  return json_util::fromString(entry.payload);
 }
 }
 
-TEST_CASE("a ring is published with the end of its ring as expiresAt in epoch milliseconds")
+TEST_CASE("a ring is recorded with the end of its ring as expiresAt in epoch milliseconds")
 {
-  const auto sink = std::make_shared<RecordingCallSink>();
+  const auto outbox = std::make_shared<RecordingOutbox>();
   const CallSchema call = ringingCall(kNow + 120);
 
-  const int64_t published = drogon::sync_wait(deliveryOver(sink).ring(call));
+  const int64_t recorded = drogon::sync_wait(deliveryOver(outbox).ring(call, nullptr));
 
-  CHECK(published == 1);
-  REQUIRE(sink->messages.size() == 1);
-  CHECK(sink->messages[0].expiresAtMs == (kNow + 120) * 1000);
-  CHECK(sink->messages[0].envelope.ttlSeconds == 120);
-  CHECK(sink->messages[0].envelope.collapseId == call.callId());
+  CHECK(recorded == 1);
+  REQUIRE(outbox->entries.size() == 1);
+  const Json::Value payload = payloadOf(outbox->entries[0]);
+  CHECK(payload["expiresAt"].asInt64() == (kNow + 120) * 1000);
+  CHECK(payload["ttlSeconds"].asUInt64() == 120);
+  CHECK(payload["collapseId"].asString() == call.callId());
+  CHECK(payload["kind"].asString() == "call");
 }
 
-TEST_CASE("a cancel is published with expiresAt sixty seconds after it is sealed")
+TEST_CASE("a cancel is recorded with expiresAt sixty seconds after it is sealed")
 {
-  const auto sink = std::make_shared<RecordingCallSink>();
+  const auto outbox = std::make_shared<RecordingOutbox>();
   const CallSchema call = ringingCall(kNow + 900);
 
-  const int64_t published = drogon::sync_wait(deliveryOver(sink).cancel(call));
+  const int64_t recorded = drogon::sync_wait(deliveryOver(outbox).cancel(call, nullptr));
 
-  CHECK(published == 1);
-  REQUIRE(sink->messages.size() == 1);
-  CHECK(sink->messages[0].expiresAtMs == (kNow + kCancelTtlSeconds) * 1000);
-  CHECK(sink->messages[0].envelope.ttlSeconds == kCancelTtlSeconds);
+  CHECK(recorded == 1);
+  REQUIRE(outbox->entries.size() == 1);
+  const Json::Value payload = payloadOf(outbox->entries[0]);
+  CHECK(payload["expiresAt"].asInt64() == (kNow + kCancelTtlSeconds) * 1000);
+  CHECK(payload["ttlSeconds"].asUInt64() == static_cast<uint64_t>(kCancelTtlSeconds));
 }
 
-TEST_CASE("the call wire payload carries expiresAt beside the sealed envelope")
+TEST_CASE("a delivery is recorded under the msg id of its delivery id, once per device")
 {
-  const auto sink = std::make_shared<RecordingCallSink>();
-  static_cast<void>(drogon::sync_wait(deliveryOver(sink).ring(ringingCall(kNow + 120))));
-  REQUIRE(sink->messages.size() == 1);
+  const auto outbox = std::make_shared<RecordingOutbox>();
+  static_cast<void>(drogon::sync_wait(deliveryOver(outbox).ring(ringingCall(kNow + 120), nullptr)));
+  REQUIRE(outbox->entries.size() == 1);
 
-  const Json::Value json = call_push_wire::toJson(sink->messages[0]);
+  const std::string eventId = outbox->entries[0].eventId;
+  const Json::Value payload = payloadOf(outbox->entries[0]);
+  const std::string deliveryId = base64::decode(payload["deliveryId"].asString()).value();
 
-  CHECK(json["expiresAt"].isIntegral());
-  CHECK(json["expiresAt"].asInt64() == (kNow + 120) * 1000);
-  CHECK(json["kind"].asString() == "call");
-  CHECK(json["provider"].asString() == "fcm");
-  CHECK(json["collapseId"].asString() == sink->messages[0].envelope.collapseId);
-  CHECK(json["token"].asString() == "fcm-token-0001");
+  CHECK(eventId == std::string(push_delivery_wire::kEventIdPrefix) + push_delivery_wire::hexOf(deliveryId));
+  CHECK(payload["token"].asString() == "fcm-token-0001");
+  CHECK(payload["provider"].asString() == "fcm");
 }

@@ -6,13 +6,14 @@
 #include <drogon/utils/coroutine.h>
 #include <memory>
 #include <outbox/transactional-outbox.hxx>
+#include <shared/services/push-delivery/push-delivery-outbox.hxx>
 #include <string>
 #include <string_view>
 #include <sync/user-change-sink.hxx>
 
 class NatsBus;
 
-class NatsNotificationChangeSink : public UserEmitSink
+class NatsNotificationChangeSink : public UserEmitSink, public PushDeliveryOutbox
 {
 public:
   struct Config
@@ -35,6 +36,8 @@ public:
   publishAudit(const UserAuditInput& input) const override;
   [[nodiscard]] drogon::Task<void>
   emitUsers(const UserEmitInput& input) const override;
+  [[nodiscard]] drogon::Task<void>
+  record(PushDeliveryRecord entry) const override;
 
   void reconcile();
   void requestStop();
@@ -55,7 +58,7 @@ private:
     drogon::orm::DbClient* client{nullptr};
   };
 
-  [[nodiscard]] drogon::Task<void> record(RecordInput input) const;
+  [[nodiscard]] drogon::Task<void> recordChange(RecordInput input) const;
 
   const std::string subject_;
   mutable std::atomic<uint64_t> transitions_{0};

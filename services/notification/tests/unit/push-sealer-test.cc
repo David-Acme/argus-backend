@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
-#include <feature/call/services/push-sealer.hxx>
+#include <shared/services/push-delivery/push-sealer.hxx>
 #include <text/base64.hxx>
 #include <text/json-util.hxx>
 

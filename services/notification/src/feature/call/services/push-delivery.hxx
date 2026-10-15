@@ -1,9 +1,11 @@
 #pragma once
 
-#include <feature/call/services/call-ports.hxx>
-#include <feature/call/services/push-sealer.hxx>
 #include <feature/call/schemas/call/call-schema.hxx>
+#include <shared/services/push-delivery/push-delivery-outbox.hxx>
+#include <shared/services/push-delivery/push-device.hxx>
+#include <shared/services/push-delivery/push-sealer.hxx>
 
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 
 #include <cstdint>
@@ -13,21 +15,35 @@
 
 std::string callDeepLink(const std::string& callId);
 
+struct CallPushDeliveryDependencies
+{
+  std::shared_ptr<const PushDeviceDirectory> devices;
+  std::shared_ptr<const PushDeliveryOutbox> outbox;
+  std::function<int64_t()> clock;
+};
+
+struct CallPushInput
+{
+  CallSchema call;
+  bool cancelling{false};
+  drogon::orm::DbClient* client{nullptr};
+};
+
 class CallPushDelivery
 {
 public:
-  CallPushDelivery(std::shared_ptr<const CallPushDeviceDirectory> devices,
-                   std::shared_ptr<const CallPushSink> sink,
-                   std::function<int64_t()> clock);
+  explicit CallPushDelivery(CallPushDeliveryDependencies dependencies);
 
-  drogon::Task<int64_t> ring(const CallSchema& call) const;
-  drogon::Task<int64_t> cancel(const CallSchema& call) const;
+  [[nodiscard]] drogon::Task<int64_t> ring(const CallSchema& call,
+                                           drogon::orm::DbClient* client) const;
+  [[nodiscard]] drogon::Task<int64_t> cancel(const CallSchema& call,
+                                             drogon::orm::DbClient* client) const;
 
 private:
-  drogon::Task<int64_t> deliver(const CallSchema& call, bool cancelling) const;
+  [[nodiscard]] drogon::Task<int64_t> deliver(CallPushInput input) const;
 
-  std::shared_ptr<const CallPushDeviceDirectory> devices_;
-  std::shared_ptr<const CallPushSink> sink_;
+  std::shared_ptr<const PushDeviceDirectory> devices_;
+  std::shared_ptr<const PushDeliveryOutbox> outbox_;
   std::function<int64_t()> clock_;
   PushSealer sealer_;
 };

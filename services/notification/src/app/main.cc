@@ -45,8 +45,8 @@
 #include <runtime/log-output.hxx>
 #include <config/notification-config.hxx>
 #include <shared/repositories/notification-token/notification-token-index.hxx>
-#include <feature/call/infra/nats-call-push-sink.hxx>
-#include <feature/call/infra/notification-push-device-directory.hxx>
+#include <shared/services/push-delivery/notification-push-device-directory.hxx>
+#include <shared/services/push-delivery/push-alert-writer.hxx>
 #include <feature/call/services/push-delivery.hxx>
 #include <feature/notification/services/push-outcome/push-outcome-service.hxx>
 #include <sync/sync-client.hxx>
@@ -225,6 +225,23 @@ int main()
     }
   }
 
+  const auto epochSecondsNow = [] {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+  };
+  std::shared_ptr<const PushDeviceDirectory> pushDevices;
+  std::shared_ptr<const CallPushDelivery> sealedPush;
+  std::shared_ptr<const NotificationAlertWriter> alertWriter;
+  if (changeSink) {
+    pushDevices = std::make_shared<NotificationPushDeviceDirectory>();
+    sealedPush = std::make_shared<CallPushDelivery>(CallPushDeliveryDependencies{
+        .devices = pushDevices, .outbox = changeSink, .clock = epochSecondsNow});
+    if (push_intent::enabledFromConfig())
+      alertWriter = std::make_shared<PushAlertWriter>(PushAlertWriterDependencies{
+          .devices = pushDevices, .outbox = changeSink, .clock = epochSecondsNow});
+  }
+
   const auto modules = module_gate::install({.service = "notification", .bus = natsBus});
   const auto kindAllowed = [](std::string_view kind) {
     const auto module = notification_kind::moduleOf(kind);
@@ -235,6 +252,7 @@ int main()
       .deliverySink = deliverySink,
       .pushSink = pushIntentSink,
       .pushRequired = push_intent::enabledFromConfig(),
+      .alerts = alertWriter,
       .kindAllowed = kindAllowed};
 
   const NotificationIdentityConfig identityConfig =
@@ -286,16 +304,6 @@ int main()
   else
     LOG_INFO << "Voice target or credential unset; calls never speak into a "
                 "live conversation and always ring";
-  std::shared_ptr<const CallPushDelivery> sealedPush;
-  if (natsBus)
-    sealedPush = std::make_shared<CallPushDelivery>(
-        std::make_shared<NotificationPushDeviceDirectory>(),
-        std::make_shared<NatsCallPushSink>(natsBus),
-        [] {
-          return std::chrono::duration_cast<std::chrono::seconds>(
-                     std::chrono::system_clock::now().time_since_epoch())
-              .count();
-        });
   const auto callEngine = std::make_shared<CallEngine>(
       NotificationConfig::resolveCalls(),
       CallEngineDependencies{

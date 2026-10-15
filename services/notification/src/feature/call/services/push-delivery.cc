@@ -2,6 +2,7 @@
 #include <feature/call/services/call-push-routing.hxx>
 
 #include <shared/services/notification/push-copy.hxx>
+#include <shared/services/push-delivery/push-delivery-wire.hxx>
 #include <text/json-util.hxx>
 
 #include <trantor/utils/Logger.h>
@@ -16,19 +17,6 @@ constexpr std::size_t kDeliveryIdSize = push_envelope::kDeliveryIdSize;
 constexpr std::size_t kIntentIdSize = 16;
 constexpr std::size_t kMaxCollapseIdSize = push_envelope::kMaxCollapseIdSize;
 constexpr uint32_t kCancelTtlSeconds = 60;
-
-std::string hexOf(const std::string& bytes)
-{
-  static constexpr std::string_view kDigits = "0123456789abcdef";
-  std::string out;
-  out.reserve(bytes.size() * 2);
-  for (const char byte : bytes) {
-    const auto value = static_cast<unsigned char>(byte);
-    out.push_back(kDigits[value >> 4U]);
-    out.push_back(kDigits[value & 0x0FU]);
-  }
-  return out;
-}
 
 std::string intentUrgency(const std::string& urgency)
 {
@@ -49,27 +37,30 @@ std::string callDeepLink(const std::string& callId)
   return "argus://call?callId=" + callId;
 }
 
-CallPushDelivery::CallPushDelivery(std::shared_ptr<const CallPushDeviceDirectory> devices,
-                                   std::shared_ptr<const CallPushSink> sink,
-                                   std::function<int64_t()> clock)
-    : devices_(std::move(devices)), sink_(std::move(sink)), clock_(std::move(clock))
+CallPushDelivery::CallPushDelivery(CallPushDeliveryDependencies dependencies)
+    : devices_(std::move(dependencies.devices)),
+      outbox_(std::move(dependencies.outbox)),
+      clock_(std::move(dependencies.clock))
 {
 }
 
-drogon::Task<int64_t> CallPushDelivery::ring(const CallSchema& call) const
+drogon::Task<int64_t> CallPushDelivery::ring(const CallSchema& call,
+                                             drogon::orm::DbClient* client) const
 {
-  co_return co_await deliver(call, false);
+  co_return co_await deliver({.call = call, .cancelling = false, .client = client});
 }
 
-drogon::Task<int64_t> CallPushDelivery::cancel(const CallSchema& call) const
+drogon::Task<int64_t> CallPushDelivery::cancel(const CallSchema& call,
+                                               drogon::orm::DbClient* client) const
 {
-  co_return co_await deliver(call, true);
+  co_return co_await deliver({.call = call, .cancelling = true, .client = client});
 }
 
-drogon::Task<int64_t> CallPushDelivery::deliver(const CallSchema& call, bool cancelling) const
+drogon::Task<int64_t> CallPushDelivery::deliver(CallPushInput input) const
 {
-  if (!devices_ || !sink_)
+  if (!devices_ || !outbox_)
     co_return 0;
+  const CallSchema& call = input.call;
   const int64_t now = clock_();
   const auto devices = co_await devices_->devicesOf(call.userId);
   if (devices.empty())
@@ -90,14 +81,14 @@ drogon::Task<int64_t> CallPushDelivery::deliver(const CallSchema& call, bool can
   const std::string intentId = randomBytes(kIntentIdSize);
   if (intentId.size() != kIntentIdSize)
     co_return 0;
-  intent["intentId"] = hexOf(intentId);
-  if (cancelling)
+  intent["intentId"] = push_delivery_wire::hexOf(intentId);
+  if (input.cancelling)
     intent["cancel"] = true;
   const std::string plaintext = json_util::toString(intent);
-  const uint32_t ttl = cancelling ? kCancelTtlSeconds : remainingSeconds(call.expiresAt, now);
-  const int64_t expiresAtMs = (cancelling ? now + kCancelTtlSeconds : call.expiresAt) * 1000;
+  const uint32_t ttl = input.cancelling ? kCancelTtlSeconds : remainingSeconds(call.expiresAt, now);
+  const int64_t expiresAtMs = (input.cancelling ? now + kCancelTtlSeconds : call.expiresAt) * 1000;
 
-  int64_t published = 0;
+  int64_t recorded = 0;
   for (const auto& device : call_push_routing::devicesForCall(devices)) {
     const std::string deliveryId = randomBytes(kDeliveryIdSize);
     if (deliveryId.size() != kDeliveryIdSize)
@@ -118,8 +109,9 @@ drogon::Task<int64_t> CallPushDelivery::deliver(const CallSchema& call, bool can
                << "); not sent";
       continue;
     }
-    if (sink_->publish({.envelope = sealed.envelope, .expiresAtMs = expiresAtMs}))
-      ++published;
+    co_await outbox_->record(push_delivery_wire::recordOf(
+        {.envelope = sealed.envelope, .expiresAtMs = expiresAtMs}, input.client));
+    ++recorded;
   }
-  co_return published;
+  co_return recorded;
 }

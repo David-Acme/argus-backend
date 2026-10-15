@@ -125,6 +125,7 @@ add_subdirectory(src/config)
 add_subdirectory(src/shared)
 add_subdirectory(src/shared/services/change-sink)
 add_subdirectory(src/shared/services/delivery-sink)
+add_subdirectory(src/shared/services/push-delivery)
 
 file(GLOB NOTIFICATION_FEATURE_MODULES CONFIGURE_DEPENDS
     "${NOTIFICATION_SRC_ROOT}/feature/*/CMakeLists.txt")
@@ -367,6 +368,7 @@ set_target_properties(call-push-delivery-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(call-push-delivery-test PRIVATE
     argus::notification-call
+    argus::notification-push-delivery
     argus::contracts::push
     argus::lib::text
     doctest::doctest)
@@ -374,6 +376,40 @@ target_link_libraries(call-push-delivery-test PRIVATE
 target_compile_options(call-push-delivery-test PRIVATE -Wall -Wextra)
 
 add_test(NAME call-push-delivery-test COMMAND call-push-delivery-test)
+
+add_executable(push-alert-writer-test tests/unit/push-alert-writer-test.cc)
+
+set_target_properties(push-alert-writer-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(push-alert-writer-test PRIVATE
+    argus::notification-push-delivery
+    argus::contracts::push
+    argus::lib::text
+    doctest::doctest)
+
+target_compile_options(push-alert-writer-test PRIVATE -Wall -Wextra)
+
+add_test(NAME push-alert-writer-test COMMAND push-alert-writer-test)
+
+add_executable(notification-push-outbox-test tests/unit/notification-push-outbox-test.cc)
+
+set_target_properties(notification-push-outbox-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_compile_definitions(notification-push-outbox-test PRIVATE
+    ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_link_libraries(notification-push-outbox-test PRIVATE
+    argus::notification-change-sink
+    argus::notification-shared
+    argus::notification-call
+    argus::notification-push-delivery
+    argus::lib::nats
+    argus::lib::sqlite
+    doctest::doctest)
+
+target_compile_options(notification-push-outbox-test PRIVATE -Wall -Wextra)
+
+add_test(NAME notification-push-outbox-test COMMAND notification-push-outbox-test)
 
 add_executable(register-notification-token-dto-test tests/unit/register-notification-token-dto-test.cc)
 

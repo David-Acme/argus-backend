@@ -3,7 +3,6 @@
 #include <auth/user-role.hxx>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
-#include <push/push-envelope.hxx>
 #include <sync/sync-operation.hxx>
 
 #include <cstdint>
@@ -117,33 +116,4 @@ public:
   virtual void publish(const ResponseVerdictEvent& event) const = 0;
 };
 
-struct CallPushDevice
-{
-  PushProvider provider{PushProvider::Fcm};
-  std::string token;
-  std::string publicKey;
-  std::string keyId;
-};
 
-class CallPushDeviceDirectory
-{
-public:
-  virtual ~CallPushDeviceDirectory() = default;
-
-  [[nodiscard]] virtual drogon::Task<std::vector<CallPushDevice>>
-  devicesOf(int64_t userId) const = 0;
-};
-
-struct CallPushMessage
-{
-  PushSealedEnvelope envelope;
-  int64_t expiresAtMs{0};
-};
-
-class CallPushSink
-{
-public:
-  virtual ~CallPushSink() = default;
-
-  [[nodiscard]] virtual bool publish(const CallPushMessage& message) const = 0;
-};

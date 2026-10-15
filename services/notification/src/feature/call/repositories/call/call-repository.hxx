@@ -29,13 +29,13 @@ public:
 
   drogon::Task<bool> claim(const CallClaimInput& input) const;
 
-  drogon::Task<bool> markMissed(int64_t id, int64_t now) const;
+  drogon::Task<bool> markMissed(const CallMissedInput& input) const;
 
   drogon::Task<bool> end(const CallEndInput& input) const;
 
   drogon::Task<bool> declineRinging(const CallDeclineInput& input) const;
 
-  drogon::Task<bool> markPushed(int64_t id, int64_t now) const;
+  drogon::Task<bool> markPushed(const CallPushedInput& input) const;
 
   drogon::Task<std::vector<CallSchema>> findFollowups(int64_t parentId) const;
 
