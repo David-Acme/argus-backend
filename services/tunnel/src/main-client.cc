@@ -73,6 +73,8 @@ struct SealedPushWiring
   std::unique_ptr<tunnel::link::SealedPushBridge> bridge;
 };
 
+constexpr double kSealedPushTickSeconds = 1.0;
+
 SealedPushWiring sealedPushWiring(PollLoop& loop)
 {
   const std::string natsUrl = ConfigService::getString("nats.url");
@@ -81,18 +83,10 @@ SealedPushWiring sealedPushWiring(PollLoop& loop)
     return {};
   }
   auto bus = std::make_shared<NatsBus>();
-  if (!bus->connect()) {
-    LOG_WARN << "argus-tunnel: NATS unavailable at " << natsUrl << "; sealed pushes stay off";
-    return {};
-  }
+  if (!bus->connect())
+    LOG_WARN << "argus-tunnel: NATS unavailable at " << natsUrl
+             << "; the sealed push consumer attaches once it connects";
   auto bridge = std::make_unique<tunnel::link::SealedPushBridge>(loop, bus);
-  if (!bridge->subscribe()) {
-    LOG_WARN << "argus-tunnel: cannot subscribe to " << nats_subject::kNotificationPushDelivery
-             << "; sealed pushes stay off";
-    return {};
-  }
-  LOG_INFO << "argus-tunnel: sealed pushes come from " << nats_subject::kNotificationPushDelivery
-           << " and results go to " << nats_subject::kNotificationPushResult;
   return {.bus = std::move(bus), .bridge = std::move(bridge)};
 }
 
@@ -228,6 +222,7 @@ int main()
                                   ? tunnel::linkHealthStatus(*linkClient)
                                          : clientHealthStatus(legacyClient);
   LinkStateWiring linkState = linkClient ? linkStateWiring(config, *linkClient) : LinkStateWiring{};
+  std::optional<trantor::TimerId> sealedTimer;
   const ClientRunner runner{
       .start = [&] {
         if (linkClient)
@@ -240,11 +235,20 @@ int main()
           linkState.timer = drogon::app().getLoop()->runEvery(kLinkStateTickSeconds,
                                                               [publisher] { publisher->tick(); });
         }
+        if (sealed.bridge) {
+          tunnel::link::SealedPushBridge* bridge = sealed.bridge.get();
+          bridge->tick();
+          sealedTimer = drogon::app().getLoop()->runEvery(kSealedPushTickSeconds,
+                                                          [bridge] { bridge->tick(); });
+        }
       },
       .stop = [&] {
         if (linkState.timer)
           drogon::app().getLoop()->invalidateTimer(*linkState.timer);
         linkState.timer.reset();
+        if (sealedTimer)
+          drogon::app().getLoop()->invalidateTimer(*sealedTimer);
+        sealedTimer.reset();
         if (sealed.bridge)
           sealed.bridge->unsubscribe();
         if (linkClient)

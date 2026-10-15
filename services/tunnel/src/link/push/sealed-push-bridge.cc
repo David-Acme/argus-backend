@@ -6,6 +6,7 @@
 #include <text/base64.hxx>
 #include <text/json-util.hxx>
 
+#include <chrono>
 #include <utility>
 
 namespace tunnel::link
@@ -36,11 +37,28 @@ std::optional<uint32_t> ttlField(const Json::Value& json)
     return std::nullopt;
   return static_cast<uint32_t>(ttl);
 }
+
+std::optional<int64_t> expiresAtField(const Json::Value& json)
+{
+  if (!json.isMember("expiresAt") || !json["expiresAt"].isIntegral())
+    return std::nullopt;
+  const auto expiresAt = json["expiresAt"].asInt64();
+  if (expiresAt < 0)
+    return std::nullopt;
+  return expiresAt;
+}
+
+int64_t epochMilliseconds()
+{
+  return std::chrono::duration_cast<std::chrono::milliseconds>(
+             std::chrono::system_clock::now().time_since_epoch())
+      .count();
+}
 }
 
 namespace sealed_push_json
 {
-std::optional<PushSealedEnvelope> deliveryFromJson(const std::string& text)
+std::optional<DurableDelivery> deliveryFromJson(const std::string& text)
 {
   const Json::Value json = json_util::fromString(text);
   if (!json.isObject())
@@ -49,12 +67,13 @@ std::optional<PushSealedEnvelope> deliveryFromJson(const std::string& text)
   const auto kind = textField(json, "kind");
   const auto priority = textField(json, "priority");
   const auto ttl = ttlField(json);
+  const auto expiresAt = expiresAtField(json);
   const auto deliveryId = bytesField(json, "deliveryId");
   const auto token = textField(json, "token");
   const auto collapseId = textField(json, "collapseId");
   const auto enc = bytesField(json, "enc");
   const auto ciphertext = bytesField(json, "ciphertext");
-  if (!provider || !kind || !priority || !ttl || !deliveryId || !token ||
+  if (!provider || !kind || !priority || !ttl || !expiresAt || !deliveryId || !token ||
       !collapseId || !enc || !ciphertext)
     return std::nullopt;
   const auto parsedProvider = pushProviderFromString(*provider);
@@ -73,7 +92,7 @@ std::optional<PushSealedEnvelope> deliveryFromJson(const std::string& text)
                               .ciphertext = *ciphertext};
   if (!push_envelope::wellFormed(envelope))
     return std::nullopt;
-  return envelope;
+  return DurableDelivery{.envelope = std::move(envelope), .expiresAtMs = *expiresAt};
 }
 
 std::string resultToJson(const PushResultEnvelope& result, std::string_view token)
@@ -88,30 +107,146 @@ std::string resultToJson(const PushResultEnvelope& result, std::string_view toke
 
 SealedPushLedger::SealedPushLedger(size_t capacity) : capacity_(capacity) {}
 
-void SealedPushLedger::remember(const std::string& deliveryId, const std::string& token)
+bool SealedPushLedger::contains(const std::string& deliveryId) const
 {
-  if (tokens_.contains(deliveryId))
+  return pending_.contains(deliveryId);
+}
+
+void SealedPushLedger::remember(const std::string& deliveryId, Pending pending)
+{
+  if (pending_.contains(deliveryId))
     return;
   while (order_.size() >= capacity_) {
-    tokens_.erase(order_.front());
+    pending_.erase(order_.front());
     order_.pop_front();
   }
   order_.push_back(deliveryId);
-  tokens_.emplace(deliveryId, token);
+  pending_.emplace(deliveryId, std::move(pending));
 }
 
-std::string SealedPushLedger::take(const std::string& deliveryId)
+void SealedPushLedger::replaceSettlement(const std::string& deliveryId, NatsBus::DurableSettlement settlement)
 {
-  const auto found = tokens_.find(deliveryId);
-  if (found == tokens_.end())
-    return {};
-  std::string token = std::move(found->second);
-  tokens_.erase(found);
-  return token;
+  const auto found = pending_.find(deliveryId);
+  if (found != pending_.end())
+    found->second.settlement = std::move(settlement);
+}
+
+std::optional<SealedPushLedger::Pending> SealedPushLedger::take(const std::string& deliveryId)
+{
+  const auto found = pending_.find(deliveryId);
+  if (found == pending_.end())
+    return std::nullopt;
+  Pending pending = std::move(found->second);
+  pending_.erase(found);
+  return pending;
+}
+
+DeliveredRecently::DeliveredRecently(size_t capacity) : capacity_(capacity) {}
+
+bool DeliveredRecently::contains(const std::string& deliveryId) const
+{
+  return seen_.contains(deliveryId);
+}
+
+void DeliveredRecently::remember(const std::string& deliveryId)
+{
+  if (seen_.contains(deliveryId))
+    return;
+  while (order_.size() >= capacity_) {
+    seen_.erase(order_.front());
+    order_.pop_front();
+  }
+  order_.push_back(deliveryId);
+  seen_.insert(deliveryId);
+}
+
+SealedPushDispatcher::SealedPushDispatcher(Ports ports, size_t capacity)
+    : ports_(std::move(ports)), pending_(capacity), delivered_(capacity)
+{
+}
+
+DispatchOutcome SealedPushDispatcher::dispatch(const DurableDelivery& delivery,
+                                               NatsBus::DurableSettlement settlement)
+{
+  const std::string& deliveryId = delivery.envelope.deliveryId;
+  if (delivery.expiresAtMs <= ports_.nowMs()) {
+    ++expired_;
+    LOG_INFO << "argus-tunnel: a sealed push past its end was acked without sending ("
+             << expired_ << " total)";
+    settlement.ack();
+    return DispatchOutcome::Expired;
+  }
+  if (delivered_.contains(deliveryId)) {
+    settlement.ack();
+    return DispatchOutcome::Duplicate;
+  }
+  if (pending_.contains(deliveryId)) {
+    pending_.replaceSettlement(deliveryId, std::move(settlement));
+    return DispatchOutcome::Duplicate;
+  }
+  if (!ports_.send(delivery.envelope)) {
+    settlement.nak();
+    return DispatchOutcome::LinkDown;
+  }
+  pending_.remember(deliveryId, {.token = delivery.envelope.token, .settlement = std::move(settlement)});
+  return DispatchOutcome::Sent;
+}
+
+void SealedPushDispatcher::result(const PushResultEnvelope& outcome)
+{
+  auto pending = pending_.take(outcome.deliveryId);
+  const std::string token = pending ? pending->token : std::string{};
+  const bool published = ports_.publishResult(outcome, token);
+  if (!pending)
+    return;
+  if (!published) {
+    pending->settlement.nak();
+    return;
+  }
+  delivered_.remember(outcome.deliveryId);
+  pending->settlement.ack();
+}
+
+ConsumerEdge DurableConsumerState::observe(bool attached)
+{
+  if (attached && !ready_) {
+    ready_ = true;
+    return ConsumerEdge::Ready;
+  }
+  if (!attached && ready_) {
+    ready_ = false;
+    return ConsumerEdge::Lost;
+  }
+  return ConsumerEdge::None;
+}
+
+std::string consumerReadyLine(std::string_view subject, std::string_view consumer)
+{
+  return "sealed push bridge ready on " + std::string(subject) + ", consumer " + std::string(consumer);
+}
+
+std::string consumerLostLine(std::string_view subject, std::string_view consumer)
+{
+  return "sealed push bridge lost " + std::string(subject) + ", consumer " + std::string(consumer);
 }
 
 SealedPushBridge::SealedPushBridge(PollLoop& loop, std::shared_ptr<NatsBus> bus)
-    : loop_(loop), bus_(std::move(bus))
+    : loop_(loop),
+      bus_(std::move(bus)),
+      dispatcher_(std::make_unique<SealedPushDispatcher>(
+          SealedPushDispatcher::Ports{
+              .send =
+                  [this](const PushSealedEnvelope& envelope) {
+                    return client_ != nullptr && client_->sendSealedPush(envelope);
+                  },
+              .publishResult =
+                  [this](const PushResultEnvelope& result, std::string_view token) {
+                    return bus_ != nullptr &&
+                           bus_->publish(nats_subject::kNotificationPushResult,
+                                         sealed_push_json::resultToJson(result, token));
+                  },
+              .nowMs = epochMilliseconds},
+          kLedgerCapacity))
 {
 }
 
@@ -120,49 +255,67 @@ void SealedPushBridge::attach(LinkClient& client)
   client_ = &client;
 }
 
-bool SealedPushBridge::subscribe()
+NatsBus::DurableInput SealedPushBridge::consumerInput()
 {
-  if (!bus_ || subscription_)
-    return false;
-  subscription_ = bus_->subscribe(nats_subject::kNotificationPushDelivery,
-                                  [this](std::string_view, std::string_view payload) {
-                                    onDelivery(payload);
-                                  });
-  return subscription_.has_value();
+  return {.stream = nats_subject::kNotificationPushStream,
+          .durable = nats_subject::kTunnelPushConsumer,
+          .subject = nats_subject::kNotificationPushDelivery,
+          .deliverAll = true,
+          .quiet = true,
+          .maxDeliver = kMaxDeliver,
+          .maxAckPending = NatsBus::kOrderedMaxAckPending,
+          .handler = [this](const NatsBus::DurableMessage& message,
+                            NatsBus::DurableSettlement settlement) {
+            onDelivery(message, std::move(settlement));
+          }};
+}
+
+void SealedPushBridge::tick()
+{
+  if (!bus_)
+    return;
+  if (!consumer_)
+    consumer_ = bus_->subscribeDurable(consumerInput());
+  const bool attached = consumer_.has_value() && bus_->durableAttached(*consumer_);
+  switch (consumerState_.observe(attached)) {
+    case ConsumerEdge::Ready:
+      LOG_INFO << "argus-tunnel: "
+               << consumerReadyLine(nats_subject::kNotificationPushDelivery,
+                                    nats_subject::kTunnelPushConsumer);
+      break;
+    case ConsumerEdge::Lost:
+      LOG_WARN << "argus-tunnel: "
+               << consumerLostLine(nats_subject::kNotificationPushDelivery,
+                                   nats_subject::kTunnelPushConsumer);
+      break;
+    case ConsumerEdge::None:
+      break;
+  }
 }
 
 void SealedPushBridge::unsubscribe()
 {
-  if (bus_ && subscription_)
-    bus_->unsubscribe(*subscription_);
-  subscription_.reset();
+  if (bus_ && consumer_)
+    bus_->unsubscribe(*consumer_);
+  consumer_.reset();
 }
 
-void SealedPushBridge::onDelivery(std::string_view payload)
+void SealedPushBridge::onDelivery(const NatsBus::DurableMessage& message,
+                                  NatsBus::DurableSettlement settlement)
 {
-  const auto envelope = sealed_push_json::deliveryFromJson(std::string(payload));
-  if (!envelope) {
+  auto delivery = sealed_push_json::deliveryFromJson(std::string(message.payload));
+  if (!delivery) {
     LOG_WARN << "argus-tunnel: protocol_error: push delivery is not well formed; dropped";
+    settlement.term();
     return;
   }
-  loop_.post([this, delivery = *envelope] { sendOnLoop(delivery); });
-}
-
-void SealedPushBridge::sendOnLoop(const PushSealedEnvelope& envelope)
-{
-  if (!client_)
-    return;
-  if (!client_->sendSealedPush(envelope))
-    return;
-  ledger_.remember(envelope.deliveryId, envelope.token);
+  loop_.post([this, delivery = std::move(*delivery), settlement = std::move(settlement)]() mutable {
+    static_cast<void>(dispatcher_->dispatch(delivery, std::move(settlement)));
+  });
 }
 
 void SealedPushBridge::onPushResult(const PushResultEnvelope& result)
 {
-  const std::string token = ledger_.take(result.deliveryId);
-  if (!bus_)
-    return;
-  bus_->publish(nats_subject::kNotificationPushResult,
-                sealed_push_json::resultToJson(result, token));
+  dispatcher_->result(result);
 }
 }

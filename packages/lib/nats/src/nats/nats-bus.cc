@@ -822,6 +822,13 @@ std::optional<uint64_t> NatsBus::subscribeDurable(const DurableInput& input)
   return id;
 }
 
+bool NatsBus::durableAttached(uint64_t id) const
+{
+  std::lock_guard lock(mutex_);
+  const auto index = activeIndex_.find(id);
+  return index != activeIndex_.end() && durable_.contains(index->second);
+}
+
 std::optional<uint64_t>
 NatsBus::subscribeDurableFeed(const DurableFeedInput& input)
 {

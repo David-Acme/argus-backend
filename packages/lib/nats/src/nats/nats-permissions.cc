@@ -194,9 +194,12 @@ std::vector<ServicePermissions> rows()
       {.service = "tunnel",
        .publishes = {kTunnelLink, kNotificationPushResult},
        .stores = {},
-       .subscribes = {kNotificationPushDelivery},
+       .subscribes = {},
        .streams = {},
-       .consumers = {}},
+       .consumers = {{.stream = kNotificationPushStream,
+                      .name = kTunnelPushConsumer,
+                      .subject = kNotificationPushDelivery,
+                      .recreates = false}}},
   };
 }
 

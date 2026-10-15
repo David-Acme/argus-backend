@@ -17,12 +17,14 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <memory>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -276,26 +278,83 @@ TEST_CASE("the frame parser reads push_sealed and push_result as control frames 
   CHECK_FALSE(parser.failed());
 }
 
-TEST_CASE("the NATS bridge reads a delivery and writes a result")
+namespace
+{
+struct SettlementCounts
+{
+  int acks{0};
+  int naks{0};
+  int terms{0};
+};
+
+NatsBus::DurableSettlement countedSettlement(const std::shared_ptr<SettlementCounts>& counts)
+{
+  return NatsBus::DurableSettlement{.ack = [counts] { ++counts->acks; },
+                                    .nak = [counts] { ++counts->naks; },
+                                    .term = [counts] { ++counts->terms; }};
+}
+
+nlohmann::json deliveryJson(const PushSealedEnvelope& envelope, int64_t expiresAtMs)
+{
+  return {{"deliveryId", base64::encode(envelope.deliveryId)},
+          {"provider", "fcm"},
+          {"kind", "call"},
+          {"priority", "high"},
+          {"ttlSeconds", 60},
+          {"expiresAt", expiresAtMs},
+          {"collapseId", "call-0001"},
+          {"token", "fcm-test-token-0001"},
+          {"enc", base64::encode(envelope.enc)},
+          {"ciphertext", base64::encode(envelope.ciphertext)}};
+}
+
+tunnel::link::DurableDelivery durableOf(const PushSealedEnvelope& envelope, int64_t expiresAtMs)
+{
+  return {.envelope = envelope, .expiresAtMs = expiresAtMs};
+}
+
+struct FakeLink
+{
+  bool up{true};
+  std::vector<std::string> sent;
+  std::vector<PushResultEnvelope> results;
+  bool resultsAccepted{true};
+  int64_t now{1800000000000};
+};
+
+tunnel::link::SealedPushDispatcher dispatcherOver(FakeLink& link)
+{
+  return tunnel::link::SealedPushDispatcher(
+      tunnel::link::SealedPushDispatcher::Ports{
+          .send =
+              [&link](const PushSealedEnvelope& envelope) {
+                if (!link.up)
+                  return false;
+                link.sent.push_back(envelope.deliveryId);
+                return true;
+              },
+          .publishResult =
+              [&link](const PushResultEnvelope& result, std::string_view) {
+                link.results.push_back(result);
+                return link.resultsAccepted;
+              },
+          .nowMs = [&link] { return link.now; }},
+      tunnel::link::SealedPushBridge::kLedgerCapacity);
+}
+}
+
+TEST_CASE("the NATS bridge reads a delivery with its expiry and writes a result")
 {
   const PushSealedEnvelope envelope = fcmEnvelope();
-  const nlohmann::json delivery = {
-      {"deliveryId", base64::encode(envelope.deliveryId)},
-      {"provider", "fcm"},
-      {"kind", "call"},
-      {"priority", "high"},
-      {"ttlSeconds", 60},
-      {"collapseId", "call-0001"},
-      {"token", "fcm-test-token-0001"},
-      {"enc", base64::encode(envelope.enc)},
-      {"ciphertext", base64::encode(envelope.ciphertext)}};
-  const auto parsed = tunnel::link::sealed_push_json::deliveryFromJson(delivery.dump());
-  REQUIRE(parsed.has_value());
-  CHECK(parsed->token == "fcm-test-token-0001");
-  CHECK(parsed->ciphertext == envelope.ciphertext);
-  CHECK(parsed->provider == PushProvider::Fcm);
+  const auto delivery = tunnel::link::sealed_push_json::deliveryFromJson(
+      deliveryJson(envelope, 1800000060000).dump());
+  REQUIRE(delivery.has_value());
+  CHECK(delivery->expiresAtMs == 1800000060000);
+  CHECK(delivery->envelope.token == "fcm-test-token-0001");
+  CHECK(delivery->envelope.ciphertext == envelope.ciphertext);
+  CHECK(delivery->envelope.provider == PushProvider::Fcm);
 
-  nlohmann::json badKind = delivery;
+  nlohmann::json badKind = deliveryJson(envelope, 1800000060000);
   badKind["kind"] = "ring";
   CHECK_FALSE(tunnel::link::sealed_push_json::deliveryFromJson(badKind.dump()).has_value());
 
@@ -308,14 +367,165 @@ TEST_CASE("the NATS bridge reads a delivery and writes a result")
   CHECK(written.at("deliveryId").get<std::string>() == base64::encode(envelope.deliveryId));
 }
 
-TEST_CASE("the ledger keeps the token of each delivery until its result or its eviction")
+TEST_CASE("a delivery without an expiry is refused, so the broker never sends it late")
+{
+  nlohmann::json withoutExpiry = deliveryJson(fcmEnvelope(), 0);
+  withoutExpiry.erase("expiresAt");
+  CHECK_FALSE(tunnel::link::sealed_push_json::deliveryFromJson(withoutExpiry.dump()).has_value());
+
+  nlohmann::json negative = deliveryJson(fcmEnvelope(), -1);
+  CHECK_FALSE(tunnel::link::sealed_push_json::deliveryFromJson(negative.dump()).has_value());
+}
+
+TEST_CASE("the ledger keeps the token and settlement of each delivery until its result or its eviction")
 {
   tunnel::link::SealedPushLedger ledger(2);
-  ledger.remember("a", "token-a");
-  ledger.remember("b", "token-b");
-  ledger.remember("c", "token-c");
-  CHECK(ledger.take("a").empty());
-  CHECK(ledger.take("c") == "token-c");
-  CHECK(ledger.take("c").empty());
-  CHECK(ledger.take("b") == "token-b");
+  const auto counts = std::make_shared<SettlementCounts>();
+  ledger.remember("a", {.token = "token-a", .settlement = countedSettlement(counts)});
+  ledger.remember("b", {.token = "token-b", .settlement = countedSettlement(counts)});
+  ledger.remember("c", {.token = "token-c", .settlement = countedSettlement(counts)});
+  CHECK_FALSE(ledger.take("a").has_value());
+  REQUIRE(ledger.take("c").has_value());
+  CHECK_FALSE(ledger.take("c").has_value());
+  const auto b = ledger.take("b");
+  REQUIRE(b.has_value());
+  CHECK(b->token == "token-b");
+}
+
+TEST_CASE("a delivery is sent once and acked only after its PUSH_RESULT, never on a timeout")
+{
+  FakeLink link;
+  auto dispatcher = dispatcherOver(link);
+  const PushSealedEnvelope envelope = fcmEnvelope();
+  const auto counts = std::make_shared<SettlementCounts>();
+
+  CHECK(dispatcher.dispatch(durableOf(envelope, link.now + 60000), countedSettlement(counts)) ==
+        tunnel::link::DispatchOutcome::Sent);
+  CHECK(link.sent.size() == 1);
+  CHECK(counts->acks == 0);
+  CHECK(counts->naks == 0);
+
+  dispatcher.result({.deliveryId = envelope.deliveryId, .outcome = PushOutcome::Delivered});
+  CHECK(counts->acks == 1);
+  CHECK(counts->naks == 0);
+  REQUIRE(link.results.size() == 1);
+}
+
+TEST_CASE("a delivery while the link is down is naked, then sent when the link returns inside its TTL")
+{
+  FakeLink link;
+  link.up = false;
+  auto dispatcher = dispatcherOver(link);
+  const PushSealedEnvelope envelope = fcmEnvelope();
+  const auto counts = std::make_shared<SettlementCounts>();
+
+  CHECK(dispatcher.dispatch(durableOf(envelope, link.now + 3600000), countedSettlement(counts)) ==
+        tunnel::link::DispatchOutcome::LinkDown);
+  CHECK(counts->naks == 1);
+  CHECK(counts->acks == 0);
+  CHECK(link.sent.empty());
+
+  link.up = true;
+  link.now += 120000;
+  const auto retry = std::make_shared<SettlementCounts>();
+  CHECK(dispatcher.dispatch(durableOf(envelope, link.now + 3600000 - 120000), countedSettlement(retry)) ==
+        tunnel::link::DispatchOutcome::Sent);
+  CHECK(link.sent.size() == 1);
+  dispatcher.result({.deliveryId = envelope.deliveryId, .outcome = PushOutcome::Delivered});
+  CHECK(retry->acks == 1);
+}
+
+TEST_CASE("a ring past its end is acked and counted, and never sent")
+{
+  FakeLink link;
+  auto dispatcher = dispatcherOver(link);
+  const auto counts = std::make_shared<SettlementCounts>();
+
+  CHECK(dispatcher.dispatch(durableOf(fcmEnvelope(), link.now - 1), countedSettlement(counts)) ==
+        tunnel::link::DispatchOutcome::Expired);
+  CHECK(counts->acks == 1);
+  CHECK(counts->naks == 0);
+  CHECK(link.sent.empty());
+  CHECK(dispatcher.expired() == 1);
+}
+
+TEST_CASE("a redelivery of a delivery still in flight is not sent twice")
+{
+  FakeLink link;
+  auto dispatcher = dispatcherOver(link);
+  const PushSealedEnvelope envelope = fcmEnvelope();
+  const auto first = std::make_shared<SettlementCounts>();
+  const auto second = std::make_shared<SettlementCounts>();
+
+  CHECK(dispatcher.dispatch(durableOf(envelope, link.now + 60000), countedSettlement(first)) ==
+        tunnel::link::DispatchOutcome::Sent);
+  CHECK(dispatcher.dispatch(durableOf(envelope, link.now + 60000), countedSettlement(second)) ==
+        tunnel::link::DispatchOutcome::Duplicate);
+  CHECK(link.sent.size() == 1);
+
+  dispatcher.result({.deliveryId = envelope.deliveryId, .outcome = PushOutcome::Delivered});
+  CHECK(second->acks == 1);
+  CHECK(first->acks == 0);
+}
+
+TEST_CASE("two deliveries of one delivery id produce one push and one result")
+{
+  FakeLink link;
+  auto dispatcher = dispatcherOver(link);
+  const PushSealedEnvelope envelope = fcmEnvelope();
+  const auto first = std::make_shared<SettlementCounts>();
+  const auto second = std::make_shared<SettlementCounts>();
+
+  CHECK(dispatcher.dispatch(durableOf(envelope, link.now + 60000), countedSettlement(first)) ==
+        tunnel::link::DispatchOutcome::Sent);
+  dispatcher.result({.deliveryId = envelope.deliveryId, .outcome = PushOutcome::Delivered});
+  CHECK(dispatcher.dispatch(durableOf(envelope, link.now + 60000), countedSettlement(second)) ==
+        tunnel::link::DispatchOutcome::Duplicate);
+
+  CHECK(link.sent.size() == 1);
+  CHECK(link.results.size() == 1);
+  CHECK(second->acks == 1);
+  CHECK(second->naks == 0);
+}
+
+TEST_CASE("a result that does not publish is naked, so the delivery is redelivered and the result retried")
+{
+  FakeLink link;
+  link.resultsAccepted = false;
+  auto dispatcher = dispatcherOver(link);
+  const PushSealedEnvelope envelope = fcmEnvelope();
+  const auto counts = std::make_shared<SettlementCounts>();
+  CHECK(dispatcher.dispatch(durableOf(envelope, link.now + 60000), countedSettlement(counts)) ==
+        tunnel::link::DispatchOutcome::Sent);
+
+  dispatcher.result({.deliveryId = envelope.deliveryId, .outcome = PushOutcome::Delivered});
+
+  CHECK(counts->naks == 1);
+  CHECK(counts->acks == 0);
+}
+
+TEST_CASE("the durable consumer redelivers an unacked delivery up to five times")
+{
+  CHECK(tunnel::link::SealedPushBridge::kMaxDeliver == 5);
+}
+
+TEST_CASE("the ready and lost edges come once per transition of the durable consumer")
+{
+  tunnel::link::DurableConsumerState state;
+  CHECK(state.observe(false) == tunnel::link::ConsumerEdge::None);
+  CHECK(state.observe(false) == tunnel::link::ConsumerEdge::None);
+  CHECK(state.observe(true) == tunnel::link::ConsumerEdge::Ready);
+  CHECK(state.observe(true) == tunnel::link::ConsumerEdge::None);
+  CHECK(state.observe(true) == tunnel::link::ConsumerEdge::None);
+  CHECK(state.observe(false) == tunnel::link::ConsumerEdge::Lost);
+  CHECK(state.observe(false) == tunnel::link::ConsumerEdge::None);
+  CHECK(state.observe(true) == tunnel::link::ConsumerEdge::Ready);
+}
+
+TEST_CASE("the ready and lost lines name the subject and the consumer")
+{
+  CHECK(tunnel::link::consumerReadyLine("argus.notification.v1.push_delivery", "argus-tunnel-push") ==
+        "sealed push bridge ready on argus.notification.v1.push_delivery, consumer argus-tunnel-push");
+  CHECK(tunnel::link::consumerLostLine("argus.notification.v1.push_delivery", "argus-tunnel-push") ==
+        "sealed push bridge lost argus.notification.v1.push_delivery, consumer argus-tunnel-push");
 }

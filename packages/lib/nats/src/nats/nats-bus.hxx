@@ -122,6 +122,7 @@ public:
     DurableInput consumer;
   };
   std::optional<uint64_t> subscribeDurableFeed(const DurableFeedInput& input);
+  bool durableAttached(uint64_t id) const;
 
   std::optional<uint64_t> subscribe(const std::string& subject,
                                     MessageHandler handler);

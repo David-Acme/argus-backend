@@ -252,6 +252,48 @@ services that own one since Phase 3d step 1c) per OPEN and registers it
 frame boundaries never map to carried message boundaries. CLOSE propagates
 the reason; a local EOF closes the stream normally.
 
+## Sealed pushes on the home (durable)
+
+The home client (`argus-tunnel-client`) is the single consumer of
+`argus.notification.v1.push_delivery` on its own home's NATS: a durable
+JetStream consumer `argus-tunnel-push` on stream `ARGUS_NOTIFICATION_PUSH`,
+created with DeliverAll, ordered (MaxAckPending 1, so the tunnel never
+reorders a cancel ahead of its ring), MaxDeliver 5 and the broker's
+delay-on-nak. The subject is local to the home: every home has its own NATS
+and its own tunnel client, so no home id travels in the message.
+
+Each message is a sealed push written by notification's outbox in the
+transaction that created the ring, the cancel or the alert. Its JSON carries
+`expiresAt` (epoch milliseconds) outside the sealed bytes, set by the
+producer: a ring ends at the call's `expiresAt`, a cancel at now plus 60 s,
+an alert at its TTL (3600 s). The JetStream timestamp is not the age.
+
+Ack rules, in the order the consumer applies them:
+
+- malformed payload, or no `expiresAt`: terminated, never redelivered;
+- `expiresAt` already past: acked and dropped without sending (counter and a
+  LOG line);
+- an id already answered, or in flight: acked or held without a second send
+  (the delivery id is the msg id and the dedupe key; the device dedupes on the
+  same id);
+- link not sealed-ready: naked, redelivered with the broker's backoff;
+- sent: acked only once PUSH_RESULT has been published to
+  `argus.notification.v1.push_result`; a failed result publish is naked so the
+  result is retried. A delivery whose result never arrives is redelivered
+  after the consumer's 60 s ack wait, up to MaxDeliver.
+
+The ready and lost lines come from the consumer's state, once per transition,
+never per message: `sealed push bridge ready on <subject>, consumer
+argus-tunnel-push` and `sealed push bridge lost <subject>, consumer
+argus-tunnel-push`. A tick every second subscribes while the consumer is not
+attached (the tunnel starts before NATS is reachable) and reads the
+attachment through `NatsBus::durableAttached`.
+
+The PUSH_INTENT capability bit stays on the wire for one release, accepted and
+ignored; its removal is recorded for later. `push_result` is core NATS for now.
+A known limit: a result lost before its publish means the token invalidation
+in notification is lost with it.
+
 ## Push intents (F5-5)
 
 The relay subscribes to `argus.notification.v1.push_intent` over NATS (behind
