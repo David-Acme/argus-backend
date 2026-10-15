@@ -49,7 +49,10 @@ TEST_CASE("the identity sync client dials the mutual TLS port with the internal 
   const IdentitySyncClient client(
       {.target = endpoint.tlsTarget(), .fleetSecret = kFleetSecret});
   const auto rows = client.pullTable(request, identity);
-  REQUIRE(rows.has_value());
+  if (!rows) {
+    FAIL("the sync pull returned no rows");
+    return;
+  }
   CHECK(rows->user().created(0).id() == 9);
 
   const IdentitySyncClient plaintext(
