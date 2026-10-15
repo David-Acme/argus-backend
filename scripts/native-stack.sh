@@ -157,7 +157,7 @@ prepare_service() {
   }
 
   mkdir -p "$STACK_DIR/$svc/database" "$STACK_DIR/logs" "$STACK_DIR/pids"
-  install -m 600 "$source_config" "$config"
+  install_source_config "$source_config" "$config"
   adopt_wiring_keys "$template" "$config"
 
   local tls_dir

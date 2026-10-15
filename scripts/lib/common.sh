@@ -246,6 +246,38 @@ replace_toml_value_from_file() {
   mv "$temp" "$config"
 }
 
+carry_runtime_state() {
+  local previous="$1"
+  local config="$2"
+  local paired owner push
+
+  paired="$(toml_value "$previous" pairing paired)"
+  if [ "$paired" = true ]; then
+    owner="$(toml_value "$previous" pairing owner_device)"
+    replace_toml_value pairing paired true "$config" literal
+    replace_toml_value pairing owner_device "$owner" "$config"
+  fi
+  push="$(toml_value "$previous" push enabled)"
+  if [ -n "$push" ]; then
+    replace_toml_value push enabled "$push" "$config" literal
+  fi
+}
+
+install_source_config() {
+  local source="$1"
+  local config="$2"
+  local previous="$config.previous"
+
+  if [ -f "$config" ]; then
+    cp -p "$config" "$previous"
+  fi
+  install -m 600 "$source" "$config"
+  if [ -f "$previous" ]; then
+    carry_runtime_state "$previous" "$config"
+    rm -f "$previous"
+  fi
+}
+
 remove_toml_key() {
   local table="$1"
   local key="$2"
