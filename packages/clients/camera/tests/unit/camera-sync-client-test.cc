@@ -157,7 +157,10 @@ TEST_CASE("the sync pull dials the mutual TLS port with the internal certificate
 
   const CameraSyncClient client({.target = endpoint.tlsTarget(), .credential = ""});
   const auto catalog = client.listCatalog(identity);
-  REQUIRE(catalog);
+  if (!catalog) {
+    FAIL("the catalog is empty");
+    return;
+  }
   CHECK(catalog->cameras(0).name() == "porton");
 
   const CameraSyncClient plaintext(
