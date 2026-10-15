@@ -84,6 +84,7 @@ message ClaimCallResponse {
   int64 episode_id = 9;
   string environment_name = 10;
   string urgency = 11;
+  repeated string later_lines = 12;
 }
 
 enum CallEndStatus {
