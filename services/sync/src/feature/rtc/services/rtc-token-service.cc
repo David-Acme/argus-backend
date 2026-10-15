@@ -163,6 +163,8 @@ drogon::Task<ResponseRtcTokenDto> RtcTokenService::issue(RtcTokenRequest request
   join.set_call_id(callId);
   if (claim) {
     join.set_opening_line(claim->openingLine);
+    for (const auto& line : claim->laterLines)
+      join.add_later_lines(line);
     join.set_call_kind(claim->kind);
   }
 

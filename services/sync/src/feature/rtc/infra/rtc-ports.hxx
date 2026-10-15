@@ -27,6 +27,7 @@ struct RtcClaim
 {
   RtcClaimStatus status{RtcClaimStatus::Unavailable};
   std::string openingLine;
+  std::vector<std::string> laterLines;
   std::string lang;
   std::string kind;
   std::string summary;

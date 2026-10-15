@@ -32,6 +32,7 @@ RtcClaim NotificationCallClaimer::claimOf(const NotificationCallClaimResult& res
       return claim;
   }
   claim.openingLine = response.opening_line();
+  claim.laterLines.assign(response.later_lines().begin(), response.later_lines().end());
   claim.lang = response.lang();
   claim.kind = response.kind();
   claim.summary = response.summary();
