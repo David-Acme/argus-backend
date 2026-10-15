@@ -352,7 +352,10 @@ TEST_CASE("the NATS bridge reads a delivery with its expiry and writes a result"
   const PushSealedEnvelope envelope = fcmEnvelope();
   const auto delivery = tunnel::link::sealed_push_json::deliveryFromJson(
       deliveryJson(envelope, 1800000060000).dump());
-  REQUIRE(delivery.has_value());
+  if (!delivery) {
+    FAIL("the delivery is empty");
+    return;
+  }
   CHECK(delivery->expiresAtMs == 1800000060000);
   CHECK(delivery->envelope.token == "fcm-test-token-0001");
   CHECK(delivery->envelope.ciphertext == envelope.ciphertext);
@@ -392,7 +395,10 @@ TEST_CASE("the ledger keeps the token and settlement of each delivery until its 
   REQUIRE(ledger.take("c").has_value());
   CHECK_FALSE(ledger.take("c").has_value());
   const auto b = ledger.take("b");
-  REQUIRE(b.has_value());
+  if (!b) {
+    FAIL("the ledger entry b is empty");
+    return;
+  }
   CHECK(b->token == "token-b");
 }
 
