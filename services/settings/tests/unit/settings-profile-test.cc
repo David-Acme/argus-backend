@@ -620,7 +620,7 @@ TEST_CASE("the missed rule serializes exactly the four fields the contract decla
   const auto& missed = listing["recommendation"]["missed"];
   REQUIRE(missed.isObject());
   auto keys = missed.getMemberNames();
-  std::sort(keys.begin(), keys.end());
+  std::ranges::sort(keys);
   CHECK(keys == std::vector<std::string>{"minCores", "minRamGb", "profile", "vectorIsa"});
   CHECK(missed["profile"].isString());
   CHECK(missed["minCores"].isInt());
