@@ -109,6 +109,8 @@ drogon::Task<int64_t> CallPushDelivery::deliver(CallPushInput input) const
                << "); not sent";
       continue;
     }
+    LOG_INFO << "Call push: " << call.callId() << " delivery " << push_delivery_wire::hexOf(deliveryId)
+             << " queued (cancel=" << (input.cancelling ? "true" : "false") << ", ttl=" << ttl << "s)";
     co_await outbox_->record(push_delivery_wire::recordOf(
         {.envelope = sealed.envelope, .expiresAtMs = expiresAtMs}, input.client));
     ++recorded;
