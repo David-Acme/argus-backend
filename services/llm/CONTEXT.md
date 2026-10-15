@@ -2086,3 +2086,16 @@ the cost is known rather than fought.
 - Rebase over b8f32d76's duress screening. The controller hands each identified caller's words to the
   duress screen (`src/feature/duress/`) before the turn is decided, so the cutover branch's turn changes
   must keep that order.
+
+## First-token latency on prod (2026-10-15)
+
+Measured on the prod build (`./scripts/build-all.sh prod --only llm`), the machine quiet, with a copied config on its own port and the models linked; no phone. Machine: AMD Ryzen 7 5825U (8 cores, 16 threads), 30 GB RAM, the iGPU (RADV Renoir, Vulkan) visible to llama.cpp but not used (gpu_layers 0: the hardware probe reports a GPU only in builds with ARGUS_HAS_NCNN_GPU). Load at load time: threads 4, batch threads 8 (all 16 CPUs).
+
+Representative turn: Spanish system text, a memory block, a five-turn history, a short question. The stream's sentinel gives prompt, reused and decoded tokens; the first token is the first streamed piece.
+
+- Cold (no reusable prefix, 347 to 348 prompt tokens, full prefill, 10 runs): first token p50 1.45 s, p95 1.49 s.
+- Warm (the history grows one turn per run, 344 to 659 prompt tokens, 341 to 637 reused, 22 to 38 decoded, 10 runs): p50 0.72 s, p95 0.76 s, excluding the first run, which had no reuse (1.50 s).
+
+The cost is the prefill, about 250 tokens per second on this CPU. Reuse of the common prefix is what keeps a warm turn near 0.7 s. The target is first token under 1.5 s on prod; the cold p95 sits at that line, so a prompt that grows past about 350 tokens without reuse goes over it. The prefill log line (prompt, reused, decoded, ms, batch threads) is what shows which case a live turn is in.
+
+The dev build is not the reference: it measured 26 to 48 s turns, and its process was pinned to CPUs 8 to 15 (8 effective threads, 2 decode and 4 batch), on top of the debug build.
