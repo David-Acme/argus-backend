@@ -269,7 +269,6 @@ install_source_config() {
   local previous
 
   previous="$(mktemp)"
-  trap 'rm -f "$previous"' RETURN
   if [ -f "$config" ]; then
     cp -p "$config" "$previous"
   fi
@@ -277,6 +276,7 @@ install_source_config() {
   if [ -s "$previous" ]; then
     carry_runtime_state "$previous" "$config"
   fi
+  rm -f "$previous"
 }
 
 remove_toml_key() {

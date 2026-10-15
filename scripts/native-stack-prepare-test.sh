@@ -51,5 +51,6 @@ expect pairing owner_device device-hash-1
 expect push enabled true
 
 [ -z "$(ls -A "$work/tmp")" ] || fail "a copy of the stack config was left in TMPDIR"
+[ -z "$(trap -p RETURN)" ] || fail "install_source_config left a RETURN trap behind"
 
 printf 'native-stack-prepare-test: ok\n'
