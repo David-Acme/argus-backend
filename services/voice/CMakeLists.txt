@@ -202,6 +202,18 @@ set_target_properties(playout-rate-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME playout-rate-test COMMAND playout-rate-test)
 
+add_executable(opening-budget-test tests/unit/opening-budget-test.cc feature/voice/opening-budget.cc)
+
+target_include_directories(opening-budget-test PRIVATE src)
+
+target_link_libraries(opening-budget-test PRIVATE doctest::doctest)
+
+target_compile_options(opening-budget-test PRIVATE -Wall -Wextra)
+
+set_target_properties(opening-budget-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME opening-budget-test COMMAND opening-budget-test)
+
 add_executable(voice-call-history-test tests/unit/voice-call-history-test.cc)
 
 target_compile_definitions(voice-call-history-test PRIVATE
