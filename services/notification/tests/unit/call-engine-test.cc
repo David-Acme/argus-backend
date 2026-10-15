@@ -4,6 +4,7 @@
 
 #include <drogon/drogon.h>
 #include "../support/push-open.hxx"
+#include <text/json-util.hxx>
 #include <feature/call/services/call-engine.hxx>
 #include <feature/call/services/push-delivery.hxx>
 #include <shared/services/push-delivery/push-delivery-outbox.hxx>
@@ -1168,6 +1169,48 @@ TEST_CASE("the first to answer attends: the others stop ringing and see who it i
   drogon::sync_wait(harness.engine.sweep());
   CHECK(noticesFor(harness, 2).empty());
   CHECK(responseState(id) == "attended");
+}
+
+namespace
+{
+int64_t soleCallOf(int64_t userId, const std::string& state)
+{
+  const auto rows = DbService::client()->execSqlSync(
+      "SELECT id FROM call WHERE user_id = ? AND state = ?", userId, state);
+  return rows.empty() ? 0 : rows.front()["id"].as<int64_t>();
+}
+}
+
+TEST_CASE("the first device to answer cancels the other device's ring with a durable push that opens to that call")
+{
+  Harness harness;
+  const CallPreferenceService preferences;
+  UpdateCallPreferenceDto immediate;
+  immediate.pushDelaySeconds = 0;
+  drogon::sync_wait(preferences.update(1, immediate));
+  drogon::sync_wait(preferences.update(5, immediate));
+
+  const auto first = respond(harness, {.data = guardData("critical", 72),
+                                       .userIds = {1, 5},
+                                       .plan = planOf(orderedHousehold(), "ordered")});
+  const auto claimed = drogon::sync_wait(harness.engine.claim(
+      {.callId = call_id::format(outcomeFor(first, 1).callId), .userId = 1, .sessionId = "s1"}));
+  CHECK(claimed.status == CallClaimStatus::Claimed);
+
+  const int64_t fiveCall = soleCallOf(5, "missed");
+  REQUIRE(fiveCall > 0);
+  bool cancelledOnFive = false;
+  for (const auto& record : harness.outbox->all()) {
+    if (json_util::fromString(record.payload)["token"].asString() != "fcm-token-5")
+      continue;
+    const Json::Value plain = push_open::plaintextOf(record.payload, "key-0001");
+    if (!plain["cancel"].asBool())
+      continue;
+    cancelledOnFive = true;
+    CHECK(plain["callId"].asString() == call_id::format(fiveCall));
+    CHECK(plain["deepLink"].asString() == "argus://call?callId=" + call_id::format(fiveCall));
+  }
+  CHECK(cancelledOnFive);
 }
 
 TEST_CASE("a false alarm cancels every ring, stops the escalation and feeds the guard")

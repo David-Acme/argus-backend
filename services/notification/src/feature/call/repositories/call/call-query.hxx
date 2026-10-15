@@ -177,6 +177,7 @@ struct CallCancelForKeyInput
   int64_t onlyUserId{0};
   std::string reason;
   int64_t now{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct CallCancelled

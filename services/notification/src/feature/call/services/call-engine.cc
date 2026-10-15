@@ -1286,15 +1286,32 @@ drogon::Task<void> CallEngine::reach(const ReachInput& input) const
 
 drogon::Task<void> CallEngine::cancelRinging(const CancelInput& input) const
 {
-  const auto cancelled = co_await callRepository_.cancelRingingForKey(
-      {.dedupeKey = input.response.dedupeKey,
-       .exceptUserId = input.exceptUserId,
-       .onlyUserId = input.onlyUserId,
-       .reason = input.reason,
-       .now = input.now});
+  std::vector<CallCancelled> cancelled;
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    cancelled = co_await callRepository_.cancelRingingForKey(
+        {.dedupeKey = input.response.dedupeKey,
+         .exceptUserId = input.exceptUserId,
+         .onlyUserId = input.onlyUserId,
+         .reason = input.reason,
+         .now = input.now,
+         .client = transaction.get()});
+    for (const auto& call : cancelled) {
+      co_await callRepository_.settleFollowups(
+          {.parentId = call.id, .state = CallState::Missed, .now = input.now, .client = transaction.get()});
+      if (dependencies_.sealedPush) {
+        if (const auto ringing = co_await callRepository_.findById(call.id))
+          static_cast<void>(co_await dependencies_.sealedPush->cancel(*ringing, transaction.get()));
+      }
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(NotificationErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
   for (const auto& call : cancelled) {
-    co_await callRepository_.settleFollowups(
-        {.parentId = call.id, .state = CallState::Missed, .now = input.now});
     Json::Value info(Json::objectValue);
     info["callId"] = call_id::format(call.id);
     info["reason"] = input.reason;

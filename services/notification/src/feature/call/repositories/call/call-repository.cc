@@ -164,8 +164,8 @@ drogon::Task<int64_t> CallRepository::closeStaleAnswered(int64_t answeredBefore,
 drogon::Task<std::vector<CallCancelled>>
 CallRepository::cancelRingingForKey(const CallCancelForKeyInput& input) const
 {
-  const auto client = DbService::client();
-  const auto rows = co_await client->execSqlCoro(std::string(CANCEL_RINGING_FOR_KEY),
+  const auto pool = DbService::client();
+  const auto rows = co_await executor(input.client, pool)->execSqlCoro(std::string(CANCEL_RINGING_FOR_KEY),
                                                  input.reason, input.now,
                                                  input.dedupeKey, input.exceptUserId,
                                                  input.onlyUserId, input.onlyUserId);
