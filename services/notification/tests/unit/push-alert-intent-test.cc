@@ -5,6 +5,7 @@
 #include <shared/services/push-delivery/ring-planner.hxx>
 
 #include <memory>
+#include <stdexcept>
 
 namespace
 {
@@ -15,6 +16,24 @@ struct AlwaysRings final : push_delivery::RingPlanner
     co_return input.userIds;
   }
 };
+}
+
+namespace
+{
+struct ThrowingPlanner final : push_delivery::RingPlanner
+{
+  drogon::Task<std::vector<int64_t>> ringFollowingUserIds(const push_delivery::RingPlanInput&) const override
+  {
+    throw std::runtime_error("identity unavailable");
+    co_return std::vector<int64_t>{};
+  }
+};
+}
+
+TEST_CASE("a planner that fails leaves the alert with no ring plan, and the failure does not escape")
+{
+  const push_delivery::RingPlanInput input{.data = Json::Value(Json::objectValue), .userIds = {1, 2}};
+  CHECK(drogon::sync_wait(push_delivery::planOrEmpty(ThrowingPlanner{}, input)).empty());
 }
 
 TEST_CASE("an unbound planner answers no user until the call engine is bound")

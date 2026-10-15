@@ -454,8 +454,8 @@ CallEngine::ringFollowingUserIds(const push_delivery::RingPlanInput& input) cons
       if (prepared.verdict.decision == CallDecision::Ring && user.preference.pushDelaySeconds == 0)
         ringing.push_back(userId);
     }
-    catch (const std::exception&) {
-      continue;
+    catch (const std::exception& error) {
+      LOG_WARN << "Call ring plan: user " << userId << " not planned (" << typeid(error).name() << ")";
     }
   }
   co_return ringing;

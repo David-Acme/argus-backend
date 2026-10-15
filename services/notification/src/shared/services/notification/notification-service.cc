@@ -108,8 +108,8 @@ drogon::Task<NotificationCreateOutcome> NotificationService::createManyAndEmit(
   if (dependencies_.alerts && dependencies_.ringPlanner && episodeData.isObject() &&
       episodeData.isMember("threadKey") && episodeData["threadKey"].isString() &&
       !episodeData["threadKey"].asString().empty()) {
-    ringFollowingUserIds = co_await dependencies_.ringPlanner->ringFollowingUserIds(
-        {.data = episodeData, .userIds = input.userIds});
+    ringFollowingUserIds = co_await push_delivery::planOrEmpty(
+        *dependencies_.ringPlanner, {.data = episodeData, .userIds = input.userIds});
   }
 
   const NotificationCommitResult committed =
