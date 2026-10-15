@@ -147,7 +147,10 @@ TEST_CASE("the pull dials the mutual TLS port with the internal certificate")
   const v1::PullTableRequest request;
   const ProductivitySyncClient client({.target = endpoint.tlsTarget(), .credential = ""});
   const auto rows = client.pullTable(request, identityFor(7));
-  REQUIRE(rows.has_value());
+  if (!rows) {
+    FAIL("the sync pull returned no rows");
+    return;
+  }
   CHECK(rows->reminder().created(0).id() == 3);
 
   const ProductivitySyncClient plaintext(
