@@ -177,17 +177,22 @@ DispatchOutcome SealedPushDispatcher::dispatch(const DurableDelivery& delivery,
     return DispatchOutcome::Expired;
   }
   if (delivered_.contains(deliveryId)) {
+    LOG_INFO << "argus-tunnel: sealed push " << deliveryId << " redelivered after its result, acked";
     settlement.ack();
     return DispatchOutcome::Duplicate;
   }
   if (pending_.contains(deliveryId)) {
+    LOG_INFO << "argus-tunnel: sealed push " << deliveryId << " redelivered while pending, waiting for its result";
     pending_.replaceSettlement(deliveryId, std::move(settlement));
     return DispatchOutcome::Duplicate;
   }
+  const uint32_t attempt = ++attempts_[deliveryId];
   if (!ports_.send(delivery.envelope)) {
+    LOG_WARN << "argus-tunnel: sealed push " << deliveryId << " not sent, link down (attempt " << attempt << "), nak";
     settlement.nak();
     return DispatchOutcome::LinkDown;
   }
+  LOG_INFO << "argus-tunnel: sealed push " << deliveryId << " sent to the push service (attempt " << attempt << ")";
   pending_.remember(deliveryId, {.token = delivery.envelope.token, .settlement = std::move(settlement)});
   return DispatchOutcome::Sent;
 }
@@ -197,8 +202,12 @@ void SealedPushDispatcher::result(const PushResultEnvelope& outcome)
   auto pending = pending_.take(outcome.deliveryId);
   const std::string token = pending ? pending->token : std::string{};
   const bool published = ports_.publishResult(outcome, token);
+  const uint32_t attempt = attempts_.contains(outcome.deliveryId) ? attempts_[outcome.deliveryId] : 0;
+  attempts_.erase(outcome.deliveryId);
   if (!pending)
     return;
+  LOG_INFO << "argus-tunnel: sealed push " << outcome.deliveryId << " result published=" << published
+           << " (attempt " << attempt << ")";
   if (!published) {
     pending->settlement.nak();
     return;

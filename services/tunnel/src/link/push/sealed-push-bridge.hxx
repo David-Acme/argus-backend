@@ -95,6 +95,7 @@ private:
   SealedPushLedger pending_;
   DeliveredRecently delivered_;
   uint64_t expired_{0};
+  std::unordered_map<std::string, uint32_t> attempts_;
 };
 
 enum class ConsumerEdge : uint8_t
