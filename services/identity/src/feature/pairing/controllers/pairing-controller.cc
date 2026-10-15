@@ -15,7 +15,8 @@ PairingController::pair(drogon::HttpRequestPtr req)
       co_await service_.pair({.code = body.code,
                      .nonce = body.nonce,
                      .proof = body.proof,
-                     .deviceHash = device.deviceHash});
+                     .deviceHash = device.deviceHash,
+                     .remoteAddress = req->getPeerAddr().toIp()});
   co_return ApiResponse::ok(result.toJson());
 }
 

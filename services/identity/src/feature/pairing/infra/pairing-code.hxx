@@ -24,6 +24,12 @@ struct PairingHmacInput
   std::string_view message;
 };
 
+struct PairingRefusal
+{
+  std::string_view remoteAddress;
+  int status;
+};
+
 namespace pairing_code
 {
 inline constexpr std::size_t kSecretBytes = 16;
@@ -31,6 +37,7 @@ inline constexpr std::size_t kBase32Length = 26;
 inline constexpr std::size_t kMaxLength = 32;
 
 [[nodiscard]] std::string normalize(std::string_view raw);
+[[nodiscard]] std::string refusalLogLine(const PairingRefusal& refusal);
 [[nodiscard]] bool isLegacy(std::string_view code);
 [[nodiscard]] bool wellFormed(std::string_view code);
 [[nodiscard]] std::string encodeBase32(std::span<const unsigned char> bytes);

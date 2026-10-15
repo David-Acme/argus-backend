@@ -13,6 +13,7 @@ struct PairingRequestInput
   std::string nonce;
   std::string proof;
   std::string deviceHash;
+  std::string remoteAddress;
 };
 
 class PairingFeatureService

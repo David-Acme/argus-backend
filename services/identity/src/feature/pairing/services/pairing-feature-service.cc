@@ -47,10 +47,15 @@ PairingVerdict settle(const PairingRequestInput& input)
 drogon::Task<ResponsePairingDto>
 PairingFeatureService::pair(PairingRequestInput input) const
 {
+  const std::string remoteAddress = input.remoteAddress;
   const auto verdict = co_await BlockingTask<PairingVerdict>(
       [request = std::move(input)] { return settle(request); });
-  if (!verdict.proven)
+  if (!verdict.proven) {
+    LOG_WARN << pairing_code::refusalLogLine(
+        {.remoteAddress = remoteAddress,
+         .status = IdentityErrors::InvalidPairingCode.status});
     throw ResponseException(IdentityErrors::InvalidPairingCode);
+  }
 
   ResponsePairingDto result;
   result.instanceId = CertService::instanceId();

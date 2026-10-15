@@ -46,6 +46,12 @@ TEST_CASE("the pairing code carries 128 bits as QR-friendly base32")
   CHECK(pairing_code::normalize("kz65-wsi6 qpgv") == "KZ65WSI6QPGV");
 }
 
+TEST_CASE("a refused pairing logs its outcome, status and remote address, never the code")
+{
+  CHECK(pairing_code::refusalLogLine({.remoteAddress = "192.168.18.8", .status = 403}) ==
+        "Pairing: a request was refused (outcome=invalid-code status=403 remote=192.168.18.8)");
+}
+
 TEST_CASE("the pairing proofs are HMAC-SHA256 over the normalized code")
 {
   CHECK(pairing_code::hmacHex({.code = "key",

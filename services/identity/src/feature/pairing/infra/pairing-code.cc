@@ -33,6 +33,13 @@ bool isHexSymbol(char symbol)
 }
 }
 
+std::string pairing_code::refusalLogLine(const PairingRefusal& refusal)
+{
+  return "Pairing: a request was refused (outcome=invalid-code status=" +
+         std::to_string(refusal.status) +
+         " remote=" + std::string(refusal.remoteAddress) + ")";
+}
+
 std::string pairing_code::normalize(std::string_view raw)
 {
   std::string code;
