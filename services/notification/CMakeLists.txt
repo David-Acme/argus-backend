@@ -375,6 +375,18 @@ target_link_libraries(call-push-delivery-test PRIVATE
 
 target_compile_options(call-push-delivery-test PRIVATE -Wall -Wextra)
 
+add_executable(push-alert-intent-test tests/unit/push-alert-intent-test.cc)
+
+set_target_properties(push-alert-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(push-alert-intent-test PRIVATE
+    argus::notification-push-delivery
+    doctest::doctest)
+
+target_compile_options(push-alert-intent-test PRIVATE -Wall -Wextra)
+
+add_test(NAME push-alert-intent-test COMMAND push-alert-intent-test)
+
 add_test(NAME call-push-delivery-test COMMAND call-push-delivery-test)
 
 add_executable(push-alert-writer-test tests/unit/push-alert-writer-test.cc)

@@ -1,5 +1,7 @@
 #include "push-alert-writer.hxx"
 
+#include "push-alert-intent.hxx"
+
 #include <shared/services/notification/push-copy.hxx>
 #include <shared/services/push-delivery/push-delivery-wire.hxx>
 #include <text/json-util.hxx>
@@ -14,11 +16,19 @@
 namespace
 {
 constexpr uint32_t kAlertTtlSeconds = 3600;
+constexpr std::size_t kIntentIdSize = 16;
 
 PushPriority priorityOf(const std::string& urgency)
 {
   return urgency == "critical" || urgency == "time_sensitive" ? PushPriority::High
                                                               : PushPriority::Normal;
+}
+
+std::string episodeOf(const Json::Value& data)
+{
+  if (!data.isObject() || !data.isMember("threadKey") || !data["threadKey"].isString())
+    return {};
+  return data["threadKey"].asString();
 }
 }
 
@@ -53,15 +63,22 @@ drogon::Task<void> PushAlertWriter::write(NotificationAlertRound round) const
       const std::string deliveryId = randomBytes(push_envelope::kDeliveryIdSize);
       if (deliveryId.size() != push_envelope::kDeliveryIdSize)
         continue;
-      Json::Value intent(Json::objectValue);
-      intent["kind"] = "notification";
-      intent["notificationId"] = static_cast<Json::Int64>(round.notificationIds[index]);
-      intent["type"] = input.type;
-      intent["title"] = copy.title;
-      intent["body"] = copy.body;
-      intent["deepLink"] = "argus://notification?notificationId=" + std::to_string(round.notificationIds[index]);
-      intent["iat"] = static_cast<Json::Int64>(now);
-      intent["exp"] = static_cast<Json::Int64>(now + kAlertTtlSeconds);
+      const std::string intentIdBytes = randomBytes(kIntentIdSize);
+      if (intentIdBytes.size() != kIntentIdSize)
+        continue;
+      const std::string urgency = push_copy::urgencyOf(input.data);
+      const Json::Value intent = push_alert_intent::build({
+          .intentId = push_delivery_wire::hexOf(intentIdBytes),
+          .notificationId = round.notificationIds[index],
+          .type = input.type,
+          .title = copy.title,
+          .body = copy.body,
+          .urgency = urgency,
+          .episode = episodeOf(input.data),
+          .ringFollows = false,
+          .issuedAt = now,
+          .expiresAt = now + kAlertTtlSeconds,
+      });
       const PushSealOutcome sealed = sealer_.seal({.deliveryId = deliveryId,
                                                    .provider = device.provider,
                                                    .kind = PushKind::Alert,

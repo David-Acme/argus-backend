@@ -184,7 +184,10 @@ TEST_CASE("an alert seals a notification plaintext with its title, body and deep
   const Json::Value fcm = push_open::plaintextOf(outbox->entries[0].payload, "key-0001");
   const Json::Value apns = push_open::plaintextOf(outbox->entries[1].payload, "key-0002");
   for (const Json::Value* plain : {&fcm, &apns}) {
-    CHECK((*plain)["kind"].asString() == "notification");
+    CHECK((*plain)["kind"].asString() == "alert");
+    CHECK(!(*plain)["intentId"].asString().empty());
+    CHECK((*plain)["urgency"].isString());
+    CHECK(!plain->isMember("ringFollows"));
     CHECK((*plain)["notificationId"].asInt64() == 901);
     CHECK((*plain)["type"].asString() == "camera");
     CHECK((*plain)["title"].asString() == "Argus");

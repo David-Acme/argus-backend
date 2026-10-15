@@ -3,6 +3,7 @@ find_package(OpenSSL REQUIRED)
 argus_module(NAME notification-push-delivery
     SOURCES
         notification-push-device-directory.cc
+        push-alert-intent.cc
         push-alert-writer.cc
         push-delivery-wire.cc
         push-sealer.cc
