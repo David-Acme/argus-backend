@@ -94,8 +94,12 @@ public:
     if (done_ || writesDone_)
       return;
     writesDone_ = true;
-    drainLocked();
-    maybeCloseLocked();
+    if (writing_ && !pending_.empty())
+      pending_.erase(std::next(pending_.begin()), pending_.end());
+    else
+      pending_.clear();
+    if (context_)
+      context_->TryCancel();
   }
 
   void OnReadDone(bool ok) override
