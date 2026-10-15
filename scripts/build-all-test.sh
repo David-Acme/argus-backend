@@ -589,6 +589,7 @@ run_script_test privacy-consent-test.sh
 run_script_test pki-test.sh
 run_script_test internal-pki-test.sh
 run_script_test tunnel-pki-test.sh
+run_script_test setup-config-only-test.sh
 run_script_test rpc-credentials-test.sh
 run_script_test native-tls-migrate-test.sh
 run_script_test install-model-bundle-test.sh

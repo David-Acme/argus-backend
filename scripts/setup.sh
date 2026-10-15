@@ -10,6 +10,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/lib/privacy.sh"
 PROFILE="dev"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 CAMERA_ONLY=0
+CONFIG_ONLY=0
 WITH_DOCKER=1
 ASSUME_YES="${ARGUS_ASSUME_YES:+1}"
 ARGS=()
@@ -37,6 +38,9 @@ Usage:
   ./scripts/setup.sh dev --no-docker     do not install/validate Docker
   ./scripts/setup.sh dev -y              non-interactive package installs
   ./scripts/setup.sh camera              camera artifacts only (detector + go2rtc)
+  ./scripts/setup.sh --config-only       local configs, certificates and the internal and
+                                         tunnel PKI only: no privacy prompt, no dependencies,
+                                         no models, no toolchain, no build (scratch trees)
   SKIP_BUILD=1 ./scripts/setup.sh prod
 
 Privacy notice (required before anything is configured):
@@ -61,6 +65,7 @@ for a in "$@"; do
       usage; exit 0 ;;
     --no-build) SKIP_BUILD=1 ;;
     --no-docker) WITH_DOCKER=0 ;;
+    --config-only) CONFIG_ONLY=1 ;;
     -y|--yes)   ASSUME_YES=1 ;;
     --accept-privacy-notice) PRIVACY_ACCEPT=1 ;;
     --accept-visitor-notice) PRIVACY_VISITOR_ACCEPT=1 ;;
@@ -87,7 +92,9 @@ case "$PRIVACY_ACTION" in
   withdraw) privacy_withdraw_consent "$PRIVACY_DATA_DIR"; exit 0 ;;
 esac
 need_cmd openssl
-privacy_require_consent "$PRIVACY_DATA_DIR" "scripts/setup.sh"
+if [ "$CONFIG_ONLY" -eq 0 ]; then
+  privacy_require_consent "$PRIVACY_DATA_DIR" "scripts/setup.sh"
+fi
 
 log "Profile: $PROFILE  build_type: $BUILD_TYPE"
 
@@ -304,6 +311,18 @@ provision_tts() {
   ARGUS_TTS_CONFIG="$ROOT/services/tts/config.toml" "$ROOT/services/tts/scripts/provision.sh"
 }
 
+configure_pki() {
+  mkdir -p "$ROOT/certs"
+  ARGUS_CA_EXTRA_DNS="${ARGUS_CA_EXTRA_DNS:-} $(tunnel_pki_ca_names "$ROOT/services/tunnel/config.toml")" \
+    ensure_instance_certs "$ROOT" "$ROOT/certs" "$ROOT/services/identity/config.toml"
+  ensure_internal_pki "${ARGUS_DATA_DIR:-$ROOT/argus-deploy/data}/certs/internal"
+  internal_pki_configure_native "$ROOT" "${ARGUS_DATA_DIR:-$ROOT/argus-deploy/data}/certs/internal"
+  migrate_native_dial_targets "$ROOT"
+  ensure_tunnel_pki "$ROOT/certs/tunnel" "$ROOT/certs/ca.pem" "$ROOT/certs/ca.key" \
+    "$ROOT/services/tunnel/config.toml"
+  tunnel_pki_configure_native "$ROOT" "$ROOT/certs/tunnel"
+}
+
 main() {
   if [ "$CAMERA_ONLY" -eq 1 ]; then
     "$ROOT/services/camera/scripts/provision.sh"
@@ -312,6 +331,12 @@ main() {
 
   ensure_local_config
   sync_storage_credentials
+
+  if [ "$CONFIG_ONLY" -eq 1 ]; then
+    configure_pki
+    log "Configs and PKI are ready (config-only: no dependencies, models or build)."
+    exit 0
+  fi
 
   if [ -x "$(dirname "$0")/detect-hardware.sh" ]; then
     "$(dirname "$0")/detect-hardware.sh" ${ASSUME_YES:+-y} || \
@@ -327,14 +352,7 @@ main() {
   need_cmd git
   need_cmd cmake
   setup_submodules
-  ARGUS_CA_EXTRA_DNS="${ARGUS_CA_EXTRA_DNS:-} $(tunnel_pki_ca_names "$ROOT/services/tunnel/config.toml")" \
-    ensure_instance_certs "$ROOT" "$ROOT/certs" "$ROOT/services/identity/config.toml"
-  ensure_internal_pki "${ARGUS_DATA_DIR:-$ROOT/argus-deploy/data}/certs/internal"
-  internal_pki_configure_native "$ROOT" "${ARGUS_DATA_DIR:-$ROOT/argus-deploy/data}/certs/internal"
-  migrate_native_dial_targets "$ROOT"
-  ensure_tunnel_pki "$ROOT/certs/tunnel" "$ROOT/certs/ca.pem" "$ROOT/certs/ca.key" \
-    "$ROOT/services/tunnel/config.toml"
-  tunnel_pki_configure_native "$ROOT" "$ROOT/certs/tunnel"
+  configure_pki
   provision_tts
   "$ROOT/services/llm/scripts/provision.sh"
   "$ROOT/services/vlm/scripts/provision.sh"
