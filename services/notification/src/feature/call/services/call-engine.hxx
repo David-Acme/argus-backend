@@ -13,6 +13,7 @@
 #include <feature/call/services/call-ports.hxx>
 #include <feature/call/services/push-delivery.hxx>
 #include <feature/call/services/call-trigger-classifier.hxx>
+#include <shared/services/push-delivery/ring-planner.hxx>
 
 #include <atomic>
 #include <cstddef>
@@ -217,10 +218,13 @@ struct CallSweepReport
   int64_t purged{0};
 };
 
-class CallEngine
+class CallEngine final : public push_delivery::RingPlanner
 {
 public:
   CallEngine(CallEngineConfig config, CallEngineDependencies dependencies);
+
+  [[nodiscard]] drogon::Task<bool>
+  ringFollows(const push_delivery::RingPlanInput& input) const override;
 
   drogon::Task<std::vector<CallUserOutcome>>
   consider(const CallRequest& request) const;

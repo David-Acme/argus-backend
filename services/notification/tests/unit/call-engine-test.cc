@@ -386,6 +386,46 @@ TEST_CASE("a critical guard episode rings every recipient once, in their languag
   CHECK(harness.signal->of(SyncOperation::CallIncoming).size() == 2);
 }
 
+TEST_CASE("the ring planner predicts exactly the delay-0 rings that considerNotification places")
+{
+  struct Scenario
+  {
+    const char* name;
+    bool enabled;
+    int delay;
+    Json::Value data;
+    int64_t userId;
+  };
+  const std::vector<Scenario> scenarios{
+      {"critical guard episode, delay 0", true, 0, guardData("critical", 60), 1},
+      {"critical guard episode, delay 4", true, 4, guardData("critical", 61), 1},
+      {"calls switched off", false, 0, guardData("critical", 62), 1},
+      {"not call-worthy", true, 0, guardData("active", 63), 1},
+      {"unknown user", true, 0, guardData("critical", 64), 99},
+  };
+  for (const Scenario& scenario : scenarios) {
+    Harness harness;
+    CallEngineConfig config;
+    config.enabled = scenario.enabled;
+    harness.engine.reconfigure(config);
+    CallPreferenceService preferences;
+    UpdateCallPreferenceDto update;
+    update.pushDelaySeconds = scenario.delay;
+    drogon::sync_wait(preferences.update(1, update));
+    const bool planned = drogon::sync_wait(harness.engine.ringFollows(
+        {.data = scenario.data, .userId = scenario.userId}));
+    const auto outcomes = drogon::sync_wait(
+        harness.engine.considerNotification(scenario.data, {scenario.userId}));
+    const int actualDelay = scenario.userId == 1
+                                ? scenario.delay
+                                : CallPreferenceSchema::defaultsFor(scenario.userId).pushDelaySeconds;
+    const bool placed = !outcomes.empty() && outcomes.front().resolution == CallResolution::Rang &&
+                        actualDelay == 0;
+    INFO(scenario.name);
+    CHECK(planned == placed);
+  }
+}
+
 TEST_CASE("notifications that are not call-worthy never ring")
 {
   Harness harness;

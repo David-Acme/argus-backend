@@ -2,6 +2,29 @@
 #include <doctest/doctest.h>
 
 #include <shared/services/push-delivery/push-alert-intent.hxx>
+#include <shared/services/push-delivery/ring-planner.hxx>
+
+#include <memory>
+
+namespace
+{
+struct AlwaysRings final : push_delivery::RingPlanner
+{
+  drogon::Task<bool> ringFollows(const push_delivery::RingPlanInput&) const override
+  {
+    co_return true;
+  }
+};
+}
+
+TEST_CASE("an unbound planner answers no until the call engine is bound")
+{
+  push_delivery::LateRingPlanner planner;
+  const push_delivery::RingPlanInput input{.data = Json::Value(Json::objectValue), .userId = 1};
+  CHECK_FALSE(drogon::sync_wait(planner.ringFollows(input)));
+  planner.bind(std::make_shared<AlwaysRings>());
+  CHECK(drogon::sync_wait(planner.ringFollows(input)));
+}
 
 namespace
 {

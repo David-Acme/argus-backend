@@ -40,7 +40,8 @@ bool pushAlertsEnabled()
 PushAlertWriter::PushAlertWriter(PushAlertWriterDependencies dependencies)
     : devices_(std::move(dependencies.devices)),
       outbox_(std::move(dependencies.outbox)),
-      clock_(std::move(dependencies.clock))
+      clock_(std::move(dependencies.clock)),
+      ringPlanner_(std::move(dependencies.ringPlanner))
 {
 }
 
@@ -56,6 +57,10 @@ drogon::Task<void> PushAlertWriter::write(NotificationAlertRound round) const
     const PushCopy copy = push_copy::render({.lang = push_copy::langOf(input.data),
                                              .urgency = push_copy::urgencyOf(input.data),
                                              .call = false});
+    const std::string episode = episodeOf(input.data);
+    const bool ringFollows =
+        !episode.empty() && ringPlanner_ &&
+        co_await ringPlanner_->ringFollows({.data = input.data, .userId = input.userId});
     const auto devices = co_await devices_->devicesOf(input.userId, round.client);
     for (const PushDevice& device : devices) {
       if (!push_envelope::combinationAllowed(device.provider, PushKind::Alert))
@@ -74,8 +79,8 @@ drogon::Task<void> PushAlertWriter::write(NotificationAlertRound round) const
           .title = copy.title,
           .body = copy.body,
           .urgency = urgency,
-          .episode = episodeOf(input.data),
-          .ringFollows = false,
+          .episode = episode,
+          .ringFollows = ringFollows,
           .issuedAt = now,
           .expiresAt = now + kAlertTtlSeconds,
       });

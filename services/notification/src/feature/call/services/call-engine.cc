@@ -423,6 +423,27 @@ CallEngine::considerNotification(const Json::Value& data,
                                .notificationExists = true});
 }
 
+drogon::Task<bool> CallEngine::ringFollows(const push_delivery::RingPlanInput& input) const
+{
+  const auto candidate = call_trigger::fromNotification(input.data);
+  if (!candidate || candidate->dedupeKey.empty() || input.userId <= 0)
+    co_return false;
+  const CallEngineConfig config = this->config();
+  const int64_t at = now();
+  const std::vector<int64_t> userIds{input.userId};
+  const auto preferences = co_await preferenceRepository_.findMany(userIds);
+  const auto recipients = co_await lookupRecipients(userIds);
+  UserContext user{.userId = input.userId,
+                   .recipient = recipientIn(recipients, input.userId),
+                   .preference = CallPreferenceSchema::defaultsFor(input.userId)};
+  if (const auto found = preferences.find(input.userId); found != preferences.end())
+    user.preference = found->second;
+  const CallRequest request{.candidate = *candidate, .userIds = userIds, .notificationExists = true};
+  const PreparedCall prepared = co_await prepareUser(
+      {.request = request, .user = user, .config = config, .now = at});
+  co_return prepared.verdict.decision == CallDecision::Ring && user.preference.pushDelaySeconds == 0;
+}
+
 drogon::Task<std::vector<CallUserOutcome>>
 CallEngine::consider(const CallRequest& request) const
 {

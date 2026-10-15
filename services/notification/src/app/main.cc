@@ -255,13 +255,17 @@ int main()
   std::shared_ptr<const PushDeviceDirectory> pushDevices;
   std::shared_ptr<const CallPushDelivery> sealedPush;
   std::shared_ptr<const NotificationAlertWriter> alertWriter;
+  const auto ringPlanner = std::make_shared<push_delivery::LateRingPlanner>();
   if (changeSink) {
     pushDevices = std::make_shared<NotificationPushDeviceDirectory>();
     sealedPush = std::make_shared<CallPushDelivery>(CallPushDeliveryDependencies{
         .devices = pushDevices, .outbox = changeSink, .clock = epochSecondsNow});
     if (pushAlertsEnabled())
       alertWriter = std::make_shared<PushAlertWriter>(PushAlertWriterDependencies{
-          .devices = pushDevices, .outbox = changeSink, .clock = epochSecondsNow});
+          .devices = pushDevices,
+          .outbox = changeSink,
+          .clock = epochSecondsNow,
+          .ringPlanner = ringPlanner});
   }
 
   const auto modules = module_gate::install({.service = "notification", .bus = natsBus});
@@ -340,6 +344,7 @@ int main()
           .blockingOffLoop = true,
           .kindAllowed = kindAllowed,
           .sealedPush = sealedPush});
+  ringPlanner->bind(callEngine);
   moduleGate().onChange([callEngine, tasks](const ModuleChange& change) {
     if (change.enabled)
       return;
