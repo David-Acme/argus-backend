@@ -1,11 +1,11 @@
 tool 23.1.1
-tus 1259
-modernize-use-nodiscard 382
-modernize-avoid-c-style-cast 300
+tus 1313
+modernize-use-nodiscard 379
+modernize-avoid-c-style-cast 297
 bugprone-suspicious-stringview-data-usage 250
 bugprone-signed-bitwise 190
-modernize-use-designated-initializers 161
-modernize-use-scoped-lock 125
+modernize-use-designated-initializers 160
+modernize-use-scoped-lock 124
 bugprone-unchecked-optional-access 74
 performance-use-std-move 73
 bugprone-implicit-widening-of-multiplication-result 64
