@@ -380,13 +380,21 @@ drogon::Task<void> CallEngine::closeRoom(const CallRoomClose& input) const
   if (!dependencies_.announcer)
     co_return;
   const auto announcer = dependencies_.announcer;
-  if (!dependencies_.blockingOffLoop) {
-    static_cast<void>(announcer->closeRoom(input));
-    co_return;
+  for (int attempt = 0; attempt < 2; ++attempt) {
+    bool closed = false;
+    if (!dependencies_.blockingOffLoop) {
+      closed = announcer->closeRoom(input);
+    }
+    else {
+      closed = co_await BlockingTask<bool>([announcer, input]() {
+        return announcer->closeRoom(input);
+      });
+    }
+    if (closed)
+      co_return;
   }
-  static_cast<void>(co_await BlockingTask<bool>([announcer, input]() {
-    return announcer->closeRoom(input);
-  }));
+  LOG_WARN << "Call engine: the voice room of call-" << input.callId << " did not close after two tries (" << input.reason
+           << "); the room may stay open until the phone leaves";
 }
 
 drogon::Task<void> CallEngine::noteDeclined(const CallSchema& call) const

@@ -135,12 +135,17 @@ public:
   {
     const std::scoped_lock lock(mutex);
     closed.push_back(input);
+    if (refusals > 0) {
+      --refusals;
+      return false;
+    }
     return true;
   }
 
   mutable std::mutex mutex;
   mutable std::vector<CallAnnouncement> heard;
   mutable std::vector<CallRoomClose> closed;
+  mutable int refusals{0};
   std::map<int64_t, bool> inCall;
   bool reachable{true};
 };
@@ -603,6 +608,24 @@ TEST_CASE("ending a call on the server closes its room on voice, once, with the 
                                               .spoken = true,
                                               .sessionId = "phone"})) == CallEndStatus::Ended);
   CHECK(harness.announcer->closed.size() == 1);
+}
+
+TEST_CASE("a refused room close is retried once and never blocks the end of the call")
+{
+  Harness harness;
+  const auto rang = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("critical", 52), {1}));
+  const int64_t id = outcomeFor(rang, 1).callId;
+  drogon::sync_wait(harness.engine.claim({.callId = call_id::format(id), .userId = 1, .sessionId = "phone"}));
+
+  harness.announcer->refusals = 1;
+  CHECK(drogon::sync_wait(harness.engine.end({.callId = call_id::format(id),
+                                              .userId = 1,
+                                              .outcome = CallEndReport::Completed,
+                                              .spoken = true,
+                                              .sessionId = "phone"})) == CallEndStatus::Ended);
+  CHECK(harness.announcer->closed.size() == 2);
+  CHECK(stateOf(id) == "completed");
 }
 
 TEST_CASE("a call hung up before Argus spoke counts as declined and leaves a note")
