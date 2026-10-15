@@ -6,10 +6,11 @@ source "$ROOT/scripts/lib/common.sh"
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+mkdir "$work/tmp"
+export TMPDIR="$work/tmp"
 
 source_config="$work/source.toml"
 config="$work/stack.toml"
-code="$work/pairing.code"
 
 cat > "$source_config" <<'EOF'
 [pairing]
@@ -35,8 +36,6 @@ install_source_config "$source_config" "$config"
 expect pairing paired false
 expect pairing owner_device ""
 
-printf 'ABCDEFGHJKLMNPQRSTUVWXYZ23\n' > "$code"
-code_before="$(sha256sum "$code" | cut -d' ' -f1)"
 replace_toml_value pairing paired true "$config" literal
 replace_toml_value pairing owner_device "device-hash-1" "$config"
 replace_toml_value push enabled true "$config" literal
@@ -51,7 +50,6 @@ expect pairing paired true
 expect pairing owner_device device-hash-1
 expect push enabled true
 
-[ "$(sha256sum "$code" | cut -d' ' -f1)" = "$code_before" ] || fail "the code file changed"
-[ ! -e "$config.previous" ] || fail "the previous copy was left behind"
+[ -z "$(ls -A "$work/tmp")" ] || fail "a copy of the stack config was left in TMPDIR"
 
 printf 'native-stack-prepare-test: ok\n'

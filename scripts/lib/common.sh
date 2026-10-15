@@ -266,15 +266,16 @@ carry_runtime_state() {
 install_source_config() {
   local source="$1"
   local config="$2"
-  local previous="$config.previous"
+  local previous
 
+  previous="$(mktemp)"
+  trap 'rm -f "$previous"' RETURN
   if [ -f "$config" ]; then
     cp -p "$config" "$previous"
   fi
   install -m 600 "$source" "$config"
-  if [ -f "$previous" ]; then
+  if [ -s "$previous" ]; then
     carry_runtime_state "$previous" "$config"
-    rm -f "$previous"
   fi
 }
 
