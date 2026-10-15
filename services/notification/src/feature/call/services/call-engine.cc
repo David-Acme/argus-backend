@@ -353,6 +353,28 @@ drogon::Task<bool> CallEngine::missRingingAndCancel(const CallSchema& call, int6
   co_return true;
 }
 
+drogon::Task<std::vector<std::string>> CallEngine::supersedeRinging(const CallSchema& parent, int64_t at) const
+{
+  const auto followups = co_await callRepository_.findFollowups(parent.id);
+  std::vector<std::string> lines;
+  lines.reserve(followups.size() + 1);
+  lines.push_back(call_copy::render({.trigger = parent.trigger,
+                                     .lang = parent.lang,
+                                     .data = parent.data,
+                                     .userName = "",
+                                     .now = at})
+                      .followupLine);
+  for (const auto& followup : followups)
+    lines.push_back(call_copy::render({.trigger = followup.trigger,
+                                       .lang = parent.lang,
+                                       .data = followup.data,
+                                       .userName = "",
+                                       .now = at})
+                        .followupLine);
+  co_await settleMissed({.call = parent, .cancelReason = "superseded", .now = at, .notify = false});
+  co_return lines;
+}
+
 drogon::Task<void> CallEngine::noteDeclined(const CallSchema& call) const
 {
   if (!dependencies_.notifier)
@@ -594,7 +616,12 @@ CallEngine::finishUser(const FinishUserInput& input) const
     co_return outcome;
   }
 
-  if (prepared.verdict.decision == CallDecision::Ring) {
+  if (prepared.verdict.decision == CallDecision::Ring ||
+      prepared.verdict.decision == CallDecision::Supersede) {
+    if (prepared.verdict.decision == CallDecision::Supersede && prepared.ringing) {
+      const auto lines = co_await supersedeRinging(*prepared.ringing, input.now);
+      row.openingLine = call_copy::joinFollowups(row.openingLine, lines);
+    }
     CallSchema draft{.userId = userId,
                      .dedupeKey = row.dedupeKey,
                      .trigger = row.trigger,

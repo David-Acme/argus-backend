@@ -393,6 +393,33 @@ readiness and the fallback gate — `CameraObjectNotifier`, the
   because a drain registered after the stop was requested is only stopped at
   once, never waited for.
 
+## A critical alert supersedes a ring (2026-10-15)
+
+**Why.** A second ring while one rang was stored `Queued` behind the first and
+inherited its expiry (`CallPolicy` returned `Followup` for every trigger while
+`ringing`). A critical alert in that state never rang: answered, it was folded
+into the opening line; expired, it became a line in the missed-call
+notification. Both lost the alert.
+
+**The rule.** A critical trigger that finds a ring active returns
+`CallDecision::Supersede` (`call-policy.cc`, `limited`), whatever the quiet
+hours, do-not-disturb, cooldown or hourly cap: critical already bypasses those.
+A non-critical item behind a ring stays `Followup`, as before. The engine
+(`CallEngine::supersedeRinging`, called from the ring path in `consider`):
+
+- settles the parent through `settleMissed` with `notify = false` and cancel
+  reason `superseded`: the parent's `CallCancel` goes to every device, its
+  push is cancelled (the app clears its ring notification), and no missed-call
+  notification is written;
+- folds the parent's own follow-up line, and the lines of its queued
+  follow-ups, into the new ring's opening line (`joinFollowups`), so the
+  superseded reason is still said;
+- opens the critical as a new ring with its own call id: it pushes and rings.
+
+**Consequences.** The parent's state is `missed` in the database (there is no
+`superseded` state in the schema). Its cancel reason is `superseded` on the
+wire, and the app treats that like any other cancel for its own notification.
+
 ## Push tokens (2026-10, audit #45)
 
 Boot order for `notification_token` (2026-10, the index ruling): `schema.sql`

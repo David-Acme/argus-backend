@@ -11,6 +11,8 @@ std::string callDecisionToString(CallDecision decision)
       return "notify";
     case CallDecision::Drop:
       return "drop";
+    case CallDecision::Supersede:
+      return "supersede";
   }
   return "notify";
 }
@@ -42,6 +44,8 @@ namespace
 CallVerdict limited(const CallPolicyInput& input, const char* ringReason)
 {
   const bool live = input.preference.liveAnnounce;
+  if (input.ringing && input.critical)
+    return {.decision = CallDecision::Supersede, .reason = ringReason, .injectable = false};
   if (input.ringing)
     return {.decision = CallDecision::Followup, .reason = "ringing", .injectable = live};
   if (!input.critical) {

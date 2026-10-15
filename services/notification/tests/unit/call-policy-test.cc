@@ -279,6 +279,22 @@ TEST_CASE("a call already ringing turns the next item into its follow-up")
   CHECK(verdict.injectable);
 }
 
+TEST_CASE("a critical alert during a ring supersedes it, through quiet hours and the caps")
+{
+  const auto preference = CallPreferenceSchema::defaultsFor(7);
+  const auto verdict = run(preference, {.trigger = CallTrigger::GuardCritical,
+                                        .critical = true,
+                                        .hour = 2,
+                                        .ringing = true,
+                                        .lastCallAt = kNow - 10,
+                                        .callsLastHour = 9});
+  CHECK(verdict.decision == CallDecision::Supersede);
+  CHECK_FALSE(verdict.injectable);
+  CHECK(callDecisionToString(CallDecision::Supersede) == "supersede");
+  CHECK(run(preference, {.trigger = CallTrigger::GuardIntruder, .ringing = true}).decision ==
+        CallDecision::Followup);
+}
+
 TEST_CASE("cooldown and the hourly cap spare only critical alerts")
 {
   const auto preference = CallPreferenceSchema::defaultsFor(7);

@@ -448,6 +448,37 @@ TEST_CASE("an item that arrives while a call rings joins its opening line")
             .status == CallClaimStatus::NotFound);
 }
 
+TEST_CASE("a critical alert during a ring supersedes it: the old ring is cancelled quietly and the new one rings")
+{
+  Harness harness;
+  const auto first = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("critical", 48), {1}));
+  const int64_t oldId = first.front().callId;
+  harness.advance(2);
+  const auto second = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("critical", 49), {1}));
+  REQUIRE(second.front().resolution == CallResolution::Rang);
+  const int64_t newId = second.front().callId;
+  CHECK(newId != oldId);
+  CHECK(stateOf(oldId) == "missed");
+  CHECK(stateOf(newId) == "ringing");
+  CHECK(harness.signal->of(SyncOperation::CallIncoming).size() == 2);
+  const auto cancels = harness.signal->of(SyncOperation::CallCancel);
+  REQUIRE(cancels.size() == 1);
+  CHECK(cancels.front().info["reason"].asString() == "superseded");
+  CHECK(cancels.front().info["callId"].asString() == call_id::format(oldId));
+  CHECK(harness.notifier->all().empty());
+  CHECK(drogon::sync_wait(harness.engine.claim({.callId = call_id::format(oldId),
+                                                .userId = 1,
+                                                .sessionId = "phone"}))
+            .status == CallClaimStatus::Expired);
+  const auto claimed = drogon::sync_wait(harness.engine.claim({.callId = call_id::format(newId),
+                                                               .userId = 1,
+                                                               .sessionId = "phone"}));
+  CHECK(claimed.status == CallClaimStatus::Claimed);
+  CHECK(claimed.openingLine.find("Además") != std::string::npos);
+}
+
 TEST_CASE("a user already talking to Argus hears the news instead of a ring")
 {
   Harness harness;

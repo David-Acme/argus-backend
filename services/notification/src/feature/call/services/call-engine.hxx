@@ -383,6 +383,7 @@ private:
   drogon::Task<bool> declineRingingAndCancel(const CallSchema& call, int64_t at) const;
 
   drogon::Task<bool> missRingingAndCancel(const CallSchema& call, int64_t at) const;
+  drogon::Task<std::vector<std::string>> supersedeRinging(const CallSchema& parent, int64_t at) const;
 
 
   drogon::Task<void> noteDeclined(const CallSchema& call) const;

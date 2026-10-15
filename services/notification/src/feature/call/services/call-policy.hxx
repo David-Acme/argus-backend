@@ -11,7 +11,8 @@ enum class CallDecision : uint8_t
   Ring = 0,
   Followup,
   Notify,
-  Drop
+  Drop,
+  Supersede
 };
 
 std::string callDecisionToString(CallDecision decision);
