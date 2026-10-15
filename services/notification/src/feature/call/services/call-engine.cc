@@ -703,7 +703,7 @@ CallEngine::claim(const CallClaimRequest& request) const
                            : CallClaimStatus::Taken;
       co_return outcome;
     }
-    followups = co_await callRepository_.findFollowups(id);
+    followups = co_await callRepository_.findFollowups(id, transaction.get());
     if (!followups.empty())
       co_await callRepository_.settleFollowups({.parentId = id,
                                                 .state = CallState::Injected,
@@ -1300,7 +1300,7 @@ drogon::Task<void> CallEngine::cancelRinging(const CancelInput& input) const
       co_await callRepository_.settleFollowups(
           {.parentId = call.id, .state = CallState::Missed, .now = input.now, .client = transaction.get()});
       if (dependencies_.sealedPush) {
-        if (const auto ringing = co_await callRepository_.findById(call.id))
+        if (const auto ringing = co_await callRepository_.findById(call.id, transaction.get()))
           static_cast<void>(co_await dependencies_.sealedPush->cancel(*ringing, transaction.get()));
       }
     }

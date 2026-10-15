@@ -20,7 +20,8 @@ public:
 
   drogon::Task<bool> exists(const std::string& dedupeKey, int64_t userId) const;
 
-  drogon::Task<std::optional<CallSchema>> findById(int64_t id) const;
+  drogon::Task<std::optional<CallSchema>> findById(int64_t id,
+                                                   drogon::orm::DbClient* client = nullptr) const;
 
   drogon::Task<std::optional<CallSchema>>
   findRingingFor(const CallRingingInput& input) const;
@@ -37,7 +38,8 @@ public:
 
   drogon::Task<bool> markPushed(const CallPushedInput& input) const;
 
-  drogon::Task<std::vector<CallSchema>> findFollowups(int64_t parentId) const;
+  drogon::Task<std::vector<CallSchema>> findFollowups(int64_t parentId,
+                                                      drogon::orm::DbClient* client = nullptr) const;
 
   drogon::Task<int64_t> settleFollowups(const CallSettleInput& input) const;
 

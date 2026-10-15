@@ -60,10 +60,10 @@ drogon::Task<bool> CallRepository::exists(const std::string& dedupeKey,
 }
 
 drogon::Task<std::optional<CallSchema>>
-CallRepository::findById(int64_t id) const
+CallRepository::findById(int64_t id, drogon::orm::DbClient* given) const
 {
-  const auto client = DbService::client();
-  const auto rows = co_await client->execSqlCoro(std::string(FIND_BY_ID), id);
+  const auto pool = DbService::client();
+  const auto rows = co_await executor(given, pool)->execSqlCoro(std::string(FIND_BY_ID), id);
   if (rows.empty())
     co_return std::nullopt;
   co_return CallSchema::fromRow(rows.front());
@@ -131,10 +131,10 @@ drogon::Task<bool> CallRepository::markPushed(const CallPushedInput& input) cons
 }
 
 drogon::Task<std::vector<CallSchema>>
-CallRepository::findFollowups(int64_t parentId) const
+CallRepository::findFollowups(int64_t parentId, drogon::orm::DbClient* given) const
 {
-  const auto client = DbService::client();
-  co_return rowsOf(co_await client->execSqlCoro(std::string(FIND_FOLLOWUPS), parentId));
+  const auto pool = DbService::client();
+  co_return rowsOf(co_await executor(given, pool)->execSqlCoro(std::string(FIND_FOLLOWUPS), parentId));
 }
 
 drogon::Task<int64_t>
