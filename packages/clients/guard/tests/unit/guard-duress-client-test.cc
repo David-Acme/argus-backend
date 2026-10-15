@@ -167,7 +167,10 @@ TEST_CASE("the duress client dials the mutual TLS port with the internal certifi
 
   const GuardDuressClient client({.target = endpoint.tlsTarget(), .credential = kCredential});
   const auto key = client.phraseKey();
-  REQUIRE(key.has_value());
+  if (!key) {
+    FAIL("the phrase key is empty");
+    return;
+  }
   CHECK(*key == "phrase-key");
   CHECK(client.raiseSpoken({.userId = 9, .role = "resident", .key = "phrase-key", .saidAt = 0}) ==
         SpokenDuressReply::Raised);
