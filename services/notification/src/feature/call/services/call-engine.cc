@@ -634,7 +634,11 @@ CallEngine::finishUser(const FinishUserInput& input) const
       prepared.verdict.decision == CallDecision::Supersede) {
     if (prepared.verdict.decision == CallDecision::Supersede && prepared.ringing) {
       const auto lines = co_await supersedeRinging(*prepared.ringing, input.now);
-      row.openingLine = call_copy::joinFollowups(row.openingLine, lines);
+      Json::Value laterLines(Json::arrayValue);
+      for (const auto& line : lines)
+        laterLines.append(line);
+      prepared.stored["laterLines"] = laterLines;
+      row.data = json_util::toString(prepared.stored);
     }
     CallSchema draft{.userId = userId,
                      .dedupeKey = row.dedupeKey,
@@ -770,8 +774,13 @@ CallEngine::claim(const CallClaimRequest& request) const
                                              .now = at});
     lines.push_back(copy.followupLine);
   }
+  if (existing->data.isObject() && existing->data.isMember("laterLines")) {
+    for (const auto& line : existing->data["laterLines"])
+      lines.insert(lines.begin(), line.asString());
+  }
   outcome.status = CallClaimStatus::Claimed;
-  outcome.openingLine = call_copy::joinFollowups(existing->openingLine, lines);
+  outcome.openingLine = existing->openingLine;
+  outcome.laterLines = lines;
   outcome.call = claimed;
 
   Json::Value info(Json::objectValue);

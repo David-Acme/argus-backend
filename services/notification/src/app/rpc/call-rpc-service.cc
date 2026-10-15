@@ -75,6 +75,8 @@ void fillClaim(const CallClaimOutcome& outcome, v1::ClaimCallResponse* response)
     return value.isIntegral() ? value.asInt64() : 0;
   };
   response->set_opening_line(outcome.openingLine);
+  for (const auto& line : outcome.laterLines)
+    response->add_later_lines(line);
   response->set_lang(call.lang);
   response->set_kind(std::string(callKindOf(call.trigger)));
   response->set_summary(call.summary);

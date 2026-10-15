@@ -126,6 +126,7 @@ struct CallClaimOutcome
   CallClaimStatus status{CallClaimStatus::NotFound};
   std::optional<CallSchema> call;
   std::string openingLine;
+  std::vector<std::string> laterLines;
 };
 
 enum class CallEndReport : uint8_t

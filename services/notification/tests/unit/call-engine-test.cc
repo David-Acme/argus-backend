@@ -446,8 +446,10 @@ TEST_CASE("an item that arrives while a call rings joins its opening line")
       {.callId = call_id::format(rang.front().callId),
        .userId = 1,
        .sessionId = "phone"}));
-  CHECK(claimed.openingLine.find("Además, a las ") != std::string::npos);
-  CHECK(claimed.openingLine.find("«Dentista»") != std::string::npos);
+  REQUIRE(claimed.laterLines.size() == 1);
+  CHECK(claimed.laterLines.front().find("Además, a las ") != std::string::npos);
+  CHECK(claimed.laterLines.front().find("«Dentista»") != std::string::npos);
+  CHECK(claimed.openingLine.find("Además") == std::string::npos);
   CHECK(stateOf(queued.front().callId) == "injected");
   CHECK(drogon::sync_wait(harness.engine.claim(
                               {.callId = call_id::format(queued.front().callId),
@@ -484,7 +486,9 @@ TEST_CASE("a critical alert during a ring supersedes it: the old ring is cancell
                                                                .userId = 1,
                                                                .sessionId = "phone"}));
   CHECK(claimed.status == CallClaimStatus::Claimed);
-  CHECK(claimed.openingLine.find("Además") != std::string::npos);
+  REQUIRE(claimed.laterLines.size() == 1);
+  CHECK(claimed.laterLines.front().find("Además") != std::string::npos);
+  CHECK(claimed.openingLine.find("Además") == std::string::npos);
 }
 
 TEST_CASE("a user already talking to Argus hears the news instead of a ring")
