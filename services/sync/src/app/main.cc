@@ -54,7 +54,6 @@
 #include <memory>
 #include <optional>
 #include <nats/nats-bus.hxx>
-#include <nats/nats-push-intent-sink.hxx>
 #include <nats/nats-subject.hxx>
 #include <notification/notification-client.hxx>
 #include <voice/voice-client.hxx>
@@ -291,7 +290,6 @@ int main()
   std::shared_ptr<NatsBus> natsBus;
   std::shared_ptr<NotificationDeliveryConsumer> deliveryConsumer;
   std::shared_ptr<ChangeFeedConsumer> changeFeedConsumer;
-  std::unique_ptr<NatsPushIntentSink> heartbeatPush;
   std::unique_ptr<HeartbeatFeed> heartbeatFeed;
   std::unique_ptr<RemoteLinkFeed> remoteLinkFeed;
   if (natsUrl.empty()) {
@@ -314,8 +312,6 @@ int main()
             .subject = std::string(nats_subject::kNotificationDelivery),
             .maxDeliver = 10,
             .poisonMaxAttempts = 3});
-    if (push_intent::enabledFromConfig())
-      heartbeatPush = std::make_unique<NatsPushIntentSink>(natsBus);
     heartbeatFeed = std::make_unique<HeartbeatFeed>(
         HeartbeatFeed::Dependencies{
             .bus = natsBus.get(),
@@ -327,15 +323,12 @@ int main()
                                    std::make_shared<const GuardPresenceClient>(GuardPresenceClientConfig{
                                        .target = heartbeatConfig.presenceTarget,
                                        .credential = heartbeatConfig.presenceCredential})),
-            .push = heartbeatPush.get(),
             .emit = [](int64_t userId, std::string_view frame) {
               RoomManager{}.emit(userRoom(userId), frame);
             }},
         HeartbeatFeed::Config{
             .presenceSubject = std::string(nats_subject::kGuardPresenceChanged),
             .guardHeartbeatSubject = std::string(nats_subject::kGuardHeartbeat),
-            .pushIntervalSeconds =
-                static_cast<double>(heartbeatConfig.pushIntervalSeconds),
             .refillSeconds = static_cast<double>(heartbeatConfig.refillSeconds)});
     remoteLinkFeed = std::make_unique<RemoteLinkFeed>(
         RemoteLinkFeedDependencies{.bus = natsBus.get()},

@@ -50,7 +50,6 @@ struct SyncHeartbeatConfig
   int64_t graceSeconds{2700};
   int64_t socketGraceSeconds{180};
   int64_t guardStaleSeconds{90};
-  int64_t pushIntervalSeconds{900};
   int64_t refillSeconds{300};
   std::string presenceTarget;
   std::string presenceCredential;

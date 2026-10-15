@@ -235,9 +235,7 @@ TEST_CASE("notification RPC creates fan-out rows and serves user pulls")
   writeConfig(config.path());
   ConfigService::load(config.path());
 
-  RpcHarness harness({.deliverySink = deliverySink,
-                      .pushSink = {},
-                      .pushRequired = false});
+  RpcHarness harness({.deliverySink = deliverySink});
   REQUIRE(harness.listening());
   NotificationClient sdk(
       NotificationClientConfig{.target = harness.target(),

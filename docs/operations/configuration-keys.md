@@ -142,7 +142,7 @@ argus-deploy argus-notification configuration. Copy to config.notification.toml 
 | `grpc.caller_sync` | Capability credential for `PullNotifications`; provision-host.sh pairs it with argus-sync's `notifications.credential`, so both sides carry the same minted value. |
 | `notifications.budget_per_hour` and the `silent_*` / `guard_heartbeat_timeout_s` / `fallback_*` keys | The camera object policy (Phase 3d step 1), as documented for `services/notification/config.toml.example` below. |
 | `nats.url` | The bus the camera notifier subscribes on; the deploy endpoint is the `nats` service. |
-| `[push] enabled` | Push intents through the tunnel transport; off in a LAN-only deployment. |
+| `[push] enabled` | Alert pushes through the tunnel transport (sealed, durable); off in a LAN-only deployment. |
 
 ## `argus-deploy/config.productivity.toml.example`
 
@@ -159,7 +159,7 @@ argus-deploy argus-productivity configuration. Copy to config.productivity.toml 
 
 argus-deploy relay configuration (Fase 5). Copy to config.relay.toml (gitignored) next to this file; the compose file bind-mounts it as argus-relay's config.toml. The [tunnel] secret must be IDENTICAL to the client's and is injected at deploy time, never committed.
 
-- **`[push]`** — Push intents to the home client; default off. The notification rows are the source of truth — the queue only accelerates delivery.
+- **`[push]`** — Alert pushes to the home client (sealed, durable); default off. The notification rows stay the source of truth.
 - **`[drogon.app]`** — Mirror of the legacy [drogon.app] block for the /health listener.
 
 ## `argus-deploy/config.settings.toml.example`
@@ -459,7 +459,6 @@ argus-tts configuration. Copy to config.toml (gitignored) to run.
 
 argus-tunnel configuration. Copy to config.toml (gitignored) to run. One file serves both binaries: argus-relay reads the [server] block's relay keys on the US host, argus-tunnel-client reads the client keys on the home host.
 
-- **`[push]`** — Relay-only push-intent gate; default off.
 
 | Key | Notes |
 |---|---|

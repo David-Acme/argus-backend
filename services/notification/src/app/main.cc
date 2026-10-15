@@ -38,7 +38,6 @@
 #include <shared/services/task-gate/task-gate.hxx>
 #include <shared/vocabulary/notification-kind.hxx>
 #include <nats/nats-bus.hxx>
-#include <nats/nats-push-intent-sink.hxx>
 #include <nats/nats-subject.hxx>
 #include <runtime/shutdown-signal.hxx>
 #include <settings/settings-rpc.hxx>
@@ -190,7 +189,6 @@ int main()
   std::shared_ptr<NatsNotificationChangeSink> changeSink;
   std::shared_ptr<NatsNotificationDeliverySink> deliverySink;
   std::shared_ptr<NatsBus> natsBus;
-  std::shared_ptr<NatsPushIntentSink> pushIntentSink;
   const std::string natsUrl = ConfigService::getString("nats.url");
   if (natsUrl.empty()) {
     LOG_INFO << "NATS not configured; change funnel and delivery reconciler "
@@ -214,17 +212,6 @@ int main()
                          nats_subject::kNotificationDelivery)});
   }
 
-  if (push_intent::enabledFromConfig()) {
-    if (natsBus) {
-      pushIntentSink = std::make_shared<NatsPushIntentSink>(natsBus);
-      push_intent::setSink(pushIntentSink.get());
-      LOG_INFO << "Push intents enabled (" << nats_subject::kNotificationPushIntent
-               << ")";
-    } else {
-      LOG_WARN << "[push] enabled but NATS unavailable; push intents disabled";
-    }
-  }
-
   const auto epochSecondsNow = [] {
     return std::chrono::duration_cast<std::chrono::seconds>(
                std::chrono::system_clock::now().time_since_epoch())
@@ -237,7 +224,7 @@ int main()
     pushDevices = std::make_shared<NotificationPushDeviceDirectory>();
     sealedPush = std::make_shared<CallPushDelivery>(CallPushDeliveryDependencies{
         .devices = pushDevices, .outbox = changeSink, .clock = epochSecondsNow});
-    if (push_intent::enabledFromConfig())
+    if (pushAlertsEnabled())
       alertWriter = std::make_shared<PushAlertWriter>(PushAlertWriterDependencies{
           .devices = pushDevices, .outbox = changeSink, .clock = epochSecondsNow});
   }
@@ -250,8 +237,6 @@ int main()
 
   const NotificationService::Dependencies deliveryDeps{
       .deliverySink = deliverySink,
-      .pushSink = pushIntentSink,
-      .pushRequired = push_intent::enabledFromConfig(),
       .alerts = alertWriter,
       .kindAllowed = kindAllowed};
 
@@ -313,7 +298,6 @@ int main()
                            ? std::make_shared<IdentityCallDirectory>(identityClient)
                            : nullptr,
           .notifier = std::make_shared<NotificationCallSink>(deliveryDeps),
-          .push = pushIntentSink,
           .verdicts = natsBus ? std::make_shared<NatsResponseVerdictSink>(natsBus)
                               : nullptr,
           .clock = {},

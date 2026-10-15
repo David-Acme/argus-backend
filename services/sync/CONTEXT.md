@@ -627,12 +627,10 @@ guardSeenAt}`, built by the pure `heartbeat::render`
   phone that leaves home arms within a second instead of a minute;
 - `GET /sync/heartbeat` (every role, `kSyncAccess`, own row only): the same
   payload for the app's background task, which has no socket;
-- a push intent `type: heartbeat` (data only: empty title and body, `data
-  {kind: heartbeat, ...the payload}`) to every armed user every
-  `push_interval_seconds` (900), only when `[push] enabled`. It rides the
-  existing `argus.notification.v1.push_intent` subject toward argus-relay;
-  the device leg (APNs/FCM) does not exist yet (`services/tunnel/CONTEXT.md`),
-  so today it is a hook the app already handles.
+- no push: the heartbeat's push intent (`type: heartbeat` to armed users
+  every `push_interval_seconds`) was removed with batch 3 (Q6). It published to
+  a subject nothing forwarded. A sealed heartbeat push, if one ships, goes
+  through the sealed path (batch 4).
 
 **Armed only while away.** `armed = presence == "away"`; `home` and
 `unknown` (no consent, no row, presence service down, sync just booted and

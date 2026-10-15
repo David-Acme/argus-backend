@@ -8,7 +8,6 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <nats/push-intent-sink.hxx>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -28,7 +27,6 @@ public:
     std::shared_ptr<PresenceBoard> board;
     std::shared_ptr<const HeartbeatService> heartbeat;
     std::shared_ptr<const PresenceDirectory> directory;
-    const push_intent::PushIntentSink* push{nullptr};
     Emit emit;
   };
 
@@ -36,7 +34,6 @@ public:
   {
     std::string presenceSubject;
     std::string guardHeartbeatSubject;
-    double pushIntervalSeconds{900};
     double refillSeconds{300};
   };
 
@@ -53,7 +50,6 @@ public:
 
   bool ingestPresence(std::string_view payload);
   void ingestGuardHeartbeat(int64_t at);
-  [[nodiscard]] size_t publishPushHeartbeats() const;
   bool refill();
 
 private:
@@ -62,7 +58,6 @@ private:
   Dependencies dependencies_;
   Config config_;
   std::vector<uint64_t> subscriptions_;
-  std::optional<trantor::TimerId> pushTimer_;
   std::optional<trantor::TimerId> refillTimer_;
   std::shared_ptr<bool> alive_;
   std::shared_ptr<std::atomic<int>> refilling_{
@@ -73,5 +68,4 @@ namespace heartbeat
 {
 [[nodiscard]] std::optional<PresenceEntry> parsePresence(std::string_view payload);
 
-[[nodiscard]] PushIntent pushIntentFor(int64_t userId, const Json::Value& heartbeat);
 }

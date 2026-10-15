@@ -134,12 +134,6 @@ target_link_libraries(service-config-test PRIVATE tunnel-core
                                                   doctest::doctest)
 target_compile_options(service-config-test PRIVATE -Wall -Wextra)
 
-add_executable(tunnel-push-test
-               ${CMAKE_CURRENT_SOURCE_DIR}/tests/tunnel-push-test.cc)
-target_include_directories(tunnel-push-test PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-target_link_libraries(tunnel-push-test PRIVATE tunnel-core doctest::doctest)
-target_compile_options(tunnel-push-test PRIVATE -Wall -Wextra)
 
 add_executable(tunnel-health-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/tunnel-health-test.cc)
@@ -217,7 +211,6 @@ set_target_properties(tunnel-reconnect-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-negauth-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-hardening-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(service-config-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-set_target_properties(tunnel-push-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(tunnel-health-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(link-protocol-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 set_target_properties(link-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
@@ -232,7 +225,6 @@ add_test(NAME tunnel-reconnect-test COMMAND tunnel-reconnect-test)
 add_test(NAME tunnel-negauth-test COMMAND tunnel-negauth-test)
 add_test(NAME tunnel-hardening-test COMMAND tunnel-hardening-test)
 add_test(NAME service-config-test COMMAND service-config-test)
-add_test(NAME tunnel-push-test COMMAND tunnel-push-test)
 add_test(NAME tunnel-health-test COMMAND tunnel-health-test)
 add_test(NAME link-protocol-test COMMAND link-protocol-test)
 add_test(NAME link-client-test COMMAND link-client-test)

@@ -171,9 +171,7 @@ TEST_CASE("create settles fan-out only on broker ack, across an outage" *
   CHECK_FALSE(deadBus->connect(deadOptions));
   const auto deadSink = std::make_shared<NatsNotificationDeliverySink>(
       deadBus, sinkConfig(stream, subject));
-  const NotificationService offline({.deliverySink = deadSink,
-                                     .pushSink = {},
-                                     .pushRequired = false});
+  const NotificationService offline({.deliverySink = deadSink});
   const auto offlineOutcome = drogon::sync_wait(
       offline.createManyAndEmit(batchWith("live-fanout-0")));
   CHECK_FALSE(offlineOutcome.duplicate);
@@ -187,9 +185,7 @@ TEST_CASE("create settles fan-out only on broker ack, across an outage" *
   auto sink = std::make_shared<NatsNotificationDeliverySink>(
       bus, sinkConfig(stream, subject));
   REQUIRE(sink->ensureStream());
-  const NotificationService service({.deliverySink = sink,
-                                     .pushSink = {},
-                                     .pushRequired = false});
+  const NotificationService service({.deliverySink = sink});
 
   const auto first = drogon::sync_wait(
       service.createManyAndEmit(batchWith("live-fanout-1")));
@@ -210,9 +206,7 @@ TEST_CASE("create settles fan-out only on broker ack, across an outage" *
   sink = std::make_shared<NatsNotificationDeliverySink>(
       bus, sinkConfig(stream, subject));
   REQUIRE(sink->ensureStream());
-  const NotificationService reconnected({.deliverySink = sink,
-                                         .pushSink = {},
-                                         .pushRequired = false});
+  const NotificationService reconnected({.deliverySink = sink});
   drogon::sync_wait(reconnected.deliverPending());
   CHECK(pendingCount() == 0);
   CHECK(sentCount() == 6);

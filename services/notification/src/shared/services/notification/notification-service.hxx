@@ -2,7 +2,6 @@
 
 #include <drogon/utils/coroutine.h>
 #include <notification/notification-delivery-sink.hxx>
-#include <nats/push-intent-sink.hxx>
 #include <shared/repositories/notification/notification-repository.hxx>
 #include <sync/user-change-sink.hxx>
 #include <functional>
@@ -64,9 +63,7 @@ public:
   struct Dependencies
   {
     std::shared_ptr<const NotificationDeliverySink> deliverySink;
-    std::shared_ptr<const push_intent::PushIntentSink> pushSink;
-    bool pushRequired{false};
-    std::shared_ptr<const NotificationAlertWriter> alerts;
+    std::shared_ptr<const NotificationAlertWriter> alerts{};
     std::function<bool(std::string_view)> kindAllowed{};
   };
 
@@ -106,8 +103,6 @@ private:
   {
     std::vector<NotificationDeliveryRow> pending;
     std::shared_ptr<const NotificationDeliverySink> sink;
-    std::shared_ptr<const push_intent::PushIntentSink> pushSink;
-    bool pushRequired{false};
   };
 
   drogon::Task<bool> deliverDurable(DeliverDurableInput input) const;

@@ -56,7 +56,6 @@ struct HarnessOptions
   int slowGatewayReadMs{0};
   int gatewayRcvBuf{0};
   TunnelMux::Limits limits;
-  size_t relayPushCapacity{256};
   size_t clientPushCapacity{256};
 };
 
@@ -153,7 +152,6 @@ struct Harness
     relayOptions.homePort = 0;
     relayOptions.secret = options_.secret;
     relayOptions.limits = options_.limits;
-    relayOptions.pushQueueCapacity = options_.relayPushCapacity;
     relay = std::make_unique<TunnelRelay>(loop, std::move(relayOptions));
     if (!relay->start())
       return false;

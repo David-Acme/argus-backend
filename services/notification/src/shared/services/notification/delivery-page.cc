@@ -1,31 +1,5 @@
 #include "delivery-page.hxx"
 
-#include <shared/services/notification/push-copy.hxx>
-
-namespace
-{
-void pushIntentFor(const delivery_page::PageInput& input,
-                   const NotificationDeliveryRow& delivery)
-{
-  if (!input.pushSink || delivery.userId <= 0)
-    return;
-  const PushCopy copy =
-      push_copy::render({.lang = push_copy::langOf(delivery.data),
-                         .urgency = push_copy::urgencyOf(delivery.data),
-                         .call = false});
-  input.pushSink->publish(
-      PushIntent{.userId = delivery.userId,
-                 .notificationId = delivery.notificationId,
-                 .type = delivery.type,
-                 .title = copy.title,
-                 .body = copy.body,
-                 .createdAtMs = delivery.createdAt * 1000,
-                 .data = push_copy::minimalData(
-                     {.notificationId = delivery.notificationId,
-                      .data = delivery.data})});
-}
-}
-
 delivery_page::PublishedPage delivery_page::publish(const PageInput& input)
 {
   PublishedPage page;
@@ -53,7 +27,6 @@ delivery_page::PublishedPage delivery_page::publish(const PageInput& input)
       continue;
     }
     page.sent.push_back(delivery.deliveryId);
-    pushIntentFor(input, delivery);
   }
   return page;
 }

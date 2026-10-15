@@ -22,14 +22,6 @@ const HeartbeatPolicy kPolicy{.intervalSeconds = 60,
                               .socketGraceSeconds = 180,
                               .guardStaleSeconds = 90};
 
-class RecordingPush : public push_intent::PushIntentSink
-{
-public:
-  void publish(const PushIntent& intent) const override { sent.push_back(intent); }
-
-  mutable std::vector<PushIntent> sent;
-};
-
 class FakeDirectory : public PresenceDirectory
 {
 public:
@@ -58,7 +50,6 @@ struct FeedRig
           HeartbeatService::Dependencies{.board = board, .clock = [] { return int64_t{5000}; }},
           kPolicy);
   std::shared_ptr<FakeDirectory> directory = std::make_shared<FakeDirectory>();
-  RecordingPush push;
   std::vector<Emitted> emitted;
   HeartbeatFeed feed{
       HeartbeatFeed::Dependencies{
@@ -66,14 +57,12 @@ struct FeedRig
           .board = board,
           .heartbeat = service,
           .directory = directory,
-          .push = &push,
           .emit = [this](int64_t userId, std::string_view frame) {
             emitted.push_back({.userId = userId,
                                .frame = json_util::fromString(std::string(frame))});
           }},
       HeartbeatFeed::Config{.presenceSubject = {},
                             .guardHeartbeatSubject = {},
-                            .pushIntervalSeconds = 0,
                             .refillSeconds = 0}};
 };
 }
@@ -176,25 +165,6 @@ TEST_CASE("a presence change reaches that user's sockets at once, a repeat does 
   REQUIRE(rig.emitted.size() == 2);
   CHECK_FALSE(rig.emitted[1].frame["info"]["armed"].asBool());
   CHECK_FALSE(rig.feed.ingestPresence("{}"));
-}
-
-TEST_CASE("push heartbeats go to armed users only, as data-only intents")
-{
-  FeedRig rig;
-  rig.board->apply({.userId = 1, .overall = "home", .since = 1});
-  rig.board->apply({.userId = 2, .overall = "away", .since = 1});
-  rig.board->apply({.userId = 3, .overall = "unknown", .since = 1});
-  CHECK(rig.feed.publishPushHeartbeats() == 1);
-  REQUIRE(rig.push.sent.size() == 1);
-  const PushIntent& intent = rig.push.sent[0];
-  CHECK(intent.userId == 2);
-  CHECK(intent.type == "heartbeat");
-  CHECK(intent.notificationId == 0);
-  CHECK(intent.title.empty());
-  CHECK(intent.body.empty());
-  CHECK(intent.data["kind"].asString() == "heartbeat");
-  CHECK(intent.data["armed"].asBool());
-  CHECK(intent.data["at"].asInt64() == 5000);
 }
 
 TEST_CASE("a refill applies the directory and an unavailable directory keeps what is known")

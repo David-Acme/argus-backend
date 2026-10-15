@@ -13,10 +13,6 @@ home_port = 7101
 health_host = "0.0.0.0"
 health_port = 7103
 
-[push]
-enabled = false
-queue_capacity = 256
-
 [nats]
 url = "nats://nats:4222"
 user = "argus"

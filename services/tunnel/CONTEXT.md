@@ -228,7 +228,7 @@ offset  size  field
 | 6 CLOSE | streamId | 1 byte CloseReason | both |
 | 7 PING | 0 | empty | client → relay |
 | 8 PONG | 0 | empty | relay → client |
-| 9 PUSH | 0 | push-intent JSON (F5-5) | relay → client |
+| 9 PUSH | 0 | push-intent JSON (F5-5, retired: accepted and ignored by the client) | relay → client |
 | 10 CHALLENGE | 0 | 32 random bytes, fresh per link | relay → client |
 
 CloseReason: 0 normal, 1 busy (stream cap), 2 idle timeout, 3 back-pressure,
@@ -294,34 +294,14 @@ ignored; its removal is recorded for later. `push_result` is core NATS for now.
 A known limit: a result lost before its publish means the token invalidation
 in notification is lost with it.
 
-## Push intents (F5-5)
+## Push intents (F5-5), retired on the relay
 
-The relay subscribes to `argus.notification.v1.push_intent` over NATS (behind
-`[push] enabled`, default off) and forwards each payload as one PUSH frame to
-the home client; both ends keep a bounded in-memory intent queue with
-received/dropped counters exposed on `/health` (`pushQueued` / `pushReceived`
-/ `pushDropped`, plus `pushForwarded` on the relay). The relay buffers intents
-while the home link is down and drains them the moment a link authenticates;
-the client queues what it receives. Past `push.queue_capacity` the drop is
-counted and logged; empty or oversized intents are also rejected at the
-ingress with drop accounting (a PUSH frame caps at 256 KiB while NATS accepts
-more, so the bound is enforced before the queue — worst case the capacity
-times 256 KiB of relay RAM) — nothing persists, and the queue never becomes
-the source of truth: the notification row in argus-notification's own
-`notification.db` is.
-This is the deliberate trade-off of Ruling CK as implemented: the NATS leg is
-fire-and-forget (plain core-NATS publish, no ack/redelivery) and therefore
-at-most-once — an intent published while the relay is away from NATS is
-silently lost — and the tunnel leg is best-effort with drop accounting,
-because the queue only accelerates delivery — the authoritative fan-out to
-the device rides the
-existing `/sync` bootstrap (the app re-syncs notifications on connect). The
-final device-delivery leg (intent → OS push / APNs / FCM) is out of scope:
-the intent is display-only, never a command, and never carries alarm/siren
-semantics — the client's queue is a terminal sink in this fase. cnats was
-added to the relay's dependencies for the subscription; the NATS handler
-posts into the PollLoop thread (`postPushIntent`), so the mux core stays
-single-threaded.
+The relay no longer subscribes to `argus.notification.v1.push_intent`; the
+relay's queue and its `push.enabled` gate were removed with batch 3. Pushes
+travel as sealed pushes (above). The PUSH_INTENT frame stays on the wire for
+one release: the home client accepts it and keeps its bounded receive queue
+(`pushQueued`, `pushReceived`, `pushDropped` on the client's `/health`), and
+nothing sends it any more. Its removal is recorded for later.
 
 ## Concurrency model
 
@@ -487,9 +467,8 @@ level-triggered socket it cannot accept from.
   presets are gone now that `scripts/build-all.sh` passes the flags
   explicitly.)
 - No database, no JWT, no device registry: the relay's device→home mapping
-  is in-memory and dies with the process. The push-intent queues are
-  in-memory too (F5-5); NATS is subscribe-only on the relay, publisher-side
-  policy lives in argus-notification.
+  is in-memory and dies with the process. The relay holds no NATS connection;
+  the publisher-side policy lives in argus-notification.
 - The mobile app contracts are untouched: the app keeps talking TLS to the
   host it addresses through the tunnel's device port.
 

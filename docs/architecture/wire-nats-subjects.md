@@ -39,7 +39,7 @@ argus.<domain>.v1.<event>
 | `argus.identity.v1.user-action` | identity domain (F3-1c) | argus-sync (durable `argus-sync-identity-action`) | the action journal: one actor doing one thing to one record, whether or not the record changed; argus-sync inserts it verbatim into `user_action_log`, keyed by its `Nats-Msg-Id` — `identity-action:` plus 32 hex the producer mints at enqueue — so a redelivery is ignored and the key is unique without borrowing the journal row's id |
 | `argus.auth.v1.user-action` | argus-auth | argus-sync (durable `argus-sync-auth-action`) | the auth action journal: the session acts one actor performs — the sign-in that writes a `User` session row and the sign-out that deletes it — published on the auth-owned stream `ARGUS_AUTH_CHANGE` and inserted verbatim into `user_action_log` beside the identity journal's rows, keyed by its `Nats-Msg-Id` — `auth-action:` plus 32 hex the producer mints at enqueue — so a redelivery is ignored |
 | `argus.auth.v1.session` | argus-auth (2026-10) | argus-sync (durable `argus-sync-auth-session`, ordered) | session changes: a `disconnect_session` room-control event per revoked session (its `info` is the `sessionRevoked` frame the session's sockets receive before they close) one `sessionsChanged` user emit per change of the user's session set, and one `userSessionsChanged` module emit (option `user_invitation`, the owners' room) naming the user, for the owner's view of every session. The `sessionRevoked` frame carries `cause` (`revoked`, `logout`, `refreshTokenReuse`, `revokedByOwner`, `accountDisabled`). Queued in argus-auth's `change_outbox` inside the revocation's transaction and published with `Nats-Msg-Id = auth-session:<32 hex>` on the auth-owned stream `ARGUS_AUTH_SESSION` (7 days, file storage, 2-minute duplicate window) |
-| `argus.notification.v1.push_intent` | argus-notification (F5-5) | argus-relay | a notification push intent carried to the home client through the tunnel transport (not a persisted change; never re-emitted to `/sync`) |
+| `argus.notification.v1.push_delivery` | argus-notification (batch 3) | argus-tunnel, one durable per home (`argus-tunnel-push` on `ARGUS_NOTIFICATION_PUSH`, ordered) | a sealed push (call ring, call cancel, notification alert), written to notification's `change_outbox` in the producing transaction and published with `Nats-Msg-Id = push-delivery:<32 hex deliveryId>`; the home acks it only after PUSH_RESULT (not a persisted change; never re-emitted to `/sync`) |
 
 In F3-1c the gateway's sync fan-out moved to `argus-sync` — the F3-1c tags
 above name the rows whose consumer changed with it — and in Phase 3d step 1 the
@@ -349,56 +349,23 @@ re-emitting it to `/sync`.
   so this feed is best-effort only up to the enqueue, and the boot snapshot
   fill still recovers the catalog.
 
-## Payload of `argus.notification.v1.push_intent` (F5-5)
+## Payload of `argus.notification.v1.push_delivery` (batch 3)
 
-Published per notification row by the `push_intent` sink
-(`NatsPushIntentSink`, installed behind `[push] enabled` — default off) when
-the owner's `NotificationService::createManyAndEmit` creates rows. Like
-`object_detected` it is NOT a persisted change: it mirrors an already-persisted
-`notification` row and exists only to trigger a push. No change stream
-retains it and it is never re-emitted to `/sync`.
+One JSON object per sealed push, written by the producing transaction to
+notification's `change_outbox` and published on the `ARGUS_NOTIFICATION_PUSH`
+stream. Fields: `deliveryId` (base64, 16 bytes), `provider`, `kind` (`call`
+or `alert`), `priority`, `ttlSeconds`, `expiresAt` (epoch milliseconds, set by
+the producer and outside the sealed bytes: a ring ends at the call's end, a
+cancel at now plus 60 s, an alert at its one-hour TTL), `collapseId` (the
+callId for a call, so a cancel resolves its ring; the hex of the delivery id
+for an alert), `token`, `enc` and `ciphertext` (base64). The msg id is
+`push-delivery:` plus the hex of the delivery id, so a repeated write of one
+delivery is one message in the stream.
 
-Consumer: `argus-relay` subscribes to this subject and forwards the payload as
-a tunnel PUSH control frame to the home client's bounded in-memory intent
-queue (Ruling CK: argus-notification is the publisher/policy owner, the tunnel
-is the transport owner). The NATS leg is fire-and-forget and therefore
-AT-MOST-ONCE: `NatsBus::publish` is a plain core-NATS publish — no JetStream,
-no ack, no redelivery — so an intent published while the relay is disconnected
-from NATS or mid-restart is silently lost. Both legs are best-effort with drop
-accounting; an intent is an accelerator, never a delivery guarantee — the
-persisted `notification` row is the source of truth and the final
-device-delivery leg rides the existing `/sync` fan-out once the app re-syncs.
-The queue never persists to disk (Ruling CL: no database in the tunnel).
-Intents carry display information only: they never carry or trigger
-alarm/siren semantics.
-
-```json
-{
-  "userId": 42,
-  "notificationId": 17,
-  "type": "camera",
-  "title": "Front door",
-  "body": "Person detected",
-  "createdAt": 1735689600123
-}
-```
-
-- `userId` — the notification row's user id.
-- `notificationId` — the persisted `notification` row id (lets the device
-  correlate the intent against the `/sync` row).
-- `type`, `title`, `body` — the notification row's display fields, verbatim.
-- `createdAt` — the row's creation time as a millisecond Unix epoch.
-- `data` (2026-10, additive, only when the row has an object `data`) — the
-  row's `data` verbatim (`kind`, `threadKey`, `urgency`, …). A ringing call
-  ("Argus calls you") publishes an intent with `type: "call"` and `data`
-  `{kind: "call", callId, urgency, deepLink: "argus://call?callId=<id>"}` and
-  `notificationId` 0, because a ring mirrors a `call` row, not a notification;
-  the device opens the call from the deep link.
-
-Size bound: the tunnel PUSH frame cannot carry more than 256 KiB of payload,
-while the NATS subscription accepts up to the server's maximum, so the relay
-rejects intents that are empty or above 256 KiB at its queue ingress and
-counts them as drops (`pushDropped`) instead of forwarding them.
+The consumer is the home's durable `argus-tunnel-push`: it acks a message only
+after PUSH_RESULT, drops and acks one past its `expiresAt`, and terminates a
+malformed one. The sealed envelope itself is specified in
+`packages/contracts/push` and `services/tunnel/tests/vectors/push-sealed.json`.
 
 ## Payload of `argus.identity.v1.user-action` (F3-1c)
 

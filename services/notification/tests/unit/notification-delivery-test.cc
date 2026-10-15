@@ -188,7 +188,7 @@ TEST_CASE("durable delivery keeps intents pending until the broker stores them")
   batch.notification.body = "Person detected";
   batch.commandId = "delivery-durable";
   const NotificationService service(
-      {.deliverySink = deliverySink, .pushSink = {}, .pushRequired = false});
+      {.deliverySink = deliverySink});
   const auto outcome = drogon::sync_wait(service.createManyAndEmit(batch));
   CHECK_FALSE(outcome.duplicate);
   CHECK(outcome.createdCount == 2);
@@ -343,17 +343,6 @@ public:
   std::function<void()> onPublish;
 };
 
-class CountingPushSink final : public push_intent::PushIntentSink
-{
-public:
-  void publish(const PushIntent& intent) const override
-  {
-    pushed.push_back(intent.notificationId);
-  }
-
-  mutable std::vector<int64_t> pushed;
-};
-
 std::vector<NotificationDeliveryRow> rows(int count)
 {
   std::vector<NotificationDeliveryRow> pending;
@@ -374,18 +363,15 @@ TEST_CASE("a page stops at the first refusal and pushes nothing it did not store
 {
   auto sink = std::make_shared<ScriptedDeliverySink>();
   sink->refuse = 2;
-  auto push = std::make_shared<CountingPushSink>();
   const auto start = std::chrono::steady_clock::now();
   const auto page = delivery_page::publish(
       {.pending = rows(5),
        .sink = sink,
-       .pushSink = push,
        .deadline = start + delivery_page::kPublishBudget,
        .clock = [start] { return start; }});
   CHECK(sink->attempts == std::vector<int64_t>{1, 2});
   CHECK(page.sent == std::vector<int64_t>{1});
   CHECK(page.unsent == std::vector<int64_t>{2, 3, 4, 5});
-  CHECK(push->pushed == std::vector<int64_t>{101});
 }
 
 TEST_CASE("a slow broker cannot hold a page past its budget, so no claim is taken twice")
@@ -398,7 +384,6 @@ TEST_CASE("a slow broker cannot hold a page past its budget, so no claim is take
   const auto page = delivery_page::publish(
       {.pending = rows(delivery_page::kPageSize),
        .sink = sink,
-       .pushSink = nullptr,
        .deadline = deadline,
        .clock = [clock] { return *clock; }});
   const auto budgeted = static_cast<std::size_t>(
@@ -413,7 +398,6 @@ TEST_CASE("a slow broker cannot hold a page past its budget, so no claim is take
   const auto past = std::chrono::steady_clock::now();
   const auto first = delivery_page::publish({.pending = rows(3),
                                              .sink = late,
-                                             .pushSink = nullptr,
                                              .deadline = past,
                                              .clock = [past] { return past; }});
   CHECK(first.sent == std::vector<int64_t>{1});

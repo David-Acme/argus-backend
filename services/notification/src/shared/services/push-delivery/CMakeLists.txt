@@ -11,6 +11,7 @@ argus_module(NAME notification-push-delivery
     DEPENDS
         argus::contracts::push
         argus::notification-shared
+        argus::lib::config
         argus::lib::errors
         argus::lib::nats
         argus::lib::sqlite

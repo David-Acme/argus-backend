@@ -420,8 +420,7 @@ TEST_CASE("no direction renders an empty allow list, which the broker reads as "
   CHECK(rendered.find("allow: [\n    ]") == std::string::npos);
   const Grants relay = nats_permissions::grantsFor(rowOf("relay"));
   CHECK(relay.publish.empty());
-  CHECK(relay.subscribe ==
-        std::vector<std::string>{nats_subject::kNotificationPushIntent});
+  CHECK(relay.subscribe.empty());
 }
 
 TEST_CASE("the JetStream grants follow from the streams and durables of a row")

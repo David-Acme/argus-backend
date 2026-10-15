@@ -190,7 +190,5 @@ RelayConfig RelayConfig::resolve()
       clampPort(ConfigService::getInt("server.home_port"), 7101);
   config.relay.secret = ConfigService::getString("tunnel.secret");
   config.relay.limits = resolveLimits();
-  config.relay.pushEnabled = ConfigService::getBool("push.enabled");
-  config.relay.pushQueueCapacity = resolvePushQueueCapacity();
   return config;
 }

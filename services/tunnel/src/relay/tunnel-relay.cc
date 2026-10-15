@@ -69,40 +69,6 @@ void TunnelRelay::onLinkUp()
   LOG_INFO << "argus-relay: home link authenticated";
 }
 
-void TunnelRelay::onAuthAccepted()
-{
-  drainPushQueue();
-}
-
-void TunnelRelay::postPushIntent(std::string payload)
-{
-  loop_.post([this, token = aliveToken_, payload = std::move(payload)] {
-    if (token.expired() || stopped_.load())
-      return;
-    onPushIntent(payload);
-  });
-}
-
-void TunnelRelay::onPushIntent(const std::string& payload)
-{
-  if (!pushQueue_.push(payload)) {
-    LOG_WARN << "argus-relay: push intent dropped (full, empty or oversized; "
-             << pushQueue_.dropped() << " total)";
-    return;
-  }
-  drainPushQueue();
-}
-
-void TunnelRelay::drainPushQueue()
-{
-  while (!pushQueue_.empty()) {
-    if (!mux_.homeActive())
-      return;
-    mux_.sendPush(pushQueue_.pop());
-    pushForwarded_.fetch_add(1, std::memory_order_relaxed);
-  }
-}
-
 void TunnelRelay::onLinkDown()
 {
   if (!stopped_.load())

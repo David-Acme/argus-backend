@@ -1,8 +1,8 @@
 # argus-nats
 
 The NATS event bus every service publishes and consumes through: one wrapper
-over cnats, the subject vocabulary, and the push-intent sink the publishers
-install at boot.
+over cnats, and the subject vocabulary. Durable consumers attach through
+`subscribeDurable` and `durableAttached`.
 
 ## What this is
 
@@ -25,13 +25,8 @@ argus-guard binds its own feed with, not a spelling anything publishes on.
   subject it matched. Handlers run on cnats worker threads and must not block.
 - `src/nats/nats-subject.hxx` — the subject vocabulary:
   `argus.<domain>.v1.change` for the change streams, the guard and camera
-  event subjects, the notification delivery stream and the push-intent
+  event subjects, the notification delivery stream and the push_delivery
   subject.
-- `src/nats/push-intent-sink.hxx` — `PushIntent` and the `PushIntentSink`
-  interface: display-only, mirrored to the device through the tunnel, never a
-  `/sync` event.
-- `src/nats/nats-push-intent-sink.hxx` — the publisher both intent producers
-  install, over the bus and `push_intent::toJson`.
 - `src/nats/nats-permissions.{cc,hxx}` — the permission table: one row per
   NATS user (one per service), naming what it publishes, what it stores
   through JetStream, what it subscribes to, the streams it ensures, and its

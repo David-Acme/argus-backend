@@ -196,9 +196,7 @@ TEST_CASE("no NATS configured keeps intents pending without terminating")
 
   auto sink = std::make_shared<GatedDeliverySink>();
   sink->streamOk = false;
-  const NotificationService unstreamed({.deliverySink = sink,
-                                        .pushSink = {},
-                                        .pushRequired = false});
+  const NotificationService unstreamed({.deliverySink = sink});
   CHECK(unstreamed.hasDeliverySink());
   CHECK(drogon::sync_wait(unstreamed.deliverPending()) ==
         DeliverPendingOutcome::StreamUnavailable);
@@ -217,14 +215,6 @@ TEST_CASE("no NATS configured keeps intents pending without terminating")
   CHECK(deliveryCount("pending") == 0);
   CHECK(deliveryCount("sent") == 2);
 
-  auto pushless = std::make_shared<GatedDeliverySink>();
-  pushless->armed = true;
-  const NotificationService pushRequired({.deliverySink = pushless,
-                                          .pushSink = {},
-                                          .pushRequired = true});
-  drogon::sync_wait(pushRequired.createManyAndEmit(makeBatch("no-nats-3")));
-  CHECK(deliveryCount("pending") == 0);
-  CHECK(deliveryCount("sent") == 3);
 }
 
 TEST_CASE("the reconciler names the pending backlog when the stream is down")
@@ -237,13 +227,9 @@ TEST_CASE("the reconciler names the pending backlog when the stream is down")
   auto sink = std::make_shared<GatedDeliverySink>();
   sink->streamOk = false;
   NotificationRpcService rpc(
-      NotificationRpcService::Dependencies{.deliverySink = sink,
-                                           .pushSink = {},
-                                           .pushRequired = false});
+      NotificationRpcService::Dependencies{.deliverySink = sink});
   rpc.startDeliveryReconciler();
-  const NotificationService service({.deliverySink = sink,
-                                     .pushSink = {},
-                                     .pushRequired = false});
+  const NotificationService service({.deliverySink = sink});
   drogon::sync_wait(service.createManyAndEmit(makeBatch("nbk:1")));
 
   std::this_thread::sleep_for(std::chrono::milliseconds(1500));

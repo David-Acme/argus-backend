@@ -160,7 +160,7 @@ TEST_CASE("display confirmations settle against the delivery row")
   auto deliverySink = std::make_shared<RecordingDeliverySink>();
   deliverySink->armed = true;
   const NotificationService service(
-      {.deliverySink = deliverySink, .pushSink = {}, .pushRequired = false});
+      {.deliverySink = deliverySink});
 
   NotificationBatchInput batch;
   batch.userIds = {11, 12};
@@ -219,7 +219,7 @@ TEST_CASE("a probe without a broker records its failure visibly")
   auto deliverySink = std::make_shared<RecordingDeliverySink>();
   deliverySink->armed = false;
   const NotificationService service(
-      {.deliverySink = deliverySink, .pushSink = {}, .pushRequired = false});
+      {.deliverySink = deliverySink});
 
   const SelfTestState probe = drogon::sync_wait(service.runSelfTest());
   CHECK_FALSE(probe.ok);
@@ -239,7 +239,7 @@ TEST_CASE("latency percentiles respect the caller window")
   auto deliverySink = std::make_shared<RecordingDeliverySink>();
   deliverySink->armed = true;
   const NotificationService service(
-      {.deliverySink = deliverySink, .pushSink = {}, .pushRequired = false});
+      {.deliverySink = deliverySink});
 
   NotificationBatchInput batch;
   batch.userIds = {21, 22};
@@ -282,7 +282,7 @@ TEST_CASE("a refusing broker reports publish-refused with intents pending")
   auto deliverySink = std::make_shared<RecordingDeliverySink>();
   deliverySink->armed = false;
   const NotificationService service(
-      {.deliverySink = deliverySink, .pushSink = {}, .pushRequired = false});
+      {.deliverySink = deliverySink});
 
   NotificationBatchInput batch;
   batch.userIds = {41};
@@ -312,7 +312,7 @@ TEST_CASE("synthetic probes never pollute delivery metrics")
   auto deliverySink = std::make_shared<RecordingDeliverySink>();
   deliverySink->armed = true;
   const NotificationService service(
-      {.deliverySink = deliverySink, .pushSink = {}, .pushRequired = false});
+      {.deliverySink = deliverySink});
 
   NotificationBatchInput batch;
   batch.userIds = {31};

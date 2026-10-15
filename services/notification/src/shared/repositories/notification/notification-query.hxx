@@ -247,7 +247,7 @@ struct NotificationBatchCommitInput
   std::vector<NotificationCreateInput> inputs;
   std::string commandId;
   int64_t at{0};
-  std::shared_ptr<const NotificationAlertWriter> alerts;
+  std::shared_ptr<const NotificationAlertWriter> alerts{};
 };
 
 struct NotificationSchemaBuildInput

@@ -4,6 +4,7 @@
 #include <shared/services/push-delivery/push-delivery-wire.hxx>
 #include <text/json-util.hxx>
 
+#include <config/config-service.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <cstddef>
@@ -18,6 +19,11 @@ PushPriority priorityOf(const std::string& urgency)
   return urgency == "critical" || urgency == "time_sensitive" ? PushPriority::High
                                                               : PushPriority::Normal;
 }
+}
+
+bool pushAlertsEnabled()
+{
+  return ConfigService::getBool("push.enabled");
 }
 
 PushAlertWriter::PushAlertWriter(PushAlertWriterDependencies dependencies)

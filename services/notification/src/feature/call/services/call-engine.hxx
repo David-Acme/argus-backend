@@ -13,7 +13,6 @@
 #include <feature/call/services/call-ports.hxx>
 #include <feature/call/services/push-delivery.hxx>
 #include <feature/call/services/call-trigger-classifier.hxx>
-#include <nats/push-intent-sink.hxx>
 
 #include <atomic>
 #include <cstddef>
@@ -39,7 +38,6 @@ struct CallEngineDependencies
   std::shared_ptr<const LiveCallAnnouncer> announcer;
   std::shared_ptr<const CallDirectory> directory;
   std::shared_ptr<const CallNotificationSink> notifier;
-  std::shared_ptr<const push_intent::PushIntentSink> push;
   std::shared_ptr<const ResponseVerdictSink> verdicts{};
   std::function<int64_t()> clock;
   std::function<CallLocalTime(int64_t)> localTime;
@@ -377,7 +375,6 @@ private:
 
   drogon::Task<bool> missRingingAndCancel(const CallSchema& call, int64_t at) const;
 
-  void publishLegacyRing(const CallSchema& call) const;
 
   drogon::Task<void> noteDeclined(const CallSchema& call) const;
 

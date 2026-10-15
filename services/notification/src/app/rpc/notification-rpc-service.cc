@@ -73,8 +73,7 @@ NotificationRpcService::NotificationRpcService(Dependencies dependencies)
                                             "grpc.caller_sync")}}),
       notificationService_(
           {.deliverySink = std::move(dependencies.deliverySink),
-           .pushSink = std::move(dependencies.pushSink),
-           .pushRequired = dependencies.pushRequired})
+           .alerts = std::move(dependencies.alerts)})
 {
 }
 

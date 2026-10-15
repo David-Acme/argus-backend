@@ -8,7 +8,6 @@
 #include <notification/notification-delivery-status.hxx>
 #include <notification/notification-delivery-sink.hxx>
 #include <notification/notification-errors.hxx>
-#include <nats/push-intent-sink.hxx>
 #include <runtime/blocking-task.hxx>
 #include <shared/services/notification/delivery-page.hxx>
 #include <sqlite/db-service.hxx>
@@ -123,9 +122,6 @@ drogon::Task<NotificationCreateOutcome> NotificationService::createManyAndEmit(
 drogon::Task<bool> NotificationService::deliverDurable(
     DeliverDurableInput input) const
 {
-  if (input.pushRequired && !input.pushSink)
-    LOG_WARN << "push intents required but no push sink installed; "
-                "settling deliveries without push";
   std::vector<int64_t> claimed;
   claimed.reserve(input.pending.size());
   for (const auto& delivery : input.pending)
@@ -133,7 +129,6 @@ drogon::Task<bool> NotificationService::deliverDurable(
   delivery_page::PageInput page{
       .pending = std::move(input.pending),
       .sink = std::move(input.sink),
-      .pushSink = std::move(input.pushSink),
       .deadline = std::chrono::steady_clock::now() + delivery_page::kPublishBudget,
       .clock = [] { return std::chrono::steady_clock::now(); }};
   delivery_page::PublishedPage published;
@@ -176,9 +171,7 @@ drogon::Task<DeliverPendingOutcome> NotificationService::deliverPending()
       co_return DeliverPendingOutcome::Settled;
     const bool progressed =
         co_await deliverDurable({.pending = std::move(pending),
-                                 .sink = sink,
-                                 .pushSink = dependencies_.pushSink,
-                                 .pushRequired = dependencies_.pushRequired});
+                                 .sink = sink});
     if (!progressed)
       co_return DeliverPendingOutcome::PublishRefused;
   }

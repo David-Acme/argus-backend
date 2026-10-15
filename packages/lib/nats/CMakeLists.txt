@@ -26,8 +26,6 @@ argus_lib(NAME nats
         src/nats/nats-permissions.cc
         src/nats/nats-permissions.hxx
         src/nats/live-broker.hxx
-        src/nats/nats-push-intent-sink.hxx
-        src/nats/push-intent-sink.hxx
     INCLUDES src
     DEPENDS
         cnats::nats_static

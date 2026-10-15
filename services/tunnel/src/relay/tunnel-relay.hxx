@@ -1,6 +1,5 @@
 #pragma once
 
-#include <core/push-queue.hxx>
 #include <core/tunnel-mux.hxx>
 #include <net/tcp-listener.hxx>
 #include <net/tcp-peer.hxx>
@@ -20,8 +19,6 @@ struct RelayOptions
   uint16_t homePort{7101};
   std::string secret;
   TunnelMux::Limits limits;
-  bool pushEnabled{false};
-  size_t pushQueueCapacity{256};
 };
 
 class TunnelRelay : public MuxDelegate
@@ -42,25 +39,12 @@ public:
   size_t pendingHomeCount() const { return mux_.pendingHomeCount(); }
   size_t pendingBytes() const { return mux_.pendingBytes(); }
 
-  void postPushIntent(std::string payload);
-  size_t pushQueued() const { return pushQueue_.size(); }
-  uint64_t pushReceived() const { return pushQueue_.received(); }
-  uint64_t pushDropped() const { return pushQueue_.dropped(); }
-  uint64_t pushForwarded() const
-  {
-    return pushForwarded_.load(std::memory_order_relaxed);
-  }
-
 private:
   const std::string& authSecret() const override { return options_.secret; }
   bool validatesAuth() const override { return true; }
-  void onAuthAccepted() override;
   void onLinkUp() override;
   void onLinkDown() override;
   void onStreamClosed(uint32_t streamId) override;
-
-  void onPushIntent(const std::string& payload);
-  void drainPushQueue();
 
   struct PeerAcceptedInput
   {
@@ -83,8 +67,6 @@ private:
   uint16_t devicePort_{0};
   uint16_t homePort_{0};
   std::atomic<bool> stopped_{false};
-  PushQueue pushQueue_{options_.pushQueueCapacity};
-  std::atomic<uint64_t> pushForwarded_{0};
   std::unordered_map<uint32_t, std::string> streamIps_;
   std::unordered_map<std::string, int> ipStreams_;
 };

@@ -288,18 +288,6 @@ void TunnelMux::sendPing()
                       .size = 0});
 }
 
-bool TunnelMux::sendPush(const std::string& payload)
-{
-  if (!homePeer_ || !homeActive_ || payload.empty() ||
-      payload.size() > kMaxPayload)
-    return false;
-  sendFrameToHome({.type = FrameType::Push,
-                      .streamId = 0,
-                      .payload = payload.data(),
-                      .size = payload.size()});
-  return true;
-}
-
 void TunnelMux::sweep()
 {
   const auto now = Clock::now();

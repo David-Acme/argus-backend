@@ -37,15 +37,6 @@ PushCopy push_copy::render(const PushCopyInput& input)
   return {.title = "Argus", .body = "Tienes un aviso nuevo. Abre Argus para verlo."};
 }
 
-Json::Value push_copy::minimalData(const PushDataInput& input)
-{
-  Json::Value data(Json::objectValue);
-  data["notificationId"] = static_cast<Json::Int64>(input.notificationId);
-  data["kind"] = textOf(input.data, "kind");
-  data["urgency"] = urgencyOf(input.data);
-  return data;
-}
-
 std::string push_copy::langOf(const Json::Value& data)
 {
   return textOf(data, "lang") == "en" ? "en" : "es";

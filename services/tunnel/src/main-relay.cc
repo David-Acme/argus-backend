@@ -6,8 +6,6 @@
 #include <server/health-extras.hxx>
 #include <server/service-config.hxx>
 #include <config/config-service.hxx>
-#include <nats/nats-bus.hxx>
-#include <nats/nats-subject.hxx>
 
 #include <relay/tunnel-relay.hxx>
 
@@ -65,28 +63,6 @@ int main()
 
   LOG_INFO << "argus-relay health on " << config.healthHost << ":"
            << config.healthPort;
-
-  std::shared_ptr<NatsBus> natsBus;
-  if (config.relay.pushEnabled) {
-    const std::string natsUrl = ConfigService::getString("nats.url");
-    if (!natsUrl.empty()) {
-      natsBus = std::make_shared<NatsBus>();
-      if (natsBus->connect()) {
-        LOG_INFO << "argus-relay: push intents enabled ("
-                 << nats_subject::kNotificationPushIntent << ")";
-        natsBus->subscribe(nats_subject::kNotificationPushIntent,
-                           [&relay](std::string_view, std::string_view payload) {
-                             relay.postPushIntent(std::string(payload));
-                           });
-      } else {
-        natsBus.reset();
-        LOG_WARN << "NATS unavailable at " << natsUrl
-                 << "; push intents disabled";
-      }
-    } else {
-      LOG_WARN << "[push] enabled but nats.url missing; push intents disabled";
-    }
-  }
 
   drogon::app().setThreadNum(0).run();
 

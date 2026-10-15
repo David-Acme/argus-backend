@@ -15,22 +15,6 @@ HealthStatus relayHealthStatus(TunnelRelay& relay)
        [&relay] {
          return Json::Value(static_cast<int>(relay.streamCount()));
        }},
-      {"pushQueued",
-       [&relay] {
-         return Json::Value(static_cast<Json::Int64>(relay.pushQueued()));
-       }},
-      {"pushReceived",
-       [&relay] {
-         return Json::Value(static_cast<Json::Int64>(relay.pushReceived()));
-       }},
-      {"pushDropped",
-       [&relay] {
-         return Json::Value(static_cast<Json::Int64>(relay.pushDropped()));
-       }},
-      {"pushForwarded",
-       [&relay] {
-         return Json::Value(static_cast<Json::Int64>(relay.pushForwarded()));
-       }},
   };
   return status;
 }

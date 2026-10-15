@@ -258,7 +258,7 @@ readiness and the fallback gate — `CameraObjectNotifier`, the
   rows.
 - **`notification_delivery`** holds one intent row per recipient
   (`pending`/`sent`). `NotificationService` takes its sinks as injected
-  `Dependencies` (`deliverySink`, `pushSink`, `pushRequired`) — no sink
+  `Dependencies` (`deliverySink`, `alerts`) — no sink
   singletons, no Core-NATS fallback. `deliverPending` ensures the
   `ARGUS_NOTIFICATION` stream, then drains pending intents in 200-row pages:
   each publishes through `NatsNotificationDeliverySink` (JetStream
@@ -529,8 +529,8 @@ its two NATS sinks are `src/shared/services/change-sink/` and
 `src/shared/services/delivery-sink/` (`argus::notification-change-sink`,
 `argus::notification-delivery-sink`). `main.cc` resolves nothing of its own
 but `config.toml` loading and the `nats.url` gate on the optional bus; the
-push gate it consults is `push_intent::enabledFromConfig()`, read where push
-is wired, not a config-module resolver.
+alert gate it consults is `pushAlertsEnabled()` (`[push] enabled`), read where
+the alert writer is wired, not a config-module resolver.
 
 ## Owner settings
 

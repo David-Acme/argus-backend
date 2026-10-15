@@ -16,6 +16,8 @@ struct PushAlertWriterDependencies
   std::function<int64_t()> clock;
 };
 
+[[nodiscard]] bool pushAlertsEnabled();
+
 class PushAlertWriter final : public NotificationAlertWriter
 {
 public:

@@ -199,25 +199,6 @@ public:
   mutable std::vector<CallNotice> notices;
 };
 
-class RecordingPush final : public push_intent::PushIntentSink
-{
-public:
-  void publish(const PushIntent& intent) const override
-  {
-    const std::scoped_lock lock(mutex);
-    intents.push_back(intent);
-  }
-
-  std::vector<PushIntent> all() const
-  {
-    const std::scoped_lock lock(mutex);
-    return intents;
-  }
-
-  mutable std::mutex mutex;
-  mutable std::vector<PushIntent> intents;
-};
-
 class RecordingVerdicts final : public ResponseVerdictSink
 {
 public:
@@ -239,7 +220,6 @@ struct Harness
       std::make_shared<ScriptedAnnouncer>();
   std::shared_ptr<RecordingNotifier> notifier =
       std::make_shared<RecordingNotifier>();
-  std::shared_ptr<RecordingPush> push = std::make_shared<RecordingPush>();
   std::shared_ptr<std::atomic<int64_t>> clock =
       std::make_shared<std::atomic<int64_t>>(kStart);
   std::shared_ptr<std::atomic<int>> hour = std::make_shared<std::atomic<int>>(12);
@@ -254,7 +234,6 @@ struct Harness
                    .announcer = announcer,
                    .directory = directory,
                    .notifier = notifier,
-                   .push = push,
                    .verdicts = verdicts,
                    .clock = [clock = clock]() { return clock->load(); },
                    .localTime =
@@ -462,20 +441,10 @@ TEST_CASE("unanswered: a push after the grace, then a missed-call notification")
   harness.advance(2);
   auto report = drogon::sync_wait(harness.engine.sweep());
   CHECK(report.pushed == 0);
-  CHECK(harness.push->all().empty());
 
   harness.advance(3);
   report = drogon::sync_wait(harness.engine.sweep());
   CHECK(report.pushed == 1);
-  const auto pushes = harness.push->all();
-  REQUIRE(pushes.size() == 1);
-  CHECK(pushes.front().type == "call");
-  CHECK(pushes.front().userId == 1);
-  CHECK(pushes.front().data["deepLink"].asString() ==
-        "argus://call?callId=" + call_id::format(id));
-  CHECK(pushes.front().title == "Argus te está llamando");
-  CHECK(pushes.front().body == "Abre Argus para contestar.");
-  CHECK_FALSE(pushes.front().data.isMember("callKind"));
   CHECK(drogon::sync_wait(harness.engine.sweep()).pushed == 0);
 
   harness.advance(41);
@@ -869,8 +838,6 @@ TEST_CASE("each user's ring length, push delay and language are their own")
   CHECK(frames.front().info["expiresAt"].asInt64() == kStart + 20);
   CHECK(frames.front().info["lang"].asString() == "en");
   CHECK(frames.back().info["expiresAt"].asInt64() == kStart + 90);
-  REQUIRE(harness.push->all().size() == 1);
-  CHECK(harness.push->all().front().userId == 1);
 
   harness.advance(21);
   const auto report = drogon::sync_wait(harness.engine.sweep());
@@ -880,7 +847,6 @@ TEST_CASE("each user's ring length, push delay and language are their own")
   CHECK(stateOf(outcomeFor(rang, 2).callId) == "ringing");
   harness.advance(10);
   CHECK(drogon::sync_wait(harness.engine.sweep()).pushed == 1);
-  CHECK(harness.push->all().back().userId == 2);
 }
 
 TEST_CASE("a user who keeps calls quiet gets rung, not spoken to")
@@ -1504,7 +1470,6 @@ struct GatedHarness
                                       .announcer = std::make_shared<ScriptedAnnouncer>(),
                                       .directory = directory,
                                       .notifier = notifier,
-                                      .push = std::make_shared<RecordingPush>(),
                                       .verdicts = std::make_shared<RecordingVerdicts>(),
                                       .clock = [clock = clock]() { return clock->load(); },
                                       .localTime = [](int64_t) { return CallLocalTime{.hour = 12, .weekday = 3}; },
@@ -1650,8 +1615,6 @@ TEST_CASE("the notification funnel drops the kinds of a module that is off and k
   boot();
   const ModuleSwitches modules;
   const NotificationService service({.deliverySink = nullptr,
-                                     .pushSink = nullptr,
-                                     .pushRequired = false,
                                      .kindAllowed = modules.predicate()});
   const auto count = [] {
     const auto rows = DbService::client()->execSqlSync("SELECT COUNT(*) AS total FROM notification");
@@ -1868,8 +1831,7 @@ TEST_CASE("a call scheduled months ahead is one stored row that survives a resta
                                               .announcer = harness.announcer,
                                               .directory = harness.directory,
                                               .notifier = harness.notifier,
-                                              .push = harness.push,
-                                              .verdicts = harness.verdicts,
+                                                       .verdicts = harness.verdicts,
                                               .clock = [clock = harness.clock]() { return clock->load(); },
                                               .localTime =
                                                   [&seenHour, &seenWeekday](int64_t at) {

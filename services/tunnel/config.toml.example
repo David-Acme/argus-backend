@@ -50,7 +50,6 @@ auth = 7142
 identity = 7144
 
 [push]
-enabled = false
 queue_capacity = 256
 
 [drogon.app]

@@ -278,7 +278,6 @@ drogon::Task<bool> CallEngine::pushRingOnce(const CallSchema& call, int64_t at) 
     db_transaction::rollback(transaction);
     throw;
   }
-  publishLegacyRing(call);
   co_return true;
 }
 
@@ -323,27 +322,6 @@ drogon::Task<bool> CallEngine::missRingingAndCancel(const CallSchema& call, int6
     throw;
   }
   co_return true;
-}
-
-void CallEngine::publishLegacyRing(const CallSchema& call) const
-{
-  if (dependencies_.push) {
-    Json::Value data(Json::objectValue);
-    data["kind"] = "call";
-    data["callId"] = call.callId();
-    data["urgency"] = call.urgency;
-    data["deepLink"] = callDeepLink(call.callId());
-    data["expiresAt"] = static_cast<Json::Int64>(call.expiresAt);
-    const PushCopy copy = push_copy::render(
-        {.lang = call.lang, .urgency = call.urgency, .call = true});
-    dependencies_.push->publish(PushIntent{.userId = call.userId,
-                                           .notificationId = 0,
-                                           .type = "call",
-                                           .title = copy.title,
-                                           .body = copy.body,
-                                           .createdAtMs = call.createdAt * 1000,
-                                           .data = data});
-  }
 }
 
 drogon::Task<void> CallEngine::noteDeclined(const CallSchema& call) const

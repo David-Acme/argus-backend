@@ -77,7 +77,6 @@ public:
   void teardownAll();
   void sweep();
   void sendPing();
-  bool sendPush(const std::string& payload);
 
   bool hasHome() const { return homePeer_ != nullptr; }
   bool homeActive() const { return homeActive_; }

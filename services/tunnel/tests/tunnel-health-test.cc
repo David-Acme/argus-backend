@@ -52,9 +52,7 @@ TEST_CASE("relay and client /health carry their frozen field sets")
   CHECK(relayStatus.serviceName == "argus-relay");
   CHECK(clientStatus.serviceName == "argus-tunnel-client");
 
-  const std::vector<std::string> relayFields = {
-      "homeConnected", "activeStreams", "pushQueued",
-      "pushReceived",  "pushDropped",   "pushForwarded"};
+  const std::vector<std::string> relayFields = {"homeConnected", "activeStreams"};
   const std::vector<std::string> clientFields = {
       "homeConnected", "activeStreams", "pushQueued", "pushReceived",
       "pushDropped"};
@@ -62,12 +60,11 @@ TEST_CASE("relay and client /health carry their frozen field sets")
   CHECK(fieldNames(relayStatus) == relayFields);
   CHECK(fieldNames(clientStatus) == clientFields);
 
-  CHECK(has(relayStatus, "pushForwarded"));
+  CHECK_FALSE(has(relayStatus, "pushForwarded"));
   CHECK_FALSE(has(clientStatus, "pushForwarded"));
 
   CHECK(valueOf(relayStatus, "homeConnected").isBool());
   CHECK(valueOf(relayStatus, "activeStreams").isInt());
-  CHECK(valueOf(relayStatus, "pushForwarded").isIntegral());
   CHECK(valueOf(clientStatus, "homeConnected").isBool());
   CHECK(valueOf(clientStatus, "activeStreams").isInt());
   CHECK(valueOf(clientStatus, "pushDropped").isIntegral());
@@ -109,6 +106,6 @@ TEST_CASE("the /health envelope keeps the shared shape with the extras merged")
 
   CHECK(payload["service"].asString() == "argus-relay");
   CHECK(payload["uptimeSeconds"].asDouble() == doctest::Approx(1.5));
-  CHECK(payload.isMember("pushForwarded"));
-  CHECK(payload.size() == 8);
+  CHECK_FALSE(payload.isMember("pushForwarded"));
+  CHECK(payload.size() == 4);
 }

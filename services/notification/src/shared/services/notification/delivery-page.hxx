@@ -1,7 +1,6 @@
 #pragma once
 
 #include <notification/notification-delivery-sink.hxx>
-#include <nats/push-intent-sink.hxx>
 #include <shared/repositories/notification/notification-query.hxx>
 
 #include <chrono>
@@ -25,7 +24,6 @@ struct PageInput
 {
   std::vector<NotificationDeliveryRow> pending;
   std::shared_ptr<const NotificationDeliverySink> sink;
-  std::shared_ptr<const push_intent::PushIntentSink> pushSink;
   std::chrono::steady_clock::time_point deadline;
   std::function<std::chrono::steady_clock::time_point()> clock;
 };

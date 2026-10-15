@@ -246,7 +246,7 @@ TEST_CASE("the settings caller and the notification callers cannot stand in for 
 
   SettingsRegistry registry(notificationSettingsCatalog());
   NotificationRpcService notifications(NotificationRpcService::Dependencies{
-      .deliverySink = nullptr, .pushSink = nullptr, .pushRequired = false});
+      .deliverySink = nullptr});
   SettingsRpcService settings(SettingsRpcInput{
       .service = "notification", .registry = &registry, .credentials = settingsCallers});
   int port = 0;

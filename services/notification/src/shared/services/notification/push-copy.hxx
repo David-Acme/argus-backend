@@ -18,17 +18,9 @@ struct PushCopyInput
   bool call{false};
 };
 
-struct PushDataInput
-{
-  int64_t notificationId{0};
-  const Json::Value& data;
-};
-
 namespace push_copy
 {
 [[nodiscard]] PushCopy render(const PushCopyInput& input);
-
-[[nodiscard]] Json::Value minimalData(const PushDataInput& input);
 
 [[nodiscard]] std::string langOf(const Json::Value& data);
 

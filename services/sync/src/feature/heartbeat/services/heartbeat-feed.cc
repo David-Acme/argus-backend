@@ -50,19 +50,6 @@ std::optional<PresenceEntry> heartbeat::parsePresence(std::string_view payload)
                        .since = since};
 }
 
-PushIntent heartbeat::pushIntentFor(int64_t userId, const Json::Value& heartbeat)
-{
-  Json::Value data = heartbeat;
-  data["kind"] = "heartbeat";
-  return PushIntent{.userId = userId,
-                    .notificationId = 0,
-                    .type = "heartbeat",
-                    .title = {},
-                    .body = {},
-                    .createdAtMs = nowMillis(),
-                    .data = std::move(data)};
-}
-
 HeartbeatFeed::HeartbeatFeed(Dependencies dependencies, Config config)
     : dependencies_(std::move(dependencies)),
       config_(std::move(config)),
@@ -96,9 +83,6 @@ void HeartbeatFeed::start()
     }
   }
   auto* loop = drogon::app().getLoop();
-  if (dependencies_.push && config_.pushIntervalSeconds > 0)
-    pushTimer_ = loop->runEvery(config_.pushIntervalSeconds,
-                                [this]() { static_cast<void>(publishPushHeartbeats()); });
   if (dependencies_.directory && config_.refillSeconds > 0) {
     const std::weak_ptr<bool> alive = alive_;
     const auto refilling = refilling_;
@@ -128,11 +112,8 @@ void HeartbeatFeed::stop()
       dependencies_.bus->unsubscribe(id);
   }
   subscriptions_.clear();
-  if (pushTimer_)
-    drogon::app().getLoop()->invalidateTimer(*pushTimer_);
   if (refillTimer_)
     drogon::app().getLoop()->invalidateTimer(*refillTimer_);
-  pushTimer_.reset();
   refillTimer_.reset();
   alive_.reset();
 }
@@ -162,19 +143,6 @@ void HeartbeatFeed::ingestGuardHeartbeat(int64_t at)
 {
   if (dependencies_.board)
     dependencies_.board->markGuardSeen(at);
-}
-
-size_t HeartbeatFeed::publishPushHeartbeats() const
-{
-  if (!dependencies_.push || !dependencies_.board || !dependencies_.heartbeat)
-    return 0;
-  size_t published = 0;
-  for (const int64_t userId : dependencies_.board->armedUsers()) {
-    dependencies_.push->publish(heartbeat::pushIntentFor(
-        userId, dependencies_.heartbeat->heartbeatFor(userId)));
-    ++published;
-  }
-  return published;
 }
 
 bool HeartbeatFeed::refill()

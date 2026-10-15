@@ -423,20 +423,6 @@ target_compile_options(register-notification-token-dto-test PRIVATE -Wall -Wextr
 
 add_test(NAME register-notification-token-dto-test COMMAND register-notification-token-dto-test)
 
-add_executable(push-intent-test tests/unit/push-intent-test.cc)
-
-set_target_properties(push-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-
-target_link_libraries(push-intent-test PRIVATE
-    argus::notification-shared
-    argus::lib::nats
-    argus::lib::sqlite
-    doctest::doctest)
-
-target_compile_options(push-intent-test PRIVATE -Wall -Wextra)
-
-add_test(NAME push-intent-test COMMAND push-intent-test)
-
 add_executable(camera-notifier-test
     tests/unit/camera-notifier-test.cc)
 target_link_libraries(camera-notifier-test PRIVATE argus::lib::test-support)
