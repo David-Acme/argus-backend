@@ -102,6 +102,9 @@ drogon::Task<void> PushAlertWriter::write(NotificationAlertRound round) const
       co_await outbox_->record(push_delivery_wire::recordOf(
           {.envelope = sealed.envelope, .expiresAtMs = (now + kAlertTtlSeconds) * 1000},
           round.client));
+      LOG_INFO << "Alert push: delivery " << push_delivery_wire::hexOf(deliveryId) << " queued (ringFollows="
+               << (ringFollows ? "true" : "false") << ", episode=" << (episode.empty() ? "absent" : "present")
+               << ")";
     }
   }
   co_return;

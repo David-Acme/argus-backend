@@ -449,8 +449,13 @@ CallEngine::ringFollowingUserIds(const push_delivery::RingPlanInput& input) cons
     try {
       const PreparedCall prepared = co_await prepareUser(
           {.request = request, .user = user, .config = config, .now = at});
-      if (prepared.verdict.decision == CallDecision::Ring && user.preference.pushDelaySeconds == 0)
+      if (prepared.verdict.decision == CallDecision::Ring && user.preference.pushDelaySeconds == 0) {
         ringing.push_back(userId);
+      } else {
+        LOG_INFO << "ring plan: user not planned (decision=" << callDecisionToString(prepared.verdict.decision)
+                 << ", reason=" << prepared.verdict.reason
+                 << ", pushDelaySeconds=" << user.preference.pushDelaySeconds << ")";
+      }
     }
     catch (const std::exception& error) {
       LOG_WARN << "Call ring plan: user " << userId << " not planned (" << typeid(error).name() << ")";

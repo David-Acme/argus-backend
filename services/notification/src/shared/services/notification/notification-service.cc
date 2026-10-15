@@ -110,6 +110,8 @@ drogon::Task<NotificationCreateOutcome> NotificationService::createManyAndEmit(
       !episodeData["threadKey"].asString().empty()) {
     ringFollowingUserIds = co_await push_delivery::planOrEmpty(
         *dependencies_.ringPlanner, {.data = episodeData, .userIds = input.userIds});
+    LOG_INFO << "ring plan: " << ringFollowingUserIds.size() << " of " << input.userIds.size()
+             << " users with delay 0";
   }
 
   const NotificationCommitResult committed =
