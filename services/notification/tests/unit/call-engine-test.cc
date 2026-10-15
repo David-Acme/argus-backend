@@ -386,7 +386,7 @@ TEST_CASE("a critical guard episode rings every recipient once, in their languag
   CHECK(harness.signal->of(SyncOperation::CallIncoming).size() == 2);
 }
 
-TEST_CASE("the ring planner predicts exactly the delay-0 rings that considerNotification places")
+TEST_CASE("the ring planner predicts the delay-0 rings of considerNotification, except that it does not read identity, so inactive users are planned as active")
 {
   struct Scenario
   {

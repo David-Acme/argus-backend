@@ -440,11 +440,9 @@ CallEngine::ringFollowingUserIds(const push_delivery::RingPlanInput& input) cons
   const CallEngineConfig config = this->config();
   const int64_t at = now();
   const auto preferences = co_await preferenceRepository_.findMany(userIds);
-  const auto recipients = co_await lookupRecipients(userIds);
   const CallRequest request{.candidate = *candidate, .userIds = userIds, .notificationExists = true};
   for (const int64_t userId : userIds) {
     UserContext user{.userId = userId,
-                     .recipient = recipientIn(recipients, userId),
                      .preference = CallPreferenceSchema::defaultsFor(userId)};
     if (const auto found = preferences.find(userId); found != preferences.end())
       user.preference = found->second;

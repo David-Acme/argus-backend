@@ -1315,3 +1315,19 @@ Tests:
   already declined is `{declined: true}`; another user's call, an expired call
   or one answered on another device is refused with the `/rtc/token` codes
   (404, 410, 409).
+
+## Alert ring plan (2026-10-15, the ringFollows prediction)
+
+- A critical alert of a guard episode carries `ringFollows: true` when the call engine
+  will ring that user for the episode with no push delay. The plan is a prediction: it runs
+  the same per-user decision (`prepareUser`) as `considerNotification`, read-only, before the
+  alert transaction, once for the whole batch.
+- Trade-off, recorded on purpose: the plan does not read identity (no `lookupRecipients`),
+  so an inactive user is planned as active and the alert is marked `ringFollows` although no
+  ring comes. A panic alert must not wait up to the identity deadline (5 s). The app covers
+  the case with its 8 s re-alarm, which fires the full alarm when no ring of that episode starts.
+- Any failure of the plan gives an empty set (`planOrEmpty`): the alert is still created and
+  keeps its full alarm.
+- Backlog debt: the per-user reads of the call table (`exists`, `findRingingFor`, `ringStats`)
+  run one per user, outside the alert transaction. Batch them in the call repository when the
+  alert volume asks for it.
