@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <drogon/drogon.h>
+#include <test-support/app-runner.hxx>
 #include <drogon/orm/DbClient.h>
 #include <feature/call/repositories/call/call-repository.hxx>
 #include <feature/call/services/push-delivery.hxx>
@@ -17,6 +18,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <memory>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -29,36 +32,12 @@
 
 namespace
 {
+using test_support::AppRunner;
+
 constexpr const char* kOutboxDb = "notification-push-outbox-test.db";
 constexpr int64_t kNow = 1800000000;
 constexpr std::string_view kRecipientPublicHex =
     "5ee54ad74d51ba57c198138c2f690ea8efaa105f4f5ea7c518c9a905cbab7048";
-
-class AppRunner
-{
-public:
-  AppRunner() : runner_([] { drogon::app().run(); }) {}
-
-  ~AppRunner()
-  {
-    if (!runner_.joinable())
-      return;
-    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    if (drogon::app().getLoop()->isRunning()) {
-      drogon::app().quit();
-      runner_.join();
-      return;
-    }
-    runner_.detach();
-  }
-
-  AppRunner(const AppRunner&) = delete;
-  AppRunner& operator=(const AppRunner&) = delete;
-
-private:
-  std::thread runner_;
-};
 
 bool waitForBoot(std::chrono::milliseconds timeout)
 {
@@ -110,23 +89,40 @@ int64_t scalarInt(const std::string& sql)
   return DbService::client()->execSqlSync(sql).front()["total"].as<int64_t>();
 }
 
-void boot()
+struct SharedBoot
 {
-  std::remove(kOutboxDb);
-  std::remove((std::string(kOutboxDb) + "-wal").c_str());
-  std::remove((std::string(kOutboxDb) + "-shm").c_str());
-  drogon::app().setLogLevel(trantor::Logger::kWarn);
-  drogon::app().addDbClient(drogon::orm::Sqlite3Config{.connectionNumber = 1,
-                                                        .filename = kOutboxDb,
-                                                        .name = "default",
-                                                        .timeout = -1});
+  std::optional<AppRunner> runner;
+
+  SharedBoot()
+  {
+    std::remove(kOutboxDb);
+    std::remove((std::string(kOutboxDb) + "-wal").c_str());
+    std::remove((std::string(kOutboxDb) + "-shm").c_str());
+    drogon::app().setLogLevel(trantor::Logger::kWarn);
+    drogon::app().addDbClient(drogon::orm::Sqlite3Config{.connectionNumber = 1,
+                                                          .filename = kOutboxDb,
+                                                          .name = "default",
+                                                          .timeout = -1});
+    runner.emplace();
+    if (!waitForBoot(std::chrono::seconds(30)))
+      throw std::runtime_error("drogon loop did not boot");
+    if (!DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA))
+      throw std::runtime_error("notification schema apply failed");
+  }
+};
+
+SharedBoot& sharedBoot()
+{
+  static SharedBoot boot;
+  return boot;
 }
 
-void cleanup()
+void clearTables()
 {
-  std::remove(kOutboxDb);
-  std::remove((std::string(kOutboxDb) + "-wal").c_str());
-  std::remove((std::string(kOutboxDb) + "-shm").c_str());
+  DbService::client()->execSqlSync("DELETE FROM change_outbox");
+  DbService::client()->execSqlSync("DELETE FROM call");
+  DbService::client()->execSqlSync("DELETE FROM notification_delivery");
+  DbService::client()->execSqlSync("DELETE FROM notification");
 }
 
 CallCreateInput ringingRow()
@@ -159,10 +155,9 @@ drogon::Task<bool> commitTransaction(std::shared_ptr<drogon::orm::Transaction> t
 
 TEST_CASE("a ring written in the transaction that marks it pushed rolls back with it")
 {
-  boot();
-  AppRunner runner;
-  REQUIRE(waitForBoot(std::chrono::seconds(30)));
-  REQUIRE(DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA));
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  clearTables();
 
   const int64_t id = seedRinging();
   const CallRepository calls;
@@ -179,15 +174,13 @@ TEST_CASE("a ring written in the transaction that marks it pushed rolls back wit
 
   CHECK(scalarInt("SELECT COUNT(*) AS total FROM change_outbox") == 0);
   CHECK(scalarInt("SELECT COALESCE(pushed_at, 0) AS total FROM call WHERE id = " + std::to_string(id)) == 0);
-  cleanup();
 }
 
 TEST_CASE("a ring written in the transaction that marks it pushed commits with it")
 {
-  boot();
-  AppRunner runner;
-  REQUIRE(waitForBoot(std::chrono::seconds(30)));
-  REQUIRE(DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA));
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  clearTables();
 
   const int64_t id = seedRinging();
   const CallRepository calls;
@@ -204,7 +197,6 @@ TEST_CASE("a ring written in the transaction that marks it pushed commits with i
 
   CHECK(scalarInt("SELECT COUNT(*) AS total FROM change_outbox WHERE subject = 'argus.notification.v1.push_delivery'") == 1);
   CHECK(scalarInt("SELECT COALESCE(pushed_at, 0) AS total FROM call WHERE id = " + std::to_string(id)) == kNow);
-  cleanup();
 }
 
 namespace
@@ -226,10 +218,9 @@ CallSchema createdRing(int64_t id)
 
 TEST_CASE("a ring created and marked pushed in one transaction rolls back as one")
 {
-  boot();
-  AppRunner runner;
-  REQUIRE(waitForBoot(std::chrono::seconds(30)));
-  REQUIRE(DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA));
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  clearTables();
 
   const CallRepository calls;
   const CallPushDelivery delivery(CallPushDeliveryDependencies{
@@ -248,15 +239,13 @@ TEST_CASE("a ring created and marked pushed in one transaction rolls back as one
 
   CHECK(scalarInt("SELECT COUNT(*) AS total FROM call") == 0);
   CHECK(scalarInt("SELECT COUNT(*) AS total FROM change_outbox") == 0);
-  cleanup();
 }
 
 TEST_CASE("a ring created and marked pushed in one transaction commits as one")
 {
-  boot();
-  AppRunner runner;
-  REQUIRE(waitForBoot(std::chrono::seconds(30)));
-  REQUIRE(DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA));
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  clearTables();
 
   const CallRepository calls;
   const CallPushDelivery delivery(CallPushDeliveryDependencies{
@@ -275,15 +264,13 @@ TEST_CASE("a ring created and marked pushed in one transaction commits as one")
 
   CHECK(scalarInt("SELECT COUNT(*) AS total FROM call") == 1);
   CHECK(scalarInt("SELECT COUNT(*) AS total FROM change_outbox WHERE subject = 'argus.notification.v1.push_delivery'") == 1);
-  cleanup();
 }
 
 TEST_CASE("the same delivery id recorded twice leaves one outbox row")
 {
-  boot();
-  AppRunner runner;
-  REQUIRE(waitForBoot(std::chrono::seconds(30)));
-  REQUIRE(DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA));
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  clearTables();
 
   const NatsNotificationChangeSink sink(nullptr, NatsNotificationChangeSink::Config{});
   const PushDeliveryRecord entry{.eventId = std::string(push_delivery_wire::kEventIdPrefix) + "0102",
@@ -292,15 +279,13 @@ TEST_CASE("the same delivery id recorded twice leaves one outbox row")
   drogon::sync_wait(sink.record(entry));
 
   CHECK(scalarInt("SELECT COUNT(*) AS total FROM change_outbox WHERE event_id = 'push-delivery:0102'") == 1);
-  cleanup();
 }
 
 TEST_CASE("an alert is written with its notification, and a duplicate command writes none")
 {
-  boot();
-  AppRunner runner;
-  REQUIRE(waitForBoot(std::chrono::seconds(30)));
-  REQUIRE(DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA));
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  clearTables();
 
   const auto alerts = std::make_shared<PushAlertWriter>(PushAlertWriterDependencies{
       .devices = std::make_shared<OneFcmDevice>(),
@@ -325,5 +310,4 @@ TEST_CASE("an alert is written with its notification, and a duplicate command wr
   const auto second = drogon::sync_wait(notifications.createManyWithCommand(batch));
   CHECK(second.duplicate);
   CHECK(scalarInt("SELECT COUNT(*) AS total FROM change_outbox WHERE event_id LIKE 'push-delivery:%'") == 1);
-  cleanup();
 }

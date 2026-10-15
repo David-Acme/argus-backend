@@ -399,6 +399,7 @@ target_compile_definitions(notification-push-outbox-test PRIVATE
     ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 target_link_libraries(notification-push-outbox-test PRIVATE
+    argus::lib::test-support
     argus::notification-change-sink
     argus::notification-shared
     argus::notification-call
