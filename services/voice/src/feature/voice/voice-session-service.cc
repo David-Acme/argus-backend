@@ -17,6 +17,7 @@
 #include <feature/voice/offer-reply.hxx>
 #include <json/json.h>
 #include <llm/llm-speech.hxx>
+#include <feature/voice/opening-budget.hxx>
 
 namespace
 {
@@ -187,6 +188,7 @@ constexpr size_t kMaxNotes = 6;
 constexpr size_t kMaxNoteChars = 300;
 constexpr size_t kMaxAnnouncementChars = 400;
 constexpr size_t kMaxPendingAnnouncements = 4;
+constexpr double kOpeningEstimateMsPerChar = 90.0;
 constexpr auto kAnnouncementFreshFor = std::chrono::seconds(60);
 constexpr size_t kMaxSituationChars = 900;
 constexpr size_t kMaxCameraChars = 64;
@@ -547,8 +549,11 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
                                                .lang = session->lang,
                                                .name = userName,
                                                .resume = resume});
-  if (!greeting.empty())
-    session->history.addAssistant(greeting);
+  for (const auto& line : request.later_lines()) {
+    const std::string queued = sanitizedLine(line, kMaxAnnouncementChars);
+    if (!queued.empty())
+      session->laterLines.push_back(queued);
+  }
 
   session->worker = std::thread([this, session, greeting] {
     if (greeting.empty()) {
@@ -561,13 +566,13 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
     }
     if (session->duplex) {
       launchTurn(session, [this, greeting](Session& turn) {
-        speak(turn, greeting);
+        speakOpening(turn, greeting);
         primeLlm(turn);
       });
       duplexLoop(session);
       return;
     }
-    speak(*session, greeting);
+    speakOpening(*session, greeting);
     primeLlm(*session);
     workerLoop(session);
   });
@@ -987,6 +992,45 @@ bool VoiceSessionService::sendDuplexAssistant(Session& session,
   return true;
 }
 
+void VoiceSessionService::speakOpening(Session& session, const std::string& greeting)
+{
+  const auto audibleMs = [](const SpeakOutcome& outcome) {
+    return outcome.rate > 0 ? static_cast<int>(outcome.audibleSamples * 1000 / static_cast<size_t>(outcome.rate)) : 0;
+  };
+  OpeningBudgetInput input{
+      .sentences = splitSentences(greeting),
+      .budgetMs = kOpeningBudgetMs,
+      .estimateMsPerChar = kOpeningEstimateMsPerChar,
+      .synthesizeMs = [this, &session, audibleMs](const std::string& sentence) {
+        return audibleMs(speak(session, sentence));
+      }};
+  const auto fit = fitOpening(input);
+  std::string said;
+  for (const auto& sentence : fit.spoken) {
+    if (!said.empty())
+      said += ' ';
+    said += sentence;
+  }
+  if (!said.empty())
+    session.history.addAssistant(said);
+  std::scoped_lock lock(session.noticeMutex);
+  session.laterLines.insert(session.laterLines.begin(), fit.later.begin(), fit.later.end());
+}
+
+void VoiceSessionService::releaseLaterLines(Session& session)
+{
+  std::scoped_lock lock(session.noticeMutex);
+  if (session.laterLines.empty())
+    return;
+  const auto now = std::chrono::steady_clock::now();
+  while (!session.laterLines.empty()) {
+    session.pendingAnnouncements.push_back(Announcement{.text = session.laterLines.front(), .at = now});
+    session.laterLines.pop_front();
+    if (session.pendingAnnouncements.size() > kMaxPendingAnnouncements)
+      session.pendingAnnouncements.pop_front();
+  }
+}
+
 void VoiceSessionService::followUtterance(Session& session)
 {
   if (!session.listening)
@@ -1081,6 +1125,7 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
     answerUnheard(session, UnheardTranscript::Send);
     return;
   }
+  releaseLaterLines(session);
   LOG_INFO << "Voice: STT turn of " << userText.size() << " bytes";
 
   argus::voice::v1::ServerFrame sttFrame;
@@ -1502,6 +1547,8 @@ VoiceSessionService::SpeakOutcome VoiceSessionService::speak(Session& session,
           resampler.process(raw.data(), raw.size());
       if (resampled.empty())
         return;
+      outcome.audibleSamples += resampled.size();
+      outcome.rate = outRate;
       argus::voice::v1::ServerFrame chunkFrame;
       chunkFrame.mutable_tts_chunk()->set_pcm(
           reinterpret_cast<const char*>(resampled.data()),

@@ -97,6 +97,7 @@ argus_module(NAME voice-core
         src/feature/voice/turn-transcript.cc
         src/feature/voice/unheard-reply.cc
         src/feature/voice/voice-session-service.cc
+        src/feature/voice/opening-budget.cc
         src/feature/voice/voice-engine-seam.cc
         src/feature/voice/voice-rpc-service.cc
         src/feature/voice/voice-rpc-server.cc

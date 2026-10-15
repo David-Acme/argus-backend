@@ -282,6 +282,8 @@ void RtcCall::startSession()
   start.set_mode(join_.mode());
   start.set_resume(join_.resume());
   start.set_opening_line(join_.opening_line());
+  for (const auto& line : join_.later_lines())
+    start.add_later_lines(line);
   sessions_.start(*this, start);
 
   std::deque<rtc_wire::ClientMessage> early;

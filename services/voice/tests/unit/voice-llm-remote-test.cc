@@ -225,8 +225,11 @@ TEST_CASE("The voice session speaks through the remote adapter")
 
   std::string spoken;
   const auto replies = assistantFrames(sink);
-  REQUIRE(replies.size() >= 2);
-  for (size_t i = 1; i < replies.size(); ++i)
+  REQUIRE(replies.size() >= 3);
+  CHECK(replies[0].assistant().text().find("Hola Ana") != std::string::npos);
+  CHECK(replies[0].assistant().text().find("Argus") != std::string::npos);
+  CHECK(replies[1].assistant().text().find("día") != std::string::npos);
+  for (size_t i = 2; i < replies.size(); ++i)
     spoken += replies[i].assistant().text();
   CHECK(spoken == "Hola de nuevo. Otra frase.");
   CHECK(sink.of(true).size() > chunksBefore);

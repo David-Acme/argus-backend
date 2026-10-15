@@ -20,6 +20,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <span>
 #include <stdexcept>
 #include <string>
@@ -685,12 +686,16 @@ TEST_CASE("Voice session start speaks the greeting through the injected seam")
   CHECK(waitFor([&] {
     return sink.hasType("voice:assistant");
   }));
-  CHECK(tts.synthesizeCalls == 1);
-  CHECK(tts.lastText.find("Argus") != std::string::npos);
+  CHECK(tts.synthesizeCalls == 2);
+  CHECK(tts.lastText == "¿Cómo te llamas?");
   CHECK_FALSE(sink.of(true).empty());
+  std::vector<std::string> openerSentences;
   for (const auto& frame : sink.snapshot())
     if (frame.has_assistant())
-      CHECK(frame.assistant().text().find("Argus") != std::string::npos);
+      openerSentences.push_back(frame.assistant().text());
+  REQUIRE(openerSentences.size() == 2);
+  CHECK(openerSentences[0] == "Hola, soy Argus, tu asistente local.");
+  CHECK(openerSentences[1] == "¿Cómo te llamas?");
   CHECK_FALSE(sink.hasType("voice:turn"));
   for (const auto& frame : sink.snapshot())
     if (frame.has_assistant())
@@ -698,7 +703,7 @@ TEST_CASE("Voice session start speaks the greeting through the injected seam")
 
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   CHECK(sess->history.entries().back().message.role == "assistant");
-  CHECK(sess->history.entries().back().message.content == tts.lastText);
+  CHECK(sess->history.entries().back().message.content == "Hola, soy Argus, tu asistente local. ¿Cómo te llamas?");
 
   session.stop(sink);
   CHECK(sink.hasType("voice:done"));
@@ -879,7 +884,7 @@ TEST_CASE("A turn runs STT, LLM and TTS against the injected fakes")
     CHECK(stt.languages == std::vector<std::string>{"es"});
   }
 
-  CHECK(tts.synthesizeCalls == 2);
+  CHECK(tts.synthesizeCalls == 3);
   CHECK(tts.lastText == "Hola de nuevo.");
   CHECK(sink.of(true).size() > chunksBefore);
 
@@ -1392,7 +1397,7 @@ TEST_CASE("A failed answer rolls the user turn back and leaves the assistant wit
 
   CHECK(sess->history.size() == 2);
   CHECK(sess->history.entries().back().message.role == "assistant");
-  CHECK(tts.synthesizeCalls == 1);
+  CHECK(tts.synthesizeCalls == 2);
   CHECK(sink.of(true).size() == chunksBefore);
   size_t marked = 0;
   for (const auto& frame : sink.snapshot())
@@ -1828,28 +1833,30 @@ TEST_CASE("voice:turn precedes the first audio of every duplex turn")
     for (const auto& frame : sink.snapshot())
       if (frame.has_assistant())
         ++assistants;
-    return assistants == 2;
+    return assistants == 3;
   }, 3000));
 
   std::vector<int64_t> turns;
   std::vector<int64_t> assistantTurns;
-  bool audioAnnounced = false;
+  std::set<int64_t> announcedTurns;
+  int64_t currentTurn = 0;
   bool everyChunkAnnounced = true;
   for (const auto& frame : sink.snapshot()) {
     if (frame.has_turn()) {
       turns.push_back(frame.turn().id());
-      audioAnnounced = true;
+      announcedTurns.insert(frame.turn().id());
+      currentTurn = frame.turn().id();
     }
     else if (frame.has_tts_chunk()) {
-      everyChunkAnnounced = everyChunkAnnounced && audioAnnounced;
+      everyChunkAnnounced = everyChunkAnnounced && announcedTurns.contains(currentTurn);
     }
     else if (frame.has_assistant()) {
-      assistantTurns.push_back(frame.assistant().turn_id());
-      audioAnnounced = false;
+      currentTurn = frame.assistant().turn_id();
+      assistantTurns.push_back(currentTurn);
     }
   }
   CHECK(turns == std::vector<int64_t>{1, 2});
-  CHECK(assistantTurns == std::vector<int64_t>{1, 2});
+  CHECK(assistantTurns == std::vector<int64_t>{1, 1, 2});
   CHECK(everyChunkAnnounced);
   CHECK_FALSE(sink.hasType("voice:interrupted"));
 
@@ -2775,10 +2782,10 @@ TEST_CASE("A short opening clause is spoken before the rest of the first sentenc
   const std::vector<float> samples(1600, 0.1F);
   VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
   std::scoped_lock lock(tts.mutex);
-  REQUIRE(tts.texts.size() == 4);
-  CHECK(tts.texts[1] == "Claro,");
-  CHECK(tts.texts[2] == " tu agenda tiene la cena a las nueve.");
-  CHECK(tts.texts[3] == " Luego, nada más.");
+  REQUIRE(tts.texts.size() == 5);
+  CHECK(tts.texts[2] == "Claro,");
+  CHECK(tts.texts[3] == " tu agenda tiene la cena a las nueve.");
+  CHECK(tts.texts[4] == " Luego, nada más.");
   session.stop(sink);
 }
 
@@ -2877,9 +2884,16 @@ TEST_CASE("Speech after the streamed audio has played is a new turn, however lat
   service.start(sink, duplexStart());
   REQUIRE(waitFor([&] { return sink.hasType("voice:turn"); }, 1000));
   const auto firstAudio = std::chrono::steady_clock::now();
-  REQUIRE(waitFor([&] { return sink.hasType("voice:assistant"); }, 3000));
-
-  std::this_thread::sleep_until(firstAudio + std::chrono::milliseconds(2600));
+  REQUIRE(waitFor([&] {
+    int assistants = 0;
+    for (const auto& frame : sink.snapshot())
+      if (frame.has_assistant())
+        ++assistants;
+    return assistants >= 2;
+  }, 3000));
+  static_cast<void>(firstAudio);
+  const auto openerEnd = std::chrono::steady_clock::now();
+  std::this_thread::sleep_until(openerEnd + std::chrono::milliseconds(2600));
   feed({.service = service, .sink = sink, .prob = 0.95F, .windows = 20});
   feed({.service = service, .sink = sink, .prob = 0.0F, .windows = 14});
   REQUIRE(waitFor([&] { return stt.count() == 1; }, 3000));
@@ -3246,7 +3260,7 @@ TEST_CASE("A proactive call opens with its claimed line instead of the greeting"
   start.set_opening_line("Hay alguien en el patio.\nTe lo cuento.");
   session.start(sink, start);
   REQUIRE(waitFor([&] { return sink.hasType("voice:assistant"); }));
-  CHECK(tts.lastText == "Hay alguien en el patio. Te lo cuento.");
+  CHECK(tts.lastText == "Te lo cuento.");
   session.stop(sink);
 }
 
@@ -3333,6 +3347,44 @@ TEST_CASE("A session that stops sending audio is closed at the production silenc
   std::this_thread::sleep_for(kSessionSilenceLimit + std::chrono::milliseconds(500));
   CHECK_FALSE(session.announce(7, "Alerta crítica en el patio."));
   CHECK(sink.hasType("voice:done"));
+}
+
+struct ThreeSecondTts final : IVoiceTts
+{
+  float defaultSpeed(std::stop_token = {}) const override { return 1.0F; }
+  int sampleRate(std::stop_token = {}) const override { return 16000; }
+
+  void synthesizeStream(TtsRemoteStreamInput input) override
+  {
+    input.onChunk(std::vector<float>(16000 * 3, 0.1F));
+  }
+};
+
+TEST_CASE("the opener is spoken sentence by sentence within its budget, and the rest waits for the caller's first turn")
+{
+  FakeStt stt;
+  ThreeSecondTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad};
+  VoiceSessionService session(seam);
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceStart start = duplexStart();
+  start.set_opening_line("Hola, Administrador. Te llamo por algo urgente. Alguien ha pulsado el botón de pánico. Puede necesitar ayuda ahora mismo.");
+  start.add_later_lines("Además, a las nueve hay una visita.");
+  session.start(sink, start);
+  REQUIRE(waitFor([&] { return sink.hasType("voice:assistant"); }));
+  std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+  std::vector<std::string> spoken;
+  for (const auto& frame : sink.snapshot())
+    if (frame.has_assistant())
+      spoken.push_back(frame.assistant().text());
+  REQUIRE(spoken.size() == 1);
+  CHECK(spoken[0] == "Hola, Administrador.");
+  CHECK(VoiceSessionTestAccess::sessionOf(session, sink)->laterLines.size() == 4);
+  session.stop(sink);
 }
 
 int main(int argc, char** argv)

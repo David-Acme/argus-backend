@@ -135,6 +135,8 @@ private:
     bool audible{false};
     bool interrupted{false};
     std::chrono::steady_clock::time_point firstAudioAt{};
+    size_t audibleSamples{0};
+    int rate{0};
   };
 
   struct TurnClock
@@ -258,6 +260,7 @@ private:
     std::optional<CameraNotice> pendingCamera;
     std::deque<ActionFailure> pendingFailures;
     std::deque<Announcement> pendingAnnouncements;
+    std::deque<std::string> laterLines;
     std::deque<std::pair<int64_t, std::string>> sentActions;
     std::chrono::steady_clock::time_point lastNoticeAt{};
     std::atomic<int64_t> actionSeq{0};
@@ -318,6 +321,8 @@ private:
   void rememberAction(Session& session, const ClientAction& action);
   Reaction emitReaction(Session& session, const ReactionSignals& signals);
   SpeakOutcome speak(Session& session, const std::string& text);
+  void speakOpening(Session& session, const std::string& greeting);
+  void releaseLaterLines(Session& session);
   void sendFrame(Session& session, argus::voice::v1::ServerFrame frame) const;
 
   mutable std::mutex mutex_;
