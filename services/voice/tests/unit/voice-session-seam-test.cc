@@ -3315,6 +3315,25 @@ TEST_CASE("A session with recent audio hears an announcement")
   session.stop(sink);
 }
 
+TEST_CASE("A session that stops sending audio is closed at the production silence limit, so an alert rings")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
+  VoiceSessionService session(seam);
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  session.start(sink, voiceIdentity);
+  REQUIRE(waitFor([&] { return sink.hasType("voice:assistant"); }));
+  std::this_thread::sleep_for(kSessionSilenceLimit + std::chrono::milliseconds(500));
+  CHECK_FALSE(session.announce(7, "Alerta crítica en el patio."));
+  CHECK(sink.hasType("voice:done"));
+}
+
 int main(int argc, char** argv)
 {
   try {
