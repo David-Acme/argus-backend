@@ -80,10 +80,10 @@ std::string toHex(std::string_view bytes)
 
 std::string sha256Hex(const std::string& bytes)
 {
-  unsigned char digest[EVP_MAX_MD_SIZE];
+  std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
   unsigned int length = 0;
-  EVP_Digest(bytes.data(), bytes.size(), digest, &length, EVP_sha256(), nullptr);
-  return toHex(std::string_view(reinterpret_cast<const char*>(digest), length));
+  EVP_Digest(bytes.data(), bytes.size(), digest.data(), &length, EVP_sha256(), nullptr);
+  return toHex(std::string_view(reinterpret_cast<const char*>(digest.data()), length));
 }
 
 bool isLowerHex(std::string_view text)
@@ -145,7 +145,10 @@ TEST_CASE("every sealed push vector parses to its fields and encodes back to its
     CHECK(toHex(parsed.enc) == fields.at("encHex").get<std::string>());
     CHECK(toHex(parsed.ciphertext) == fields.at("ciphertextHex").get<std::string>());
     const auto encoded = push_envelope::sealedPayload(parsed);
-    REQUIRE(encoded.has_value());
+    if (!encoded) {
+      FAIL("the re-sealed payload is empty");
+      return;
+    }
     CHECK(toHex(*encoded) == vector.at("payloadHex").get<std::string>());
     const std::string frame = tunnel::link::encodeFrame(
         {.type = FrameType::PushSealed, .streamId = 0, .payload = *encoded});

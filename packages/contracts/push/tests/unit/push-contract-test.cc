@@ -66,7 +66,10 @@ TEST_CASE("a sealed payload parses back to the envelope it was built from")
 {
   const PushSealedEnvelope envelope = validEnvelope();
   const auto payload = push_envelope::sealedPayload(envelope);
-  REQUIRE(payload.has_value());
+  if (!payload) {
+    FAIL("the sealed payload is empty");
+    return;
+  }
   PushSealedEnvelope parsed;
   REQUIRE(push_envelope::parseSealedPayload(*payload, parsed));
   CHECK(parsed.deliveryId == envelope.deliveryId);
@@ -81,7 +84,10 @@ TEST_CASE("a sealed payload parses back to the envelope it was built from")
 TEST_CASE("a sealed payload with a trailing byte is refused")
 {
   const auto payload = push_envelope::sealedPayload(validEnvelope());
-  REQUIRE(payload.has_value());
+  if (!payload) {
+    FAIL("the sealed payload is empty");
+    return;
+  }
   PushSealedEnvelope parsed;
   CHECK_FALSE(push_envelope::parseSealedPayload(*payload + '\x00', parsed));
 }
@@ -91,7 +97,10 @@ TEST_CASE("a push result is exactly seventeen bytes with a known outcome")
   const PushResultEnvelope result{.deliveryId = std::string(16, '\xAA'),
                                   .outcome = PushOutcome::Unregistered};
   const auto payload = push_envelope::resultPayload(result);
-  REQUIRE(payload.has_value());
+  if (!payload) {
+    FAIL("the sealed payload is empty");
+    return;
+  }
   CHECK(payload->size() == push_envelope::kResultPayloadSize);
   PushResultEnvelope parsed;
   REQUIRE(push_envelope::parseResultPayload(*payload, parsed));
