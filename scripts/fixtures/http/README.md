@@ -39,6 +39,7 @@ and `<stack>` an empty directory:
 
 ```bash
 git archive <sha> | tar -x -C <root>            # a copy with no .git entry
+rm -rf <root>/models                            # the copy's tracked placeholder; --models links the real one
 bash <root>/scripts/setup.sh --config-only      # configs, certificates, PKI; no prompt, no build
 ln -s <built-tree>/services/<svc>/build <root>/services/<svc>/build   # for each stack service
 ARGUS_NATS_SERVER_BIN=<nats-server> \
