@@ -1504,6 +1504,43 @@ TEST_CASE("the first device to answer cancels the other device's ring with a dur
   CHECK(cancelledOnFive);
 }
 
+TEST_CASE("ending an answered call cancels its notification on the answering phone with a durable push")
+{
+  Harness harness;
+  const CallPreferenceService preferences;
+  UpdateCallPreferenceDto immediate;
+  immediate.pushDelaySeconds = 0;
+  drogon::sync_wait(preferences.update(1, immediate));
+  drogon::sync_wait(preferences.update(5, immediate));
+
+  const auto first = respond(harness, {.data = guardData("critical", 72),
+                                       .userIds = {1, 5},
+                                       .plan = planOf(orderedHousehold(), "ordered")});
+  const std::string callId = call_id::format(outcomeFor(first, 1).callId);
+  const auto claimed = drogon::sync_wait(
+      harness.engine.claim({.callId = callId, .userId = 1, .sessionId = "s1"}));
+  REQUIRE(claimed.status == CallClaimStatus::Claimed);
+
+  const auto cancelsToPhoneOne = [&harness] {
+    size_t count = 0;
+    for (const auto& record : harness.outbox->all()) {
+      if (json_util::fromString(record.payload)["token"].asString() != "fcm-token-1")
+        continue;
+      if (push_open::plaintextOf(record.payload, "key-0001")["cancel"].asBool())
+        ++count;
+    }
+    return count;
+  };
+  const size_t before = cancelsToPhoneOne();
+  const auto ended = drogon::sync_wait(harness.engine.end({.callId = callId,
+                                                           .userId = 1,
+                                                           .outcome = CallEndReport::Completed,
+                                                           .spoken = true,
+                                                           .sessionId = "s1"}));
+  CHECK(ended == CallEndStatus::Ended);
+  CHECK(cancelsToPhoneOne() > before);
+}
+
 TEST_CASE("a false alarm cancels every ring, stops the escalation and feeds the guard")
 {
   Harness harness;
