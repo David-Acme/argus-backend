@@ -153,7 +153,7 @@ TEST_CASE("the collapse key of an alert is the hex of its delivery id, and its m
     FAIL("the delivery id is not base64");
     return;
   }
-  const std::string deliveryId = *decodedDeliveryId;
+  const std::string& deliveryId = *decodedDeliveryId;
   CHECK(payload["collapseId"].asString() == push_delivery_wire::hexOf(deliveryId));
   CHECK(outbox->entries[0].eventId == std::string(push_delivery_wire::kEventIdPrefix) +
                                           push_delivery_wire::hexOf(deliveryId));

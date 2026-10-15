@@ -172,7 +172,7 @@ TEST_CASE("a ring written in the transaction that marks it pushed rolls back wit
     FAIL("the seeded ring is not in the call table");
     return;
   }
-  const CallSchema call = *found;
+  const CallSchema& call = *found;
   const CallPushDelivery delivery(CallPushDeliveryDependencies{
       .devices = std::make_shared<OneFcmDevice>(),
       .outbox = std::make_shared<NatsNotificationChangeSink>(nullptr, NatsNotificationChangeSink::Config{}),
@@ -200,7 +200,7 @@ TEST_CASE("a ring written in the transaction that marks it pushed commits with i
     FAIL("the seeded ring is not in the call table");
     return;
   }
-  const CallSchema call = *found;
+  const CallSchema& call = *found;
   const CallPushDelivery delivery(CallPushDeliveryDependencies{
       .devices = std::make_shared<OneFcmDevice>(),
       .outbox = std::make_shared<NatsNotificationChangeSink>(nullptr, NatsNotificationChangeSink::Config{}),

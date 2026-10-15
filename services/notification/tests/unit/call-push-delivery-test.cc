@@ -140,7 +140,7 @@ TEST_CASE("a delivery is recorded under the msg id of its delivery id, once per 
     FAIL("the delivery id is not base64");
     return;
   }
-  const std::string deliveryId = *decodedDeliveryId;
+  const std::string& deliveryId = *decodedDeliveryId;
 
   CHECK(eventId == std::string(push_delivery_wire::kEventIdPrefix) + push_delivery_wire::hexOf(deliveryId));
   CHECK(payload["token"].asString() == "fcm-token-0001");
