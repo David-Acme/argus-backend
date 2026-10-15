@@ -131,8 +131,16 @@ public:
     return reachable ? std::optional<bool>(false) : std::nullopt;
   }
 
+  [[nodiscard]] bool closeRoom(const CallRoomClose& input) const override
+  {
+    const std::scoped_lock lock(mutex);
+    closed.push_back(input);
+    return true;
+  }
+
   mutable std::mutex mutex;
   mutable std::vector<CallAnnouncement> heard;
+  mutable std::vector<CallRoomClose> closed;
   std::map<int64_t, bool> inCall;
   bool reachable{true};
 };
@@ -557,6 +565,40 @@ TEST_CASE("a claim after the ring timed out but before the sweep is expired")
                                .userId = 1,
                                .sessionId = "phone"}))
             .status == CallClaimStatus::Expired);
+}
+
+TEST_CASE("ending a call on the server closes its room on voice, once, with the reason")
+{
+  Harness harness;
+  const auto rang = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("critical", 51), {1}));
+  const int64_t id = outcomeFor(rang, 1).callId;
+  drogon::sync_wait(harness.engine.claim({.callId = call_id::format(id), .userId = 1, .sessionId = "phone"}));
+
+  CHECK(drogon::sync_wait(harness.engine.end({.callId = call_id::format(id),
+                                              .userId = 1,
+                                              .outcome = CallEndReport::Completed,
+                                              .spoken = true,
+                                              .sessionId = "phone"})) == CallEndStatus::Ended);
+  REQUIRE(harness.announcer->closed.size() == 1);
+  CHECK(harness.announcer->closed.front().userId == 1);
+  CHECK(harness.announcer->closed.front().callId == id);
+  CHECK(harness.announcer->closed.front().reason == "ended");
+  const auto ends = [&] {
+    std::vector<Json::Value> out;
+    for (const auto& frame : harness.signal->of(SyncOperation::CallCancel))
+      if (frame.info["reason"].asString() == "ended")
+        out.push_back(frame.info);
+    return out;
+  }();
+  REQUIRE(ends.size() == 1);
+  CHECK(ends.front()["callId"].asString() == call_id::format(id));
+  CHECK(drogon::sync_wait(harness.engine.end({.callId = call_id::format(id),
+                                              .userId = 1,
+                                              .outcome = CallEndReport::Completed,
+                                              .spoken = true,
+                                              .sessionId = "phone"})) == CallEndStatus::Ended);
+  CHECK(harness.announcer->closed.size() == 1);
 }
 
 TEST_CASE("a call hung up before Argus spoke counts as declined and leaves a note")

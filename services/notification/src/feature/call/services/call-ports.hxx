@@ -34,12 +34,24 @@ struct CallAnnouncement
   std::string callId;
 };
 
+struct CallRoomClose
+{
+  int64_t userId{0};
+  int64_t callId{0};
+  std::string reason;
+};
+
 class LiveCallAnnouncer
 {
 public:
   virtual ~LiveCallAnnouncer() = default;
 
   [[nodiscard]] virtual std::optional<bool> announce(const CallAnnouncement& input) const = 0;
+
+  [[nodiscard]] virtual bool closeRoom([[maybe_unused]] const CallRoomClose& input) const
+  {
+    return false;
+  }
 };
 
 struct CallRecipient

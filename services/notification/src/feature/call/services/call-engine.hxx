@@ -387,6 +387,7 @@ private:
 
 
   drogon::Task<void> noteDeclined(const CallSchema& call) const;
+  drogon::Task<void> closeRoom(const CallRoomClose& input) const;
 
   int64_t now() const;
 

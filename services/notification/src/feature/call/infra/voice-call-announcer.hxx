@@ -13,6 +13,8 @@ public:
   [[nodiscard]] std::optional<bool>
   announce(const CallAnnouncement& input) const override;
 
+  [[nodiscard]] bool closeRoom(const CallRoomClose& input) const override;
+
 private:
   std::shared_ptr<const VoiceClient> client_;
 };

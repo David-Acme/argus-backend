@@ -375,6 +375,20 @@ drogon::Task<std::vector<std::string>> CallEngine::supersedeRinging(const CallSc
   co_return lines;
 }
 
+drogon::Task<void> CallEngine::closeRoom(const CallRoomClose& input) const
+{
+  if (!dependencies_.announcer)
+    co_return;
+  const auto announcer = dependencies_.announcer;
+  if (!dependencies_.blockingOffLoop) {
+    static_cast<void>(announcer->closeRoom(input));
+    co_return;
+  }
+  static_cast<void>(co_await BlockingTask<bool>([announcer, input]() {
+    return announcer->closeRoom(input);
+  }));
+}
+
 drogon::Task<void> CallEngine::noteDeclined(const CallSchema& call) const
 {
   if (!dependencies_.notifier)
@@ -811,6 +825,14 @@ drogon::Task<CallEndStatus> CallEngine::end(const CallEndRequest& request) const
              .state = declined ? CallState::Declined : CallState::Completed,
              .now = at}))
       co_return CallEndStatus::Taken;
+    const std::string reason = declined ? "declined" : "ended";
+    co_await closeRoom({.userId = request.userId, .callId = id, .reason = reason});
+    Json::Value info(Json::objectValue);
+    info["callId"] = existing->callId();
+    info["reason"] = reason;
+    co_await emit({.userId = request.userId,
+                   .operation = SyncOperation::CallCancel,
+                   .info = info});
     if (declined)
       co_await noteDeclined(*existing);
     co_return CallEndStatus::Ended;
