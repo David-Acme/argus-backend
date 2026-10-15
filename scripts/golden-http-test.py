@@ -77,6 +77,10 @@ def manifest_entries():
              **({"generated": list(fields["generated"])}
                 if fields.get("generated") else {}),
              **({"generatedText": True} if fields.get("generatedText") else {}),
+             **({"nullable": dict(fields["nullable"])}
+                if fields.get("nullable") else {}),
+             **({"mayBeEmpty": list(fields["mayBeEmpty"])}
+                if fields.get("mayBeEmpty") else {}),
              "reason": fields["reason"]}
             for (unit, route), fields in sorted(golden.VOLATILE_FIELDS.items())]
 
@@ -102,7 +106,7 @@ def health_routes():
             if route["path"] == "/health"]
 
 
-def run_harness(command, fixtures, fleet):
+def run_harness(command, fixtures, fleet, only=None):
     output = io.StringIO()
     with mock.patch.object(golden, "send", fleet.send), \
             contextlib.redirect_stdout(output), \
@@ -110,7 +114,7 @@ def run_harness(command, fixtures, fleet):
         if command == "record":
             code = golden.record(fixtures, health_routes(), BASES, {},
                                  dict(golden.CENSUS_IDS), [], 5.0,
-                                 fixtures.parent)
+                                 fixtures.parent, only)
         else:
             code = golden.verify(fixtures, health_routes(), BASES, {},
                                  dict(golden.CENSUS_IDS), [], 5.0, False,
@@ -242,7 +246,141 @@ class VolatileCompareTest(unittest.TestCase):
         self.assertEqual(
             compared(expected, actual),
             ["response.json.info.internalTls: '<VOLATILE:object>' -> "
-             "'<VOLATILE:string>'"])
+             "'string'"])
+
+
+class VolatileShapeTest(unittest.TestCase):
+    ENTRY = {"unit": "unit", "route": "/r"}
+
+    def volatile(self, **fields):
+        return {("unit", "/r"): {"keys": ("items", "cursor"), "reason": "x",
+                                 **fields}}
+
+    def test_an_array_keeps_an_element_template_every_element_must_match(self):
+        body = {"info": {"items": [{"id": 3, "action": "create",
+                                    "newData": None},
+                                   {"id": 4, "action": "update",
+                                    "newData": {"a": 1}}],
+                         "cursor": None}}
+        marked = golden.without_volatile(self.ENTRY, body,
+                                         self.volatile())
+        self.assertEqual(marked["info"]["items"], {golden.ARRAY_KEY: {
+            "id": "<VOLATILE:number>",
+            "action": "<VOLATILE:string>",
+            "newData": "<VOLATILE:object|null>"}})
+
+        same_shape = {"info": {"items": [{"id": 9, "action": "delete",
+                                          "newData": {"b": 2}}],
+                               "cursor": None}}
+        self.assertEqual(golden.differences(marked, same_shape), [])
+
+        missing_key = {"info": {"items": [{"id": 9, "newData": None}],
+                                "cursor": None}}
+        self.assertEqual(
+            golden.differences(marked, missing_key),
+            [".info.items[0].action disappeared"])
+
+        wrong_type = {"info": {"items": [{"id": "9", "action": "x",
+                                          "newData": None}],
+                               "cursor": None}}
+        self.assertEqual(
+            golden.differences(marked, wrong_type),
+            [".info.items[0].id: '<VOLATILE:number>' -> 'string'"])
+
+    def test_an_empty_array_is_recorded_only_where_the_route_declares_it(self):
+        body = {"info": {"items": [], "cursor": None}}
+        problems = []
+        golden.without_volatile(self.ENTRY, body, self.volatile(), problems)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("items", problems[0])
+
+        declared = self.volatile(mayBeEmpty=("items",))
+        problems = []
+        marked = golden.without_volatile(self.ENTRY, body, declared, problems)
+        self.assertEqual(problems, [])
+        self.assertEqual(golden.differences(marked, body), [])
+        filled = {"info": {"items": [{"id": 1}], "cursor": None}}
+        self.assertEqual(golden.differences(marked, filled), [])
+
+    def test_an_undeclared_empty_array_fails_against_a_recorded_one(self):
+        declared = self.volatile(mayBeEmpty=("items",))
+        marked = golden.without_volatile(
+            self.ENTRY, {"info": {"items": [{"id": 1}], "cursor": None}},
+            declared)
+        self.assertEqual(
+            golden.differences(marked, {"info": {"items": [], "cursor": None}}),
+            [])
+        strict = golden.without_volatile(
+            self.ENTRY, {"info": {"items": [{"id": 1}], "cursor": None}},
+            self.volatile())
+        self.assertEqual(
+            golden.differences(
+                strict, {"info": {"items": [], "cursor": None}}),
+            [".info.items: an empty array the route does not declare"])
+
+    def test_a_nullable_field_accepts_its_null_and_its_declared_type(self):
+        declared = self.volatile(keys=("cursor",),
+                                 nullable={"cursor": "string"})
+        marked = golden.without_volatile(
+            self.ENTRY, {"info": {"cursor": None}}, declared, [])
+        self.assertEqual(marked["info"]["cursor"], "<VOLATILE:string|null>")
+        for value in (None, "abc"):
+            with self.subTest(value=value):
+                actual = {"info": {"cursor": value}}
+                self.assertEqual(golden.differences(marked, actual), [])
+        self.assertEqual(
+            golden.differences(marked, {"info": {"cursor": 7}}),
+            [".info.cursor: '<VOLATILE:string|null>' -> 'number'"])
+
+    def test_a_nullable_element_leaf_is_the_union_of_what_it_held(self):
+        body = {"info": {"items": [{"a": None}, {"a": "x"}], "cursor": None}}
+        marked = golden.without_volatile(self.ENTRY, body, self.volatile(),
+                                         [])
+        self.assertEqual(marked["info"]["items"][golden.ARRAY_KEY],
+                         {"a": "<VOLATILE:string|null>"})
+
+
+class OnlyTest(unittest.TestCase):
+    def setUp(self):
+        self.work = pathlib.Path(tempfile.mkdtemp(prefix="golden-only-test-"))
+        manifest = golden.load_manifest(FIXTURES)
+        manifest["volatileFields"] = []
+        for name in ("full", "only"):
+            (self.work / name).mkdir()
+            (self.work / name / "manifest.json").write_text(
+                json.dumps(manifest))
+
+    def tearDown(self):
+        shutil.rmtree(self.work)
+
+    def recorded_order(self, name, only):
+        order = []
+        real = golden.run_entry
+
+        def spy(entry, *args, **kwargs):
+            order.append((entry["method"], entry["route"],
+                          entry["probe"]["name"]))
+            return real(entry, *args, **kwargs)
+
+        with mock.patch.object(golden, "run_entry", spy):
+            code, output = run_harness("record", self.work / name,
+                                       Fleet(LOADED), only)
+        self.assertEqual(code, 0, output)
+        return order
+
+    def test_only_runs_the_whole_suite_in_its_order(self):
+        full = self.recorded_order("full", None)
+        selected = self.recorded_order("only", {("GET", "/health")})
+        self.assertTrue(full)
+        self.assertEqual(selected, full)
+
+    def test_only_writes_the_selected_rows_as_a_full_record_does(self):
+        self.recorded_order("full", None)
+        self.recorded_order("only", {("GET", "/health")})
+        for name in ("shared.json", "guard.json"):
+            with self.subTest(file=name):
+                self.assertEqual((self.work / "only" / name).read_text(),
+                                 (self.work / "full" / name).read_text())
 
 
 class VolatileSourceTest(unittest.TestCase):

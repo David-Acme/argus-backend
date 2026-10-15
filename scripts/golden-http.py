@@ -356,6 +356,7 @@ VOLATILE_FIELDS = {
     },
     ("sync", "/sync/activity"): {
         "keys": ("items", "nextCursor"),
+        "nullable": {"nextCursor": "string"},
         "reason": "the Owner's activity history grows with every write the "
                   "fleet makes, and the rows reach argus-sync asynchronously "
                   "over NATS, so the page a probe reads depends on how many "
@@ -393,7 +394,11 @@ VOLATILE_FIELDS = {
     ("settings", "/modules"): {
         "keys": ("modules[].hardware", "modules[].installedBytes",
                  "modules[].components"),
-        "reason": "the hardware verdict, free disk and installed bytes are "
+        "mayBeEmpty": ("modules[].components",),
+        "reason": "a module with no model component answers an empty "
+                  "components list (productivity has none, agronomy is not "
+                  "installed), so that list may be empty; the hardware "
+                  "verdict, free disk and installed bytes are "
                   "read from the host that answers, and a component's state "
                   "comes from the model files and engines present on it; the "
                   "catalog, lifecycle, sizes and jobs beside them stay pinned",
@@ -1404,6 +1409,10 @@ def write_manifest(fixtures, units, probe_count, deviations):
             **({"generated": list(fields["generated"])}
                 if fields.get("generated") else {}),
             **({"generatedText": True} if fields.get("generatedText") else {}),
+            **({"nullable": dict(fields["nullable"])}
+               if fields.get("nullable") else {}),
+            **({"mayBeEmpty": list(fields["mayBeEmpty"])}
+               if fields.get("mayBeEmpty") else {}),
              "reason": fields["reason"]}
             for (unit, route), fields in sorted(VOLATILE_FIELDS.items())
         ],
@@ -1500,22 +1509,23 @@ def record(fixtures, routes, bases, sessions, ids, roles, timeout, stack,
                   + ", ".join(f"{method} {path}" for method, path in absent),
                   file=sys.stderr)
             return 2
-        plan = [entry for entry in plan
-                if (entry["method"], entry["route"]) in only]
     failures = 0
     units = {}
     fixtures.mkdir(parents=True, exist_ok=True)
     for entry in plan:
         record_entry = run_entry(entry, bases, sessions, timeout)
         problems = violates(entry, record_entry, deviations)
-        for problem in problems:
+        volatile_problems = []
+        record_entry["response"]["json"] = without_volatile(
+            entry, record_entry["response"]["json"], VOLATILE_FIELDS,
+            volatile_problems)
+        for problem in problems + volatile_problems:
             failures += 1
             print(f"violation: {entry['unit']} {entry['method']} "
                   f"{entry['route']} [{entry['probe']['name']}] {problem}",
                   file=sys.stderr)
-        record_entry["response"]["json"] = without_volatile(
-            entry, record_entry["response"]["json"], VOLATILE_FIELDS)
-        units.setdefault(entry["unit"], []).append(record_entry)
+        if only is None or (entry["method"], entry["route"]) in only:
+            units.setdefault(entry["unit"], []).append(record_entry)
         if session_killed(entry, record_entry):
             sessions = remint_sessions(stack, bases["auth"], timeout)
     for unit, records in sorted(units.items()):
@@ -1544,7 +1554,84 @@ def load_fixture(fixtures, unit):
             for item in data["probes"]}
 
 
+ARRAY_KEY = "<VOLATILE:array>"
+EMPTY_KEY = "<VOLATILE:mayBeEmpty>"
+GENERATED_TEXT_ROUTES = {key for key, fields in VOLATILE_FIELDS.items()
+                         if fields.get("generatedText")}
+
+
+def json_type(value):
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    return "object"
+
+
+def is_marker(value):
+    return (isinstance(value, str) and value.startswith("<VOLATILE:")
+            and value.endswith(">"))
+
+
+def marker_types(marker):
+    return marker[len("<VOLATILE:"):-1].split("|")
+
+
+def union_marker(types):
+    names = sorted(name for name in types if name != "null")
+    if "null" in types:
+        names.append("null")
+    return f"<VOLATILE:{'|'.join(names)}>"
+
+
+def template_of(values):
+    dicts = [value for value in values if isinstance(value, dict)]
+    if dicts and len(dicts) == len(values):
+        return {key: template_of([value[key] for value in dicts if key in value])
+                for key in dicts[0]}
+    lists = [value for value in values if isinstance(value, list)]
+    if lists and len(lists) == len(values):
+        flat = [item for value in lists for item in value]
+        return {ARRAY_KEY: template_of(flat) if flat else None}
+    return union_marker({json_type(value) for value in values})
+
+
+def volatile_value(value, declared=None, may_be_empty=False):
+    if isinstance(value, list):
+        marker = {ARRAY_KEY: template_of(value) if value else None}
+        if may_be_empty:
+            marker[EMPTY_KEY] = True
+        return marker
+    if declared is not None and (value is None or json_type(value) == declared):
+        return f"<VOLATILE:{declared}|null>"
+    return f"<VOLATILE:{json_type(value)}>"
+
+
 def differences(expected, actual, prefix=""):
+    if is_marker(expected):
+        if json_type(actual) in marker_types(expected):
+            return []
+        return [f"{prefix}: {expected!r} -> {json_type(actual)!r}"]
+    if isinstance(expected, dict) and ARRAY_KEY in expected:
+        if not isinstance(actual, list):
+            return [f"{prefix}: array -> {json_type(actual)!r}"]
+        if not actual:
+            if expected.get(EMPTY_KEY):
+                return []
+            return [f"{prefix}: an empty array the route does not declare"]
+        template = expected[ARRAY_KEY]
+        if template is None:
+            return []
+        found = []
+        for index, item in enumerate(actual):
+            found.extend(differences(template, item, f"{prefix}[{index}]"))
+        return found
     if isinstance(expected, dict) and isinstance(actual, dict):
         found = []
         for key in sorted(set(expected) | set(actual)):
@@ -1570,11 +1657,7 @@ def differences(expected, actual, prefix=""):
     return []
 
 
-GENERATED_TEXT_ROUTES = {key for key, fields in VOLATILE_FIELDS.items()
-                         if fields.get("generatedText")}
-
-
-def without_volatile(entry, body, volatile):
+def without_volatile(entry, body, volatile, problems=None):
     fields = volatile.get((entry["unit"], entry["route"]))
     if not fields or not isinstance(body, dict):
         return body
@@ -1582,31 +1665,34 @@ def without_volatile(entry, body, volatile):
         return body
     body = json.loads(json.dumps(body))
     node = body["info"] if "info" in body else body
+    nullable = fields.get("nullable", {})
+    may_be_empty = set(fields.get("mayBeEmpty", ()))
     for key in fields["keys"]:
-        replace_path(node, key.split("."), volatile_marker)
+        def mark(value, key=key):
+            if (isinstance(value, list) and not value
+                    and key not in may_be_empty and problems is not None):
+                problems.append(
+                    f"volatile array {key} is empty and the route does not "
+                    "declare mayBeEmpty")
+            return volatile_value(value, nullable.get(key),
+                                  key in may_be_empty)
+        replace_path(node, key.split("."), mark)
+    return fixed_placeholders(entry, body, volatile)
+
+
+def fixed_placeholders(entry, body, volatile):
+    fields = volatile.get((entry["unit"], entry["route"]))
+    if not fields or not isinstance(body, dict):
+        return body
+    if "info" in body and not isinstance(body["info"], dict):
+        return body
+    body = json.loads(json.dumps(body))
+    node = body["info"] if "info" in body else body
     for key in fields.get("placeholders", ()):
         replace_path(node, key.split("."), lambda _: PLACEHOLDER)
     for key in fields.get("generated", ()):
         replace_path(node, key.split("."), lambda _: GENERATED)
     return body
-
-
-def json_type(value):
-    if value is None:
-        return "null"
-    if isinstance(value, bool):
-        return "boolean"
-    if isinstance(value, (int, float)):
-        return "number"
-    if isinstance(value, str):
-        return "string"
-    if isinstance(value, list):
-        return "array"
-    return "object"
-
-
-def volatile_marker(value):
-    return f"<VOLATILE:{json_type(value)}>"
 
 
 def replace_path(node, parts, mark):
@@ -1633,7 +1719,7 @@ def compare(expected, actual, volatile):
                 f"{actual['response'][field]!r}")
     problems.extend(differences(
         expected["response"].get("json"),
-        without_volatile(actual, actual["response"].get("json"), volatile),
+        fixed_placeholders(actual, actual["response"].get("json"), volatile),
         "response.json"))
     if expected["response"].get("text") != actual["response"].get("text"):
         problems.append("response.text changed")

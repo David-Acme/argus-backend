@@ -177,7 +177,22 @@
           "info": {
             "modules": [
               {
-                "components": "<VOLATILE:array>",
+                "components": {
+                  "<VOLATILE:array>": {
+                    "bytesPresent": "<VOLATILE:number>",
+                    "bytesTotal": "<VOLATILE:number>",
+                    "hostCommand": "<VOLATILE:string>",
+                    "id": "<VOLATILE:string>",
+                    "owner": "<VOLATILE:string>",
+                    "reachable": "<VOLATILE:boolean>",
+                    "ready": "<VOLATILE:boolean>",
+                    "reason": "<VOLATILE:null>",
+                    "reported": "<VOLATILE:boolean>",
+                    "source": "<VOLATILE:string>",
+                    "state": "<VOLATILE:string>"
+                  },
+                  "<VOLATILE:mayBeEmpty>": true
+                },
                 "dataPurgedAt": "<masked>",
                 "enabled": true,
                 "gettingStarted": [
@@ -214,7 +229,22 @@
                 "summary": "Tu cuenta, las personas de casa, avisos, privacidad y el asistente de voz. Siempre activo."
               },
               {
-                "components": "<VOLATILE:array>",
+                "components": {
+                  "<VOLATILE:array>": {
+                    "bytesPresent": "<VOLATILE:number>",
+                    "bytesTotal": "<VOLATILE:number>",
+                    "hostCommand": "<VOLATILE:string|null>",
+                    "id": "<VOLATILE:string>",
+                    "owner": "<VOLATILE:string>",
+                    "reachable": "<VOLATILE:boolean>",
+                    "ready": "<VOLATILE:boolean>",
+                    "reason": "<VOLATILE:null>",
+                    "reported": "<VOLATILE:boolean>",
+                    "source": "<VOLATILE:string>",
+                    "state": "<VOLATILE:string>"
+                  },
+                  "<VOLATILE:mayBeEmpty>": true
+                },
                 "dataPurgedAt": "<masked>",
                 "enabled": true,
                 "gettingStarted": [
@@ -260,7 +290,10 @@
                 "summary": "C\u00e1maras en vivo, zonas, detecci\u00f3n de personas y el guardia que te avisa de lo importante."
               },
               {
-                "components": "<VOLATILE:array>",
+                "components": {
+                  "<VOLATILE:array>": null,
+                  "<VOLATILE:mayBeEmpty>": true
+                },
                 "dataPurgedAt": "<masked>",
                 "enabled": true,
                 "gettingStarted": [
@@ -276,7 +309,7 @@
                   }
                 ],
                 "hardware": "<VOLATILE:object>",
-                "hasData": false,
+                "hasData": true,
                 "id": "productivity",
                 "installedBytes": "<VOLATILE:number>",
                 "intro": {
@@ -299,7 +332,10 @@
                 "summary": "Agenda, proyectos y tareas compartidas con tu familia."
               },
               {
-                "components": "<VOLATILE:array>",
+                "components": {
+                  "<VOLATILE:array>": null,
+                  "<VOLATILE:mayBeEmpty>": true
+                },
                 "dataPurgedAt": "<masked>",
                 "enabled": false,
                 "gettingStarted": [],
@@ -1248,7 +1284,7 @@
                 "createdBy": 1,
                 "createdByName": "Golden",
                 "expiresAt": "<masked>",
-                "id": 1,
+                "id": 2,
                 "role": "guard"
               }
             ],
