@@ -31,6 +31,8 @@
 #include <voice/reaction-contracts.hxx>
 #include <voice/voice-client.hxx>
 
+inline constexpr int kSinkPcmRate = 16000;
+
 class VoiceSessionSink
 {
 public:
@@ -39,6 +41,7 @@ public:
   virtual bool connected() const = 0;
   virtual void sendServerFrame(argus::voice::v1::ServerFrame frame) = 0;
   virtual void duckPlayout(bool) {}
+  [[nodiscard]] virtual int playoutRate() const { return kSinkPcmRate; }
 };
 
 struct PcmFrame

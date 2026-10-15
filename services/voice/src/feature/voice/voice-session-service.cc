@@ -956,8 +956,9 @@ bool VoiceSessionService::sendDuplexChunk(Session& session,
 {
   const auto now = std::chrono::steady_clock::now();
   const size_t samples = frame.tts_chunk().pcm().size() / sizeof(int16_t);
+  const int rate = session.sink ? session.sink->playoutRate() : kTargetRate;
   const auto audible = std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-      std::chrono::duration<double>(static_cast<double>(samples) / kTargetRate));
+      std::chrono::duration<double>(static_cast<double>(samples) / rate));
   std::scoped_lock lock(session.duplexMutex);
   if (session.turn.barged)
     return false;
@@ -1468,9 +1469,10 @@ VoiceSessionService::SpeakOutcome VoiceSessionService::speak(Session& session,
   catch (const std::exception& e) {
     LOG_WARN << "Voice: TTS unavailable: " << e.what();
   }
+  const int outRate = session.sink ? session.sink->playoutRate() : kTargetRate;
   AudioResampler resampler(
       {.sourceRate = ttsRate > 0 ? ttsRate : kTargetRate,
-       .targetRate = kTargetRate});
+       .targetRate = outRate});
 
   SpeakingGuard speakingGuard(session.speaking);
   TurnClock& clock = session.turnClock;
@@ -1483,9 +1485,12 @@ VoiceSessionService::SpeakOutcome VoiceSessionService::speak(Session& session,
   };
   argus::voice::v1::ServerFrame assistantFrame;
   assistantFrame.mutable_assistant()->set_text(text);
+  const auto synthStarted = std::chrono::steady_clock::now();
+  size_t synthSamples = 0;
   try {
     tts_.synthesizeStream({.request = treq,
                            .onChunk = [&](const std::vector<float>& chunk) {
+      synthSamples += chunk.size();
       if (!session.sink || !session.sink->connected())
         return;
       if (session.interrupt.load())
@@ -1511,6 +1516,13 @@ VoiceSessionService::SpeakOutcome VoiceSessionService::speak(Session& session,
       markAudible();
     },
                            .cancellation = cancellation});
+    const auto wallMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - synthStarted)
+                            .count();
+    const auto audioMs = static_cast<long long>(synthSamples) * 1000 / std::max(1, ttsRate);
+    LOG_INFO << "Voice: TTS audio=" << audioMs << " ms wall=" << wallMs << " ms rtf="
+             << (audioMs > 0 ? static_cast<double>(wallMs) / static_cast<double>(audioMs) : 0.0)
+             << " rate=" << ttsRate;
   }
   catch (const std::exception& e) {
     LOG_WARN << "Voice: TTS failed: " << e.what();

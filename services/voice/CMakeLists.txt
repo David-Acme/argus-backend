@@ -176,6 +176,32 @@ set_target_properties(voice-session-seam-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
 
+add_executable(playout-buffering-test tests/unit/playout-buffering-test.cc)
+
+target_link_libraries(playout-buffering-test PRIVATE argus::voice-core
+    doctest::doctest)
+
+target_compile_options(playout-buffering-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(playout-buffering-test)
+
+set_target_properties(playout-buffering-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME playout-buffering-test COMMAND playout-buffering-test)
+
+add_executable(playout-rate-test tests/unit/playout-rate-test.cc)
+
+target_link_libraries(playout-rate-test PRIVATE argus::voice-core
+    doctest::doctest)
+
+target_compile_options(playout-rate-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(playout-rate-test)
+
+set_target_properties(playout-rate-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME playout-rate-test COMMAND playout-rate-test)
+
 add_executable(voice-call-history-test tests/unit/voice-call-history-test.cc)
 
 target_compile_definitions(voice-call-history-test PRIVATE

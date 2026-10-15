@@ -7,6 +7,7 @@
 #include <shared/wrapper/audio/sample-ring.hxx>
 
 #include <audio/audio-resampler.hxx>
+#include <feature/rtc/playout-buffering.hxx>
 #include <livekit/livekit.h>
 
 #include <atomic>
@@ -71,6 +72,7 @@ public:
   [[nodiscard]] bool ended() const { return ended_.load(); }
 
   bool connected() const override;
+  int playoutRate() const override;
   void sendServerFrame(argus::voice::v1::ServerFrame frame) override;
   void duckPlayout(bool ducked) override;
 
@@ -82,10 +84,11 @@ public:
   void onUserPacketReceived(livekit::Room& room, const livekit::UserDataPacketEvent& event) override;
 
   static constexpr int kSampleRate = 16000;
-  static constexpr int kFrameSamples = kSampleRate / 100;
-  static constexpr int kSourceQueueMs = 40;
-  static constexpr size_t kFadeSamples = static_cast<size_t>(kSampleRate) * 60 / 1000;
-  static constexpr size_t kPlayoutCapacity = static_cast<size_t>(kSampleRate) * 120;
+  static constexpr int kPlayoutRate = 48000;
+  static constexpr int kFrameSamples = kPlayoutRate / 100;
+  static constexpr int kSourceQueueMs = kLiveKitSourceQueueMs;
+  static constexpr size_t kFadeSamples = static_cast<size_t>(kPlayoutRate) * 60 / 1000;
+  static constexpr size_t kPlayoutCapacity = static_cast<size_t>(kPlayoutRate) * 120;
   static constexpr size_t kMaxOutboundMessages = 256;
 
 private:
@@ -158,6 +161,9 @@ private:
   std::vector<int16_t> chunk_;
   std::vector<int16_t> fadeTail_;
   PlayoutGain gain_;
+  PlayoutBuffering buffering_{static_cast<size_t>(kPlayoutRate) * kPlayoutPreRollMs / 1000,
+                              kPlayoutTailFlushAfter};
+  size_t underrunTicks_{0};
   bool flushPending_{false};
   bool audible_{false};
   std::chrono::steady_clock::time_point lastChunkAt_{};
