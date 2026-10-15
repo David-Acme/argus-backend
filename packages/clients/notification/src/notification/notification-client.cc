@@ -6,6 +6,7 @@
 namespace
 {
 constexpr int kCallTimeoutMs = 5000;
+constexpr int kCreateTimeoutMs = 3000;
 
 NotificationRpcOutcome outcomeForStatus(grpc::StatusCode code)
 {
@@ -34,7 +35,7 @@ NotificationCreateResult NotificationClient::createNotifications(
     const argus::client::CallerIdentity& identity) const
 {
   grpc::ClientContext context;
-  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::setDeadline(context, kCreateTimeoutMs);
   argus::client::addCallerIdentity(context, identity);
   argus::client::addCallerCredential(context, credential_);
 

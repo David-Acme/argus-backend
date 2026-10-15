@@ -4,11 +4,13 @@
 #include <grpc-test-support/mutual-tls-endpoint.hxx>
 #include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
+#include <chrono>
 #include <map>
 #include <memory>
 #include <notification/notification-client.hxx>
 #include <optional>
 #include <string>
+#include <thread>
 
 namespace
 {
@@ -25,11 +27,13 @@ public:
   grpc::Status status = grpc::Status::OK;
   v1::CreateNotificationsResponse created;
   v1::PullNotificationsResponse pulled;
+  std::chrono::milliseconds stall{0};
   std::map<std::string, std::string> metadata;
   Reactor* CreateNotifications(Ctx* context,
                                const v1::CreateNotificationsRequest*,
                                v1::CreateNotificationsResponse* out) override
   {
+    std::this_thread::sleep_for(stall);
     *out = created;
     return finish(context);
   }
@@ -315,4 +319,23 @@ TEST_CASE("the create dials the mutual TLS port with the internal certificate")
       {.target = endpoint.plaintextToTlsPortTarget(), .credential = kCredential});
   CHECK(plaintext.createNotifications(createRequest(), identityFor(7)).outcome !=
         NotificationRpcOutcome::Success);
+}
+
+TEST_CASE("a create the service does not answer gives up at the create deadline, not the default call timeout")
+{
+  ScriptedNotificationService service;
+  service.stall = std::chrono::milliseconds(6000);
+  int port = 0;
+  auto server = startServer(service, port);
+  REQUIRE(server);
+  const NotificationClient configured(
+      {.target = loopback(port), .credential = kCredential});
+
+  const auto started = std::chrono::steady_clock::now();
+  const auto result = configured.createNotifications(createRequest(), identityFor(7));
+  const auto elapsed = std::chrono::steady_clock::now() - started;
+
+  CHECK(result.outcome != NotificationRpcOutcome::Success);
+  CHECK(elapsed < std::chrono::milliseconds(4500));
+  server->Shutdown(std::chrono::system_clock::now());
 }
