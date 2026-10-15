@@ -322,6 +322,31 @@ class VolatileShapeTest(unittest.TestCase):
                 strict, {"info": {"items": [], "cursor": None}}),
             [".info.items: an empty array the route does not declare"])
 
+    def test_a_declared_nested_empty_array_is_accepted_and_undeclared_fails(self):
+        shaped = {("unit", "/r"): {"keys": ("obj",), "shaped": ("obj",),
+                                    "reason": "x"}}
+        declared = {("unit", "/r"): {"keys": ("obj",), "shaped": ("obj",),
+                                      "mayBeEmpty": ("obj.reasons",),
+                                      "reason": "x"}}
+        body = {"info": {"obj": {"reasons": [], "verdict": "ok"}}}
+        problems = []
+        marked = golden.without_volatile(self.ENTRY, body, declared, problems)
+        self.assertEqual(problems, [])
+        self.assertEqual(golden.differences(marked, body), [])
+        filled = {"info": {"obj": {"reasons": [{"code": 1}],
+                                   "verdict": "ok"}}}
+        self.assertEqual(golden.differences(marked, filled), [])
+
+        problems = []
+        strict = golden.without_volatile(self.ENTRY, body, shaped, problems)
+        self.assertEqual(
+            problems,
+            ["obj.reasons is an empty array the route does not declare "
+             "mayBeEmpty"])
+        self.assertEqual(
+            golden.differences(strict, body),
+            [".info.obj.reasons: an empty array the route does not declare"])
+
     def test_a_nullable_field_accepts_its_null_and_its_declared_type(self):
         declared = self.volatile(keys=("cursor",),
                                  nullable={"cursor": "string"})

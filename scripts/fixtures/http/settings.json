@@ -211,7 +211,8 @@
                   "freeDiskMb": "<VOLATILE:number>",
                   "minRamMb": "<VOLATILE:number>",
                   "reasons": {
-                    "<VOLATILE:array>": null
+                    "<VOLATILE:array>": null,
+                    "<VOLATILE:mayBeEmpty>": true
                   },
                   "recommendedRamMb": "<VOLATILE:number>",
                   "verdict": "<VOLATILE:string>"
@@ -276,7 +277,8 @@
                   "freeDiskMb": "<VOLATILE:number>",
                   "minRamMb": "<VOLATILE:number>",
                   "reasons": {
-                    "<VOLATILE:array>": null
+                    "<VOLATILE:array>": null,
+                    "<VOLATILE:mayBeEmpty>": true
                   },
                   "recommendedRamMb": "<VOLATILE:number>",
                   "verdict": "<VOLATILE:string>"
@@ -328,7 +330,8 @@
                   "freeDiskMb": "<VOLATILE:number>",
                   "minRamMb": "<VOLATILE:number>",
                   "reasons": {
-                    "<VOLATILE:array>": null
+                    "<VOLATILE:array>": null,
+                    "<VOLATILE:mayBeEmpty>": true
                   },
                   "recommendedRamMb": "<VOLATILE:number>",
                   "verdict": "<VOLATILE:string>"
@@ -367,7 +370,8 @@
                   "freeDiskMb": "<VOLATILE:number>",
                   "minRamMb": "<VOLATILE:number>",
                   "reasons": {
-                    "<VOLATILE:array>": null
+                    "<VOLATILE:array>": null,
+                    "<VOLATILE:mayBeEmpty>": true
                   },
                   "recommendedRamMb": "<VOLATILE:number>",
                   "verdict": "<VOLATILE:string>"
@@ -1315,7 +1319,8 @@
             "allowed": false,
             "data": {
               "owners": {
-                "<VOLATILE:array>": null
+                "<VOLATILE:array>": null,
+                "<VOLATILE:mayBeEmpty>": true
               }
             },
             "filesBytes": "<VOLATILE:number>",

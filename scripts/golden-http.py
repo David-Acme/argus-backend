@@ -1644,6 +1644,16 @@ def set_leaf(node, parts, value):
         node[head] = value
 
 
+def flag_empty(node, parts):
+    head, rest = parts.split(".", 1) if "." in parts else (parts, "")
+    if head.endswith("[]"):
+        flag_empty(node[head[:-2]][ARRAY_KEY], rest)
+    elif rest:
+        flag_empty(node[head], rest)
+    else:
+        node[head][EMPTY_KEY] = True
+
+
 def empty_arrays(template, path=""):
     if isinstance(template, dict):
         if ARRAY_KEY in template:
@@ -1747,12 +1757,14 @@ def without_volatile(entry, body, volatile, problems=None):
                         problems.append(
                             f"{full} is null in the recording; declare "
                             "its real type")
-                if problems is not None:
-                    problems.extend(
-                        f"{join_path(key, nested)} is an empty array the "
-                        "route does not declare mayBeEmpty"
-                        for nested in empty_arrays(template)
-                        if join_path(key, nested) not in may_be_empty)
+                for nested in empty_arrays(template):
+                    full = join_path(key, nested)
+                    if full in may_be_empty:
+                        flag_empty(template, nested)
+                    elif problems is not None:
+                        problems.append(
+                            f"{full} is an empty array the route does not "
+                            "declare mayBeEmpty")
                 return template
             return volatile_value(value, nullable.get(key),
                                   key in may_be_empty, typed)
