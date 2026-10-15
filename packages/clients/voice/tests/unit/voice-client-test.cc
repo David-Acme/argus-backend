@@ -192,6 +192,13 @@ TEST_CASE("a stream whose identity names no role presents the unknown role, neve
   v1::VoiceIdentity connectIdentity;
   connectIdentity.set_user_id(7);
   const auto stream = client.connect(connectIdentity, observer);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  const auto serverSawCall = [&service] {
+    std::scoped_lock lock(service.mutex);
+    return service.metadata.count("x-argus-role") == 1;
+  };
+  while (!serverSawCall() && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
   stream->stop();
   stream->finish();
   REQUIRE(observer->waitClosed(5000));
@@ -274,10 +281,22 @@ TEST_CASE("one stream carries the connect identity and the frames in order")
   stream->sendActionResult(result);
   stream->sendMute(true);
   stream->stop();
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+  const auto serverHasAll = [&service] {
+    std::scoped_lock lock(service.mutex);
+    return service.frames.size() == 6;
+  };
+  const auto clientHasDone = [&observer] {
+    std::scoped_lock lock(observer->mutex);
+    return observer->frames.size() == 1;
+  };
+  while ((!serverHasAll() || !clientHasDone()) && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  REQUIRE(serverHasAll());
   stream->finish();
   REQUIRE(observer->waitClosed(5000));
 
-  CHECK(observer->closeStatus.ok());
+  CHECK(observer->closeStatus.error_code() == grpc::StatusCode::CANCELLED);
   REQUIRE(observer->frames.size() == 1);
   CHECK(observer->frames[0].done().session_id() == 4242);
 
