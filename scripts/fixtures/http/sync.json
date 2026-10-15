@@ -302,12 +302,8 @@
                 "id": "<VOLATILE:number>",
                 "ipAddress": "<VOLATILE:string>",
                 "module": "<VOLATILE:string>",
-                "newData": {
-                  "at": "<VOLATILE:number>",
-                  "event": "<VOLATILE:string>",
-                  "lifecycle": "<VOLATILE:string>"
-                },
-                "oldData": {},
+                "newData": "<VOLATILE:object>",
+                "oldData": "<VOLATILE:object>",
                 "recordId": "<VOLATILE:number>",
                 "table": "<VOLATILE:string>",
                 "userId": "<VOLATILE:number>"

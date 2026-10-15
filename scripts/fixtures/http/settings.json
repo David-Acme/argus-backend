@@ -207,7 +207,15 @@
                     "title": "Invita a tu familia"
                   }
                 ],
-                "hardware": "<VOLATILE:object>",
+                "hardware": {
+                  "freeDiskMb": "<VOLATILE:number>",
+                  "minRamMb": "<VOLATILE:number>",
+                  "reasons": {
+                    "<VOLATILE:array>": null
+                  },
+                  "recommendedRamMb": "<VOLATILE:number>",
+                  "verdict": "<VOLATILE:string>"
+                },
                 "hasData": false,
                 "id": "core",
                 "installedBytes": "<VOLATILE:number>",
@@ -264,7 +272,15 @@
                     "title": "Elige el modo del guardia"
                   }
                 ],
-                "hardware": "<VOLATILE:object>",
+                "hardware": {
+                  "freeDiskMb": "<VOLATILE:number>",
+                  "minRamMb": "<VOLATILE:number>",
+                  "reasons": {
+                    "<VOLATILE:array>": null
+                  },
+                  "recommendedRamMb": "<VOLATILE:number>",
+                  "verdict": "<VOLATILE:string>"
+                },
                 "hasData": true,
                 "id": "surveillance",
                 "installedBytes": "<VOLATILE:number>",
@@ -308,7 +324,15 @@
                     "title": "Empieza un proyecto"
                   }
                 ],
-                "hardware": "<VOLATILE:object>",
+                "hardware": {
+                  "freeDiskMb": "<VOLATILE:number>",
+                  "minRamMb": "<VOLATILE:number>",
+                  "reasons": {
+                    "<VOLATILE:array>": null
+                  },
+                  "recommendedRamMb": "<VOLATILE:number>",
+                  "verdict": "<VOLATILE:string>"
+                },
                 "hasData": true,
                 "id": "productivity",
                 "installedBytes": "<VOLATILE:number>",
@@ -339,7 +363,15 @@
                 "dataPurgedAt": "<masked>",
                 "enabled": false,
                 "gettingStarted": [],
-                "hardware": "<VOLATILE:object>",
+                "hardware": {
+                  "freeDiskMb": "<VOLATILE:number>",
+                  "minRamMb": "<VOLATILE:number>",
+                  "reasons": {
+                    "<VOLATILE:array>": null
+                  },
+                  "recommendedRamMb": "<VOLATILE:number>",
+                  "verdict": "<VOLATILE:string>"
+                },
                 "hasData": false,
                 "id": "agronomy",
                 "installedBytes": "<VOLATILE:number>",
@@ -1032,7 +1064,22 @@
           "info": {
             "action": "disable",
             "allowed": true,
-            "data": "<VOLATILE:object>",
+            "data": {
+              "owners": {
+                "<VOLATILE:array>": {
+                  "bytes": "<VOLATILE:number>",
+                  "items": {
+                    "<VOLATILE:array>": {
+                      "count": "<VOLATILE:number>",
+                      "kind": "<VOLATILE:string>"
+                    }
+                  },
+                  "owner": "<VOLATILE:string>",
+                  "reachable": "<VOLATILE:boolean>",
+                  "reported": "<VOLATILE:boolean>"
+                }
+              }
+            },
             "filesBytes": "<VOLATILE:number>",
             "invitations": [],
             "keepsRunning": [
@@ -1111,7 +1158,22 @@
           "info": {
             "action": "uninstall",
             "allowed": true,
-            "data": "<VOLATILE:object>",
+            "data": {
+              "owners": {
+                "<VOLATILE:array>": {
+                  "bytes": "<VOLATILE:number>",
+                  "items": {
+                    "<VOLATILE:array>": {
+                      "count": "<VOLATILE:number>",
+                      "kind": "<VOLATILE:string>"
+                    }
+                  },
+                  "owner": "<VOLATILE:string>",
+                  "reachable": "<VOLATILE:boolean>",
+                  "reported": "<VOLATILE:boolean>"
+                }
+              }
+            },
             "filesBytes": "<VOLATILE:number>",
             "invitations": [],
             "keepsRunning": [
@@ -1193,7 +1255,22 @@
           "info": {
             "action": "disable",
             "allowed": true,
-            "data": "<VOLATILE:object>",
+            "data": {
+              "owners": {
+                "<VOLATILE:array>": {
+                  "bytes": "<VOLATILE:number>",
+                  "items": {
+                    "<VOLATILE:array>": {
+                      "count": "<VOLATILE:number>",
+                      "kind": "<VOLATILE:string>"
+                    }
+                  },
+                  "owner": "<VOLATILE:string>",
+                  "reachable": "<VOLATILE:boolean>",
+                  "reported": "<VOLATILE:boolean>"
+                }
+              }
+            },
             "filesBytes": "<VOLATILE:number>",
             "invitations": [],
             "keepsRunning": [],
@@ -1236,7 +1313,11 @@
           "info": {
             "action": "disable",
             "allowed": false,
-            "data": "<VOLATILE:object>",
+            "data": {
+              "owners": {
+                "<VOLATILE:array>": null
+              }
+            },
             "filesBytes": "<VOLATILE:number>",
             "invitations": [],
             "keepsRunning": [],
@@ -1277,7 +1358,22 @@
           "info": {
             "action": "uninstall",
             "allowed": true,
-            "data": "<VOLATILE:object>",
+            "data": {
+              "owners": {
+                "<VOLATILE:array>": {
+                  "bytes": "<VOLATILE:number>",
+                  "items": {
+                    "<VOLATILE:array>": {
+                      "count": "<VOLATILE:number>",
+                      "kind": "<VOLATILE:string>"
+                    }
+                  },
+                  "owner": "<VOLATILE:string>",
+                  "reachable": "<VOLATILE:boolean>",
+                  "reported": "<VOLATILE:boolean>"
+                }
+              }
+            },
             "filesBytes": "<VOLATILE:number>",
             "invitations": [
               {
@@ -3995,7 +4091,33 @@
                 ]
               }
             ],
-            "recommendation": "<VOLATILE:object>"
+            "recommendation": {
+              "fallback": "<VOLATILE:string>",
+              "hardware": {
+                "cores": "<VOLATILE:number>",
+                "gpu": "<VOLATILE:string>",
+                "isa": "<VOLATILE:string>",
+                "ramGb": "<VOLATILE:number>",
+                "threads": "<VOLATILE:number>"
+              },
+              "missed": "<VOLATILE:object|null>",
+              "profile": "<VOLATILE:string>",
+              "reason": "<VOLATILE:string>",
+              "rule": {
+                "minCores": "<VOLATILE:number>",
+                "minRamGb": "<VOLATILE:number>",
+                "profile": "<VOLATILE:string>",
+                "vectorIsa": "<VOLATILE:boolean>"
+              },
+              "rules": {
+                "<VOLATILE:array>": {
+                  "minCores": "<VOLATILE:number>",
+                  "minRamGb": "<VOLATILE:number>",
+                  "profile": "<VOLATILE:string>",
+                  "vectorIsa": "<VOLATILE:boolean>"
+                }
+              }
+            }
           },
           "status": 200
         },

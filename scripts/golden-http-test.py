@@ -81,6 +81,10 @@ def manifest_entries():
                 if fields.get("nullable") else {}),
              **({"mayBeEmpty": list(fields["mayBeEmpty"])}
                 if fields.get("mayBeEmpty") else {}),
+             **({"typed": list(fields["typed"])}
+                if fields.get("typed") else {}),
+             **({"shaped": list(fields["shaped"])}
+                if fields.get("shaped") else {}),
              "reason": fields["reason"]}
             for (unit, route), fields in sorted(golden.VOLATILE_FIELDS.items())]
 

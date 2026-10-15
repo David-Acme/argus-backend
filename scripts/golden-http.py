@@ -357,6 +357,7 @@ VOLATILE_FIELDS = {
     ("sync", "/sync/activity"): {
         "keys": ("items", "nextCursor"),
         "nullable": {"nextCursor": "string"},
+        "typed": ("items[].newData", "items[].oldData"),
         "reason": "the Owner's activity history grows with every write the "
                   "fleet makes, and the rows reach argus-sync asynchronously "
                   "over NATS, so the page a probe reads depends on how many "
@@ -366,6 +367,8 @@ VOLATILE_FIELDS = {
     },
     ("settings", "/modules/{1}/impact"): {
         "keys": ("data", "filesBytes"),
+        "shaped": ("data",),
+        "mayBeEmpty": ("data.owners",),
         "reason": "the module's data summary is read live from five owners "
                   "(the synced change history arrives asynchronously over "
                   "NATS) and the bytes of its files come from the model files "
@@ -394,7 +397,8 @@ VOLATILE_FIELDS = {
     ("settings", "/modules"): {
         "keys": ("modules[].hardware", "modules[].installedBytes",
                  "modules[].components"),
-        "mayBeEmpty": ("modules[].components",),
+        "mayBeEmpty": ("modules[].components", "modules[].hardware.reasons"),
+        "shaped": ("modules[].hardware",),
         "reason": "a module with no model component answers an empty "
                   "components list (productivity has none, agronomy is not "
                   "installed), so that list may be empty; the hardware "
@@ -405,6 +409,8 @@ VOLATILE_FIELDS = {
     },
     ("settings", "/settings/profiles"): {
         "keys": ("recommendation",),
+        "shaped": ("recommendation",),
+        "nullable": {"recommendation.missed": "object"},
         "reason": "the recommendation is derived from the cores, RAM, ISA "
                   "and GPU of the host that answers, so it differs between "
                   "machines; the profile previews beside it stay pinned",
@@ -1413,6 +1419,10 @@ def write_manifest(fixtures, units, probe_count, deviations):
                if fields.get("nullable") else {}),
             **({"mayBeEmpty": list(fields["mayBeEmpty"])}
                if fields.get("mayBeEmpty") else {}),
+            **({"typed": list(fields["typed"])}
+               if fields.get("typed") else {}),
+            **({"shaped": list(fields["shaped"])}
+               if fields.get("shaped") else {}),
              "reason": fields["reason"]}
             for (unit, route), fields in sorted(VOLATILE_FIELDS.items())
         ],
@@ -1590,21 +1600,67 @@ def union_marker(types):
     return f"<VOLATILE:{'|'.join(names)}>"
 
 
-def template_of(values):
+def join_path(path, key):
+    return f"{path}.{key}" if path else key
+
+
+def template_of(values, typed=frozenset(), path=""):
+    if path in typed:
+        return union_marker({json_type(value) for value in values})
     dicts = [value for value in values if isinstance(value, dict)]
     if dicts and len(dicts) == len(values):
-        return {key: template_of([value[key] for value in dicts if key in value])
+        return {key: template_of([value[key] for value in dicts if key in value],
+                                 typed, join_path(path, key))
                 for key in dicts[0]}
     lists = [value for value in values if isinstance(value, list)]
     if lists and len(lists) == len(values):
         flat = [item for value in lists for item in value]
-        return {ARRAY_KEY: template_of(flat) if flat else None}
+        return {ARRAY_KEY: (template_of(flat, typed, f"{path}[]")
+                            if flat else None)}
     return union_marker({json_type(value) for value in values})
 
 
-def volatile_value(value, declared=None, may_be_empty=False):
+def null_leaves(template, path=""):
+    if template == "<VOLATILE:null>":
+        return [path]
+    if isinstance(template, dict):
+        found = []
+        for key, child in template.items():
+            if key == ARRAY_KEY:
+                found.extend(null_leaves(child, f"{path}[]"))
+            else:
+                found.extend(null_leaves(child, join_path(path, key)))
+        return found
+    return []
+
+
+def set_leaf(node, parts, value):
+    head, rest = parts.split(".", 1) if "." in parts else (parts, "")
+    if head.endswith("[]"):
+        set_leaf(node[head[:-2]][ARRAY_KEY], rest, value)
+    elif rest:
+        set_leaf(node[head], rest, value)
+    else:
+        node[head] = value
+
+
+def empty_arrays(template, path=""):
+    if isinstance(template, dict):
+        if ARRAY_KEY in template:
+            if template[ARRAY_KEY] is None:
+                return [path]
+            return empty_arrays(template[ARRAY_KEY], f"{path}[]")
+        found = []
+        for key, child in template.items():
+            found.extend(empty_arrays(child, join_path(path, key)))
+        return found
+    return []
+
+
+def volatile_value(value, declared=None, may_be_empty=False,
+                   typed=frozenset()):
     if isinstance(value, list):
-        marker = {ARRAY_KEY: template_of(value) if value else None}
+        marker = {ARRAY_KEY: template_of(value, typed) if value else None}
         if may_be_empty:
             marker[EMPTY_KEY] = True
         return marker
@@ -1667,15 +1723,39 @@ def without_volatile(entry, body, volatile, problems=None):
     node = body["info"] if "info" in body else body
     nullable = fields.get("nullable", {})
     may_be_empty = set(fields.get("mayBeEmpty", ()))
+    typed_paths = fields.get("typed", ())
+    shaped = set(fields.get("shaped", ()))
     for key in fields["keys"]:
-        def mark(value, key=key):
+        prefix = f"{key}[]."
+        typed = frozenset(path[len(prefix):] for path in typed_paths
+                          if path.startswith(prefix))
+
+        def mark(value, key=key, typed=typed):
             if (isinstance(value, list) and not value
                     and key not in may_be_empty and problems is not None):
                 problems.append(
                     f"volatile array {key} is empty and the route does not "
                     "declare mayBeEmpty")
+            if key in shaped and isinstance(value, dict):
+                template = template_of([value], typed)
+                for leaf in null_leaves(template):
+                    full = join_path(key, leaf)
+                    if full in nullable:
+                        set_leaf(template, leaf,
+                                 f"<VOLATILE:{nullable[full]}|null>")
+                    elif problems is not None:
+                        problems.append(
+                            f"{full} is null in the recording; declare "
+                            "its real type")
+                if problems is not None:
+                    problems.extend(
+                        f"{join_path(key, nested)} is an empty array the "
+                        "route does not declare mayBeEmpty"
+                        for nested in empty_arrays(template)
+                        if join_path(key, nested) not in may_be_empty)
+                return template
             return volatile_value(value, nullable.get(key),
-                                  key in may_be_empty)
+                                  key in may_be_empty, typed)
         replace_path(node, key.split("."), mark)
     return fixed_placeholders(entry, body, volatile)
 

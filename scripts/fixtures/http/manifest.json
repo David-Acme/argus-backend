@@ -135,10 +135,14 @@
         "modules[].components"
       ],
       "mayBeEmpty": [
-        "modules[].components"
+        "modules[].components",
+        "modules[].hardware.reasons"
       ],
       "reason": "a module with no model component answers an empty components list (productivity has none, agronomy is not installed), so that list may be empty; the hardware verdict, free disk and installed bytes are read from the host that answers, and a component's state comes from the model files and engines present on it; the catalog, lifecycle, sizes and jobs beside them stay pinned",
       "route": "/modules",
+      "shaped": [
+        "modules[].hardware"
+      ],
       "unit": "settings"
     },
     {
@@ -155,16 +159,28 @@
         "data",
         "filesBytes"
       ],
+      "mayBeEmpty": [
+        "data.owners"
+      ],
       "reason": "the module's data summary is read live from five owners (the synced change history arrives asynchronously over NATS) and the bytes of its files come from the model files present on the answering host; the refusal, the stops, the role holders, the invitations, the roles an uninstall may give and what keeps running stay pinned, and the data summary itself is pinned by GET /modules/{id}/data",
       "route": "/modules/{1}/impact",
+      "shaped": [
+        "data"
+      ],
       "unit": "settings"
     },
     {
       "keys": [
         "recommendation"
       ],
+      "nullable": {
+        "recommendation.missed": "object"
+      },
       "reason": "the recommendation is derived from the cores, RAM, ISA and GPU of the host that answers, so it differs between machines; the profile previews beside it stay pinned",
       "route": "/settings/profiles",
+      "shaped": [
+        "recommendation"
+      ],
       "unit": "settings"
     },
     {
@@ -194,6 +210,10 @@
       },
       "reason": "the Owner's activity history grows with every write the fleet makes, and the rows reach argus-sync asynchronously over NATS, so the page a probe reads depends on how many had landed; the envelope, the access answers beside it and the filters and paging (pinned by sync-activity-test) stay checked",
       "route": "/sync/activity",
+      "typed": [
+        "items[].newData",
+        "items[].oldData"
+      ],
       "unit": "sync"
     },
     {
