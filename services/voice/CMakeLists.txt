@@ -202,7 +202,7 @@ set_target_properties(playout-rate-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME playout-rate-test COMMAND playout-rate-test)
 
-add_executable(opening-budget-test tests/unit/opening-budget-test.cc feature/voice/opening-budget.cc)
+add_executable(opening-budget-test tests/unit/opening-budget-test.cc src/feature/voice/opening-budget.cc)
 
 target_include_directories(opening-budget-test PRIVATE src)
 
