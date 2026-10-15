@@ -194,7 +194,7 @@ TEST_CASE("one device address cannot take more than its stream quota")
   CHECK(waitFor([&] { return third->eof.load(); }, 5000));
   CHECK(harness.relay->streamCount() == 2);
 
-  const std::string payload = makePayload(1024, 3);
+  const std::string payload = makePayload({.size = 1024, .seed = 3});
   postSend({.loop = harness.loop, .peer = first->peer, .data = payload});
   REQUIRE(waitFor([&] { return first->bytes().size() == payload.size(); },
                   5000));

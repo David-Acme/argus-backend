@@ -11,7 +11,7 @@ using namespace tunnel::test;
 TEST_CASE("loopback carries bytes identically through relay and client")
 {
   HarnessOptions options;
-  options.gatewayReply = makePayload(100 * 1024, 77);
+  options.gatewayReply = makePayload({.size = 100 * 1024, .seed = 77});
   Harness harness(std::move(options));
   REQUIRE(harness.start());
 
@@ -20,7 +20,7 @@ TEST_CASE("loopback carries bytes identically through relay and client")
                                  .port = harness.relay->devicePort()});
   REQUIRE(waitFor([device] { return device->connected.load(); }, 5000));
 
-  const std::string request = makePayload(200 * 1024, 42);
+  const std::string request = makePayload({.size = 200 * 1024, .seed = 42});
   postSend({.loop = harness.loop, .peer = device->peer, .data = request});
 
   auto gatewayConns = harness.gatewayConnections();
@@ -60,7 +60,7 @@ TEST_CASE("loopback multiplexes concurrent device streams")
   std::vector<std::string> payloads;
   for (size_t index = 0; index < kStreams; ++index) {
     payloads.push_back(
-        makePayload(kPayloadSize, static_cast<uint32_t>(1000 + index)));
+        makePayload({.size = kPayloadSize, .seed = static_cast<uint32_t>(1000 + index)}));
     devices.push_back(connectTestPeer({.loop = harness.loop,
                                  .ip = "127.0.0.1",
                                  .port = harness.relay->devicePort()}));
@@ -137,7 +137,7 @@ TEST_CASE("stalled gateway read applies back-pressure without byte loss")
   REQUIRE(waitFor([device] { return device->connected.load(); }, 5000));
 
   const size_t kChunk = 256 * 1024;
-  const std::string request = makePayload(4 * 1024 * 1024, 9);
+  const std::string request = makePayload({.size = 4 * 1024 * 1024, .seed = 9});
   size_t sent = 0;
   const auto sendNext = [&] {
     const size_t end = std::min(sent + kChunk, request.size());
@@ -197,7 +197,7 @@ TEST_CASE("stalled gateway read applies back-pressure without byte loss")
 TEST_CASE("a reply the gateway closes right behind arrives whole")
 {
   HarnessOptions options;
-  options.gatewayReply = makePayload(static_cast<size_t>(3) * 1024 * 1024, 91);
+  options.gatewayReply = makePayload({.size = static_cast<size_t>(3) * 1024 * 1024, .seed = 91});
   options.gatewayCloseAfterReply = true;
   options.limits.socketSndBuf = 16 * 1024;
   Harness harness(std::move(options));

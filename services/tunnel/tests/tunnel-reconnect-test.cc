@@ -18,7 +18,7 @@ TEST_CASE("home link reconnect tears down streams and recovers")
                                  .port = harness.relay->devicePort()});
   REQUIRE(waitFor([device] { return device->connected.load(); }, 5000));
 
-  const std::string first = makePayload(16 * 1024, 11);
+  const std::string first = makePayload({.size = 16 * 1024, .seed = 11});
   postSend({.loop = harness.loop, .peer = device->peer, .data = first});
   REQUIRE(waitFor([&] { return device->bytes().size() == first.size(); },
                   10000));
@@ -41,7 +41,7 @@ TEST_CASE("home link reconnect tears down streams and recovers")
                                  .port = harness.relay->devicePort()});
   REQUIRE(waitFor([recovered] { return recovered->connected.load(); }, 5000));
 
-  const std::string second = makePayload(24 * 1024, 22);
+  const std::string second = makePayload({.size = 24 * 1024, .seed = 22});
   postSend({.loop = harness.loop, .peer = recovered->peer, .data = second});
   REQUIRE(waitFor([&] { return recovered->bytes().size() == second.size(); },
                   10000));
@@ -105,7 +105,7 @@ TEST_CASE("an unauthenticated home connection cannot take over a live link")
                                  .ip = "127.0.0.1",
                                  .port = harness.relay->devicePort()});
   REQUIRE(waitFor([device] { return device->connected.load(); }, 5000));
-  const std::string payload = makePayload(static_cast<size_t>(4) * 1024, 7);
+  const std::string payload = makePayload({.size = static_cast<size_t>(4) * 1024, .seed = 7});
   postSend({.loop = harness.loop, .peer = device->peer, .data = payload});
   REQUIRE(waitFor([&] { return device->bytes().size() == payload.size(); },
                   10000));

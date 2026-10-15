@@ -113,12 +113,18 @@ inline void postSend(const PostSendInput& input)
   });
 }
 
-inline std::string makePayload(size_t size, uint32_t seed)
+struct PayloadInput
+{
+  size_t size;
+  uint32_t seed;
+};
+
+inline std::string makePayload(PayloadInput input)
 {
   std::string payload;
-  payload.reserve(size);
-  uint32_t state = seed;
-  for (size_t i = 0; i < size; ++i) {
+  payload.reserve(input.size);
+  uint32_t state = input.seed;
+  for (size_t i = 0; i < input.size; ++i) {
     state = state * 1664525u + 1013904223u;
     payload.push_back(static_cast<char>((state >> 24) & 0xFF));
   }
