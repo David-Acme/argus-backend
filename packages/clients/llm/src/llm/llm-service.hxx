@@ -182,6 +182,7 @@ private:
   std::string chatTemplate_;
   int64_t contextSize_ = 0;
   int32_t nBatch_ = 1024;
+  int32_t nBatchThreads_ = 4;
   mutable std::mutex samplingMutex_;
   LlmSampling sampling_;
   std::atomic<LlmPrefillStats> lastStats_;
