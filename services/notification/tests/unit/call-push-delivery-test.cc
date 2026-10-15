@@ -158,6 +158,7 @@ TEST_CASE("a ring seals a call plaintext with its title, body and deep link, ope
 
   CHECK(plain["kind"].asString() == "call");
   CHECK(plain["callId"].asString() == call.callId());
+  CHECK(plain["episode"].asString() == "guard:episode:9");
   CHECK(plain["title"].asString() == "Argus te está llamando");
   CHECK(plain["body"].asString() == "Abre Argus para contestar.");
   CHECK(plain["deepLink"].asString() == "argus://call?callId=" + call.callId());

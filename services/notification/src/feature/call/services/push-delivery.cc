@@ -72,6 +72,8 @@ drogon::Task<int64_t> CallPushDelivery::deliver(CallPushInput input) const
   Json::Value intent(Json::objectValue);
   intent["kind"] = "call";
   intent["callId"] = call.callId();
+  if (!call.dedupeKey.empty())
+    intent["episode"] = call.dedupeKey;
   intent["urgency"] = intentUrgency(call.urgency);
   intent["deepLink"] = callDeepLink(call.callId());
   intent["title"] = copy.title;
