@@ -56,6 +56,7 @@
 
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <utility>
@@ -117,6 +118,40 @@ public:
   }
 };
 }
+
+class GrpcDrainSlot
+{
+public:
+  void start(std::unique_ptr<grpc::Server> server, std::chrono::milliseconds deadline)
+  {
+    const std::scoped_lock lock(mutex_);
+    drain_.emplace(std::move(server), deadline);
+  }
+
+  void requestStop()
+  {
+    const std::scoped_lock lock(mutex_);
+    if (drain_)
+      drain_->requestStop();
+  }
+
+  [[nodiscard]] bool drained() const
+  {
+    const std::scoped_lock lock(mutex_);
+    return !drain_ || drain_->drained();
+  }
+
+  void stop()
+  {
+    const std::scoped_lock lock(mutex_);
+    if (drain_)
+      drain_->stop();
+  }
+
+private:
+  mutable std::mutex mutex_;
+  std::optional<argus::client::GrpcServerDrain> drain_;
+};
 
 int main()
 {
@@ -398,7 +433,56 @@ int main()
                          {.certificatePem = loadedTls.certificatePem,
                           .trustBundlePem = loadedTls.trustBundlePem})}}));
 
-  drogon::app().registerBeginningAdvice([&notificationDb, &changeSink]() {
+  NotificationRpcService notificationRpc(deliveryDeps);
+  notificationRpc.attachCallEngine(callEngine);
+  notificationRpc.attachTasks(tasks);
+  CallRpcService callRpc(callEngine, NotificationConfig::resolveCallCallers());
+  SettingsRegistry settings(notificationSettingsCatalog());
+  settings.onChange([cameraNotifier, callEngine](const std::vector<std::string>&) {
+    if (cameraNotifier)
+      camera_notifier::refresh(*cameraNotifier);
+    callEngine->reconfigure(NotificationConfig::resolveCalls());
+  });
+  NotificationModuleRequest moduleRequest(
+      {.identity = identityClient, .delivery = deliveryDeps});
+  std::unique_ptr<SettingsRpcService> settingsRpc;
+  if (auto callers = NotificationConfig::resolveSettingsCallers();
+      !callers.empty()) {
+    settingsRpc = std::make_unique<SettingsRpcService>(
+        SettingsRpcInput{.service = "notification",
+                         .registry = &settings,
+                         .credentials = std::move(callers)});
+    settingsRpc->attachModuleRequest(moduleRequest);
+  }
+
+  const std::string grpcAddress =
+      grpcListener.host + ":" + std::to_string(grpcListener.port);
+  std::vector<grpc::Service*> grpcServices{&notificationRpc, &callRpc};
+  if (settingsRpc)
+    grpcServices.push_back(settingsRpc.get());
+  const NotificationRpcListenInput grpcInput{.address = grpcAddress,
+                                             .tlsAddress = internalTlsConfig.address,
+                                             .tls = internalTls,
+                                             .services = std::move(grpcServices)};
+  GrpcDrainSlot grpcDrain;
+
+  shutdown_signal::onQuit(
+      [dbPath = notificationDb.dbPath] { DbService::freezeClient(dbPath); });
+  if (changeSink) {
+    shutdown_signal::onStop(
+        shutdown_signal::drainOf(*changeSink, "notification-change"));
+  }
+  shutdown_signal::onStop(shutdown_signal::drainOf(*tasks, "notification-tasks"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(grpcDrain, "notification-grpc"));
+
+  std::unique_ptr<MdnsService> mdnsService;
+  drogon::app().registerBeginningAdvice([&mdnsService, &listener]() {
+    mdnsService = std::make_unique<MdnsService>(
+        routeAnnouncements({.port = listener.port, .tls = listener.tls}));
+    mdnsService->initialize();
+  });
+
+  drogon::app().registerBeginningAdvice([&notificationDb, &changeSink, &notificationRpc, &grpcInput, &grpcDrain]() {
     DrogonTokenIndexSql tokenIndexSql;
     if (!DbService::runScriptFile(notificationDb.schemaPath)) {
       LOG_FATAL
@@ -490,65 +574,26 @@ int main()
     if (changeSink) {
       changeSink->reconcile();
     }
-  });
-
-  NotificationRpcService notificationRpc(deliveryDeps);
-  notificationRpc.attachCallEngine(callEngine);
-  notificationRpc.attachTasks(tasks);
-  CallRpcService callRpc(callEngine, NotificationConfig::resolveCallCallers());
-  SettingsRegistry settings(notificationSettingsCatalog());
-  settings.onChange([cameraNotifier, callEngine](const std::vector<std::string>&) {
-    if (cameraNotifier)
-      camera_notifier::refresh(*cameraNotifier);
-    callEngine->reconfigure(NotificationConfig::resolveCalls());
-  });
-  NotificationModuleRequest moduleRequest(
-      {.identity = identityClient, .delivery = deliveryDeps});
-  std::unique_ptr<SettingsRpcService> settingsRpc;
-  if (auto callers = NotificationConfig::resolveSettingsCallers();
-      !callers.empty()) {
-    settingsRpc = std::make_unique<SettingsRpcService>(
-        SettingsRpcInput{.service = "notification",
-                         .registry = &settings,
-                         .credentials = std::move(callers)});
-    settingsRpc->attachModuleRequest(moduleRequest);
-  }
-
-  const std::string grpcAddress =
-      grpcListener.host + ":" + std::to_string(grpcListener.port);
-  std::vector<grpc::Service*> grpcServices{&notificationRpc, &callRpc};
-  if (settingsRpc)
-    grpcServices.push_back(settingsRpc.get());
-  const NotificationRpcListenInput grpcInput{.address = grpcAddress,
-                                             .tlsAddress = internalTlsConfig.address,
-                                             .tls = internalTls,
-                                             .services = std::move(grpcServices)};
-  auto grpcListening = startNotificationRpc(grpcInput);
-  if (const auto failure = notificationRpcFailure(grpcInput, grpcListening)) {
-    LOG_FATAL << *failure;
-    return 1;
-  }
-  if (grpcListening.tlsPort > 0)
-    LOG_INFO << "gRPC with mutual TLS on " << internalTlsConfig.address;
-  argus::client::GrpcServerDrain grpcDrain(std::move(grpcListening.server), kGrpcDrainDeadline);
-
-  notificationRpc.startDeliveryReconciler();
-  notificationRpc.startSelfTestProber();
-
-  shutdown_signal::onQuit(
-      [dbPath = notificationDb.dbPath] { DbService::freezeClient(dbPath); });
-  if (changeSink) {
-    shutdown_signal::onStop(
-        shutdown_signal::drainOf(*changeSink, "notification-change"));
-  }
-  shutdown_signal::onStop(shutdown_signal::drainOf(*tasks, "notification-tasks"));
-  shutdown_signal::onStop(shutdown_signal::drainOf(grpcDrain, "notification-grpc"));
-
-  std::unique_ptr<MdnsService> mdnsService;
-  drogon::app().registerBeginningAdvice([&mdnsService, &listener]() {
-    mdnsService = std::make_unique<MdnsService>(
-        routeAnnouncements({.port = listener.port, .tls = listener.tls}));
-    mdnsService->initialize();
+    drogon::async_run([rpc = &notificationRpc, input = grpcInput, slot = &grpcDrain]() -> drogon::Task<void> {
+      try {
+        co_await rpc->bootSelfTest();
+      }
+      catch (const std::exception& error) {
+        LOG_FATAL << "notification boot self-test failed; not serving: " << error.what();
+        _exit(1);
+      }
+      auto listening = startNotificationRpc(input);
+      if (const auto failure = notificationRpcFailure(input, listening)) {
+        LOG_FATAL << *failure;
+        _exit(1);
+      }
+      if (listening.tlsPort > 0)
+        LOG_INFO << "gRPC with mutual TLS on " << input.tlsAddress;
+      slot->start(std::move(listening.server), kGrpcDrainDeadline);
+      rpc->startDeliveryReconciler();
+      rpc->startSelfTestProber();
+      co_return;
+    });
   });
 
   drogon::app()

@@ -96,6 +96,7 @@ public:
   drogon::Task<DeliverySummary> deliverySummary(int64_t since,
                                                 int64_t ackWindowS) const;
 
+  drogon::Task<SelfTestState> runProbe() const;
   drogon::Task<SelfTestState> runSelfTest() const;
 
 private:

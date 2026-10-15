@@ -32,6 +32,7 @@ public:
 
   void startDeliveryReconciler();
 
+  drogon::Task<void> bootSelfTest() const;
   void startSelfTestProber();
 
   void attachCallEngine(std::shared_ptr<const CallEngine> engine);

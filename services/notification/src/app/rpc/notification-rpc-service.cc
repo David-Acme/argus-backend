@@ -125,6 +125,12 @@ void NotificationRpcService::startDeliveryReconciler()
                                     });
 }
 
+drogon::Task<void> NotificationRpcService::bootSelfTest() const
+{
+  static_cast<void>(co_await notificationService_.runProbe());
+  co_return;
+}
+
 void NotificationRpcService::startSelfTestProber()
 {
   if (!notificationService_.hasDeliverySink()) {

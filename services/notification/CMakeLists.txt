@@ -391,6 +391,23 @@ target_compile_options(push-alert-writer-test PRIVATE -Wall -Wextra)
 
 add_test(NAME push-alert-writer-test COMMAND push-alert-writer-test)
 
+add_executable(notification-boot-probe-test tests/unit/notification-boot-probe-test.cc)
+
+set_target_properties(notification-boot-probe-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_compile_definitions(notification-boot-probe-test PRIVATE
+    ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_link_libraries(notification-boot-probe-test PRIVATE
+    argus::lib::test-support
+    argus::notification-shared
+    argus::lib::sqlite
+    doctest::doctest)
+
+target_compile_options(notification-boot-probe-test PRIVATE -Wall -Wextra)
+
+add_test(NAME notification-boot-probe-test COMMAND notification-boot-probe-test)
+
 add_executable(notification-push-outbox-test tests/unit/notification-push-outbox-test.cc)
 
 set_target_properties(notification-push-outbox-test PROPERTIES EXCLUDE_FROM_ALL FALSE)

@@ -292,11 +292,11 @@ drogon::Task<DeliverySummary> NotificationService::deliverySummary(
        .now = static_cast<int64_t>(std::time(nullptr))});
 }
 
-drogon::Task<SelfTestState> NotificationService::runSelfTest() const
+drogon::Task<SelfTestState> NotificationService::runProbe() const
 {
   SelfTestState state;
   const int64_t startMs = nowMillis();
-  try {
+  {
     const int64_t at = static_cast<int64_t>(std::time(nullptr));
     const ProbeInsertResult inserted =
         co_await repository_.insertProbe(at, startMs);
@@ -319,11 +319,19 @@ drogon::Task<SelfTestState> NotificationService::runSelfTest() const
       LOG_WARN << "notification self-test probe did not settle (status '"
                << status << "')";
   }
+  co_return state;
+}
+
+drogon::Task<SelfTestState> NotificationService::runSelfTest() const
+{
+  try {
+    co_return co_await runProbe();
+  }
   catch (const std::exception& error) {
     LOG_WARN << "notification self-test failed: " << error.what();
   }
   catch (...) {
     LOG_WARN << "notification self-test failed with unknown error";
   }
-  co_return state;
+  co_return SelfTestState{};
 }
