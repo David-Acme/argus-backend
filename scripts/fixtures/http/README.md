@@ -325,7 +325,9 @@ more than it is:
 ## Reading a failure
 
 `verify` prints one `drift:` line per failing probe with the field path and
-both values. It fails on three other things too: a probe the run has no
+both values. A probe that runs past its time
+is a failing row too: its status is `0` (`response.status: 200 -> 0`), and the run
+carries on to its summary line. It fails on three other things too: a probe the run has no
 recording for (`unrecorded:`), a recording the census no longer has a probe
 for (`stale:`), a fixture file whose unit has no route in the census at all,
 and a unit that has recordings but is not booted (`unverified:`, counted in the

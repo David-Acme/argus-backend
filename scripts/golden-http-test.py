@@ -11,6 +11,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+import urllib.error
 from unittest import mock
 
 sys.dont_write_bytecode = True
@@ -442,6 +443,63 @@ class OnlyTest(unittest.TestCase):
             with self.subTest(file=name):
                 self.assertEqual((self.work / "only" / name).read_text(),
                                  (self.work / "full" / name).read_text())
+
+
+class TimingOutFleet(Fleet):
+    def send(self, base, method, path, headers, body, content_type, timeout):
+        if base == GUARD_BASE:
+            return golden.TIMED_OUT, "text/plain", b"timed out"
+        return super().send(base, method, path, headers, body, content_type,
+                            timeout)
+
+
+class TimedOutProbeTest(unittest.TestCase):
+    def setUp(self):
+        self.work = pathlib.Path(tempfile.mkdtemp(prefix="golden-timeout-test-"))
+        self.fixtures = self.work / "fixtures"
+        self.fixtures.mkdir()
+        manifest = golden.load_manifest(FIXTURES)
+        manifest["volatileFields"] = []
+        (self.fixtures / "manifest.json").write_text(json.dumps(manifest))
+
+    def tearDown(self):
+        shutil.rmtree(self.work)
+
+    def test_a_read_that_times_out_is_a_zero_status_answer(self):
+        response = mock.MagicMock()
+        response.__enter__.return_value = response
+        response.read.side_effect = TimeoutError("timed out")
+        with mock.patch.object(golden.urllib.request, "urlopen",
+                               return_value=response):
+            status, _, raw = golden.send(GUARD_BASE, "GET", "/health", {},
+                                         None, None, 1.0)
+        self.assertEqual(status, golden.TIMED_OUT)
+        self.assertIn(b"timed out after 1.0s", raw)
+
+    def test_a_connect_that_times_out_is_a_zero_status_answer(self):
+        with mock.patch.object(
+                golden.urllib.request, "urlopen",
+                side_effect=urllib.error.URLError(TimeoutError("timed out"))):
+            status, _, _ = golden.send(GUARD_BASE, "GET", "/health", {}, None,
+                                       None, 1.0)
+        self.assertEqual(status, golden.TIMED_OUT)
+
+    def test_an_unreachable_service_still_stops_the_run(self):
+        with mock.patch.object(
+                golden.urllib.request, "urlopen",
+                side_effect=urllib.error.URLError(
+                    ConnectionRefusedError("refused"))):
+            with self.assertRaises(SystemExit):
+                golden.send(GUARD_BASE, "GET", "/health", {}, None, None, 1.0)
+
+    def test_verify_counts_a_timed_out_probe_as_failing_and_finishes(self):
+        code, output = run_harness("record", self.fixtures, Fleet(LOADED))
+        self.assertEqual(code, 0, output)
+        code, output = run_harness("verify", self.fixtures,
+                                   TimingOutFleet(LOADED))
+        self.assertEqual(code, 1, output)
+        self.assertIn("response.status: 200 -> 0", output)
+        self.assertIn("verify: 2 probes checked, 1 failing", output)
 
 
 class VolatileSourceTest(unittest.TestCase):

@@ -61,6 +61,7 @@ UNREGISTERED_TOKEN = "argus-golden-unregistered-token"
 RING_OPERATION = 8
 PRIMED_ROUTES = {("sync", "/sync/heartbeat")}
 PLACEHOLDER = "<BYTES>"
+TIMED_OUT = 0
 GOLDEN_JPEG_B64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCABAAEADASIAAhEBAxEB/8QAFwABAQEBAAAAAAAAAAAAAAAAAAMECP/EABUQAQEAAAAAAAAAAAAAAAAAAAAS/8QAFwEBAQEBAAAAAAAAAAAAAAAAAAYDB//EABYRAQEBAAAAAAAAAAAAAAAAAAAUYf/aAAwDAQACEQMRAD8A5/gheCHertZxoQQvBBdpGhBC8EF2kaEELwQXaRtMELwQjrtVcaEELwQXaRoQQvBBdpGhBC8EF2kbTBC8EI27VZGhBC8EF2kaEELwQXaRoQQvBBdpG0QQ0wQjrtVcbNBDTBBdpGzQQ0wQXaRs0ENMEF2kb//Z"
 GENERATED = "<GENERATED>"
 INITIAL_INFO_OPERATION = 0
@@ -681,11 +682,20 @@ def send(base, method, path, headers, body, content_type, timeout):
             return (response.status,
                     response.headers.get("Content-Type", ""),
                     response.read())
+    except TimeoutError:
+        return timed_out(timeout)
     except urllib.error.HTTPError as error:
         return (error.code, error.headers.get("Content-Type", ""),
                 error.read())
     except urllib.error.URLError as error:
+        if isinstance(error.reason, TimeoutError):
+            return timed_out(timeout)
         raise SystemExit(f"{method} {path} unreachable: {error.reason}")
+
+
+def timed_out(timeout):
+    return (TIMED_OUT, "text/plain",
+            f"timed out after {timeout}s".encode())
 
 
 def looks_like_token(value):
