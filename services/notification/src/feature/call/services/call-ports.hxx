@@ -134,10 +134,16 @@ public:
   devicesOf(int64_t userId) const = 0;
 };
 
+struct CallPushMessage
+{
+  PushSealedEnvelope envelope;
+  int64_t expiresAtMs{0};
+};
+
 class CallPushSink
 {
 public:
   virtual ~CallPushSink() = default;
 
-  [[nodiscard]] virtual bool publish(const PushSealedEnvelope& envelope) const = 0;
+  [[nodiscard]] virtual bool publish(const CallPushMessage& message) const = 0;
 };

@@ -361,6 +361,20 @@ target_compile_options(push-sealer-test PRIVATE -Wall -Wextra)
 
 add_test(NAME push-sealer-test COMMAND push-sealer-test)
 
+add_executable(call-push-delivery-test tests/unit/call-push-delivery-test.cc)
+
+set_target_properties(call-push-delivery-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(call-push-delivery-test PRIVATE
+    argus::notification-call
+    argus::contracts::push
+    argus::lib::text
+    doctest::doctest)
+
+target_compile_options(call-push-delivery-test PRIVATE -Wall -Wextra)
+
+add_test(NAME call-push-delivery-test COMMAND call-push-delivery-test)
+
 add_executable(register-notification-token-dto-test tests/unit/register-notification-token-dto-test.cc)
 
 set_target_properties(register-notification-token-dto-test PROPERTIES EXCLUDE_FROM_ALL FALSE)

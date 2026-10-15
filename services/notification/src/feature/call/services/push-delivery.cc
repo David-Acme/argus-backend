@@ -95,6 +95,7 @@ drogon::Task<int64_t> CallPushDelivery::deliver(const CallSchema& call, bool can
     intent["cancel"] = true;
   const std::string plaintext = json_util::toString(intent);
   const uint32_t ttl = cancelling ? kCancelTtlSeconds : remainingSeconds(call.expiresAt, now);
+  const int64_t expiresAtMs = (cancelling ? now + kCancelTtlSeconds : call.expiresAt) * 1000;
 
   int64_t published = 0;
   for (const auto& device : call_push_routing::devicesForCall(devices)) {
@@ -117,7 +118,7 @@ drogon::Task<int64_t> CallPushDelivery::deliver(const CallSchema& call, bool can
                << "); not sent";
       continue;
     }
-    if (sink_->publish(sealed.envelope))
+    if (sink_->publish({.envelope = sealed.envelope, .expiresAtMs = expiresAtMs}))
       ++published;
   }
   co_return published;
