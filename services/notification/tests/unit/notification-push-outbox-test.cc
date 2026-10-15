@@ -146,7 +146,11 @@ CallCreateInput ringingRow()
 
 int64_t seedRinging()
 {
-  return drogon::sync_wait(CallRepository().createRinging(ringingRow())).value();
+  const auto created = drogon::sync_wait(CallRepository().createRinging(ringingRow()));
+  if (!created) {
+    throw std::runtime_error("the seeded ring was not created");
+  }
+  return *created;
 }
 
 drogon::Task<bool> commitTransaction(std::shared_ptr<drogon::orm::Transaction> transaction)
@@ -163,7 +167,12 @@ TEST_CASE("a ring written in the transaction that marks it pushed rolls back wit
 
   const int64_t id = seedRinging();
   const CallRepository calls;
-  const CallSchema call = drogon::sync_wait(calls.findById(id)).value();
+  const auto found = drogon::sync_wait(calls.findById(id));
+  if (!found) {
+    FAIL("the seeded ring is not in the call table");
+    return;
+  }
+  const CallSchema call = *found;
   const CallPushDelivery delivery(CallPushDeliveryDependencies{
       .devices = std::make_shared<OneFcmDevice>(),
       .outbox = std::make_shared<NatsNotificationChangeSink>(nullptr, NatsNotificationChangeSink::Config{}),
@@ -186,7 +195,12 @@ TEST_CASE("a ring written in the transaction that marks it pushed commits with i
 
   const int64_t id = seedRinging();
   const CallRepository calls;
-  const CallSchema call = drogon::sync_wait(calls.findById(id)).value();
+  const auto found = drogon::sync_wait(calls.findById(id));
+  if (!found) {
+    FAIL("the seeded ring is not in the call table");
+    return;
+  }
+  const CallSchema call = *found;
   const CallPushDelivery delivery(CallPushDeliveryDependencies{
       .devices = std::make_shared<OneFcmDevice>(),
       .outbox = std::make_shared<NatsNotificationChangeSink>(nullptr, NatsNotificationChangeSink::Config{}),

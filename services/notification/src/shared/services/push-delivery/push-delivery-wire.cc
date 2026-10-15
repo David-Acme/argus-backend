@@ -15,8 +15,8 @@ Json::Value toJson(const PushDeliveryMessage& message)
   json["provider"] = std::string(pushProviderToString(envelope.provider));
   json["kind"] = std::string(pushKindToString(envelope.kind));
   json["priority"] = std::string(pushPriorityToString(envelope.priority));
-  json["ttlSeconds"] = Json::UInt64(envelope.ttlSeconds);
-  json["expiresAt"] = Json::Int64(message.expiresAtMs);
+  json["ttlSeconds"] = static_cast<Json::UInt64>(envelope.ttlSeconds);
+  json["expiresAt"] = static_cast<Json::Int64>(message.expiresAtMs);
   json["collapseId"] = envelope.collapseId;
   json["token"] = envelope.token;
   json["enc"] = base64::encode(envelope.enc);

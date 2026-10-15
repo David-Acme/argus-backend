@@ -135,7 +135,12 @@ TEST_CASE("a delivery is recorded under the msg id of its delivery id, once per 
 
   const std::string eventId = outbox->entries[0].eventId;
   const Json::Value payload = payloadOf(outbox->entries[0]);
-  const std::string deliveryId = base64::decode(payload["deliveryId"].asString()).value();
+  const auto decodedDeliveryId = base64::decode(payload["deliveryId"].asString());
+  if (!decodedDeliveryId) {
+    FAIL("the delivery id is not base64");
+    return;
+  }
+  const std::string deliveryId = *decodedDeliveryId;
 
   CHECK(eventId == std::string(push_delivery_wire::kEventIdPrefix) + push_delivery_wire::hexOf(deliveryId));
   CHECK(payload["token"].asString() == "fcm-token-0001");

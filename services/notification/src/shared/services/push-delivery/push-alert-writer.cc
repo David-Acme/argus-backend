@@ -55,13 +55,13 @@ drogon::Task<void> PushAlertWriter::write(NotificationAlertRound round) const
         continue;
       Json::Value intent(Json::objectValue);
       intent["kind"] = "notification";
-      intent["notificationId"] = Json::Int64(round.notificationIds[index]);
+      intent["notificationId"] = static_cast<Json::Int64>(round.notificationIds[index]);
       intent["type"] = input.type;
       intent["title"] = copy.title;
       intent["body"] = copy.body;
       intent["deepLink"] = "argus://notification?notificationId=" + std::to_string(round.notificationIds[index]);
-      intent["iat"] = Json::Int64(now);
-      intent["exp"] = Json::Int64(now + kAlertTtlSeconds);
+      intent["iat"] = static_cast<Json::Int64>(now);
+      intent["exp"] = static_cast<Json::Int64>(now + kAlertTtlSeconds);
       const PushSealOutcome sealed = sealer_.seal({.deliveryId = deliveryId,
                                                    .provider = device.provider,
                                                    .kind = PushKind::Alert,
