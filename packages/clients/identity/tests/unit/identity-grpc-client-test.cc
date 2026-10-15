@@ -189,7 +189,10 @@ TEST_CASE("the client dials the mutual TLS port with the internal certificate")
 
   const IdentityClient client(endpoint.tlsTarget(), kFleetSecret);
   const auto served = client.getPerson(4);
-  REQUIRE(served);
+  if (!served) {
+    FAIL("the person is empty");
+    return;
+  }
   CHECK(served->personId == 12);
 
   const IdentityClient plaintext(endpoint.plaintextToTlsPortTarget(),
