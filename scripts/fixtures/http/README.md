@@ -30,6 +30,31 @@ python3 scripts/seed-golden.py --stack-dir build/native-stack --roles
 python3 scripts/golden-http.py record --stack-dir build/native-stack
 ```
 
+## Reproducing a verify from a scratch tree
+
+`scripts/scratch-stack.sh` brings the stack up from a tree that is not a work
+tree, so a verify can be replayed from a commit without its generated configs
+touching a developer's own. The steps, with `<root>` a scratch copy of the tree
+and `<stack>` an empty directory:
+
+```bash
+git archive <sha> | tar -x -C <root>            # a copy with no .git entry
+bash <root>/scripts/setup.sh --config-only      # configs, certificates, PKI; no prompt, no build
+ln -s <built-tree>/services/<svc>/build <root>/services/<svc>/build   # for each stack service
+ARGUS_NATS_SERVER_BIN=<nats-server> \
+  <root>/scripts/scratch-stack.sh <root> <stack> --with-ai \
+    --models <models-dir> --go2rtc <go2rtc-dir> --nats-port 14222
+python3 -I <root>/scripts/golden-http.py verify --stack-dir <stack>
+<root>/scripts/scratch-stack.sh --down <root> <stack>
+```
+
+`--with-ai` also starts llm, stt, tts and vlm, which the replay probes on their
+own ports. Bring-up and verify are heavy jobs: run them through the project's
+heavy-job gate, one at a time. `--check` runs the same validation as bring-up
+and changes nothing, so it can be run anywhere. `setup.sh --config-only` writes
+the configs and the PKI of a scratch tree only: no privacy prompt, no
+dependencies, no models, no toolchain, no build.
+
 A verifying run is the same up to the last line, with `verify` in place of
 `record`. Seed in exactly that order: the plain run creates the fixture rows,
 `--roles` adds the transient probe users (ids 2 and 3) and mints the three
