@@ -369,6 +369,15 @@ private:
 
   drogon::Task<bool> emit(const CallSignalInput& input) const;
 
+  struct OpenRingingInput
+  {
+    CallCreateInput row;
+    CallSchema draft;
+    int64_t at{0};
+  };
+
+  drogon::Task<std::optional<CallSchema>> openRinging(const OpenRingingInput& input) const;
+
   drogon::Task<bool> pushRingOnce(const CallSchema& call, int64_t at) const;
 
   drogon::Task<bool> declineRingingAndCancel(const CallSchema& call, int64_t at) const;

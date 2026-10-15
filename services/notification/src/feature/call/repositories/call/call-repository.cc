@@ -39,8 +39,8 @@ CallRepository::create(const CallCreateInput& input) const
 drogon::Task<std::optional<int64_t>>
 CallRepository::createRinging(const CallCreateInput& input) const
 {
-  const auto client = DbService::client();
-  const auto rows = co_await client->execSqlCoro(std::string(INSERT_RINGING), input.userId, input.dedupeKey,
+  const auto pool = DbService::client();
+  const auto rows = co_await executor(input.client, pool)->execSqlCoro(std::string(INSERT_RINGING), input.userId, input.dedupeKey,
       callTriggerToString(input.trigger), input.reason, input.urgency,
       input.lang, input.title, input.summary, input.openingLine,
       input.missedLine, input.data, input.createdAt, input.expiresAt,

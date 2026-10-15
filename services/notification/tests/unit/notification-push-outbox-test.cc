@@ -207,6 +207,77 @@ TEST_CASE("a ring written in the transaction that marks it pushed commits with i
   cleanup();
 }
 
+namespace
+{
+CallSchema createdRing(int64_t id)
+{
+  CallSchema call;
+  call.id = id;
+  call.userId = 42;
+  call.dedupeKey = "guard:episode:9";
+  call.urgency = "critical";
+  call.lang = "es";
+  call.title = "Puerta";
+  call.createdAt = kNow;
+  call.expiresAt = kNow + 120;
+  return call;
+}
+}
+
+TEST_CASE("a ring created and marked pushed in one transaction rolls back as one")
+{
+  boot();
+  AppRunner runner;
+  REQUIRE(waitForBoot(std::chrono::seconds(30)));
+  REQUIRE(DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA));
+
+  const CallRepository calls;
+  const CallPushDelivery delivery(CallPushDeliveryDependencies{
+      .devices = std::make_shared<OneFcmDevice>(),
+      .outbox = std::make_shared<NatsNotificationChangeSink>(nullptr, NatsNotificationChangeSink::Config{}),
+      .clock = [] { return kNow; }});
+
+  auto transaction = drogon::sync_wait(db_transaction::begin(DbService::client()));
+  CallCreateInput row = ringingRow();
+  row.client = transaction.get();
+  const auto id = drogon::sync_wait(calls.createRinging(row));
+  REQUIRE(id.has_value());
+  CHECK(drogon::sync_wait(calls.markPushed({.id = *id, .now = kNow, .client = transaction.get()})));
+  CHECK(drogon::sync_wait(delivery.ring(createdRing(*id), transaction.get())) == 1);
+  db_transaction::rollback(transaction);
+
+  CHECK(scalarInt("SELECT COUNT(*) AS total FROM call") == 0);
+  CHECK(scalarInt("SELECT COUNT(*) AS total FROM change_outbox") == 0);
+  cleanup();
+}
+
+TEST_CASE("a ring created and marked pushed in one transaction commits as one")
+{
+  boot();
+  AppRunner runner;
+  REQUIRE(waitForBoot(std::chrono::seconds(30)));
+  REQUIRE(DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA));
+
+  const CallRepository calls;
+  const CallPushDelivery delivery(CallPushDeliveryDependencies{
+      .devices = std::make_shared<OneFcmDevice>(),
+      .outbox = std::make_shared<NatsNotificationChangeSink>(nullptr, NatsNotificationChangeSink::Config{}),
+      .clock = [] { return kNow; }});
+
+  auto transaction = drogon::sync_wait(db_transaction::begin(DbService::client()));
+  CallCreateInput row = ringingRow();
+  row.client = transaction.get();
+  const auto id = drogon::sync_wait(calls.createRinging(row));
+  REQUIRE(id.has_value());
+  CHECK(drogon::sync_wait(calls.markPushed({.id = *id, .now = kNow, .client = transaction.get()})));
+  CHECK(drogon::sync_wait(delivery.ring(createdRing(*id), transaction.get())) == 1);
+  CHECK(drogon::sync_wait(commitTransaction(std::move(transaction))));
+
+  CHECK(scalarInt("SELECT COUNT(*) AS total FROM call") == 1);
+  CHECK(scalarInt("SELECT COUNT(*) AS total FROM change_outbox WHERE subject = 'argus.notification.v1.push_delivery'") == 1);
+  cleanup();
+}
+
 TEST_CASE("the same delivery id recorded twice leaves one outbox row")
 {
   boot();

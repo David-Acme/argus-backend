@@ -66,6 +66,20 @@ inline std::string openRaw(const std::string& enc, const std::string& ciphertext
   return plaintext;
 }
 
+inline std::string recipientPublicKeyBase64Url()
+{
+  std::string text = base64::encode(fromHex(kRecipientPublicHex));
+  for (char& symbol : text) {
+    if (symbol == '+')
+      symbol = '-';
+    else if (symbol == '/')
+      symbol = '_';
+  }
+  while (!text.empty() && text.back() == '=')
+    text.pop_back();
+  return text;
+}
+
 inline std::optional<PushSealedEnvelope> envelopeOf(const Json::Value& payload)
 {
   const auto deliveryId = base64::decode(payload["deliveryId"].asString());

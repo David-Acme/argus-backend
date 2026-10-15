@@ -258,6 +258,35 @@ drogon::Task<bool> CallEngine::emit(const CallSignalInput& input) const
       [signal, input]() { return signal->emit(input); });
 }
 
+drogon::Task<std::optional<CallSchema>> CallEngine::openRinging(const OpenRingingInput& input) const
+{
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    CallCreateInput row = input.row;
+    row.client = transaction.get();
+    const auto id = co_await callRepository_.createRinging(row);
+    if (!id) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+    CallSchema call = input.draft;
+    call.id = *id;
+    if (input.row.pushAfter <= input.at &&
+        co_await callRepository_.markPushed({.id = *id, .now = input.at, .client = transaction.get()})) {
+      call.pushedAt = input.at;
+      if (dependencies_.sealedPush)
+        static_cast<void>(co_await dependencies_.sealedPush->ring(call, transaction.get()));
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(NotificationErrors::ChangeNotRecorded);
+    co_return call;
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+}
+
 drogon::Task<bool> CallEngine::pushRingOnce(const CallSchema& call, int64_t at) const
 {
   auto transaction = co_await db_transaction::begin(DbService::client());
@@ -566,38 +595,35 @@ CallEngine::finishUser(const FinishUserInput& input) const
   }
 
   if (prepared.verdict.decision == CallDecision::Ring) {
-    if (const auto id = co_await callRepository_.createRinging(row)) {
-      CallSchema call{.id = *id,
-                      .userId = userId,
-                      .dedupeKey = row.dedupeKey,
-                      .trigger = row.trigger,
-                      .state = CallState::Ringing,
-                      .reason = row.reason,
-                      .parentCallId = 0,
-                      .urgency = row.urgency,
-                      .lang = row.lang,
-                      .title = row.title,
-                      .summary = row.summary,
-                      .openingLine = row.openingLine,
-                      .missedLine = row.missedLine,
-                      .data = prepared.stored,
-                      .answeredSession = "",
-                      .createdAt = row.createdAt,
-                      .expiresAt = row.expiresAt,
-                      .pushedAt = 0,
-                      .answeredAt = 0,
-                      .endedAt = 0,
-                      .pushAfter = row.pushAfter};
+    CallSchema draft{.userId = userId,
+                     .dedupeKey = row.dedupeKey,
+                     .trigger = row.trigger,
+                     .state = CallState::Ringing,
+                     .reason = row.reason,
+                     .parentCallId = 0,
+                     .urgency = row.urgency,
+                     .lang = row.lang,
+                     .title = row.title,
+                     .summary = row.summary,
+                     .openingLine = row.openingLine,
+                     .missedLine = row.missedLine,
+                     .data = prepared.stored,
+                     .answeredSession = "",
+                     .createdAt = row.createdAt,
+                     .expiresAt = row.expiresAt,
+                     .pushedAt = 0,
+                     .answeredAt = 0,
+                     .endedAt = 0,
+                     .pushAfter = row.pushAfter};
+    if (const auto call = co_await openRinging({.row = row, .draft = draft, .at = input.now})) {
       co_await emit({.userId = userId,
                      .operation = SyncOperation::CallIncoming,
-                     .info = call_engine::incomingInfo(call)});
-      if (row.pushAfter <= input.now)
-        static_cast<void>(co_await pushRingOnce(call, input.now));
+                     .info = call_engine::incomingInfo(*call)});
       outcome.resolution = CallResolution::Rang;
-      outcome.callId = *id;
+      outcome.callId = call->id;
       LOG_INFO << "Call engine: ringing user " << userId << " ("
                << callTriggerToString(candidate.trigger) << ", "
-               << call.callId() << ")";
+               << call->callId() << ")";
       co_return outcome;
     }
     if (co_await callRepository_.exists(candidate.dedupeKey, userId)) {

@@ -102,6 +102,7 @@ struct CallCreateInput
   int64_t createdAt{0};
   int64_t expiresAt{0};
   int64_t pushAfter{0};
+  drogon::orm::DbClient* client{nullptr};
 };
 
 struct CallRingStats

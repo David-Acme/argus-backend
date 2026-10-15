@@ -3,7 +3,11 @@
 #include <test-support/app-runner.hxx>
 
 #include <drogon/drogon.h>
+#include "../support/push-open.hxx"
 #include <feature/call/services/call-engine.hxx>
+#include <feature/call/services/push-delivery.hxx>
+#include <shared/services/push-delivery/push-delivery-outbox.hxx>
+#include <shared/services/push-delivery/push-device.hxx>
 #include <feature/call/services/call-feed.hxx>
 #include <feature/call/services/call-preference-service.hxx>
 #include <shared/services/notification/notification-service.hxx>
@@ -212,6 +216,38 @@ public:
   mutable std::vector<ResponseVerdictEvent> events;
 };
 
+class RecordingPushOutbox final : public PushDeliveryOutbox
+{
+public:
+  drogon::Task<void> record(PushDeliveryRecord entry) const override
+  {
+    const std::scoped_lock lock(mutex);
+    entries.push_back(std::move(entry));
+    co_return;
+  }
+
+  std::vector<PushDeliveryRecord> all() const
+  {
+    const std::scoped_lock lock(mutex);
+    return entries;
+  }
+
+  mutable std::mutex mutex;
+  mutable std::vector<PushDeliveryRecord> entries;
+};
+
+class EveryUserDevice final : public PushDeviceDirectory
+{
+public:
+  drogon::Task<std::vector<PushDevice>> devicesOf(int64_t userId) const override
+  {
+    co_return std::vector<PushDevice>{{.provider = PushProvider::Fcm,
+                                       .token = "fcm-token-" + std::to_string(userId),
+                                       .publicKey = push_open::recipientPublicKeyBase64Url(),
+                                       .keyId = "key-0001"}};
+  }
+};
+
 struct Harness
 {
   std::shared_ptr<RecordingVerdicts> verdicts = std::make_shared<RecordingVerdicts>();
@@ -225,6 +261,11 @@ struct Harness
   std::shared_ptr<std::atomic<int>> hour = std::make_shared<std::atomic<int>>(12);
   std::shared_ptr<std::atomic<int>> weekday = std::make_shared<std::atomic<int>>(3);
   std::shared_ptr<FixedDirectory> directory = std::make_shared<FixedDirectory>();
+  std::shared_ptr<RecordingPushOutbox> outbox = std::make_shared<RecordingPushOutbox>();
+  std::shared_ptr<const CallPushDelivery> sealedPush = std::make_shared<CallPushDelivery>(
+      CallPushDeliveryDependencies{.devices = std::make_shared<EveryUserDevice>(),
+                                   .outbox = outbox,
+                                   .clock = [clock = clock]() { return clock->load(); }});
   CallEngine engine;
 
   Harness()
@@ -241,7 +282,8 @@ struct Harness
                          return CallLocalTime{.hour = hour->load(),
                                               .weekday = weekday->load()};
                        },
-                   .blockingOffLoop = false})
+                   .blockingOffLoop = false,
+                   .sealedPush = sealedPush})
   {
     reset();
   }
@@ -847,6 +889,32 @@ TEST_CASE("each user's ring length, push delay and language are their own")
   CHECK(stateOf(outcomeFor(rang, 2).callId) == "ringing");
   harness.advance(10);
   CHECK(drogon::sync_wait(harness.engine.sweep()).pushed == 1);
+}
+
+TEST_CASE("a ring pushed at once is recorded in the transaction that creates it, and opens to its call")
+{
+  Harness harness;
+  const CallPreferenceService preferences;
+  UpdateCallPreferenceDto immediate;
+  immediate.pushDelaySeconds = 0;
+  drogon::sync_wait(preferences.update(1, immediate));
+
+  const auto rang = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("critical", 81), {1}));
+  REQUIRE(rang.size() == 1);
+  const int64_t id = outcomeFor(rang, 1).callId;
+  CHECK(stateOf(id) == "ringing");
+  CHECK(DbService::client()->execSqlSync("SELECT pushed_at FROM call WHERE id = ?", id)
+            .front()["pushed_at"].as<int64_t>() == kStart);
+
+  const auto records = harness.outbox->all();
+  REQUIRE(records.size() == 1);
+  const Json::Value plain = push_open::plaintextOf(records.front().payload, "key-0001");
+  CHECK(plain["kind"].asString() == "call");
+  CHECK(plain["callId"].asString() == call_id::format(id));
+  CHECK(plain["title"].asString() == "Argus te está llamando");
+  CHECK(plain["body"].asString() == "Abre Argus para contestar.");
+  CHECK(plain["deepLink"].asString() == "argus://call?callId=" + call_id::format(id));
 }
 
 TEST_CASE("a user who keeps calls quiet gets rung, not spoken to")
