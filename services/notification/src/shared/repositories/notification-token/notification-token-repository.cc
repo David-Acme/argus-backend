@@ -50,10 +50,11 @@ drogon::Task<int64_t> NotificationTokenRepository::removeForSession(
 }
 
 drogon::Task<std::vector<NotificationTokenSchema>>
-NotificationTokenRepository::findPushByUser(int64_t userId) const
+NotificationTokenRepository::findPushByUser(int64_t userId, drogon::orm::DbClient* given) const
 {
-  const auto result =
-      co_await DbService::client()->execSqlCoro(std::string(FIND_PUSH_BY_USER), userId);
+  const auto pool = DbService::client();
+  const auto result = co_await (given != nullptr ? given : pool.get())
+                          ->execSqlCoro(std::string(FIND_PUSH_BY_USER), userId);
   std::vector<NotificationTokenSchema> tokens;
   tokens.reserve(result.size());
   for (const auto& row : result)

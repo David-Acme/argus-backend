@@ -2,6 +2,7 @@
 
 #include <push/push-provider.hxx>
 
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 
 #include <cstdint>
@@ -22,5 +23,5 @@ public:
   virtual ~PushDeviceDirectory() = default;
 
   [[nodiscard]] virtual drogon::Task<std::vector<PushDevice>>
-  devicesOf(int64_t userId) const = 0;
+  devicesOf(int64_t userId, drogon::orm::DbClient* client = nullptr) const = 0;
 };

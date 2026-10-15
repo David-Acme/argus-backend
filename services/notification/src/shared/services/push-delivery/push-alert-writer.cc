@@ -46,7 +46,7 @@ drogon::Task<void> PushAlertWriter::write(NotificationAlertRound round) const
     const PushCopy copy = push_copy::render({.lang = push_copy::langOf(input.data),
                                              .urgency = push_copy::urgencyOf(input.data),
                                              .call = false});
-    const auto devices = co_await devices_->devicesOf(input.userId);
+    const auto devices = co_await devices_->devicesOf(input.userId, round.client);
     for (const PushDevice& device : devices) {
       if (!push_envelope::combinationAllowed(device.provider, PushKind::Alert))
         continue;

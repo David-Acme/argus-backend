@@ -62,7 +62,7 @@ drogon::Task<int64_t> CallPushDelivery::deliver(CallPushInput input) const
     co_return 0;
   const CallSchema& call = input.call;
   const int64_t now = clock_();
-  const auto devices = co_await devices_->devicesOf(call.userId);
+  const auto devices = co_await devices_->devicesOf(call.userId, input.client);
   if (devices.empty())
     co_return 0;
 

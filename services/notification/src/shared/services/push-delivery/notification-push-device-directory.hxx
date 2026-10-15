@@ -7,7 +7,7 @@ class NotificationPushDeviceDirectory final : public PushDeviceDirectory
 {
 public:
   [[nodiscard]] drogon::Task<std::vector<PushDevice>>
-  devicesOf(int64_t userId) const override;
+  devicesOf(int64_t userId, drogon::orm::DbClient* client) const override;
 
 private:
   NotificationTokenRepository repository_;

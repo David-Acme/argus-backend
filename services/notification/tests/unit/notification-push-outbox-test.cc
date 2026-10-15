@@ -8,6 +8,7 @@
 #include <feature/call/services/push-delivery.hxx>
 #include <shared/repositories/notification/notification-repository.hxx>
 #include <shared/services/change-sink/nats-notification-change-sink.hxx>
+#include <shared/services/push-delivery/notification-push-device-directory.hxx>
 #include <shared/services/push-delivery/push-alert-writer.hxx>
 #include <shared/services/push-delivery/push-delivery-wire.hxx>
 #include <sqlite/db-service.hxx>
@@ -17,6 +18,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <future>
 #include <memory>
 #include <optional>
 #include <stdexcept>
@@ -75,7 +77,7 @@ std::string base64UrlOf(const std::string& bytes)
 class OneFcmDevice final : public PushDeviceDirectory
 {
 public:
-  drogon::Task<std::vector<PushDevice>> devicesOf(int64_t) const override
+  drogon::Task<std::vector<PushDevice>> devicesOf(int64_t, drogon::orm::DbClient*) const override
   {
     co_return std::vector<PushDevice>{{.provider = PushProvider::Fcm,
                                        .token = "fcm-token-0001",
@@ -264,6 +266,49 @@ TEST_CASE("a ring created and marked pushed in one transaction commits as one")
 
   CHECK(scalarInt("SELECT COUNT(*) AS total FROM call") == 1);
   CHECK(scalarInt("SELECT COUNT(*) AS total FROM change_outbox WHERE subject = 'argus.notification.v1.push_delivery'") == 1);
+}
+
+TEST_CASE("an alert batch reads the recipient's push devices without waiting on the connection its transaction holds")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  clearTables();
+  DbService::client()->execSqlSync(
+      "INSERT INTO notification_token (user_id, token, provider, public_key, key_id) "
+      "VALUES (7, 'fcm-token-0007', 'fcm', ?, 'key-0001')",
+      base64UrlOf(fromHex(kRecipientPublicHex)));
+
+  const auto alerts = std::make_shared<PushAlertWriter>(PushAlertWriterDependencies{
+      .devices = std::make_shared<NotificationPushDeviceDirectory>(),
+      .outbox = std::make_shared<NatsNotificationChangeSink>(nullptr, NatsNotificationChangeSink::Config{}),
+      .clock = [] { return kNow; }});
+  NotificationCreateInput row;
+  row.userId = 7;
+  row.type = "camera";
+  row.title = "Puerta";
+  row.body = "Movimiento en la puerta";
+  row.data = Json::Value(Json::objectValue);
+  const NotificationBatchCommitInput batch{.inputs = {row},
+                                           .commandId = "cmd-device-read-0001",
+                                           .at = kNow,
+                                           .alerts = alerts};
+
+  std::promise<bool> finished;
+  std::future<bool> outcome = finished.get_future();
+  std::thread worker([batch, promise = std::move(finished)]() mutable {
+    try {
+      const auto committed = drogon::sync_wait(NotificationRepository().createManyWithCommand(batch));
+      promise.set_value(!committed.duplicate);
+    }
+    catch (...) {
+      promise.set_exception(std::current_exception());
+    }
+  });
+  worker.detach();
+
+  REQUIRE(outcome.wait_for(std::chrono::seconds(20)) == std::future_status::ready);
+  CHECK(outcome.get());
+  CHECK(scalarInt("SELECT COUNT(*) AS total FROM change_outbox WHERE event_id LIKE 'push-delivery:%'") == 1);
 }
 
 TEST_CASE("the same delivery id recorded twice leaves one outbox row")

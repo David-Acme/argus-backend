@@ -1,9 +1,9 @@
 #include "notification-push-device-directory.hxx"
 
 drogon::Task<std::vector<PushDevice>>
-NotificationPushDeviceDirectory::devicesOf(int64_t userId) const
+NotificationPushDeviceDirectory::devicesOf(int64_t userId, drogon::orm::DbClient* client) const
 {
-  const auto rows = co_await repository_.findPushByUser(userId);
+  const auto rows = co_await repository_.findPushByUser(userId, client);
   std::vector<PushDevice> devices;
   devices.reserve(rows.size());
   for (const auto& row : rows) {

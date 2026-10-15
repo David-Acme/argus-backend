@@ -49,7 +49,7 @@ std::string base64UrlOf(const std::string& bytes)
 class MixedDevices final : public PushDeviceDirectory
 {
 public:
-  drogon::Task<std::vector<PushDevice>> devicesOf(int64_t userId) const override
+  drogon::Task<std::vector<PushDevice>> devicesOf(int64_t userId, drogon::orm::DbClient*) const override
   {
     const std::string key = base64UrlOf(fromHex(kRecipientPublicHex));
     if (userId != 42)

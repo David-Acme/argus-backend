@@ -1,6 +1,7 @@
 #pragma once
 #include "notification-token-query.hxx"
 
+#include <drogon/orm/DbClient.h>
 #include <drogon/utils/coroutine.h>
 #include <shared/schemas/notification-token/notification-token-schema.hxx>
 
@@ -16,7 +17,7 @@ public:
   removeForSession(const NotificationTokenSessionInput& input) const;
   drogon::Task<int64_t> removeForUser(int64_t userId) const;
   drogon::Task<std::vector<NotificationTokenSchema>>
-  findPushByUser(int64_t userId) const;
+  findPushByUser(int64_t userId, drogon::orm::DbClient* client = nullptr) const;
   drogon::Task<int64_t>
   removeOwnToken(const NotificationTokenRemoveInput& input) const;
   drogon::Task<int64_t> removeByToken(std::string token) const;

@@ -240,7 +240,7 @@ public:
 class EveryUserDevice final : public PushDeviceDirectory
 {
 public:
-  drogon::Task<std::vector<PushDevice>> devicesOf(int64_t userId) const override
+  drogon::Task<std::vector<PushDevice>> devicesOf(int64_t userId, drogon::orm::DbClient*) const override
   {
     co_return std::vector<PushDevice>{{.provider = PushProvider::Fcm,
                                        .token = "fcm-token-" + std::to_string(userId),
