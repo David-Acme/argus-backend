@@ -151,13 +151,16 @@ TEST_CASE("JoinRoom answers only argus-sync, Announce only argus-notification")
     farewell.set_room("u7.rtc-00");
     farewell.set_reason("accountDisabled");
     argus::voice::v1::RtcFarewellDone done;
-    grpc::ClientContext refused;
-    argus::client::addCallerCredential(refused, kNotificationSecret);
-    CHECK(stub->Farewell(&refused, farewell, &done).error_code() == grpc::StatusCode::UNAUTHENTICATED);
+    grpc::ClientContext notificationCall;
+    argus::client::addCallerCredential(notificationCall, kNotificationSecret);
+    REQUIRE(stub->Farewell(&notificationCall, farewell, &done).ok());
     grpc::ClientContext accepted;
     argus::client::addCallerCredential(accepted, kSyncSecret);
     REQUIRE(stub->Farewell(&accepted, farewell, &done).ok());
-    CHECK(joiner.farewells == std::vector<std::string>{"u7.rtc-00/accountDisabled"});
+    CHECK(joiner.farewells == std::vector<std::string>{"u7.rtc-00/accountDisabled", "u7.rtc-00/accountDisabled"});
+    grpc::ClientContext stranger;
+    argus::client::addCallerCredential(stranger, "not-a-caller");
+    CHECK(stub->Farewell(&stranger, farewell, &done).error_code() == grpc::StatusCode::UNAUTHENTICATED);
   }
 
   argus::voice::v1::AnnounceResponse reply;

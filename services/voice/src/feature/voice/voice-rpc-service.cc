@@ -359,8 +359,11 @@ grpc::ServerUnaryReactor* VoiceRpcService::Farewell(grpc::CallbackServerContext*
                                                     argus::voice::v1::RtcFarewellDone*)
 {
   auto* reactor = context->DefaultReactor();
-  if (!argus::client::authorizeCaller(context, syncCallers_).has_value()) {
-    reactor->Finish({grpc::StatusCode::UNAUTHENTICATED, "argus-sync caller credential required"});
+  auto callers = syncCallers_;
+  callers.insert(callers.end(), notificationCallers_.begin(), notificationCallers_.end());
+  if (!argus::client::authorizeCaller(context, callers).has_value()) {
+    LOG_WARN << "Voice: Farewell refused, the caller is neither argus-sync nor argus-notification (UNAUTHENTICATED)";
+    reactor->Finish({grpc::StatusCode::UNAUTHENTICATED, "argus-sync or argus-notification caller credential required"});
     return reactor;
   }
   if (rooms_ == nullptr) {
