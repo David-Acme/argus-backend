@@ -20,7 +20,8 @@
     "a malformed JSON body on a ValidJsonFilter route must answer 400",
     "a multipart body must never be answered 400",
     "a JSON answer must carry exactly the {status, info, errors} envelope",
-    "a 204 answer must carry an empty body"
+    "a 204 answer must carry an empty body",
+    "a volatile key is recorded as <VOLATILE:type>: its key and its JSON type stay compared, its value does not"
   ],
   "normalization": {
     "maskedHex32": "any 32-character lowercase hexadecimal value (a session id)",

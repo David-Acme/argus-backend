@@ -3549,6 +3549,7 @@
                   "retryAt": "<masked>",
                   "state": "no_credentials"
                 },
+                "health": "<VOLATILE:string>",
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,
@@ -3595,6 +3596,7 @@
                   "retryAt": "<masked>",
                   "state": "no_credentials"
                 },
+                "health": "<VOLATILE:string>",
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,
@@ -3641,6 +3643,7 @@
                   "retryAt": "<masked>",
                   "state": "no_credentials"
                 },
+                "health": "<VOLATILE:string>",
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,

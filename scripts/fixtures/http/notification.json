@@ -841,15 +841,15 @@
           "errors": null,
           "info": {
             "acked": 0,
-            "latencyMsMax": 10,
-            "latencyMsP50": 6,
-            "latencyMsP95": 10,
+            "latencyMsMax": "<VOLATILE:number>",
+            "latencyMsP50": "<VOLATILE:number>",
+            "latencyMsP95": "<VOLATILE:number>",
             "pending": 0,
             "probeAt": "<masked>",
-            "probeMs": 0,
-            "probeOk": false,
-            "sent": 7,
-            "unacked": 7,
+            "probeMs": "<VOLATILE:number>",
+            "probeOk": "<VOLATILE:boolean>",
+            "sent": "<VOLATILE:number>",
+            "unacked": "<VOLATILE:number>",
             "unackedOld": 0
           },
           "status": 200

@@ -159,13 +159,15 @@ class CompareTest(unittest.TestCase):
                          ["response.json.info.internalTlsCopy appeared"])
 
         guard = recorded("guard", "/health", "plain")
-        actual = answered(guard, "top", "recommendation", "balanced")
+        actual = answered(guard, "top", "internalTls", LOADED)
+        actual = answered(actual, "top", "recommendation", "balanced")
         self.assertEqual(compared(guard, actual),
                          ["response.json.recommendation appeared"])
 
     def test_the_top_level_drop_never_reaches_an_enveloped_body(self):
         enveloped = recorded("shared", "/health", "plain-auth")
-        actual = answered(enveloped, "top", "internalTls", LOADED)
+        actual = answered(enveloped, "info", "internalTls", LOADED)
+        actual = answered(actual, "top", "internalTls", LOADED)
         self.assertEqual(compared(enveloped, actual),
                          ["response.json.internalTls appeared"])
 
@@ -173,15 +175,74 @@ class CompareTest(unittest.TestCase):
         guard = recorded("guard", "/health", "plain")
         elsewhere = copy.deepcopy(guard)
         elsewhere["route"] = "/guard/safety"
+        del elsewhere["response"]["json"]["internalTls"]
         actual = answered(elsewhere, "top", "internalTls", LOADED)
         self.assertEqual(compared(elsewhere, actual),
                          ["response.json.internalTls appeared"])
 
         other_unit = copy.deepcopy(guard)
         other_unit["unit"] = "camera"
+        del other_unit["response"]["json"]["internalTls"]
         actual = answered(other_unit, "top", "internalTls", LOADED)
         self.assertEqual(compared(other_unit, actual),
                          ["response.json.internalTls appeared"])
+
+
+class VolatileTypeTest(unittest.TestCase):
+    def test_a_volatile_key_keeps_its_key_and_its_type_and_never_its_value(self):
+        entry = {"unit": "unit", "route": "/r"}
+        volatile = {("unit", "/r"): {
+            "keys": ("at", "gone", "flag", "label", "items[].health",
+                     "nested.count"),
+            "reason": "x"}}
+        body = {"info": {"at": 17, "gone": None, "flag": True, "label": "a",
+                         "items": [{"health": {"ok": True}},
+                                   {"health": None}],
+                         "nested": {"count": 2.5}, "kept": "same"}}
+        marked = golden.without_volatile(entry, body, volatile)
+        self.assertEqual(marked, {"info": {
+            "at": "<VOLATILE:number>",
+            "gone": "<VOLATILE:null>",
+            "flag": "<VOLATILE:boolean>",
+            "label": "<VOLATILE:string>",
+            "items": [{"health": "<VOLATILE:object>"},
+                      {"health": "<VOLATILE:null>"}],
+            "nested": {"count": "<VOLATILE:number>"},
+            "kept": "same"}})
+        self.assertEqual(body["info"]["at"], 17)
+
+    def test_a_volatile_key_that_is_absent_stays_absent(self):
+        entry = {"unit": "unit", "route": "/r"}
+        volatile = {("unit", "/r"): {"keys": ("missing",), "reason": "x"}}
+        marked = golden.without_volatile(entry, {"info": {"kept": 1}},
+                                         volatile)
+        self.assertEqual(marked, {"info": {"kept": 1}})
+
+
+class VolatileCompareTest(unittest.TestCase):
+    def test_a_volatile_key_present_with_its_type_passes(self):
+        expected = recorded("shared", "/health", "plain-auth")
+        self.assertEqual(expected["response"]["json"]["info"]["internalTls"],
+                         "<VOLATILE:object>")
+        for section in (NOT_LOADED, LOADED):
+            with self.subTest(loaded=section["loaded"]):
+                actual = answered(expected, "info", "internalTls", section)
+                self.assertEqual(compared(expected, actual), [])
+
+    def test_a_volatile_key_that_is_absent_fails(self):
+        expected = recorded("shared", "/health", "plain-auth")
+        actual = copy.deepcopy(expected)
+        del actual["response"]["json"]["info"]["internalTls"]
+        self.assertEqual(compared(expected, actual),
+                         ["response.json.info.internalTls disappeared"])
+
+    def test_a_volatile_key_of_another_type_fails(self):
+        expected = recorded("shared", "/health", "plain-auth")
+        actual = answered(expected, "info", "internalTls", "unknown")
+        self.assertEqual(
+            compared(expected, actual),
+            ["response.json.info.internalTls: '<VOLATILE:object>' -> "
+             "'<VOLATILE:string>'"])
 
 
 class VolatileSourceTest(unittest.TestCase):
@@ -229,8 +290,8 @@ class RecordTest(unittest.TestCase):
                 self.assertNotIn(subject, text)
         for name in ("shared.json", "guard.json"):
             with self.subTest(file=name):
-                self.assertNotIn("internalTls",
-                                 (self.fixtures / name).read_text())
+                self.assertIn('"internalTls": "<VOLATILE:object>"',
+                              (self.fixtures / name).read_text())
         manifest = json.loads((self.fixtures / "manifest.json").read_text())
         manifest.pop("volatileFields")
         self.assertNotIn("internalTls", json.dumps(manifest))
@@ -240,10 +301,12 @@ class RecordTest(unittest.TestCase):
                          ["plain-auth"])
         self.assertEqual(shared["probes"][0]["response"]["json"]["info"],
                          {"service": "argus-auth",
-                          "uptimeSeconds": "<masked>"})
+                          "uptimeSeconds": "<masked>",
+                          "internalTls": "<VOLATILE:object>"})
         guard = json.loads((self.fixtures / "guard.json").read_text())
         self.assertEqual(guard["probes"][0]["response"]["json"],
-                         {"status": "ok", "service": "argus-guard"})
+                         {"status": "ok", "service": "argus-guard",
+                          "internalTls": "<VOLATILE:object>"})
 
     def test_record_regenerates_the_manifest_from_the_harness_alone(self):
         code, output = run_harness("record", self.fixtures, Fleet(LOADED))

@@ -177,47 +177,7 @@
           "info": {
             "modules": [
               {
-                "components": [
-                  {
-                    "bytesPresent": 138474010,
-                    "bytesTotal": 138474010,
-                    "hostCommand": "services/stt/scripts/provision.sh",
-                    "id": "voice-stt",
-                    "owner": "stt",
-                    "reachable": true,
-                    "ready": true,
-                    "reason": null,
-                    "reported": false,
-                    "source": "provisioned",
-                    "state": "installed"
-                  },
-                  {
-                    "bytesPresent": 251636723,
-                    "bytesTotal": 251636723,
-                    "hostCommand": "services/tts/scripts/provision.sh",
-                    "id": "voice-tts",
-                    "owner": "tts",
-                    "reachable": true,
-                    "ready": true,
-                    "reason": null,
-                    "reported": false,
-                    "source": "provisioned",
-                    "state": "installed"
-                  },
-                  {
-                    "bytesPresent": 695755488,
-                    "bytesTotal": 695755488,
-                    "hostCommand": "services/llm/scripts/provision.sh",
-                    "id": "llm",
-                    "owner": "llm",
-                    "reachable": true,
-                    "ready": true,
-                    "reason": null,
-                    "reported": false,
-                    "source": "provisioned",
-                    "state": "installed"
-                  }
-                ],
+                "components": "<VOLATILE:array>",
                 "dataPurgedAt": "<masked>",
                 "enabled": true,
                 "gettingStarted": [
@@ -232,16 +192,10 @@
                     "title": "Invita a tu familia"
                   }
                 ],
-                "hardware": {
-                  "freeDiskMb": 196608,
-                  "minRamMb": 4096,
-                  "reasons": [],
-                  "recommendedRamMb": 8192,
-                  "verdict": "ok"
-                },
+                "hardware": "<VOLATILE:object>",
                 "hasData": false,
                 "id": "core",
-                "installedBytes": 1085866221,
+                "installedBytes": "<VOLATILE:number>",
                 "intro": {
                   "examples": [
                     "P\u00eddele a Argus que te recuerde llamar al plomero ma\u00f1ana a las 9",
@@ -260,34 +214,7 @@
                 "summary": "Tu cuenta, las personas de casa, avisos, privacidad y el asistente de voz. Siempre activo."
               },
               {
-                "components": [
-                  {
-                    "bytesPresent": 9763086,
-                    "bytesTotal": 9763086,
-                    "hostCommand": "services/camera/scripts/provision.sh",
-                    "id": "detector",
-                    "owner": "camera",
-                    "reachable": true,
-                    "ready": true,
-                    "reason": null,
-                    "reported": false,
-                    "source": "provisioned",
-                    "state": "installed"
-                  },
-                  {
-                    "bytesPresent": 568345184,
-                    "bytesTotal": 568345184,
-                    "hostCommand": null,
-                    "id": "vision",
-                    "owner": "vlm",
-                    "reachable": true,
-                    "ready": true,
-                    "reason": null,
-                    "reported": false,
-                    "source": "download",
-                    "state": "installed"
-                  }
-                ],
+                "components": "<VOLATILE:array>",
                 "dataPurgedAt": "<masked>",
                 "enabled": true,
                 "gettingStarted": [
@@ -307,16 +234,10 @@
                     "title": "Elige el modo del guardia"
                   }
                 ],
-                "hardware": {
-                  "freeDiskMb": 196608,
-                  "minRamMb": 1536,
-                  "reasons": [],
-                  "recommendedRamMb": 3072,
-                  "verdict": "ok"
-                },
+                "hardware": "<VOLATILE:object>",
                 "hasData": true,
                 "id": "surveillance",
-                "installedBytes": 578108270,
+                "installedBytes": "<VOLATILE:number>",
                 "intro": {
                   "examples": [
                     "Mira la c\u00e1mara de la puerta en vivo desde el celular",
@@ -339,7 +260,7 @@
                 "summary": "C\u00e1maras en vivo, zonas, detecci\u00f3n de personas y el guardia que te avisa de lo importante."
               },
               {
-                "components": [],
+                "components": "<VOLATILE:array>",
                 "dataPurgedAt": "<masked>",
                 "enabled": true,
                 "gettingStarted": [
@@ -354,16 +275,10 @@
                     "title": "Empieza un proyecto"
                   }
                 ],
-                "hardware": {
-                  "freeDiskMb": 196608,
-                  "minRamMb": 64,
-                  "reasons": [],
-                  "recommendedRamMb": 128,
-                  "verdict": "ok"
-                },
-                "hasData": true,
+                "hardware": "<VOLATILE:object>",
+                "hasData": false,
                 "id": "productivity",
-                "installedBytes": 0,
+                "installedBytes": "<VOLATILE:number>",
                 "intro": {
                   "examples": [
                     "Agrega la reuni\u00f3n del jueves a la agenda habl\u00e1ndole a Argus",
@@ -384,20 +299,14 @@
                 "summary": "Agenda, proyectos y tareas compartidas con tu familia."
               },
               {
-                "components": [],
+                "components": "<VOLATILE:array>",
                 "dataPurgedAt": "<masked>",
                 "enabled": false,
                 "gettingStarted": [],
-                "hardware": {
-                  "freeDiskMb": 196608,
-                  "minRamMb": 0,
-                  "reasons": [],
-                  "recommendedRamMb": 0,
-                  "verdict": "ok"
-                },
+                "hardware": "<VOLATILE:object>",
                 "hasData": false,
                 "id": "agronomy",
-                "installedBytes": 0,
+                "installedBytes": "<VOLATILE:number>",
                 "intro": {
                   "examples": [
                     "Saber cu\u00e1ndo regar seg\u00fan el clima de tu terreno",
@@ -1087,99 +996,8 @@
           "info": {
             "action": "disable",
             "allowed": true,
-            "data": {
-              "owners": [
-                {
-                  "bytes": 647,
-                  "items": [
-                    {
-                      "count": 1,
-                      "kind": "cameras"
-                    },
-                    {
-                      "count": 1,
-                      "kind": "zones"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "evidence_photos"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "camera_actions"
-                    }
-                  ],
-                  "owner": "camera",
-                  "reachable": true,
-                  "reported": true
-                },
-                {
-                  "bytes": 3622,
-                  "items": [
-                    {
-                      "count": 0,
-                      "kind": "environments"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "episodes"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "incidents"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "decisions"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "expected_guests"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "evidence_photos"
-                    }
-                  ],
-                  "owner": "guard",
-                  "reachable": true,
-                  "reported": true
-                },
-                {
-                  "bytes": 0,
-                  "items": [
-                    {
-                      "count": 0,
-                      "kind": "visitors"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "visitor_face_samples"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "visits"
-                    }
-                  ],
-                  "owner": "identity",
-                  "reachable": true,
-                  "reported": true
-                },
-                {
-                  "bytes": 369,
-                  "items": [
-                    {
-                      "count": 2,
-                      "kind": "change_history"
-                    }
-                  ],
-                  "owner": "sync",
-                  "reachable": true,
-                  "reported": true
-                }
-              ]
-            },
-            "filesBytes": 578108270,
+            "data": "<VOLATILE:object>",
+            "filesBytes": "<VOLATILE:number>",
             "invitations": [],
             "keepsRunning": [
               {
@@ -1257,99 +1075,8 @@
           "info": {
             "action": "uninstall",
             "allowed": true,
-            "data": {
-              "owners": [
-                {
-                  "bytes": 647,
-                  "items": [
-                    {
-                      "count": 1,
-                      "kind": "cameras"
-                    },
-                    {
-                      "count": 1,
-                      "kind": "zones"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "evidence_photos"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "camera_actions"
-                    }
-                  ],
-                  "owner": "camera",
-                  "reachable": true,
-                  "reported": true
-                },
-                {
-                  "bytes": 3622,
-                  "items": [
-                    {
-                      "count": 0,
-                      "kind": "environments"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "episodes"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "incidents"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "decisions"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "expected_guests"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "evidence_photos"
-                    }
-                  ],
-                  "owner": "guard",
-                  "reachable": true,
-                  "reported": true
-                },
-                {
-                  "bytes": 0,
-                  "items": [
-                    {
-                      "count": 0,
-                      "kind": "visitors"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "visitor_face_samples"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "visits"
-                    }
-                  ],
-                  "owner": "identity",
-                  "reachable": true,
-                  "reported": true
-                },
-                {
-                  "bytes": 369,
-                  "items": [
-                    {
-                      "count": 2,
-                      "kind": "change_history"
-                    }
-                  ],
-                  "owner": "sync",
-                  "reachable": true,
-                  "reported": true
-                }
-              ]
-            },
-            "filesBytes": 578108270,
+            "data": "<VOLATILE:object>",
+            "filesBytes": "<VOLATILE:number>",
             "invitations": [],
             "keepsRunning": [
               {
@@ -1430,51 +1157,8 @@
           "info": {
             "action": "disable",
             "allowed": true,
-            "data": {
-              "owners": [
-                {
-                  "bytes": 315,
-                  "items": [
-                    {
-                      "count": 1,
-                      "kind": "projects"
-                    },
-                    {
-                      "count": 1,
-                      "kind": "tasks"
-                    },
-                    {
-                      "count": 1,
-                      "kind": "project_members"
-                    },
-                    {
-                      "count": 1,
-                      "kind": "calendar_events"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "calendar_shares"
-                    }
-                  ],
-                  "owner": "productivity",
-                  "reachable": true,
-                  "reported": true
-                },
-                {
-                  "bytes": 0,
-                  "items": [
-                    {
-                      "count": 0,
-                      "kind": "change_history"
-                    }
-                  ],
-                  "owner": "sync",
-                  "reachable": true,
-                  "reported": true
-                }
-              ]
-            },
-            "filesBytes": 0,
+            "data": "<VOLATILE:object>",
+            "filesBytes": "<VOLATILE:number>",
             "invitations": [],
             "keepsRunning": [],
             "moduleId": "productivity",
@@ -1516,10 +1200,8 @@
           "info": {
             "action": "disable",
             "allowed": false,
-            "data": {
-              "owners": []
-            },
-            "filesBytes": 1085866221,
+            "data": "<VOLATILE:object>",
+            "filesBytes": "<VOLATILE:number>",
             "invitations": [],
             "keepsRunning": [],
             "moduleId": "core",
@@ -1559,105 +1241,14 @@
           "info": {
             "action": "uninstall",
             "allowed": true,
-            "data": {
-              "owners": [
-                {
-                  "bytes": 647,
-                  "items": [
-                    {
-                      "count": 1,
-                      "kind": "cameras"
-                    },
-                    {
-                      "count": 1,
-                      "kind": "zones"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "evidence_photos"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "camera_actions"
-                    }
-                  ],
-                  "owner": "camera",
-                  "reachable": true,
-                  "reported": true
-                },
-                {
-                  "bytes": 3622,
-                  "items": [
-                    {
-                      "count": 0,
-                      "kind": "environments"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "episodes"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "incidents"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "decisions"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "expected_guests"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "evidence_photos"
-                    }
-                  ],
-                  "owner": "guard",
-                  "reachable": true,
-                  "reported": true
-                },
-                {
-                  "bytes": 0,
-                  "items": [
-                    {
-                      "count": 0,
-                      "kind": "visitors"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "visitor_face_samples"
-                    },
-                    {
-                      "count": 0,
-                      "kind": "visits"
-                    }
-                  ],
-                  "owner": "identity",
-                  "reachable": true,
-                  "reported": true
-                },
-                {
-                  "bytes": 369,
-                  "items": [
-                    {
-                      "count": 2,
-                      "kind": "change_history"
-                    }
-                  ],
-                  "owner": "sync",
-                  "reachable": true,
-                  "reported": true
-                }
-              ]
-            },
-            "filesBytes": 578108270,
+            "data": "<VOLATILE:object>",
+            "filesBytes": "<VOLATILE:number>",
             "invitations": [
               {
                 "createdBy": 1,
                 "createdByName": "Golden",
                 "expiresAt": "<masked>",
-                "id": 2,
+                "id": 1,
                 "role": "guard"
               }
             ],
@@ -4368,39 +3959,7 @@
                 ]
               }
             ],
-            "recommendation": {
-              "fallback": "performance",
-              "hardware": {
-                "cores": 8,
-                "gpu": "vaapi",
-                "isa": "avx2",
-                "ramGb": 30.7,
-                "threads": 16
-              },
-              "missed": null,
-              "profile": "quality",
-              "reason": "meets",
-              "rule": {
-                "minCores": 8,
-                "minRamGb": 14.0,
-                "profile": "quality",
-                "vectorIsa": true
-              },
-              "rules": [
-                {
-                  "minCores": 8,
-                  "minRamGb": 14.0,
-                  "profile": "quality",
-                  "vectorIsa": true
-                },
-                {
-                  "minCores": 4,
-                  "minRamGb": 7.0,
-                  "profile": "balanced",
-                  "vectorIsa": true
-                }
-              ]
-            }
+            "recommendation": "<VOLATILE:object>"
           },
           "status": 200
         },

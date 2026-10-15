@@ -4178,6 +4178,7 @@
       "response": {
         "contentType": "application/json",
         "json": {
+          "internalTls": "<VOLATILE:object>",
           "service": "argus-guard",
           "status": "ok"
         },

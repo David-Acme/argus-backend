@@ -1418,6 +1418,8 @@ def write_manifest(fixtures, units, probe_count, deviations):
             "a JSON answer must carry exactly the "
             "{status, info, errors} envelope",
             "a 204 answer must carry an empty body",
+            "a volatile key is recorded as <VOLATILE:type>: its key and its "
+            "JSON type stay compared, its value does not",
         ],
         "declaredDeviations": deviations,
         "units": units,
@@ -1581,42 +1583,45 @@ def without_volatile(entry, body, volatile):
     body = json.loads(json.dumps(body))
     node = body["info"] if "info" in body else body
     for key in fields["keys"]:
-        drop_path(node, key.split("."))
+        replace_path(node, key.split("."), volatile_marker)
     for key in fields.get("placeholders", ()):
-        replace_path(node, key.split("."), PLACEHOLDER)
+        replace_path(node, key.split("."), lambda _: PLACEHOLDER)
     for key in fields.get("generated", ()):
-        replace_path(node, key.split("."), GENERATED)
+        replace_path(node, key.split("."), lambda _: GENERATED)
     return body
 
 
-def replace_path(node, parts, value):
+def json_type(value):
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "boolean"
+    if isinstance(value, (int, float)):
+        return "number"
+    if isinstance(value, str):
+        return "string"
+    if isinstance(value, list):
+        return "array"
+    return "object"
+
+
+def volatile_marker(value):
+    return f"<VOLATILE:{json_type(value)}>"
+
+
+def replace_path(node, parts, mark):
     head, rest = parts[0], parts[1:]
     if head.endswith("[]"):
         items = node.get(head[:-2]) if isinstance(node, dict) else None
         for item in items if isinstance(items, list) else ():
-            replace_path(item, rest, value)
+            replace_path(item, rest, mark)
         return
     if not isinstance(node, dict):
         return
     if rest:
-        replace_path(node.get(head), rest, value)
+        replace_path(node.get(head), rest, mark)
     elif head in node:
-        node[head] = value
-
-
-def drop_path(node, parts):
-    head, rest = parts[0], parts[1:]
-    if head.endswith("[]"):
-        items = node.get(head[:-2]) if isinstance(node, dict) else None
-        for item in items if isinstance(items, list) else ():
-            drop_path(item, rest)
-        return
-    if not isinstance(node, dict):
-        return
-    if rest:
-        drop_path(node.get(head), rest)
-    else:
-        node.pop(head, None)
+        node[head] = mark(node[head])
 
 
 def compare(expected, actual, volatile):
@@ -1627,7 +1632,7 @@ def compare(expected, actual, volatile):
                 f"response.{field}: {expected['response'][field]!r} -> "
                 f"{actual['response'][field]!r}")
     problems.extend(differences(
-        without_volatile(expected, expected["response"].get("json"), volatile),
+        expected["response"].get("json"),
         without_volatile(actual, actual["response"].get("json"), volatile),
         "response.json"))
     if expected["response"].get("text") != actual["response"].get("text"):

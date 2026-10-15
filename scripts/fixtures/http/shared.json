@@ -15,6 +15,7 @@
         "json": {
           "errors": null,
           "info": {
+            "internalTls": "<VOLATILE:object>",
             "nats": {
               "connected": true,
               "enabled": true
@@ -45,6 +46,7 @@
         "json": {
           "errors": null,
           "info": {
+            "internalTls": "<VOLATILE:object>",
             "objectEvents": {
               "oldestPendingAgeS": 0,
               "overflowDropped": 0,
@@ -81,6 +83,7 @@
               "liveness": true,
               "loaded": true
             },
+            "internalTls": "<VOLATILE:object>",
             "nats": {
               "connected": true,
               "enabled": true
@@ -116,6 +119,7 @@
         "json": {
           "errors": null,
           "info": {
+            "internalTls": "<VOLATILE:object>",
             "nats": {
               "connected": true,
               "enabled": true
@@ -153,6 +157,7 @@
         "json": {
           "errors": null,
           "info": {
+            "internalTls": "<VOLATILE:object>",
             "service": "argus-productivity",
             "uptimeSeconds": "<masked>"
           },
@@ -179,6 +184,7 @@
         "json": {
           "errors": null,
           "info": {
+            "internalTls": "<VOLATILE:object>",
             "service": "argus-settings",
             "uptimeSeconds": "<masked>"
           },
@@ -205,6 +211,7 @@
         "json": {
           "errors": null,
           "info": {
+            "internalTls": "<VOLATILE:object>",
             "nats": {
               "connected": true,
               "enabled": true
@@ -235,6 +242,7 @@
         "json": {
           "errors": null,
           "info": {
+            "internalTls": "<VOLATILE:object>",
             "service": "argus-llm",
             "uptimeSeconds": "<masked>"
           },
@@ -261,6 +269,7 @@
         "json": {
           "errors": null,
           "info": {
+            "internalTls": "<VOLATILE:object>",
             "service": "argus-stt",
             "uptimeSeconds": "<masked>"
           },
@@ -287,6 +296,7 @@
         "json": {
           "errors": null,
           "info": {
+            "internalTls": "<VOLATILE:object>",
             "service": "argus-tts",
             "uptimeSeconds": "<masked>"
           },
@@ -313,6 +323,7 @@
         "json": {
           "errors": null,
           "info": {
+            "internalTls": "<VOLATILE:object>",
             "service": "argus-vlm",
             "uptimeSeconds": "<masked>"
           },
