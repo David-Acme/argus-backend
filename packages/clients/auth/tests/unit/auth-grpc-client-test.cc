@@ -245,7 +245,10 @@ TEST_CASE("the verdict dials the mutual TLS port with the internal certificate")
                                              .deviceHash = "",
                                              .hasDeviceContext = false,
                                              .origin = {}});
-  REQUIRE(verdict.has_value());
+  if (!verdict) {
+    FAIL("the verdict is empty");
+    return;
+  }
   CHECK(verdict->valid());
 
   const AuthClient plaintext({.target = endpoint.plaintextToTlsPortTarget(), .fleetSecret = kFleetSecret});
