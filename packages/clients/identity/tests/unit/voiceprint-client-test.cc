@@ -238,7 +238,10 @@ TEST_CASE("the voiceprint client dials the mutual TLS port with the internal cer
   const VoiceprintClient client(
       {.target = endpoint.tlsTarget(), .fleetSecret = kFleetSecret});
   const auto answer = client.identify(clip);
-  REQUIRE(answer.has_value());
+  if (!answer) {
+    FAIL("the identify answer is empty");
+    return;
+  }
   CHECK(answer->user_id() == 7);
   CHECK(service.seen().count("x-argus-fleet") == 1);
 
