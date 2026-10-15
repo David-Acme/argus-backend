@@ -248,7 +248,10 @@ TEST_CASE("a ring created and marked pushed in one transaction rolls back as one
   CallCreateInput row = ringingRow();
   row.client = transaction.get();
   const auto id = drogon::sync_wait(calls.createRinging(row));
-  REQUIRE(id.has_value());
+  if (!id) {
+    FAIL("the ring id is empty");
+    return;
+  }
   CHECK(drogon::sync_wait(calls.markPushed({.id = *id, .now = kNow, .client = transaction.get()})));
   CHECK(drogon::sync_wait(delivery.ring(createdRing(*id), transaction.get())) == 1);
   db_transaction::rollback(transaction);
@@ -273,7 +276,10 @@ TEST_CASE("a ring created and marked pushed in one transaction commits as one")
   CallCreateInput row = ringingRow();
   row.client = transaction.get();
   const auto id = drogon::sync_wait(calls.createRinging(row));
-  REQUIRE(id.has_value());
+  if (!id) {
+    FAIL("the ring id is empty");
+    return;
+  }
   CHECK(drogon::sync_wait(calls.markPushed({.id = *id, .now = kNow, .client = transaction.get()})));
   CHECK(drogon::sync_wait(delivery.ring(createdRing(*id), transaction.get())) == 1);
   CHECK(drogon::sync_wait(commitTransaction(std::move(transaction))));
