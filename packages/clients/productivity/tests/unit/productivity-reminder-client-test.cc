@@ -54,7 +54,10 @@ TEST_CASE("the reminder client dials the mutual TLS port with the internal certi
                                 .idempotencyKey = "dentista-1"};
   const auto created = client.create(call);
   CHECK(created.outcome == ReminderRpcOutcome::Success);
-  REQUIRE(created.reminder.has_value());
+  if (!created.reminder) {
+    FAIL("the created reminder is empty");
+    return;
+  }
   CHECK(created.reminder->id() == 5);
 
   const ProductivityReminderClient plaintext(
