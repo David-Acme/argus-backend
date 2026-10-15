@@ -76,8 +76,8 @@ drogon::Task<int64_t> CallPushDelivery::deliver(CallPushInput input) const
   intent["deepLink"] = callDeepLink(call.callId());
   intent["title"] = copy.title;
   intent["body"] = copy.body;
-  intent["iat"] = Json::Int64(now);
-  intent["exp"] = Json::Int64(call.expiresAt);
+  intent["iat"] = static_cast<Json::Int64>(now);
+  intent["exp"] = static_cast<Json::Int64>(call.expiresAt);
   const std::string intentId = randomBytes(kIntentIdSize);
   if (intentId.size() != kIntentIdSize)
     co_return 0;

@@ -143,7 +143,7 @@ TEST_CASE("the shared sealing vectors open under their infoHex and refuse a chan
     const std::string plaintext = fromHex(entry["plaintextHex"].asString());
     CHECK(openRaw(enc, ciphertext, info, {}) == plaintext);
     std::string changedInfo = info;
-    changedInfo.back() = static_cast<char>(changedInfo.back() ^ 0x01);
+    changedInfo.back() = static_cast<char>(static_cast<unsigned int>(static_cast<unsigned char>(changedInfo.back())) ^ 0x01U);
     CHECK_MESSAGE(openRaw(enc, ciphertext, changedInfo, {}).empty(), name);
     CHECK_MESSAGE(openRaw(enc, ciphertext, info, std::string(1, 'x')).empty(), name);
   }
@@ -157,7 +157,10 @@ TEST_CASE("a ciphertext at the 2048-byte cap seals and its envelope fits the pes
   CHECK(outcome.envelope.ciphertext.size() == kCiphertextCap);
 
   const auto envelopeBytes = push_envelope::sealedPayload(outcome.envelope);
-  REQUIRE(envelopeBytes.has_value());
+  if (!envelopeBytes) {
+    FAIL("the sealed envelope is empty");
+    return;
+  }
   CHECK(envelopeBytes->size() <= kEnvelopeCeiling);
 
   Json::Value body(Json::objectValue);
