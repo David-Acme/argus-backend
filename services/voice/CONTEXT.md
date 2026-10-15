@@ -807,7 +807,7 @@ drained (600 ms after the last chunk, so the gap between two sentences does not 
 thinking without audio.
 
 **Ending.** `argus.hangup` ends at once. A user who leaves (a dead connection
-the SDK gave up on) has 20 s (`[rtc] rejoin_grace_ms`) to come back with the
+the SDK gave up on) has 12 s (`[rtc] rejoin_grace_ms`, 2026-10-15) to come back with the
 same identity and the call continues; after that, or when nobody joins within
 60 s (`[rtc] first_join_wait_ms`), the agent sends `argus.done {timeout}` and
 leaves. A participant removed by the server (session revoked, account
@@ -832,6 +832,11 @@ caller_notification`) before it rings a user. Every live session of that user
 quiet moment exactly like a camera offer, before any camera offer, without
 the 30 s spacing, dropped after 60 s, and joins the history as an assistant
 turn. `delivered` is true when at least one live call took it.
+
+A session counts as live for an announcement only while it is hearing the
+user: see "A silent session is not a live session" below. A session silent
+past the limit is closed there, and an alert that finds no live session rings
+the user's devices instead of being spoken into a dead socket.
 
 ## Latency over WebRTC, measured (2026-10-04)
 
@@ -895,6 +900,54 @@ says nothing, because the user decided and does not need to be told. The
 timeout ends say nothing either — `timeout` while nobody joined, or after
 `rejoin_grace_ms` for a user whose connection died — since there is no live
 listener left to hear them.
+
+## A silent session is not a live session (2026-10-15)
+
+**Why.** A critical alert was swallowed on 2026-10-14: a stale PCM session of
+the owner stayed `active` after the phone stopped streaming (the sync→voice
+half-close never reached the server), so `announce` counted it as heard, the
+call engine chose not to ring, and no alert reached the owner. The stream is
+the only proof the user can hear Argus, so liveness is measured on the audio,
+not on the flag.
+
+**The rule.** Each session stamps `lastActivityTicks` on every PCM chunk it
+receives (`feedSamples`, before any mute or speaking gate: a muted user is
+still a user on the line). `announce` then decides per live session of the
+user:
+
+- idle within `kSessionActivityWindow` (10 s) → the announcement is spoken;
+- idle beyond `kSessionSilenceLimit` (15 s) → the session is stopped, logged
+  once as `Voice: a session of user N closed after 15000 ms without audio`,
+  and it is not counted;
+- otherwise it is not counted, and the call engine rings.
+
+`announce` returns `delivered` from the sessions that were spoken to only.
+
+**The numbers.**
+
+- **10 s window.** The app sends PCM continuously while a session is open, so
+  a gap of 10 s is a stalled link, not a pause in the conversation. Shorter
+  than a few seconds would flap on a Wi-Fi hiccup; longer than 10 s would let a
+  dead link keep swallowing alerts.
+- **15 s silence limit.** Five seconds above the window: a session that is
+  past the window but not yet silent may still recover (a late chunk, a
+  reconnect), and only a session that stays silent that long is closed. The
+  limit is checked at announce time, so the close happens when it matters.
+- **12 s rejoin grace (`[rtc] rejoin_grace_ms`, was 20 s).** An RTC user who
+  drops is given 12 s to come back before the call ends. Shortened so that a
+  dead RTC call is ended before the silence limit has to clean up a stale
+  session behind it. Both figures are constants or config, never literals in
+  the path.
+
+**Tests.** `voice-session-seam-test.cc`: a session silent past the limit is
+not heard and an alert rings (`announce` false twice); a session with recent
+audio hears the announcement. The sync client's `finish()` cancels its stream
+(`TryCancel`) instead of waiting on in-flight writes, so a stuck write cannot
+keep a PCM session open after the phone's app is killed.
+
+**Not yet.** RTC presence is not part of the announce decision: an RTC call
+that is live but whose PCM session is silent is still rung, not spoken to.
+Wiring the RTC presence in is a follow-up with its own test.
 
 ## The turn's failed speech reaches the app as silence (2026-10-09)
 

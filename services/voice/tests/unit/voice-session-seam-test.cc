@@ -3271,6 +3271,50 @@ TEST_CASE("An announcement reaches every live call of that user and nobody else"
   session.stop(sink);
 }
 
+TEST_CASE("A session that has gone silent is not heard, so a critical alert rings")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
+  VoiceSessionService session(seam);
+  session.setLiveness({.window = std::chrono::milliseconds(100),
+                       .silenceLimit = std::chrono::milliseconds(200)});
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  session.start(sink, voiceIdentity);
+  REQUIRE(waitFor([&] { return sink.hasType("voice:assistant"); }));
+  std::this_thread::sleep_for(std::chrono::milliseconds(350));
+  CHECK_FALSE(session.announce(7, "Alerta crítica en el patio."));
+  CHECK_FALSE(session.announce(7, "Alerta crítica en el patio."));
+}
+
+TEST_CASE("A session with recent audio hears an announcement")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
+  VoiceSessionService session(seam);
+  session.setLiveness({.window = std::chrono::milliseconds(5000),
+                       .silenceLimit = std::chrono::milliseconds(10000)});
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceIdentity voiceIdentity;
+  voiceIdentity.set_user_id(7);
+  voiceIdentity.set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  session.start(sink, voiceIdentity);
+  REQUIRE(waitFor([&] { return sink.hasType("voice:assistant"); }));
+  const std::vector<float> quiet(1600, 0.0F);
+  session.feedSamples(sink, quiet);
+  CHECK(session.announce(7, "Ha llegado alguien al patio."));
+  CHECK(waitFor([&] { return tts.lastText == "Ha llegado alguien al patio."; }));
+  session.stop(sink);
+}
+
 int main(int argc, char** argv)
 {
   try {

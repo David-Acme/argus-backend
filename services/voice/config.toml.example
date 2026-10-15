@@ -23,7 +23,7 @@ credential = ""
 [rtc]
 enabled = true
 url = "ws://127.0.0.1:7880"
-rejoin_grace_ms = 20000
+rejoin_grace_ms = 12000
 first_join_wait_ms = 60000
 
 [notification]

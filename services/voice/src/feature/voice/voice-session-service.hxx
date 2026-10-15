@@ -47,10 +47,27 @@ struct PcmFrame
   size_t size{0};
 };
 
+inline constexpr std::chrono::milliseconds kSessionActivityWindow{10000};
+inline constexpr std::chrono::milliseconds kSessionSilenceLimit{15000};
+
+struct SessionLiveness
+{
+  std::chrono::milliseconds window{kSessionActivityWindow};
+  std::chrono::milliseconds silenceLimit{kSessionSilenceLimit};
+};
+
+inline int64_t activityTicks()
+{
+  return std::chrono::duration_cast<std::chrono::nanoseconds>(
+             std::chrono::steady_clock::now().time_since_epoch())
+      .count();
+}
+
 class VoiceSessionService
 {
 public:
   explicit VoiceSessionService(const VoiceEngineSeam& engines = {});
+  void setLiveness(SessionLiveness value);
 
   void start(VoiceSessionSink& sink,
              const argus::voice::v1::VoiceStart& request);
@@ -186,6 +203,7 @@ private:
     explicit Session(SessionInit init)
         : vad(std::move(init.model)), history(init.lang), lang(init.lang), unheard(init.unheardSeed)
     {
+      lastActivityTicks.store(activityTicks());
     }
 
     static constexpr size_t kPcmRingSamples = static_cast<size_t>(16000) * 30;
@@ -211,6 +229,7 @@ private:
     bool ducked{false};
     std::atomic<bool> interrupt{false};
     std::atomic<bool> active{true};
+  std::atomic<int64_t> lastActivityTicks{0};
     std::atomic<bool> muted{false};
     std::atomic<bool> vadResetPending{false};
     std::mutex turnMutex;
@@ -298,6 +317,7 @@ private:
 
   mutable std::mutex mutex_;
   std::unordered_map<VoiceSessionSink*, std::shared_ptr<Session>> sessions_;
+  SessionLiveness liveness_;
   ReactionEngine reactions_;
   IVoiceStt& stt_;
   IVoiceTts& tts_;

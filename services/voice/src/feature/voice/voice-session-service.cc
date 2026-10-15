@@ -603,6 +603,7 @@ void VoiceSessionService::feedSamples(VoiceSessionSink& sink, std::span<const fl
   const auto session = sessionOf(sink);
   if (!session)
     return;
+  session->lastActivityTicks.store(activityTicks());
 
   if (session->muted.load() || (session->speaking && !session->duplex))
     return;
@@ -614,17 +615,40 @@ void VoiceSessionService::feedSamples(VoiceSessionSink& sink, std::span<const fl
   session->pcmCv.notify_one();
 }
 
+void VoiceSessionService::setLiveness(SessionLiveness value)
+{
+  std::scoped_lock lock(mutex_);
+  liveness_ = value;
+}
+
 bool VoiceSessionService::announce(int64_t userId, const std::string& text)
 {
   const std::string line = sanitizedLine(text, kMaxAnnouncementChars);
   if (userId <= 0 || line.empty())
     return false;
+  const int64_t now = activityTicks();
   std::vector<std::shared_ptr<Session>> targets;
+  std::vector<std::pair<VoiceSessionSink*, std::shared_ptr<Session>>> silent;
+  SessionLiveness liveness{};
   {
     std::scoped_lock lock(mutex_);
-    for (const auto& [sink, session] : sessions_)
-      if (session->userId == userId && session->active.load())
+    liveness = liveness_;
+    for (const auto& [sink, session] : sessions_) {
+      if (session->userId != userId || !session->active.load())
+        continue;
+      const auto idle = std::chrono::nanoseconds(now - session->lastActivityTicks.load());
+      if (idle > liveness.silenceLimit) {
+        silent.emplace_back(sink, session);
+        continue;
+      }
+      if (idle <= liveness.window)
         targets.push_back(session);
+    }
+  }
+  for (const auto& [sink, session] : silent) {
+    LOG_INFO << "Voice: a session of user " << userId << " closed after "
+             << liveness.silenceLimit.count() << " ms without audio";
+    stop(*sink);
   }
   for (const auto& session : targets) {
     {

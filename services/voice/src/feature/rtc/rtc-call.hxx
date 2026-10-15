@@ -25,7 +25,7 @@
 
 struct RtcCallTimings
 {
-  std::chrono::milliseconds rejoinGrace{20000};
+  std::chrono::milliseconds rejoinGrace{12000};
   std::chrono::milliseconds firstJoinWait{60000};
   std::chrono::milliseconds thinkingTimeout{20000};
   std::chrono::milliseconds connectTimeout{5000};
