@@ -58,7 +58,7 @@ bool assistantNoticeOnly(
 
 }
 
-NotificationRpcService::NotificationRpcService(Dependencies dependencies)
+NotificationRpcService::NotificationRpcService(std::shared_ptr<const NotificationService> notifications)
     : guardCallers_(
           {argus::client::CallerCredential{.service = "argus-guard",
                                         .secret = ConfigService::getString(
@@ -71,15 +71,13 @@ NotificationRpcService::NotificationRpcService(Dependencies dependencies)
           {argus::client::CallerCredential{.service = "argus-sync",
                                         .secret = ConfigService::getString(
                                             "grpc.caller_sync")}}),
-      notificationService_(
-          {.deliverySink = std::move(dependencies.deliverySink),
-           .alerts = std::move(dependencies.alerts)})
+      notificationService_(std::move(notifications))
 {
 }
 
 void NotificationRpcService::startDeliveryReconciler()
 {
-  if (!notificationService_.hasDeliverySink()) {
+  if (!notificationService_->hasDeliverySink()) {
     LOG_INFO << "delivery reconciler disabled: no delivery sink installed; "
                 "intents stay pending";
     return;
@@ -90,16 +88,16 @@ void NotificationRpcService::startDeliveryReconciler()
       co_return;
     try {
       const DeliverPendingOutcome outcome =
-          co_await notificationService_.deliverPending();
+          co_await notificationService_->deliverPending();
       if (outcome == DeliverPendingOutcome::StreamUnavailable) {
         const int64_t backlog =
-            co_await notificationService_.pendingBacklog();
+            co_await notificationService_->pendingBacklog();
         LOG_WARN << "delivery reconciler deferred (stream_unavailable) with "
                  << backlog << " intent(s) pending";
       }
       else if (outcome != DeliverPendingOutcome::Settled) {
         const int64_t backlog =
-            co_await notificationService_.pendingBacklog();
+            co_await notificationService_->pendingBacklog();
         LOG_WARN << "delivery reconciler deferred ("
                  << deliverPendingOutcomeToString(outcome) << ") with "
                  << backlog << " intent(s) pending";
@@ -127,13 +125,13 @@ void NotificationRpcService::startDeliveryReconciler()
 
 drogon::Task<void> NotificationRpcService::bootSelfTest() const
 {
-  static_cast<void>(co_await notificationService_.runProbe());
+  static_cast<void>(co_await notificationService_->runProbe());
   co_return;
 }
 
 void NotificationRpcService::startSelfTestProber()
 {
-  if (!notificationService_.hasDeliverySink()) {
+  if (!notificationService_->hasDeliverySink()) {
     LOG_INFO << "delivery self-test disabled: no delivery sink installed";
     return;
   }
@@ -147,7 +145,7 @@ void NotificationRpcService::startSelfTestProber()
     if (!ticket)
       co_return;
     try {
-      co_await notificationService_.runSelfTest();
+      co_await notificationService_->runSelfTest();
     }
     catch (const std::exception& e) {
       LOG_WARN << "delivery self-test failed: " << e.what();
@@ -234,7 +232,7 @@ grpc::ServerUnaryReactor* NotificationRpcService::CreateNotifications(
           batch.userIds.push_back(userId);
 
         const NotificationCreateOutcome outcome =
-            co_await notificationService_.createManyAndEmit(batch);
+            co_await notificationService_->createManyAndEmit(batch);
         responseWriter->set_created(static_cast<int32_t>(outcome.createdCount));
         responseWriter->set_duplicate(outcome.duplicate);
         reactor->Finish(grpc::Status::OK);

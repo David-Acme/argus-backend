@@ -245,8 +245,8 @@ TEST_CASE("the settings caller and the notification callers cannot stand in for 
   CHECK(settingsCallers[0].service == kSettingsCaller);
 
   SettingsRegistry registry(notificationSettingsCatalog());
-  NotificationRpcService notifications(NotificationRpcService::Dependencies{
-      .deliverySink = nullptr});
+  NotificationRpcService notifications(std::make_shared<const NotificationService>(
+      NotificationService::Dependencies{.deliverySink = nullptr}));
   SettingsRpcService settings(SettingsRpcInput{
       .service = "notification", .registry = &registry, .credentials = settingsCallers});
   int port = 0;

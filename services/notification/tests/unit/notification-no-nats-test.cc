@@ -175,7 +175,7 @@ TEST_CASE("no NATS configured keeps intents pending without terminating")
   const NotificationService unsinked;
   CHECK_FALSE(unsinked.hasDeliverySink());
 
-  NotificationRpcService rpc(NotificationRpcService::Dependencies{});
+  NotificationRpcService rpc(std::make_shared<const NotificationService>(NotificationService::Dependencies{}));
   rpc.startDeliveryReconciler();
   const auto created =
       drogon::sync_wait(unsinked.createManyAndEmit(makeBatch("no-nats-1")));
@@ -226,8 +226,8 @@ TEST_CASE("the reconciler names the pending backlog when the stream is down")
 
   auto sink = std::make_shared<GatedDeliverySink>();
   sink->streamOk = false;
-  NotificationRpcService rpc(
-      NotificationRpcService::Dependencies{.deliverySink = sink});
+  NotificationRpcService rpc(std::make_shared<const NotificationService>(
+      NotificationService::Dependencies{.deliverySink = sink}));
   rpc.startDeliveryReconciler();
   const NotificationService service({.deliverySink = sink});
   drogon::sync_wait(service.createManyAndEmit(makeBatch("nbk:1")));

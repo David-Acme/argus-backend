@@ -15,10 +15,7 @@ class NotificationRpcService final
     : public argus::notification::v1::NotificationService::CallbackService
 {
 public:
-  using Dependencies = NotificationService::Dependencies;
-
-  NotificationRpcService() = default;
-  explicit NotificationRpcService(Dependencies dependencies);
+  explicit NotificationRpcService(std::shared_ptr<const NotificationService> notifications);
 
   grpc::ServerUnaryReactor* CreateNotifications(
       grpc::CallbackServerContext* context,
@@ -45,6 +42,6 @@ private:
   std::vector<argus::client::CallerCredential> syncCallers_;
   std::shared_ptr<const CallEngine> callEngine_;
   std::shared_ptr<TaskGate> tasks_;
-  NotificationService notificationService_;
+  std::shared_ptr<const NotificationService> notificationService_;
   NotificationRepository repository_;
 };

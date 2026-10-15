@@ -6,10 +6,10 @@
 class NotificationCallSink final : public CallNotificationSink
 {
 public:
-  explicit NotificationCallSink(NotificationService::Dependencies dependencies);
+  explicit NotificationCallSink(std::shared_ptr<const NotificationService> notifications);
 
   drogon::Task<bool> notify(const CallNotice& notice) const override;
 
 private:
-  NotificationService service_;
+  std::shared_ptr<const NotificationService> service_;
 };

@@ -149,8 +149,8 @@ public:
 class RpcHarness
 {
 public:
-  explicit RpcHarness(NotificationRpcService::Dependencies dependencies)
-      : service_(std::move(dependencies))
+  explicit RpcHarness(NotificationService::Dependencies dependencies)
+      : service_(std::make_shared<const NotificationService>(std::move(dependencies)))
   {
     int port = 0;
     grpc::ServerBuilder builder;

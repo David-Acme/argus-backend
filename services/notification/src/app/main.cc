@@ -278,6 +278,7 @@ int main()
       .alerts = alertWriter,
       .ringPlanner = ringPlanner,
       .kindAllowed = kindAllowed};
+  const auto notifications = std::make_shared<const NotificationService>(deliveryDeps);
 
   const NotificationIdentityConfig identityConfig =
       NotificationConfig::resolveIdentity();
@@ -336,7 +337,7 @@ int main()
           .directory = identityClient
                            ? std::make_shared<IdentityCallDirectory>(identityClient)
                            : nullptr,
-          .notifier = std::make_shared<NotificationCallSink>(deliveryDeps),
+          .notifier = std::make_shared<NotificationCallSink>(notifications),
           .verdicts = natsBus ? std::make_shared<NatsResponseVerdictSink>(natsBus)
                               : nullptr,
           .clock = {},
@@ -438,7 +439,7 @@ int main()
                          {.certificatePem = loadedTls.certificatePem,
                           .trustBundlePem = loadedTls.trustBundlePem})}}));
 
-  NotificationRpcService notificationRpc(deliveryDeps);
+  NotificationRpcService notificationRpc(notifications);
   notificationRpc.attachCallEngine(callEngine);
   notificationRpc.attachTasks(tasks);
   CallRpcService callRpc(callEngine, NotificationConfig::resolveCallCallers());

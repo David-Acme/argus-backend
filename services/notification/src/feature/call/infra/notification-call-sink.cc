@@ -5,15 +5,15 @@
 #include <utility>
 
 NotificationCallSink::NotificationCallSink(
-    NotificationService::Dependencies dependencies)
-    : service_(std::move(dependencies))
+    std::shared_ptr<const NotificationService> notifications)
+    : service_(std::move(notifications))
 {
 }
 
 drogon::Task<bool> NotificationCallSink::notify(const CallNotice& notice) const
 {
   try {
-    const auto outcome = co_await service_.createManyAndEmit(
+    const auto outcome = co_await service_->createManyAndEmit(
         {.userIds = {notice.userId},
          .notification = {.userId = notice.userId,
                           .type = notice.type,
