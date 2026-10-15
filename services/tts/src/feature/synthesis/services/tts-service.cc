@@ -1,5 +1,6 @@
 #include "tts-service.hxx"
 
+#include <feature/synthesis/infra/pocket/pause-limiter.hxx>
 #include <feature/synthesis/infra/pocket/pcm-rate-converter.hxx>
 #include <feature/synthesis/infra/pocket/pocket-engine.hxx>
 #include <feature/synthesis/infra/pocket/pocket-load.hxx>
@@ -26,6 +27,8 @@
 namespace
 {
 constexpr size_t kSynthCacheSlots = 64;
+constexpr int kPocketMaxPauseMs = 350;
+constexpr float kPocketSilenceRms = 0.0032F;
 constexpr size_t kSynthCacheMaxChars = 300;
 constexpr size_t kPocketVoiceCacheSlots = 32;
 constexpr float kDefaultPocketTemperature = 0.3F;
@@ -415,13 +418,15 @@ bool TtsService::streamPocket(const PocketStreamJob& job)
   }
 
   PcmRateConverter converter({.sourceRate = engine->sampleRate(), .targetRate = targetRate});
+  PauseLimiter limiter(targetRate, kPocketMaxPauseMs, kPocketSilenceRms);
   bool delivered = false;
-  const auto deliver = [&](std::vector<float> samples) {
+  const auto emit = [&](std::vector<float> samples) {
     if (samples.empty() || job.stopped())
       return;
     delivered = true;
     job.onChunk(std::move(samples));
   };
+  const auto deliver = [&](std::vector<float> samples) { emit(limiter.process(samples)); };
   for (const auto& chunk : chunks) {
     auto lock = acquire(job.stopped);
     if (!lock.owns_lock())
@@ -441,6 +446,7 @@ bool TtsService::streamPocket(const PocketStreamJob& job)
     }
   }
   deliver(converter.flush());
+  emit(limiter.flush());
   return true;
 }
 

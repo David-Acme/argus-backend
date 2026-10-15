@@ -131,6 +131,12 @@ target_compile_options(tts-speech-text-test PRIVATE -Wall -Wextra)
 set_target_properties(tts-speech-text-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME tts-speech-text-test COMMAND tts-speech-text-test)
 
+add_executable(pause-limiter-test tests/unit/pause-limiter-test.cc)
+target_link_libraries(pause-limiter-test PRIVATE argus::tts-synthesis doctest::doctest)
+target_compile_options(pause-limiter-test PRIVATE -Wall -Wextra)
+set_target_properties(pause-limiter-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME pause-limiter-test COMMAND pause-limiter-test)
+
 add_executable(tts-settings-test tests/unit/tts-settings-test.cc)
 target_link_libraries(tts-settings-test PRIVATE argus::tts-settings argus::tts-synthesis doctest::doctest)
 argus_runtime_rpath(tts-settings-test)

@@ -27,6 +27,7 @@ argus_module(NAME tts-synthesis
         infra/pocket/pocket-prompt.cc
         infra/pocket/pocket-engine.cc
         infra/pocket/pcm-rate-converter.cc
+        infra/pocket/pause-limiter.cc
         infra/pocket/reference-audio.cc
     INCLUDES ../..
     DEPENDS
