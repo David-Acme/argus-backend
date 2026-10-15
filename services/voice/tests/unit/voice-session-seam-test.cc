@@ -3298,7 +3298,8 @@ TEST_CASE("A session with recent audio hears an announcement")
   FakeTts tts;
   FakeLlm llm;
   FakeIdentity identity;
-  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
+  ScriptedVad scriptedVad;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = scriptedVad};
   VoiceSessionService session(seam);
   session.setLiveness({.window = std::chrono::milliseconds(5000),
                        .silenceLimit = std::chrono::milliseconds(10000)});
