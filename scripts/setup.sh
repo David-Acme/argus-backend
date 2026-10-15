@@ -92,6 +92,10 @@ case "$PRIVACY_ACTION" in
   withdraw) privacy_withdraw_consent "$PRIVACY_DATA_DIR"; exit 0 ;;
 esac
 need_cmd openssl
+if [ "$CONFIG_ONLY" -eq 1 ] && git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "setup.sh --config-only refuses to run inside a Git work tree: a work tree can be a real installation, and this mode skips the privacy notice. Run it in a scratch copy (git archive)." >&2
+  exit 1
+fi
 if [ "$CONFIG_ONLY" -eq 0 ]; then
   privacy_require_consent "$PRIVACY_DATA_DIR" "scripts/setup.sh"
 fi

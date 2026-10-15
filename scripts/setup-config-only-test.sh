@@ -88,6 +88,27 @@ done
 run_setup --config-only > "$TEST_TMP/again.out" 2>&1
 grep -q "Configs and PKI are ready" "$TEST_TMP/again.out"
 
+WORK="$TEST_TMP/work-tree"
+mkdir -p "$WORK/services"
+cp -r "$ROOT/scripts" "$WORK/"
+for dir in "$ROOT"/services/*/; do
+  name="$(basename "$dir")"
+  if [ -f "$dir/config.toml.example" ]; then
+    mkdir -p "$WORK/services/$name"
+    cp "$dir/config.toml.example" "$WORK/services/$name/"
+  fi
+done
+git -C "$WORK" init -q
+if (cd "$WORK" && env PATH="$MOCK_BIN:$PATH" bash "$WORK/scripts/setup.sh" --config-only < /dev/null > "$TEST_TMP/work.out" 2>&1); then
+  echo "setup.sh --config-only ran inside a Git work tree" >&2
+  exit 1
+fi
+grep -q "refuses to run inside a Git work tree" "$TEST_TMP/work.out"
+if compgen -G "$WORK/services/*/config.toml" > /dev/null; then
+  echo "setup.sh --config-only wrote configs inside a Git work tree" >&2
+  exit 1
+fi
+
 if (cd "$TREE" && run_setup > "$TEST_TMP/full.out" 2>&1); then
   echo "the full setup ran without privacy consent" >&2
   exit 1
