@@ -812,7 +812,7 @@
               "kind": "home",
               "lanPresence": true,
               "mode": "home",
-              "modeUpdatedAt": "<masked>",
+              "modeUpdatedAt": "<masked:number>",
               "name": "Casa",
               "occupancy": "manual",
               "open": "",
@@ -823,7 +823,7 @@
               "scheduleEnabled": false,
               "staffOnly": false,
               "staffed": "",
-              "updatedAt": "<masked>"
+              "updatedAt": "<masked:number>"
             }
           ],
           "status": 200
@@ -886,7 +886,7 @@
               "kind": "home",
               "lanPresence": true,
               "mode": "home",
-              "modeUpdatedAt": "<masked>",
+              "modeUpdatedAt": "<masked:number>",
               "name": "Casa",
               "occupancy": "manual",
               "open": "",
@@ -897,7 +897,7 @@
               "scheduleEnabled": false,
               "staffOnly": false,
               "staffed": "",
-              "updatedAt": "<masked>"
+              "updatedAt": "<masked:number>"
             }
           ],
           "status": 200

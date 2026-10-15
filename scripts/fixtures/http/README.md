@@ -108,6 +108,8 @@ random by nature never becomes part of a contract:
   wherever it appears, inside a JSON body or in a non-JSON one;
 - a masked key keeps the shape of what it held, so an object under one is still
   compared field by field;
+- a masked scalar is written as `<masked:T>`, where `T` is its JSON type, so a
+  template built from it keeps the type it held (a masked number is a number);
 - the `errors` subtree is not masked by key name: its values are the server's
   own refusal text, which never echoes submitted material, and pinning that
   text is part of the contract.
@@ -174,12 +176,15 @@ checked.
 | `"<VOLATILE:T1\|T2>"` | a leaf | a live value of any listed type; the names are distinct and `null`, when listed, comes last (`<VOLATILE:string\|null>`) |
 | `{"<VOLATILE:array>": E}` | where an array stands | a list, every element of which matches the element template `E`; `E` is `null` when the recording held no element |
 | `"<VOLATILE:mayBeEmpty>": true` | beside `<VOLATILE:array>` | also the empty list; written only where the route declares it can answer empty |
+| `"<VOLATILE:enum:a\|b\|c>"` | a leaf | a live string that is one of the listed members. The set is copied from the source file named in `VOLATILE_FIELDS` (`enums`), and the first member is the sample a reader uses |
+| `{"<VOLATILE:or-null>": T}` | where a nullable record stands | `null`, or an object matching the plain template `T`. `T` has the fields and types of its struct, copied from the source file named in `VOLATILE_FIELDS` (`nullTemplates`) |
 | `"<GENERATED>"` | a leaf or a whole text body | any value: model output |
 | `"<BYTES>"` | a leaf | any value: a disk size on the answering host |
 
 `T` is one of `string`, `number`, `boolean`, `object`, `array` or `null`. A bare
 `"<VOLATILE:array>"` leaf is not in the grammar: an array is always the
-element-template form.
+element-template form. An enum marker is valid only with a non-empty set of
+distinct, non-empty members.
 
 An element template `E` is a leaf marker, an object of literal keys whose
 values are templates, or a nested `{"<VOLATILE:array>": …}`. Every element of
@@ -193,9 +198,9 @@ recorder refuses it until its real type is declared (`nullable`), so it becomes
 `<VOLATILE:T|null>`.
 
 The normalization markers the recorder writes are part of the same contract,
-on both sides of the comparison: `"<masked>"` (a masked key, see Normalization),
-`"<masked-hex32>"`, `"<masked-hex64>"`, `"<masked-token>"`, and the paths
-`"<STACK>"` and `"<ROOT>"`.
+on both sides of the comparison: `"<masked:T>"` (a masked key's value, see
+Normalization), `"<masked-hex32>"`, `"<masked-hex64>"`, `"<masked-token>"`, and
+the paths `"<STACK>"` and `"<ROOT>"`.
 
 ## What a run writes
 

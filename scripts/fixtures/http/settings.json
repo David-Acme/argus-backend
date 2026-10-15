@@ -69,28 +69,28 @@
           "info": {
             "modules": [
               {
-                "dataPurgedAt": "<masked>",
+                "dataPurgedAt": "<masked:null>",
                 "enabled": true,
                 "id": "core",
                 "lifecycle": "active",
                 "name": "Asistente y hogar"
               },
               {
-                "dataPurgedAt": "<masked>",
+                "dataPurgedAt": "<masked:null>",
                 "enabled": true,
                 "id": "surveillance",
                 "lifecycle": "active",
                 "name": "Vigilancia"
               },
               {
-                "dataPurgedAt": "<masked>",
+                "dataPurgedAt": "<masked:null>",
                 "enabled": true,
                 "id": "productivity",
                 "lifecycle": "active",
                 "name": "Productividad"
               },
               {
-                "dataPurgedAt": "<masked>",
+                "dataPurgedAt": "<masked:null>",
                 "enabled": false,
                 "id": "agronomy",
                 "lifecycle": "not_installed",
@@ -123,28 +123,28 @@
           "info": {
             "modules": [
               {
-                "dataPurgedAt": "<masked>",
+                "dataPurgedAt": "<masked:null>",
                 "enabled": true,
                 "id": "core",
                 "lifecycle": "active",
                 "name": "Asistente y hogar"
               },
               {
-                "dataPurgedAt": "<masked>",
+                "dataPurgedAt": "<masked:null>",
                 "enabled": true,
                 "id": "surveillance",
                 "lifecycle": "active",
                 "name": "Vigilancia"
               },
               {
-                "dataPurgedAt": "<masked>",
+                "dataPurgedAt": "<masked:null>",
                 "enabled": true,
                 "id": "productivity",
                 "lifecycle": "active",
                 "name": "Productividad"
               },
               {
-                "dataPurgedAt": "<masked>",
+                "dataPurgedAt": "<masked:null>",
                 "enabled": false,
                 "id": "agronomy",
                 "lifecycle": "not_installed",
@@ -193,7 +193,7 @@
                   },
                   "<VOLATILE:mayBeEmpty>": true
                 },
-                "dataPurgedAt": "<masked>",
+                "dataPurgedAt": "<masked:null>",
                 "enabled": true,
                 "gettingStarted": [
                   {
@@ -215,7 +215,7 @@
                     "<VOLATILE:mayBeEmpty>": true
                   },
                   "recommendedRamMb": "<VOLATILE:number>",
-                  "verdict": "<VOLATILE:string>"
+                  "verdict": "<VOLATILE:enum:ok|slow|insufficient>"
                 },
                 "hasData": false,
                 "id": "core",
@@ -254,7 +254,7 @@
                   },
                   "<VOLATILE:mayBeEmpty>": true
                 },
-                "dataPurgedAt": "<masked>",
+                "dataPurgedAt": "<masked:null>",
                 "enabled": true,
                 "gettingStarted": [
                   {
@@ -281,7 +281,7 @@
                     "<VOLATILE:mayBeEmpty>": true
                   },
                   "recommendedRamMb": "<VOLATILE:number>",
-                  "verdict": "<VOLATILE:string>"
+                  "verdict": "<VOLATILE:enum:ok|slow|insufficient>"
                 },
                 "hasData": true,
                 "id": "surveillance",
@@ -312,7 +312,7 @@
                   "<VOLATILE:array>": null,
                   "<VOLATILE:mayBeEmpty>": true
                 },
-                "dataPurgedAt": "<masked>",
+                "dataPurgedAt": "<masked:null>",
                 "enabled": true,
                 "gettingStarted": [
                   {
@@ -334,7 +334,7 @@
                     "<VOLATILE:mayBeEmpty>": true
                   },
                   "recommendedRamMb": "<VOLATILE:number>",
-                  "verdict": "<VOLATILE:string>"
+                  "verdict": "<VOLATILE:enum:ok|slow|insufficient>"
                 },
                 "hasData": true,
                 "id": "productivity",
@@ -363,7 +363,7 @@
                   "<VOLATILE:array>": null,
                   "<VOLATILE:mayBeEmpty>": true
                 },
-                "dataPurgedAt": "<masked>",
+                "dataPurgedAt": "<masked:null>",
                 "enabled": false,
                 "gettingStarted": [],
                 "hardware": {
@@ -374,7 +374,7 @@
                     "<VOLATILE:mayBeEmpty>": true
                   },
                   "recommendedRamMb": "<VOLATILE:number>",
-                  "verdict": "<VOLATILE:string>"
+                  "verdict": "<VOLATILE:enum:ok|slow|insufficient>"
                 },
                 "hasData": false,
                 "id": "agronomy",
@@ -1384,7 +1384,7 @@
               {
                 "createdBy": 1,
                 "createdByName": "Golden",
-                "expiresAt": "<masked>",
+                "expiresAt": "<masked:number>",
                 "id": 2,
                 "role": "guard"
               }
@@ -4100,14 +4100,21 @@
               "fallback": "<VOLATILE:string>",
               "hardware": {
                 "cores": "<VOLATILE:number>",
-                "gpu": "<VOLATILE:string>",
-                "isa": "<VOLATILE:string>",
+                "gpu": "<VOLATILE:enum:none|vaapi|qsv|nvdec|videotoolbox>",
+                "isa": "<VOLATILE:enum:baseline|avx2|avx512|neon>",
                 "ramGb": "<VOLATILE:number>",
                 "threads": "<VOLATILE:number>"
               },
-              "missed": "<VOLATILE:object|null>",
+              "missed": {
+                "<VOLATILE:or-null>": {
+                  "minCores": "<VOLATILE:number>",
+                  "minRamGb": "<VOLATILE:number>",
+                  "profile": "<VOLATILE:string>",
+                  "vectorIsa": "<VOLATILE:boolean>"
+                }
+              },
               "profile": "<VOLATILE:string>",
-              "reason": "<VOLATILE:string>",
+              "reason": "<VOLATILE:enum:meets|cores|ram|isa>",
               "rule": {
                 "minCores": "<VOLATILE:number>",
                 "minRamGb": "<VOLATILE:number>",

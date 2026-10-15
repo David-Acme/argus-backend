@@ -21,7 +21,7 @@
               "enabled": true
             },
             "service": "argus-auth",
-            "uptimeSeconds": "<masked>"
+            "uptimeSeconds": "<masked:number>"
           },
           "status": 200
         },
@@ -54,7 +54,7 @@
               "sent": 0
             },
             "service": "argus-camera",
-            "uptimeSeconds": "<masked>"
+            "uptimeSeconds": "<masked:number>"
           },
           "status": 200
         },
@@ -89,12 +89,39 @@
               "enabled": true
             },
             "service": "argus-identity",
-            "uptimeSeconds": "<masked>",
+            "uptimeSeconds": "<masked:number>",
             "voiceprint": {
               "indexed": 0,
               "loaded": true,
               "model": "3dspeaker_speech_eres2net_sv_en_voxceleb_16k"
             }
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/health",
+      "unit": "shared"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "probe": "plain-llm",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "internalTls": "<VOLATILE:object>",
+            "service": "argus-llm",
+            "uptimeSeconds": "<masked:number>"
           },
           "status": 200
         },
@@ -132,7 +159,7 @@
               "subscribed": true
             },
             "service": "argus-notification",
-            "uptimeSeconds": "<masked>"
+            "uptimeSeconds": "<masked:number>"
           },
           "status": 200
         },
@@ -159,7 +186,7 @@
           "info": {
             "internalTls": "<VOLATILE:object>",
             "service": "argus-productivity",
-            "uptimeSeconds": "<masked>"
+            "uptimeSeconds": "<masked:number>"
           },
           "status": 200
         },
@@ -186,7 +213,34 @@
           "info": {
             "internalTls": "<VOLATILE:object>",
             "service": "argus-settings",
-            "uptimeSeconds": "<masked>"
+            "uptimeSeconds": "<masked:number>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/health",
+      "unit": "shared"
+    },
+    {
+      "method": "GET",
+      "path": "/health",
+      "probe": "plain-stt",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "internalTls": "<VOLATILE:object>",
+            "service": "argus-stt",
+            "uptimeSeconds": "<masked:number>"
           },
           "status": 200
         },
@@ -217,61 +271,7 @@
               "enabled": true
             },
             "service": "argus-sync",
-            "uptimeSeconds": "<masked>"
-          },
-          "status": 200
-        },
-        "pretty": true,
-        "status": 200
-      },
-      "route": "/health",
-      "unit": "shared"
-    },
-    {
-      "method": "GET",
-      "path": "/health",
-      "probe": "plain-llm",
-      "request": {
-        "auth": "none",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": null,
-          "info": {
-            "internalTls": "<VOLATILE:object>",
-            "service": "argus-llm",
-            "uptimeSeconds": "<masked>"
-          },
-          "status": 200
-        },
-        "pretty": true,
-        "status": 200
-      },
-      "route": "/health",
-      "unit": "shared"
-    },
-    {
-      "method": "GET",
-      "path": "/health",
-      "probe": "plain-stt",
-      "request": {
-        "auth": "none",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": null,
-          "info": {
-            "internalTls": "<VOLATILE:object>",
-            "service": "argus-stt",
-            "uptimeSeconds": "<masked>"
+            "uptimeSeconds": "<masked:number>"
           },
           "status": 200
         },
@@ -298,7 +298,7 @@
           "info": {
             "internalTls": "<VOLATILE:object>",
             "service": "argus-tts",
-            "uptimeSeconds": "<masked>"
+            "uptimeSeconds": "<masked:number>"
           },
           "status": 200
         },
@@ -325,7 +325,7 @@
           "info": {
             "internalTls": "<VOLATILE:object>",
             "service": "argus-vlm",
-            "uptimeSeconds": "<masked>"
+            "uptimeSeconds": "<masked:number>"
           },
           "status": 200
         },

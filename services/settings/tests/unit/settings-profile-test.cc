@@ -612,6 +612,22 @@ TEST_CASE("a capability block is validated like the owners it names")
             .find("gateway") != std::string::npos);
 }
 
+TEST_CASE("the missed rule serializes exactly the four fields the contract declares, typed as declared")
+{
+  ProfilesOverview overview{};
+  overview.recommendation.missed = RecommendationRule{.profile = "quality", .minCores = 8, .minRamGb = 16.0, .vectorIsa = true};
+  const auto listing = ResponseListProfilesDto{.overview = overview}.toJson();
+  const auto& missed = listing["recommendation"]["missed"];
+  REQUIRE(missed.isObject());
+  auto keys = missed.getMemberNames();
+  std::sort(keys.begin(), keys.end());
+  CHECK(keys == std::vector<std::string>{"minCores", "minRamGb", "profile", "vectorIsa"});
+  CHECK(missed["profile"].isString());
+  CHECK(missed["minCores"].isInt());
+  CHECK(missed["minRamGb"].isDouble());
+  CHECK(missed["vectorIsa"].isBool());
+}
+
 TEST_CASE("the first run touches only keys still at their default, never installs, and skips what already matches")
 {
   auto profile = gpuQualityProfile();

@@ -916,20 +916,20 @@
           "errors": null,
           "info": {
             "color": "",
-            "createdAt": "<masked>",
+            "createdAt": "<masked:number>",
             "createdBy": 1,
-            "deletedAt": "<masked>",
+            "deletedAt": "<masked:null>",
             "description": "Fixture row",
-            "endsAt": "<masked>",
+            "endsAt": "<masked:null>",
             "id": 1,
             "isAllDay": false,
             "location": "",
             "ownerId": 1,
             "projectId": null,
             "recurrenceRule": null,
-            "startsAt": "<masked>",
+            "startsAt": "<masked:number>",
             "title": "Golden event",
-            "updatedAt": "<masked>"
+            "updatedAt": "<masked:null>"
           },
           "status": 200
         },
@@ -2078,17 +2078,17 @@
           "errors": null,
           "info": {
             "assigneeId": 1,
-            "createdAt": "<masked>",
+            "createdAt": "<masked:number>",
             "createdBy": 1,
-            "deletedAt": "<masked>",
-            "dueAt": "<masked>",
+            "deletedAt": "<masked:null>",
+            "dueAt": "<masked:null>",
             "id": 1,
             "priority": "low",
             "projectId": 1,
             "sortOrder": 0.0,
             "status": "todo",
             "title": "Golden task",
-            "updatedAt": "<masked>"
+            "updatedAt": "<masked:null>"
           },
           "status": 200
         },
@@ -2400,16 +2400,16 @@
           "errors": null,
           "info": {
             "color": "",
-            "createdAt": "<masked>",
-            "deletedAt": "<masked>",
+            "createdAt": "<masked:number>",
+            "deletedAt": "<masked:null>",
             "description": "Fixture row",
             "id": 1,
             "name": "Golden project",
             "ownerId": 1,
-            "startsAt": "<masked>",
+            "startsAt": "<masked:null>",
             "status": "active",
-            "targetAt": "<masked>",
-            "updatedAt": "<masked>"
+            "targetAt": "<masked:null>",
+            "updatedAt": "<masked:null>"
           },
           "status": 200
         },
@@ -2640,18 +2640,18 @@
         "json": {
           "errors": null,
           "info": {
-            "completedAt": "<masked>",
-            "createdAt": "<masked>",
+            "completedAt": "<masked:null>",
+            "createdAt": "<masked:number>",
             "createdBy": 1,
-            "deletedAt": "<masked>",
+            "deletedAt": "<masked:null>",
             "description": "",
             "id": 2,
             "isCompleted": false,
             "recurrenceRule": null,
-            "scheduledAt": "<masked>",
+            "scheduledAt": "<masked:number>",
             "targetUserId": 1,
             "title": "Golden created",
-            "updatedAt": "<masked>"
+            "updatedAt": "<masked:null>"
           },
           "status": 200
         },
@@ -2676,18 +2676,18 @@
         "json": {
           "errors": null,
           "info": {
-            "completedAt": "<masked>",
-            "createdAt": "<masked>",
+            "completedAt": "<masked:null>",
+            "createdAt": "<masked:number>",
             "createdBy": 2,
-            "deletedAt": "<masked>",
+            "deletedAt": "<masked:null>",
             "description": "",
             "id": 3,
             "isCompleted": false,
             "recurrenceRule": null,
-            "scheduledAt": "<masked>",
+            "scheduledAt": "<masked:number>",
             "targetUserId": 2,
             "title": "Golden resident",
-            "updatedAt": "<masked>"
+            "updatedAt": "<masked:null>"
           },
           "status": 200
         },
@@ -3044,18 +3044,18 @@
         "json": {
           "errors": null,
           "info": {
-            "completedAt": "<masked>",
-            "createdAt": "<masked>",
+            "completedAt": "<masked:number>",
+            "createdAt": "<masked:number>",
             "createdBy": 1,
-            "deletedAt": "<masked>",
+            "deletedAt": "<masked:null>",
             "description": "",
             "id": 6,
             "isCompleted": true,
             "recurrenceRule": null,
-            "scheduledAt": "<masked>",
+            "scheduledAt": "<masked:number>",
             "targetUserId": 1,
             "title": "Golden patch target",
-            "updatedAt": "<masked>"
+            "updatedAt": "<masked:number>"
           },
           "status": 200
         },

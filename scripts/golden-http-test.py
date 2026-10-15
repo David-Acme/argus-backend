@@ -86,6 +86,16 @@ def manifest_entries():
                 if fields.get("typed") else {}),
              **({"shaped": list(fields["shaped"])}
                 if fields.get("shaped") else {}),
+             **({"enums": {path: {"file": decl["file"],
+                                  "values": list(decl["values"])}
+                           for path, decl in fields["enums"].items()}}
+                if fields.get("enums") else {}),
+             **({"nullTemplates": {path: {"file": decl["file"],
+                                          "struct": decl["struct"],
+                                          "fields": dict(decl["fields"])}
+                                   for path, decl in
+                                   fields["nullTemplates"].items()}}
+                if fields.get("nullTemplates") else {}),
              "reason": fields["reason"]}
             for (unit, route), fields in sorted(golden.VOLATILE_FIELDS.items())]
 
@@ -348,6 +358,27 @@ class VolatileShapeTest(unittest.TestCase):
             golden.differences(strict, body),
             [".info.obj.reasons: an empty array the route does not declare"])
 
+    def test_a_masked_number_keeps_its_number_type_in_a_template(self):
+        self.assertEqual(golden.normalize({"createdAt": 17}),
+                         {"createdAt": "<masked:number>"})
+        body = {"info": {"items": [{"createdAt": 17, "id": 3},
+                                   {"createdAt": 1700000000, "id": 4}],
+                         "cursor": None}}
+        marked = golden.without_volatile(
+            self.ENTRY, golden.normalize(body), self.volatile())
+        self.assertEqual(
+            marked["info"]["items"][golden.ARRAY_KEY]["createdAt"],
+            "<VOLATILE:number>")
+        live = golden.normalize({"info": {"items": [{"createdAt": 9, "id": 1}],
+                                          "cursor": None}})
+        self.assertEqual(golden.differences(marked, live), [])
+        wrong = golden.normalize({"info": {"items": [{"createdAt": "9",
+                                                      "id": 1}],
+                                           "cursor": None}})
+        self.assertEqual(
+            golden.differences(marked, wrong),
+            [".info.items[0].createdAt: '<VOLATILE:number>' -> 'string'"])
+
     def test_a_nullable_field_accepts_its_null_and_its_declared_type(self):
         declared = self.volatile(keys=("cursor",),
                                  nullable={"cursor": "string"})
@@ -469,7 +500,7 @@ class RecordTest(unittest.TestCase):
                          ["plain-auth"])
         self.assertEqual(shared["probes"][0]["response"]["json"]["info"],
                          {"service": "argus-auth",
-                          "uptimeSeconds": "<masked>",
+                          "uptimeSeconds": "<masked:number>",
                           "internalTls": "<VOLATILE:object>"})
         guard = json.loads((self.fixtures / "guard.json").read_text())
         self.assertEqual(guard["probes"][0]["response"]["json"],
@@ -609,17 +640,29 @@ VOLATILE_PREFIX = "<VOLATILE:"
 VOLATILE_TYPES = ("array", "boolean", "null", "number", "object", "string")
 ARRAY_MARKER = "<VOLATILE:array>"
 EMPTY_MARKER = "<VOLATILE:mayBeEmpty>"
-PLAIN_MARKERS = ("<GENERATED>", "<BYTES>", "<masked>", "<masked-hex32>",
+OR_NULL_MARKER = "<VOLATILE:or-null>"
+ENUM_PREFIX = "<VOLATILE:enum:"
+MASKED_PREFIX = "<masked:"
+PLAIN_MARKERS = ("<GENERATED>", "<BYTES>", "<masked-hex32>",
                  "<masked-hex64>", "<masked-token>", "<STACK>", "<ROOT>")
 MARKER_SHAPE = re.compile(r"^<[A-Za-z][A-Za-z:_|\-]*>$")
+CPP_TYPES = {"std::string": "string", "int": "number", "double": "number",
+             "bool": "boolean"}
 
 
 def volatile_scalar_problem(value):
-    names = value[len(VOLATILE_PREFIX):-1].split("|")
     if value == ARRAY_MARKER:
         return f"{value!r} is a bare array marker; an array is an element template"
-    if not value.endswith(">") or not names or any(
-            name not in VOLATILE_TYPES for name in names):
+    if not value.endswith(">"):
+        return f"unknown marker {value!r}"
+    body = value[len(VOLATILE_PREFIX):-1]
+    if value.startswith(ENUM_PREFIX):
+        members = value[len(ENUM_PREFIX):-1].split("|")
+        if not all(members) or len(set(members)) != len(members):
+            return f"enum marker {value!r} needs a non-empty set of distinct members"
+        return None
+    names = body.split("|")
+    if not body or any(name not in VOLATILE_TYPES for name in names):
         return f"unknown marker {value!r}"
     if len(set(names)) != len(names) or ("null" in names
                                          and names[-1] != "null"):
@@ -632,6 +675,11 @@ def grammar_problems(value, path="$"):
         if value.startswith(VOLATILE_PREFIX):
             problem = volatile_scalar_problem(value)
             return [f"{path}: {problem}"] if problem else []
+        if value.startswith(MASKED_PREFIX):
+            name = value[len(MASKED_PREFIX):-1] if value.endswith(">") else ""
+            if name in VOLATILE_TYPES:
+                return []
+            return [f"{path}: unknown marker {value!r}"]
         if MARKER_SHAPE.match(value) and value not in PLAIN_MARKERS:
             return [f"{path}: unknown marker {value!r}"]
         return []
@@ -642,6 +690,14 @@ def grammar_problems(value, path="$"):
             for key, child in value.items():
                 found.extend(grammar_problems(child, f"{path}.{key}"))
             return found
+        if OR_NULL_MARKER in value:
+            if set(value) != {OR_NULL_MARKER}:
+                return [f"{path}: {OR_NULL_MARKER} holds only its template"]
+            template = value[OR_NULL_MARKER]
+            if not isinstance(template, dict) or any(
+                    key.startswith(VOLATILE_PREFIX) for key in template):
+                return [f"{path}: {OR_NULL_MARKER} needs a plain object template"]
+            return grammar_problems(template, f"{path}?")
         found = [f"{path}: unknown marker key {key!r}" for key in volatile
                  if key not in (ARRAY_MARKER, EMPTY_MARKER)]
         if set(value) - {ARRAY_MARKER, EMPTY_MARKER}:
@@ -681,6 +737,98 @@ def fixture_grammar_problems():
                 problems.append(f"{where} response.text: unknown marker "
                                 f"{text!r}")
     return problems
+
+
+def enum_declarations():
+    return [(unit, route, path, decl)
+            for (unit, route), fields in sorted(golden.VOLATILE_FIELDS.items())
+            for path, decl in sorted(fields.get("enums", {}).items())]
+
+
+def null_template_declarations():
+    return [(unit, route, path, decl)
+            for (unit, route), fields in sorted(golden.VOLATILE_FIELDS.items())
+            for path, decl in sorted(fields.get("nullTemplates", {}).items())]
+
+
+def struct_fields(source, name):
+    body = re.search(rf"struct {name}\s*\{{(.*?)\n\}};", source, re.S)
+    if body is None:
+        return None
+    fields = {}
+    for kind, field in re.findall(r"(std::string|int|double|bool)\s+(\w+)\s*[;{{]",
+                                  body.group(1)):
+        fields[field] = CPP_TYPES[kind]
+    return fields
+
+
+class VolatileSourceDriftTest(unittest.TestCase):
+    def test_every_enum_value_is_a_quoted_member_of_its_source_file(self):
+        found = enum_declarations()
+        self.assertTrue(found)
+        for unit, route, path, decl in found:
+            source = (ROOT / decl["file"]).read_text()
+            for value in decl["values"]:
+                with self.subTest(enum=path, value=value):
+                    self.assertIn(f'"{value}"', source,
+                                  f"{decl['file']} has no string {value!r}")
+
+    def test_every_enum_and_template_sits_under_a_shaped_object(self):
+        for (unit, route), fields in golden.VOLATILE_FIELDS.items():
+            shaped = fields.get("shaped", ())
+            for path in list(fields.get("enums", {})) + list(
+                    fields.get("nullTemplates", {})):
+                with self.subTest(path=path):
+                    self.assertTrue(any(path.startswith(f"{key}.")
+                                        for key in shaped), path)
+
+    def test_the_or_null_template_is_the_rule_struct_as_the_source_declares_it(self):
+        found = null_template_declarations()
+        self.assertTrue(found)
+        for unit, route, path, decl in found:
+            source = (ROOT / decl["file"]).read_text()
+            declared = struct_fields(source, decl["struct"])
+            self.assertIsNotNone(declared, f"no struct {decl['struct']}")
+            self.assertEqual(declared, dict(decl["fields"]))
+
+
+class ClosedMarkerTest(unittest.TestCase):
+    def test_an_enum_marker_accepts_only_a_member_of_its_set(self):
+        marker = "<VOLATILE:enum:ok|slow|insufficient>"
+        self.assertEqual(golden.differences(marker, "slow"), [])
+        self.assertEqual(golden.differences(marker, "broken"),
+                         [f": '{marker}' -> 'broken'"])
+        self.assertEqual(golden.differences(marker, 3),
+                         [f": '{marker}' -> 3"])
+
+    def test_an_or_null_template_accepts_null_or_its_declared_fields(self):
+        marker = golden.or_null_marker({"profile": "string",
+                                        "minCores": "number",
+                                        "vectorIsa": "boolean"})
+        self.assertEqual(marker, {"<VOLATILE:or-null>": {
+            "profile": "<VOLATILE:string>",
+            "minCores": "<VOLATILE:number>",
+            "vectorIsa": "<VOLATILE:boolean>"}})
+        self.assertEqual(golden.differences(marker, None), [])
+        rule = {"profile": "quality", "minCores": 4, "vectorIsa": True}
+        self.assertEqual(golden.differences(marker, rule), [])
+        self.assertEqual(
+            golden.differences(marker, {**rule, "minCores": "4"}),
+            [".minCores: '<VOLATILE:number>' -> 'string'"])
+
+    def test_a_grammar_enum_marker_needs_a_non_empty_distinct_set(self):
+        self.assertEqual(grammar_problems({"x": "<VOLATILE:enum:a|b>"}), [])
+        for value in ("<VOLATILE:enum:>", "<VOLATILE:enum:a||b>",
+                      "<VOLATILE:enum:a|a>"):
+            with self.subTest(value=value):
+                self.assertEqual(len(grammar_problems({"x": value})), 1)
+
+    def test_an_or_null_marker_holds_only_a_plain_template(self):
+        self.assertEqual(grammar_problems({"x": {"<VOLATILE:or-null>": {
+            "a": "<VOLATILE:string>"}}}), [])
+        self.assertEqual(len(grammar_problems({"x": {
+            "<VOLATILE:or-null>": {"a": "<VOLATILE:string>"},
+            "other": 1}})), 1)
 
 
 class FixtureGrammarTest(unittest.TestCase):
@@ -727,7 +875,7 @@ class FixtureGrammarTest(unittest.TestCase):
                                     "'<VOLATILE:float>'"])
 
     def test_a_plain_or_normalization_marker_is_in_the_grammar(self):
-        body = {"a": "<GENERATED>", "b": "<BYTES>", "c": "<masked>",
+        body = {"a": "<GENERATED>", "b": "<BYTES>", "c": "<masked:string>",
                 "d": "<masked-hex32>", "e": "<STACK>", "f": "free text"}
         self.assertEqual(grammar_problems(body), [])
 

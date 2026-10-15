@@ -3546,16 +3546,16 @@
                   "credential": "",
                   "message": "No camera account or cloud password is saved",
                   "retryAfterSeconds": 0,
-                  "retryAt": "<masked>",
+                  "retryAt": "<masked:number>",
                   "state": "no_credentials"
                 },
                 "health": "<VOLATILE:string>",
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,
-                "lastSeenAt": "<masked>",
+                "lastSeenAt": "<masked:number>",
                 "mainActive": false,
-                "sampledAt": "<masked>",
+                "sampledAt": "<masked:number>",
                 "stream": null,
                 "viewers": 0,
                 "width": 0
@@ -3593,16 +3593,16 @@
                   "credential": "",
                   "message": "No camera account or cloud password is saved",
                   "retryAfterSeconds": 0,
-                  "retryAt": "<masked>",
+                  "retryAt": "<masked:number>",
                   "state": "no_credentials"
                 },
                 "health": "<VOLATILE:string>",
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,
-                "lastSeenAt": "<masked>",
+                "lastSeenAt": "<masked:number>",
                 "mainActive": false,
-                "sampledAt": "<masked>",
+                "sampledAt": "<masked:number>",
                 "stream": null,
                 "viewers": 0,
                 "width": 0
@@ -3640,16 +3640,16 @@
                   "credential": "",
                   "message": "No camera account or cloud password is saved",
                   "retryAfterSeconds": 0,
-                  "retryAt": "<masked>",
+                  "retryAt": "<masked:number>",
                   "state": "no_credentials"
                 },
                 "health": "<VOLATILE:string>",
                 "height": 0,
                 "id": 1,
                 "lastEvent": null,
-                "lastSeenAt": "<masked>",
+                "lastSeenAt": "<masked:number>",
                 "mainActive": false,
-                "sampledAt": "<masked>",
+                "sampledAt": "<masked:number>",
                 "stream": null,
                 "viewers": 0,
                 "width": 0
@@ -4125,8 +4125,8 @@
             "capabilities": "[\"ptz\",\"presets\",\"microphone\",\"privacy\",\"led\",\"dayNight\",\"motion\",\"autoTrack\",\"alarm\",\"sdCard\"]",
             "cloudUsername": "",
             "config": "{}",
-            "createdAt": "<masked>",
-            "deletedAt": "<masked>",
+            "createdAt": "<masked:number>",
+            "deletedAt": "<masked:null>",
             "driver": "tapo",
             "icon": "video",
             "id": 1,
@@ -4139,7 +4139,7 @@
             "port": 1,
             "recordMode": "events",
             "retentionDays": 7,
-            "updatedAt": "<masked>",
+            "updatedAt": "<masked:number>",
             "username": "admin"
           },
           "status": 200
@@ -4194,8 +4194,8 @@
             "capabilities": "[\"ptz\",\"presets\",\"microphone\",\"privacy\",\"led\",\"dayNight\",\"motion\",\"autoTrack\",\"alarm\",\"sdCard\"]",
             "cloudUsername": "",
             "config": "{}",
-            "createdAt": "<masked>",
-            "deletedAt": "<masked>",
+            "createdAt": "<masked:number>",
+            "deletedAt": "<masked:null>",
             "driver": "tapo",
             "icon": "video",
             "id": 1,
@@ -4208,7 +4208,7 @@
             "port": 1,
             "recordMode": "events",
             "retentionDays": 7,
-            "updatedAt": "<masked>",
+            "updatedAt": "<masked:number>",
             "username": "admin"
           },
           "status": 200
@@ -4982,6 +4982,344 @@
         "status": 422
       },
       "route": "/camera/{1}/ptz",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/sd/day",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/sd/day",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/sd/day",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/sd/day",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/sd/day",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/sd/day",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/sd/day",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/sd/day",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/sd/day",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "date": [
+                "date is a date written YYYY-MM-DD"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/{1}/sd/day",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/999999/sd/day",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "date": [
+                "date is a date written YYYY-MM-DD"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/{1}/sd/day",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/sd/days",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/sd/days",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/sd/days",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/sd/days",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/sd/days",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/sd/days",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/sd/days",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/sd/days",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/sd/days",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "from": [
+                "from is a date written YYYY-MM-DD"
+              ],
+              "to": [
+                "to is a date written YYYY-MM-DD"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/{1}/sd/days",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/999999/sd/days",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "from": [
+                "from is a date written YYYY-MM-DD"
+              ],
+              "to": [
+                "to is a date written YYYY-MM-DD"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/{1}/sd/days",
       "unit": "camera"
     },
     {
@@ -6300,13 +6638,13 @@
           "info": {
             "cameraId": 1,
             "color": "#00FF00",
-            "createdAt": "<masked>",
-            "deletedAt": "<masked>",
+            "createdAt": "<masked:number>",
+            "deletedAt": "<masked:null>",
             "id": 1,
             "isEnabled": true,
             "name": "Golden Zone",
             "points": "[]",
-            "updatedAt": "<masked>",
+            "updatedAt": "<masked:null>",
             "zoneType": "monitor"
           },
           "status": 200
@@ -6360,13 +6698,13 @@
           "info": {
             "cameraId": 1,
             "color": "#00FF00",
-            "createdAt": "<masked>",
-            "deletedAt": "<masked>",
+            "createdAt": "<masked:number>",
+            "deletedAt": "<masked:null>",
             "id": 1,
             "isEnabled": true,
             "name": "Golden Zone",
             "points": "[]",
-            "updatedAt": "<masked>",
+            "updatedAt": "<masked:null>",
             "zoneType": "monitor"
           },
           "status": 200
@@ -6401,344 +6739,6 @@
         "status": 404
       },
       "route": "/zone/{1}",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/sd/day",
-      "probe": "no-token",
-      "request": {
-        "auth": "none",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Missing authorization token"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/camera/{1}/sd/day",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/sd/day",
-      "probe": "other-device",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "other"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Device mismatch"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/camera/{1}/sd/day",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/sd/day",
-      "probe": "role-resident",
-      "request": {
-        "auth": "resident",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/camera/{1}/sd/day",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/sd/day",
-      "probe": "role-guest",
-      "request": {
-        "auth": "guest",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/camera/{1}/sd/day",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/sd/day",
-      "probe": "owner",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "fields": {
-              "date": [
-                "date is a date written YYYY-MM-DD"
-              ]
-            },
-            "message": "Validation failed"
-          },
-          "info": null,
-          "status": 422
-        },
-        "pretty": true,
-        "status": 422
-      },
-      "route": "/camera/{1}/sd/day",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/999999/sd/day",
-      "probe": "owner-missing",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "fields": {
-              "date": [
-                "date is a date written YYYY-MM-DD"
-              ]
-            },
-            "message": "Validation failed"
-          },
-          "info": null,
-          "status": 422
-        },
-        "pretty": true,
-        "status": 422
-      },
-      "route": "/camera/{1}/sd/day",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/sd/days",
-      "probe": "no-token",
-      "request": {
-        "auth": "none",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Missing authorization token"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/camera/{1}/sd/days",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/sd/days",
-      "probe": "other-device",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "other"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Device mismatch"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/camera/{1}/sd/days",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/sd/days",
-      "probe": "role-resident",
-      "request": {
-        "auth": "resident",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/camera/{1}/sd/days",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/sd/days",
-      "probe": "role-guest",
-      "request": {
-        "auth": "guest",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/camera/{1}/sd/days",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/sd/days",
-      "probe": "owner",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "fields": {
-              "from": [
-                "from is a date written YYYY-MM-DD"
-              ],
-              "to": [
-                "to is a date written YYYY-MM-DD"
-              ]
-            },
-            "message": "Validation failed"
-          },
-          "info": null,
-          "status": 422
-        },
-        "pretty": true,
-        "status": 422
-      },
-      "route": "/camera/{1}/sd/days",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/999999/sd/days",
-      "probe": "owner-missing",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "fields": {
-              "from": [
-                "from is a date written YYYY-MM-DD"
-              ],
-              "to": [
-                "to is a date written YYYY-MM-DD"
-              ]
-            },
-            "message": "Validation failed"
-          },
-          "info": null,
-          "status": 422
-        },
-        "pretty": true,
-        "status": 422
-      },
-      "route": "/camera/{1}/sd/days",
       "unit": "camera"
     }
   ],

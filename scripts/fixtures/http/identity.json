@@ -146,13 +146,13 @@
           "errors": null,
           "info": [
             {
-              "createdAt": "<masked>",
+              "createdAt": "<masked:number>",
               "createdBy": 1,
-              "expiresAt": "<masked>",
+              "expiresAt": "<masked:number>",
               "id": 1,
               "maxRedemptions": 1,
               "redemptionCount": 0,
-              "revokedAt": "<masked>",
+              "revokedAt": "<masked:number>",
               "revokedModule": "surveillance",
               "revokedReason": "module_disabled",
               "role": "guard"
@@ -1182,7 +1182,7 @@
             "current": false,
             "currentNoticeVersion": 1,
             "decided": false,
-            "decidedAt": "<masked>",
+            "decidedAt": "<masked:null>",
             "effective": {
               "cameraAudio": false,
               "faceCameras": false,
@@ -1196,7 +1196,7 @@
               "voiceLearning": true
             },
             "noticeVersion": 0,
-            "updatedAt": "<masked>"
+            "updatedAt": "<masked:null>"
           },
           "status": 200
         },
@@ -1236,7 +1236,7 @@
             "current": false,
             "currentNoticeVersion": 1,
             "decided": false,
-            "decidedAt": "<masked>",
+            "decidedAt": "<masked:null>",
             "effective": {
               "cameraAudio": false,
               "faceCameras": false,
@@ -1250,7 +1250,7 @@
               "voiceLearning": true
             },
             "noticeVersion": 0,
-            "updatedAt": "<masked>"
+            "updatedAt": "<masked:null>"
           },
           "status": 200
         },
@@ -1290,7 +1290,7 @@
             "current": false,
             "currentNoticeVersion": 1,
             "decided": false,
-            "decidedAt": "<masked>",
+            "decidedAt": "<masked:null>",
             "effective": {
               "cameraAudio": false,
               "faceCameras": false,
@@ -1304,7 +1304,7 @@
               "voiceLearning": true
             },
             "noticeVersion": 0,
-            "updatedAt": "<masked>"
+            "updatedAt": "<masked:null>"
           },
           "status": 200
         },
@@ -1654,7 +1654,7 @@
               "visitorRecognition": false,
               "voiceLearning": true
             },
-            "householdUpdatedAt": "<masked>",
+            "householdUpdatedAt": "<masked:null>",
             "users": [
               {
                 "choices": {
@@ -1665,7 +1665,7 @@
                 },
                 "current": false,
                 "decided": false,
-                "decidedAt": "<masked>",
+                "decidedAt": "<masked:null>",
                 "effective": {
                   "cameraAudio": false,
                   "faceCameras": false,
@@ -1673,7 +1673,7 @@
                   "voiceLearning": false
                 },
                 "noticeVersion": 0,
-                "updatedAt": "<masked>",
+                "updatedAt": "<masked:null>",
                 "userId": 1
               },
               {
@@ -1685,7 +1685,7 @@
                 },
                 "current": false,
                 "decided": false,
-                "decidedAt": "<masked>",
+                "decidedAt": "<masked:null>",
                 "effective": {
                   "cameraAudio": false,
                   "faceCameras": false,
@@ -1693,7 +1693,7 @@
                   "voiceLearning": false
                 },
                 "noticeVersion": 0,
-                "updatedAt": "<masked>",
+                "updatedAt": "<masked:null>",
                 "userId": 2
               },
               {
@@ -1705,7 +1705,7 @@
                 },
                 "current": false,
                 "decided": false,
-                "decidedAt": "<masked>",
+                "decidedAt": "<masked:null>",
                 "effective": {
                   "cameraAudio": false,
                   "faceCameras": false,
@@ -1713,11 +1713,11 @@
                   "voiceLearning": false
                 },
                 "noticeVersion": 0,
-                "updatedAt": "<masked>",
+                "updatedAt": "<masked:null>",
                 "userId": 3
               }
             ],
-            "visitorAcknowledgedAt": "<masked>"
+            "visitorAcknowledgedAt": "<masked:null>"
           },
           "status": 200
         },
@@ -1795,16 +1795,16 @@
           "errors": null,
           "info": [
             {
-              "createdAt": "<masked>",
-              "deletedAt": "<masked>",
+              "createdAt": "<masked:number>",
+              "deletedAt": "<masked:null>",
               "id": 2,
               "isActive": true,
               "lang": "en",
               "lastName": "Resident",
               "name": "Golden",
               "role": "resident",
-              "syncAt": "<masked>",
-              "updatedAt": "<masked>"
+              "syncAt": "<masked:number>",
+              "updatedAt": "<masked:null>"
             }
           ],
           "status": 200
@@ -1831,16 +1831,16 @@
           "errors": null,
           "info": [
             {
-              "createdAt": "<masked>",
-              "deletedAt": "<masked>",
+              "createdAt": "<masked:number>",
+              "deletedAt": "<masked:null>",
               "id": 3,
               "isActive": true,
               "lang": "en",
               "lastName": "Guest",
               "name": "Golden",
               "role": "guest",
-              "syncAt": "<masked>",
-              "updatedAt": "<masked>"
+              "syncAt": "<masked:number>",
+              "updatedAt": "<masked:null>"
             }
           ],
           "status": 200
@@ -1867,40 +1867,40 @@
           "errors": null,
           "info": [
             {
-              "createdAt": "<masked>",
-              "deletedAt": "<masked>",
+              "createdAt": "<masked:number>",
+              "deletedAt": "<masked:null>",
               "id": 1,
               "isActive": true,
               "lang": "en",
               "lastName": "Recorder",
               "name": "Golden",
               "role": "owner",
-              "syncAt": "<masked>",
-              "updatedAt": "<masked>"
+              "syncAt": "<masked:number>",
+              "updatedAt": "<masked:null>"
             },
             {
-              "createdAt": "<masked>",
-              "deletedAt": "<masked>",
+              "createdAt": "<masked:number>",
+              "deletedAt": "<masked:null>",
               "id": 2,
               "isActive": true,
               "lang": "en",
               "lastName": "Resident",
               "name": "Golden",
               "role": "resident",
-              "syncAt": "<masked>",
-              "updatedAt": "<masked>"
+              "syncAt": "<masked:number>",
+              "updatedAt": "<masked:null>"
             },
             {
-              "createdAt": "<masked>",
-              "deletedAt": "<masked>",
+              "createdAt": "<masked:number>",
+              "deletedAt": "<masked:null>",
               "id": 3,
               "isActive": true,
               "lang": "en",
               "lastName": "Guest",
               "name": "Golden",
               "role": "guest",
-              "syncAt": "<masked>",
-              "updatedAt": "<masked>"
+              "syncAt": "<masked:number>",
+              "updatedAt": "<masked:null>"
             }
           ],
           "status": 200
@@ -2217,8 +2217,8 @@
         "json": {
           "errors": null,
           "info": {
-            "createdAt": "<masked>",
-            "deletedAt": "<masked>",
+            "createdAt": "<masked:number>",
+            "deletedAt": "<masked:null>",
             "id": 2,
             "isActive": true,
             "lang": "en",
@@ -2226,8 +2226,8 @@
             "name": "Golden",
             "role": "resident",
             "roleActive": true,
-            "syncAt": "<masked>",
-            "updatedAt": "<masked>"
+            "syncAt": "<masked:number>",
+            "updatedAt": "<masked:number>"
           },
           "status": 200
         },
@@ -2255,8 +2255,8 @@
         "json": {
           "errors": null,
           "info": {
-            "createdAt": "<masked>",
-            "deletedAt": "<masked>",
+            "createdAt": "<masked:number>",
+            "deletedAt": "<masked:null>",
             "id": 2,
             "isActive": true,
             "lang": "en",
@@ -2264,8 +2264,8 @@
             "name": "Golden",
             "role": "guard",
             "roleActive": false,
-            "syncAt": "<masked>",
-            "updatedAt": "<masked>"
+            "syncAt": "<masked:number>",
+            "updatedAt": "<masked:number>"
           },
           "status": 200
         },
@@ -2815,7 +2815,7 @@
             "minRetentionDays": 1,
             "recognitionEnabled": false,
             "unnamedRetentionDays": 30,
-            "updatedAt": "<masked>"
+            "updatedAt": "<masked:null>"
           },
           "status": 200
         },

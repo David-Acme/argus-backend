@@ -399,6 +399,9 @@ VOLATILE_FIELDS = {
                  "modules[].components"),
         "mayBeEmpty": ("modules[].components", "modules[].hardware.reasons"),
         "shaped": ("modules[].hardware",),
+        "enums": {"modules[].hardware.verdict": {
+            "file": "services/settings/src/feature/modules/services/hardware-check.hxx",
+            "values": ("ok", "slow", "insufficient")}},
         "reason": "a module with no model component answers an empty "
                   "components list (productivity has none, agronomy is not "
                   "installed), so that list may be empty; the hardware "
@@ -410,7 +413,21 @@ VOLATILE_FIELDS = {
     ("settings", "/settings/profiles"): {
         "keys": ("recommendation",),
         "shaped": ("recommendation",),
-        "nullable": {"recommendation.missed": "object"},
+        "enums": {
+            "recommendation.reason": {
+                "file": "services/settings/src/feature/settings/services/settings-profile.cc",
+                "values": ("meets", "cores", "ram", "isa")},
+            "recommendation.hardware.isa": {
+                "file": "services/settings/src/feature/settings/services/settings-profile.cc",
+                "values": ("baseline", "avx2", "avx512", "neon")},
+            "recommendation.hardware.gpu": {
+                "file": "packages/lib/runtime/src/runtime/hardware-profile.cc",
+                "values": ("none", "vaapi", "qsv", "nvdec", "videotoolbox")}},
+        "nullTemplates": {"recommendation.missed": {
+            "file": "services/settings/src/feature/settings/services/settings-profile.hxx",
+            "struct": "RecommendationRule",
+            "fields": {"profile": "string", "minCores": "number",
+                       "minRamGb": "number", "vectorIsa": "boolean"}}},
         "reason": "the recommendation is derived from the cores, RAM, ISA "
                   "and GPU of the host that answers, so it differs between "
                   "machines; the profile previews beside it stay pinned",
@@ -695,7 +712,7 @@ def mask(value):
         return {key: mask(item) for key, item in value.items()}
     if isinstance(value, list):
         return [mask(item) for item in value]
-    return "<masked>"
+    return f"<masked:{json_type(value)}>"
 
 
 def secret_key(key):
@@ -1404,6 +1421,8 @@ def write_manifest(fixtures, units, probe_count, deviations):
             "maskedHex32": "any 32-character lowercase hexadecimal value "
                            "(a session id)",
             "unmaskedUnder": sorted(UNMASKED_UNDER),
+            "maskedScalar": "a masked scalar is written as <masked:T>, T its JSON "
+                            "type, so a template keeps the type it masked",
             "maskedShape": "a masked key keeps the shape of what it held, so "
                            "an object under it is still compared field by field",
         },
@@ -1423,6 +1442,16 @@ def write_manifest(fixtures, units, probe_count, deviations):
                if fields.get("typed") else {}),
             **({"shaped": list(fields["shaped"])}
                if fields.get("shaped") else {}),
+            **({"enums": {path: {"file": decl["file"],
+                                 "values": list(decl["values"])}
+                          for path, decl in fields["enums"].items()}}
+               if fields.get("enums") else {}),
+            **({"nullTemplates": {path: {"file": decl["file"],
+                                         "struct": decl["struct"],
+                                         "fields": dict(decl["fields"])}
+                                  for path, decl in
+                                  fields["nullTemplates"].items()}}
+               if fields.get("nullTemplates") else {}),
              "reason": fields["reason"]}
             for (unit, route), fields in sorted(VOLATILE_FIELDS.items())
         ],
@@ -1566,6 +1595,10 @@ def load_fixture(fixtures, unit):
 
 ARRAY_KEY = "<VOLATILE:array>"
 EMPTY_KEY = "<VOLATILE:mayBeEmpty>"
+OR_NULL_KEY = "<VOLATILE:or-null>"
+ENUM_PREFIX = "<VOLATILE:enum:"
+MASKED_PREFIX = "<masked:"
+TYPE_NAMES = ("array", "boolean", "null", "number", "object", "string")
 GENERATED_TEXT_ROUTES = {key for key, fields in VOLATILE_FIELDS.items()
                          if fields.get("generatedText")}
 
@@ -1604,9 +1637,27 @@ def join_path(path, key):
     return f"{path}.{key}" if path else key
 
 
+def value_type(value):
+    if (isinstance(value, str) and value.startswith(MASKED_PREFIX)
+            and value.endswith(">")):
+        name = value[len(MASKED_PREFIX):-1]
+        if name in TYPE_NAMES:
+            return name
+    return json_type(value)
+
+
+def enum_marker(values):
+    return f"{ENUM_PREFIX}{'|'.join(values)}>"
+
+
+def or_null_marker(fields):
+    return {OR_NULL_KEY: {name: f"<VOLATILE:{kind}>"
+                          for name, kind in fields.items()}}
+
+
 def template_of(values, typed=frozenset(), path=""):
     if path in typed:
-        return union_marker({json_type(value) for value in values})
+        return union_marker({value_type(value) for value in values})
     dicts = [value for value in values if isinstance(value, dict)]
     if dicts and len(dicts) == len(values):
         return {key: template_of([value[key] for value in dicts if key in value],
@@ -1617,7 +1668,7 @@ def template_of(values, typed=frozenset(), path=""):
         flat = [item for value in lists for item in value]
         return {ARRAY_KEY: (template_of(flat, typed, f"{path}[]")
                             if flat else None)}
-    return union_marker({json_type(value) for value in values})
+    return union_marker({value_type(value) for value in values})
 
 
 def null_leaves(template, path=""):
@@ -1674,16 +1725,26 @@ def volatile_value(value, declared=None, may_be_empty=False,
         if may_be_empty:
             marker[EMPTY_KEY] = True
         return marker
-    if declared is not None and (value is None or json_type(value) == declared):
+    if declared is not None and (value is None
+                                 or value_type(value) == declared):
         return f"<VOLATILE:{declared}|null>"
-    return f"<VOLATILE:{json_type(value)}>"
+    return f"<VOLATILE:{value_type(value)}>"
 
 
 def differences(expected, actual, prefix=""):
     if is_marker(expected):
-        if json_type(actual) in marker_types(expected):
+        if expected.startswith(ENUM_PREFIX):
+            values = expected[len(ENUM_PREFIX):-1].split("|")
+            if isinstance(actual, str) and actual in values:
+                return []
+            return [f"{prefix}: {expected!r} -> {actual!r}"]
+        if value_type(actual) in marker_types(expected):
             return []
-        return [f"{prefix}: {expected!r} -> {json_type(actual)!r}"]
+        return [f"{prefix}: {expected!r} -> {value_type(actual)!r}"]
+    if isinstance(expected, dict) and OR_NULL_KEY in expected:
+        if actual is None:
+            return []
+        return differences(expected[OR_NULL_KEY], actual, prefix)
     if isinstance(expected, dict) and ARRAY_KEY in expected:
         if not isinstance(actual, list):
             return [f"{prefix}: array -> {json_type(actual)!r}"]
@@ -1735,6 +1796,8 @@ def without_volatile(entry, body, volatile, problems=None):
     may_be_empty = set(fields.get("mayBeEmpty", ()))
     typed_paths = fields.get("typed", ())
     shaped = set(fields.get("shaped", ()))
+    null_templates = fields.get("nullTemplates", {})
+    enums = fields.get("enums", {})
     for key in fields["keys"]:
         prefix = f"{key}[]."
         typed = frozenset(path[len(prefix):] for path in typed_paths
@@ -1748,6 +1811,14 @@ def without_volatile(entry, body, volatile, problems=None):
                     "declare mayBeEmpty")
             if key in shaped and isinstance(value, dict):
                 template = template_of([value], typed)
+                for path, declared in null_templates.items():
+                    if path.startswith(f"{key}."):
+                        set_leaf(template, path[len(key) + 1:],
+                                 or_null_marker(declared["fields"]))
+                for path, declared in enums.items():
+                    if path.startswith(f"{key}."):
+                        set_leaf(template, path[len(key) + 1:],
+                                 enum_marker(declared["values"]))
                 for leaf in null_leaves(template):
                     full = join_path(key, leaf)
                     if full in nullable:
