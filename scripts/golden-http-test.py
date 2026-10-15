@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 import pathlib
+import re
 import secrets
 import shutil
 import sys
@@ -603,6 +604,133 @@ class SchemeTest(unittest.TestCase):
                     '[server]\nport = 7032\n')
                 self.assertEqual(golden.stack_base(self.stack, unit),
                                  f"{scheme}://127.0.0.1:7032")
+
+VOLATILE_PREFIX = "<VOLATILE:"
+VOLATILE_TYPES = ("array", "boolean", "null", "number", "object", "string")
+ARRAY_MARKER = "<VOLATILE:array>"
+EMPTY_MARKER = "<VOLATILE:mayBeEmpty>"
+PLAIN_MARKERS = ("<GENERATED>", "<BYTES>", "<masked>", "<masked-hex32>",
+                 "<masked-hex64>", "<masked-token>", "<STACK>", "<ROOT>")
+MARKER_SHAPE = re.compile(r"^<[A-Za-z][A-Za-z:_|\-]*>$")
+
+
+def volatile_scalar_problem(value):
+    names = value[len(VOLATILE_PREFIX):-1].split("|")
+    if value == ARRAY_MARKER:
+        return f"{value!r} is a bare array marker; an array is an element template"
+    if not value.endswith(">") or not names or any(
+            name not in VOLATILE_TYPES for name in names):
+        return f"unknown marker {value!r}"
+    if len(set(names)) != len(names) or ("null" in names
+                                         and names[-1] != "null"):
+        return f"unknown marker {value!r}"
+    return None
+
+
+def grammar_problems(value, path="$"):
+    if isinstance(value, str):
+        if value.startswith(VOLATILE_PREFIX):
+            problem = volatile_scalar_problem(value)
+            return [f"{path}: {problem}"] if problem else []
+        if MARKER_SHAPE.match(value) and value not in PLAIN_MARKERS:
+            return [f"{path}: unknown marker {value!r}"]
+        return []
+    if isinstance(value, dict):
+        volatile = [key for key in value if key.startswith(VOLATILE_PREFIX)]
+        if not volatile:
+            found = []
+            for key, child in value.items():
+                found.extend(grammar_problems(child, f"{path}.{key}"))
+            return found
+        found = [f"{path}: unknown marker key {key!r}" for key in volatile
+                 if key not in (ARRAY_MARKER, EMPTY_MARKER)]
+        if set(value) - {ARRAY_MARKER, EMPTY_MARKER}:
+            found.append(f"{path}: a marker object holds keys other than "
+                         "its marker")
+        if ARRAY_MARKER not in value:
+            found.append(f"{path}: {EMPTY_MARKER} without {ARRAY_MARKER}")
+        if EMPTY_MARKER in value and value[EMPTY_MARKER] is not True:
+            found.append(f"{path}: {EMPTY_MARKER} must be true")
+        template = value.get(ARRAY_MARKER)
+        if template is not None:
+            found.extend(grammar_problems(template, f"{path}[]"))
+        return found
+    if isinstance(value, list):
+        found = []
+        for index, child in enumerate(value):
+            found.extend(grammar_problems(child, f"{path}[{index}]"))
+        return found
+    return []
+
+
+def fixture_grammar_problems():
+    problems = []
+    for path in sorted(FIXTURES.glob("*.json")):
+        if path.name == "manifest.json":
+            continue
+        for probe in json.loads(path.read_text())["probes"]:
+            where = (f"{path.stem} {probe['method']} {probe['route']} "
+                     f"[{probe['probe']}]")
+            response = probe["response"]
+            for problem in grammar_problems(response.get("json"),
+                                            f"{where} response.json"):
+                problems.append(problem)
+            text = response.get("text")
+            if isinstance(text, str) and MARKER_SHAPE.match(text) \
+                    and text not in PLAIN_MARKERS:
+                problems.append(f"{where} response.text: unknown marker "
+                                f"{text!r}")
+    return problems
+
+
+class FixtureGrammarTest(unittest.TestCase):
+    def test_every_marker_in_every_fixture_belongs_to_the_grammar(self):
+        problems = fixture_grammar_problems()
+        self.assertEqual(problems, [], "\n".join(problems))
+
+    def test_a_scalar_marker_names_only_json_types_once_and_null_last(self):
+        for value in ("<VOLATILE:number>", "<VOLATILE:object|null>",
+                      "<VOLATILE:string|number|null>", "<VOLATILE:null>"):
+            with self.subTest(value=value):
+                self.assertEqual(grammar_problems({"x": value}), [])
+        for value in ("<VOLATILE:float>", "<VOLATILE:number|number>",
+                      "<VOLATILE:null|string>", "<VOLATILE:>",
+                      "<VOLATILE:array>"):
+            with self.subTest(value=value):
+                problems = grammar_problems({"x": value})
+                self.assertEqual(len(problems), 1, problems)
+
+    def test_an_unknown_marker_fails_and_is_named(self):
+        problems = grammar_problems({"items": {"<VOLATILE:float>": 1}})
+        self.assertIn("$.items: unknown marker key '<VOLATILE:float>'",
+                      problems)
+        problems = grammar_problems({"x": "<VOLATILE:uuid>"})
+        self.assertEqual(problems, ["$.x: unknown marker '<VOLATILE:uuid>'"])
+        problems = grammar_problems({"x": "<MYSTERY>"})
+        self.assertEqual(problems, ["$.x: unknown marker '<MYSTERY>'"])
+
+    def test_a_volatile_array_takes_an_element_template_or_null(self):
+        template = {"<VOLATILE:array>": {"id": "<VOLATILE:number>",
+                                         "note": "<VOLATILE:string|null>"},
+                    "<VOLATILE:mayBeEmpty>": True}
+        self.assertEqual(grammar_problems({"items": template}), [])
+        self.assertEqual(grammar_problems({"items": {
+            "<VOLATILE:array>": None}}), [])
+        problems = grammar_problems({"items": {
+            "<VOLATILE:array>": {"id": "<VOLATILE:number>"},
+            "<VOLATILE:mayBeEmpty>": False}})
+        self.assertEqual(problems, ["$.items: <VOLATILE:mayBeEmpty> must be "
+                                    "true"])
+        problems = grammar_problems({"items": {
+            "<VOLATILE:array>": {"id": "<VOLATILE:float>"}}})
+        self.assertEqual(problems, ["$.items[].id: unknown marker "
+                                    "'<VOLATILE:float>'"])
+
+    def test_a_plain_or_normalization_marker_is_in_the_grammar(self):
+        body = {"a": "<GENERATED>", "b": "<BYTES>", "c": "<masked>",
+                "d": "<masked-hex32>", "e": "<STACK>", "f": "free text"}
+        self.assertEqual(grammar_problems(body), [])
+
 
 if __name__ == "__main__":
     unittest.main()

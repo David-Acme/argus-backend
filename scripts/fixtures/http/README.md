@@ -122,15 +122,15 @@ and which no other unit's client reads.
 Volatile fields are the fields of a response that are an observation rather
 than a contract. `VOLATILE_FIELDS` in `scripts/golden-http.py` is their only
 source: `record` writes it into the manifest's `volatileFields`, and `verify`
-reads it from the harness, never from the manifest, so an entry edited into
-the manifest by hand changes nothing. `record` drops the declared keys before
-it writes, so they never reach a fixture, and `verify` drops them from both
-sides, a recording older than that rule included. A key is dropped under
-`info` in an answer with the envelope, and at the top level of an answer
-without it (guard's `/health`, the one declared deviation). Only the keys an
-entry declares for its own unit and route are dropped, so the same key
-anywhere else still fails the comparison. A key spelled `list[].field` drops
-that field from every row of the list. The entries:
+reads it from the harness, never from the manifest. `record` never writes a
+volatile value: each declared key is replaced by a marker of the grammar below,
+which keeps the key and its type (or its element template, or its fixed keys
+with typed leaves), and `verify` checks the live answer against that marker. A
+key is looked up under `info` in an answer with the envelope, and at the top
+level of an answer without it (guard's `/health`, the one declared deviation).
+Only the keys an entry declares for its own unit and route are marked, so the
+same key anywhere else still fails the comparison. A key spelled `list[].field`
+marks that field in every row of the list. The entries:
 
 - `/notification/delivery-summary`: the push channel's last self-test
   (`probeOk`, `probeMs`, `latencyMsP50/P95/Max`), which runs on its own
@@ -159,6 +159,43 @@ Everything beside them stays pinned. `scripts/golden-http-test.py`, run by
 - `record` regenerates the manifest's entries from the harness alone, and the
   committed manifest is what it writes.
 - `verify` ignores a manifest whose entries were removed by hand.
+
+## Marker grammar
+
+A recorded value is either the real JSON value or a marker. Every marker in
+every fixture belongs to this grammar: `FixtureGrammarTest` in
+`scripts/golden-http-test.py` checks each unit's recording against it and fails
+on any other marker, naming it. The manifest is not a recording and is not
+checked.
+
+| Marker | Stands where | Verify accepts |
+|--------|--------------|----------------|
+| `"<VOLATILE:T>"` | a leaf | a live value of JSON type `T` |
+| `"<VOLATILE:T1\|T2>"` | a leaf | a live value of any listed type; the names are distinct and `null`, when listed, comes last (`<VOLATILE:string\|null>`) |
+| `{"<VOLATILE:array>": E}` | where an array stands | a list, every element of which matches the element template `E`; `E` is `null` when the recording held no element |
+| `"<VOLATILE:mayBeEmpty>": true` | beside `<VOLATILE:array>` | also the empty list; written only where the route declares it can answer empty |
+| `"<GENERATED>"` | a leaf or a whole text body | any value: model output |
+| `"<BYTES>"` | a leaf | any value: a disk size on the answering host |
+
+`T` is one of `string`, `number`, `boolean`, `object`, `array` or `null`. A bare
+`"<VOLATILE:array>"` leaf is not in the grammar: an array is always the
+element-template form.
+
+An element template `E` is a leaf marker, an object of literal keys whose
+values are templates, or a nested `{"<VOLATILE:array>": …}`. Every element of
+the live array must have exactly the template's keys, each with a matching
+type. A fixed-key object (`shaped` in `VOLATILE_FIELDS`) is a plain object of
+templates; an object whose keys follow the data (`typed` in `VOLATILE_FIELDS`,
+such as an audit item's `newData`) is a `<VOLATILE:object>` leaf.
+
+A leaf that was only ever `null` in the recording is not volatile in type: the
+recorder refuses it until its real type is declared (`nullable`), so it becomes
+`<VOLATILE:T|null>`.
+
+The normalization markers the recorder writes are part of the same contract,
+on both sides of the comparison: `"<masked>"` (a masked key, see Normalization),
+`"<masked-hex32>"`, `"<masked-hex64>"`, `"<masked-token>"`, and the paths
+`"<STACK>"` and `"<ROOT>"`.
 
 ## What a run writes
 
