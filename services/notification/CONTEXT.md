@@ -307,9 +307,15 @@ readiness and the fallback gate — `CameraObjectNotifier`, the
   `Delete` frame (see "Deleting a notification"): a new notification row
   reaches its user through the durable delivery leg, not through the change
   subject.
-- **Push intents** (`[push].enabled`, default off) stay at-most-once
-  fire-and-forget accelerators toward `argus-relay`; the `/sync` fan-out
-  after durable delivery is the guarantee.
+- **Push intents** (`[push].enabled`) are at-most-once fire-and-forget
+  accelerators toward `argus-relay`; the `/sync` fan-out after durable
+  delivery is the guarantee. The deploy turns them on (2026-10-15): the
+  tunnel profile is the one place a killed app can be woken, so
+  `argus-deploy/config.notification.toml.example` ships `enabled = true`. The
+  native example stays off, because notification does not read the tunnel's
+  `[remote]` section: a native run with the tunnel turns it on by hand, and the
+  native stack script is where that belongs. Call rings are not gated by the
+  flag (see `pushAlertsEnabled`): their push is wired whenever NATS is on.
 - **A push carries no household detail** (2026-10, audit #46). The relay
   forwards to FCM/APNs, so whatever a push intent carries passes through
   Google or Apple. A notification's intent now carries a generic line in the

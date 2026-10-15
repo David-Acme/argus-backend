@@ -85,7 +85,7 @@ reconnect_wait_ms = 2000
 max_reconnects = 60
 
 [push]
-enabled = false
+enabled = true
 
 [jwt]
 secret = ""
