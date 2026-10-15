@@ -17,16 +17,16 @@ struct AdditiveColumn
 };
 
 constexpr std::array kAdditiveColumns{
-    AdditiveColumn{"session_id", "TEXT NOT NULL DEFAULT ''"},
-    AdditiveColumn{"provider", "TEXT NOT NULL DEFAULT ''"},
-    AdditiveColumn{"public_key", "TEXT NOT NULL DEFAULT ''"},
-    AdditiveColumn{"key_id", "TEXT NOT NULL DEFAULT ''"}};
+    AdditiveColumn{.name = "session_id", .definition = "TEXT NOT NULL DEFAULT ''"},
+    AdditiveColumn{.name = "provider", .definition = "TEXT NOT NULL DEFAULT ''"},
+    AdditiveColumn{.name = "public_key", .definition = "TEXT NOT NULL DEFAULT ''"},
+    AdditiveColumn{.name = "key_id", .definition = "TEXT NOT NULL DEFAULT ''"}};
 
 std::string columnCountSql(std::string_view column)
 {
   std::string sql = "SELECT COUNT(*) FROM pragma_table_info('notification_token') WHERE name = '";
   sql += column;
-  sql += "'";
+  sql += '\'';
   return sql;
 }
 
