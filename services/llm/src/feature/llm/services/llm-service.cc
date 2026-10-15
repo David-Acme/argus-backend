@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <cstring>
 #include <drogon/drogon.h>
+#include <ggml-backend.h>
 #include <limits>
 #include <ranges>
 #include <llama.h>
@@ -16,11 +17,22 @@
 #include <runtime/blocking-task.hxx>
 #include <runtime/hardware-profile.hxx>
 #include <runtime/thread-budget.hxx>
+#include <chrono>
 #include <thread>
 #include <vector>
 
 namespace
 {
+std::string backendDevices()
+{
+  std::string names;
+  for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+    if (!names.empty())
+      names += ",";
+    names += ggml_backend_dev_name(ggml_backend_dev_get(i));
+  }
+  return names;
+}
 
 constexpr std::size_t kMaxCheckpoints = 8;
 constexpr std::size_t kCheckpointsPerPrefill = 3;
@@ -140,6 +152,7 @@ void LlmService::init()
     context_.reset(rawCtx);
 
     nBatch_ = static_cast<int32_t>(ctxParams.n_batch);
+    nBatchThreads_ = nThreadsBatch;
     tailLocked_ = llama_model_is_recurrent(model_.get()) ||
                   llama_model_is_hybrid(model_.get());
     messageStart_ = specialToken("<|im_start|>");
@@ -169,8 +182,8 @@ void LlmService::init()
     LOG_INFO << "LLM loaded: " << modelPath << " (ctx=" << contextSize
              << ", n_batch=" << nBatch_ << ", threads=" << nThreads
              << ", batch_threads=" << nThreadsBatch << ", KV=" << kvTypeName
-             << ", gpu_layers=" << gpuLayers << ", template="
-             << (chatTemplate_.empty() ? "chatml-fallback" : "from-model")
+             << ", gpu_layers=" << gpuLayers << ", devices=" << backendDevices()
+             << ", template=" << (chatTemplate_.empty() ? "chatml-fallback" : "from-model")
              << ")";
   }
   catch (const std::exception& e) {
@@ -309,6 +322,7 @@ void LlmService::checkpoint(std::size_t tokens)
 bool LlmService::prefill(const std::vector<int32_t>& promptTokens,
                          bool forceReset)
 {
+  const auto started = std::chrono::steady_clock::now();
   auto* ctx = context_.get();
 
   std::size_t reuse = 0;
@@ -367,6 +381,12 @@ bool LlmService::prefill(const std::vector<int32_t>& promptTokens,
   }
 
   cachedTokens_ = promptTokens;
+  LOG_INFO << "LLM prefill: prompt=" << promptTokens.size() << " reused=" << reuse
+           << " decoded=" << promptTokens.size() - reuse << " ms="
+           << std::chrono::duration_cast<std::chrono::milliseconds>(
+                  std::chrono::steady_clock::now() - started)
+                  .count()
+           << " batch_threads=" << nBatchThreads_;
   return true;
 }
 
