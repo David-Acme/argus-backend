@@ -840,12 +840,17 @@ void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
           bargeIn(*session);
         }
         followDuck(*session, session->vad.ducking());
+        if (session->vad.ducking()) {
+          std::scoped_lock lock(session->duplexMutex);
+          session->turn.duckSeen = true;
+        }
         followUtterance(*session);
       }
       else {
         if (wasListening) {
           session->vad.endListening();
           wasListening = false;
+          noteUnbargedSpeech(*session);
         }
         followDuck(*session, false);
         auto turn = session->vad.process({.samples = clean.data() + offset,
@@ -880,6 +885,7 @@ void VoiceSessionService::launchTurn(const std::shared_ptr<Session>& session,
     session->turn.running = true;
     session->turn.announced = false;
     session->turn.barged = false;
+    session->turn.duckSeen = false;
   }
   session->turnThread = std::thread([session, body = std::move(body)] {
     try {
@@ -906,6 +912,15 @@ VoiceSessionService::listenState(Session& session)
   const DuplexTurn& turn = session.turn;
   return {.listening = !turn.barged && (turn.running || now < turn.playbackEnd),
           .armed = turn.announced && now >= turn.firstAudioAt + session.bargeGuard};
+}
+
+void VoiceSessionService::noteUnbargedSpeech(Session& session) const
+{
+  std::scoped_lock lock(session.duplexMutex);
+  if (!session.turn.duckSeen || session.turn.barged)
+    return;
+  session.turn.duckSeen = false;
+  LOG_INFO << "Voice: speech during playback without barge-in (turn " << session.turn.id << ")";
 }
 
 void VoiceSessionService::followDuck(Session& session, bool ducked) const

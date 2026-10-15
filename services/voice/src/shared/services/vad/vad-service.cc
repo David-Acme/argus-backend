@@ -16,6 +16,7 @@ constexpr int kContextSize = 64;
 constexpr int kEffectiveWindow = kWindowSize + kContextSize;
 constexpr int kStateSize = 2 * 1 * 128;
 constexpr const char* kModelPath = "models/vad/silero_vad.onnx";
+constexpr int kListenSampleWindows = 31;
 
 Ort::MemoryInfo& vadMem()
 {
@@ -223,6 +224,9 @@ std::optional<VadTurn> VadService::process(const VadProcessInput& input)
       const int speechMs = frameCounter_ * kWindowSize * 1000 / cfg_.sampleRate;
       const bool accepted =
           speechMs >= cfg_.minTurnMs && meanProb >= cfg_.minMeanProb;
+      if (accepted)
+        LOG_INFO << "Voice: turn accepted speech=" << speechMs << "ms meanProb=" << meanProb
+                 << " samples=" << buffer_.size();
       if (!accepted) {
         LOG_DEBUG << "turn discarded: speech=" << speechMs << "ms meanProb="
                   << meanProb << " (min " << cfg_.minTurnMs << "ms / "
@@ -256,6 +260,13 @@ bool VadService::listen(const VadListenInput& input)
     const float prob = nextWindow();
     keepPreRoll(cfg_.preRollFrames + cfg_.bargeMinFrames);
 
+    listenPeak_ = std::max(listenPeak_, prob);
+    if (++listenWindows_ >= kListenSampleWindows) {
+      LOG_INFO << "Voice: listen prob peak=" << listenPeak_ << " over " << listenWindows_
+               << " windows, armed=" << input.armed << ", barge at " << cfg_.bargeThreshold;
+      listenPeak_ = 0.0F;
+      listenWindows_ = 0;
+    }
     if (input.armed && prob >= cfg_.bargeThreshold) {
       ++bargeCounter_;
       bargeProbSum_ += prob;

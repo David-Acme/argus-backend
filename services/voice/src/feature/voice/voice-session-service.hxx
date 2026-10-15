@@ -175,6 +175,7 @@ private:
     bool running{false};
     bool announced{false};
     bool barged{false};
+    bool duckSeen{false};
     std::chrono::steady_clock::time_point firstAudioAt{};
     std::chrono::steady_clock::time_point playbackEnd{};
   };
@@ -288,6 +289,7 @@ private:
   ListenState listenState(Session& session);
   void bargeIn(Session& session);
   void followDuck(Session& session, bool ducked) const;
+  void noteUnbargedSpeech(Session& session) const;
   bool sendDuplexChunk(Session& session, argus::voice::v1::ServerFrame frame);
   bool sendDuplexAssistant(Session& session, argus::voice::v1::ServerFrame frame);
   void processTurn(Session& session, const std::vector<float>& samples);

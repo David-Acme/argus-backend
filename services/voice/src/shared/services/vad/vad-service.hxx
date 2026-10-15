@@ -112,6 +112,8 @@ private:
   std::vector<float> buffer_;
   bool speech_{false};
   int bargeCounter_{0};
+  float listenPeak_{0.0F};
+  int listenWindows_{0};
   float bargeProbSum_{0.0F};
   int duckCounter_{0};
   int duckQuietCounter_{0};
