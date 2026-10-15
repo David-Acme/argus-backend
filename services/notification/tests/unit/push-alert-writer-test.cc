@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include "../support/push-open.hxx"
 #include <shared/repositories/notification/notification-query.hxx>
 #include <shared/services/push-delivery/push-alert-writer.hxx>
 #include <shared/services/push-delivery/push-delivery-wire.hxx>
@@ -163,4 +164,27 @@ TEST_CASE("a user without devices and a row without a user write no alert")
   drogon::sync_wait(writerOver(outbox).write(round));
 
   CHECK(outbox->entries.empty());
+}
+
+TEST_CASE("an alert seals a notification plaintext with its title, body and deep link, per device key")
+{
+  const auto outbox = std::make_shared<RecordingOutbox>();
+  NotificationAlertRound round;
+  round.inputs = {alertFor(42)};
+  round.notificationIds = {901};
+
+  drogon::sync_wait(writerOver(outbox).write(round));
+
+  REQUIRE(outbox->entries.size() == 2);
+  const Json::Value fcm = push_open::plaintextOf(outbox->entries[0].payload, "key-0001");
+  const Json::Value apns = push_open::plaintextOf(outbox->entries[1].payload, "key-0002");
+  for (const Json::Value* plain : {&fcm, &apns}) {
+    CHECK((*plain)["kind"].asString() == "notification");
+    CHECK((*plain)["notificationId"].asInt64() == 901);
+    CHECK((*plain)["type"].asString() == "camera");
+    CHECK((*plain)["title"].asString() == "Argus");
+    CHECK((*plain)["body"].asString() == "Tienes un aviso nuevo. Abre Argus para verlo.");
+    CHECK((*plain)["deepLink"].asString() == "argus://notification?notificationId=901");
+  }
+  CHECK(push_open::plaintextOf(outbox->entries[0].payload, "key-0002").isNull());
 }

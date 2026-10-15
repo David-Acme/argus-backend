@@ -3,6 +3,7 @@
 
 #include <feature/call/services/push-delivery.hxx>
 #include <shared/services/push-delivery/push-delivery-wire.hxx>
+#include "../support/push-open.hxx"
 #include <text/base64.hxx>
 #include <text/json-util.hxx>
 
@@ -139,4 +140,37 @@ TEST_CASE("a delivery is recorded under the msg id of its delivery id, once per 
   CHECK(eventId == std::string(push_delivery_wire::kEventIdPrefix) + push_delivery_wire::hexOf(deliveryId));
   CHECK(payload["token"].asString() == "fcm-token-0001");
   CHECK(payload["provider"].asString() == "fcm");
+}
+
+TEST_CASE("a ring seals a call plaintext with its title, body and deep link, opened with the device key")
+{
+  const auto outbox = std::make_shared<RecordingOutbox>();
+  const CallSchema call = ringingCall(kNow + 120);
+  static_cast<void>(drogon::sync_wait(deliveryOver(outbox).ring(call, nullptr)));
+  REQUIRE(outbox->entries.size() == 1);
+
+  const Json::Value plain = push_open::plaintextOf(outbox->entries[0].payload, "key-0001");
+
+  CHECK(plain["kind"].asString() == "call");
+  CHECK(plain["callId"].asString() == call.callId());
+  CHECK(plain["title"].asString() == "Argus te está llamando");
+  CHECK(plain["body"].asString() == "Abre Argus para contestar.");
+  CHECK(plain["deepLink"].asString() == "argus://call?callId=" + call.callId());
+  CHECK_FALSE(plain.isMember("cancel"));
+}
+
+TEST_CASE("a cancel seals the same call plaintext with cancel set, and the wrong key opens nothing")
+{
+  const auto outbox = std::make_shared<RecordingOutbox>();
+  const CallSchema call = ringingCall(kNow + 900);
+  static_cast<void>(drogon::sync_wait(deliveryOver(outbox).cancel(call, nullptr)));
+  REQUIRE(outbox->entries.size() == 1);
+
+  const Json::Value plain = push_open::plaintextOf(outbox->entries[0].payload, "key-0001");
+
+  CHECK(plain["cancel"].asBool());
+  CHECK(plain["callId"].asString() == call.callId());
+  CHECK(plain["title"].asString() == "Argus te está llamando");
+  CHECK(plain["deepLink"].asString() == "argus://call?callId=" + call.callId());
+  CHECK(push_open::plaintextOf(outbox->entries[0].payload, "key-0002").isNull());
 }
