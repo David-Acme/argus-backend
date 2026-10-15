@@ -305,6 +305,7 @@ NotificationRepository::createManyWithCommand(
       if (input.alerts)
         co_await input.alerts->write({.inputs = normalized,
                                       .notificationIds = ids,
+                                      .ringFollowingUserIds = input.ringFollowingUserIds,
                                       .client = transaction.get()});
     }
   }

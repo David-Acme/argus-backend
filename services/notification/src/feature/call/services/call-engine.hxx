@@ -223,8 +223,8 @@ class CallEngine final : public push_delivery::RingPlanner
 public:
   CallEngine(CallEngineConfig config, CallEngineDependencies dependencies);
 
-  [[nodiscard]] drogon::Task<bool>
-  ringFollows(const push_delivery::RingPlanInput& input) const override;
+  [[nodiscard]] drogon::Task<std::vector<int64_t>>
+  ringFollowingUserIds(const push_delivery::RingPlanInput& input) const override;
 
   drogon::Task<std::vector<CallUserOutcome>>
   consider(const CallRequest& request) const;

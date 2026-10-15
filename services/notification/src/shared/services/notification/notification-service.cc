@@ -103,12 +103,22 @@ drogon::Task<NotificationCreateOutcome> NotificationService::createManyAndEmit(
     inputs.push_back(std::move(entry));
   }
 
+  std::vector<int64_t> ringFollowingUserIds;
+  const auto& episodeData = input.notification.data;
+  if (dependencies_.alerts && dependencies_.ringPlanner && episodeData.isObject() &&
+      episodeData.isMember("threadKey") && episodeData["threadKey"].isString() &&
+      !episodeData["threadKey"].asString().empty()) {
+    ringFollowingUserIds = co_await dependencies_.ringPlanner->ringFollowingUserIds(
+        {.data = episodeData, .userIds = input.userIds});
+  }
+
   const NotificationCommitResult committed =
       co_await repository_.createManyWithCommand(
           {.inputs = std::move(inputs),
            .commandId = input.commandId,
            .at = static_cast<int64_t>(std::time(nullptr)),
-           .alerts = dependencies_.alerts});
+           .alerts = dependencies_.alerts,
+           .ringFollowingUserIds = std::move(ringFollowingUserIds)});
   outcome.duplicate = committed.duplicate;
   outcome.createdCount = committed.expectedCount;
   const DeliverPendingOutcome pendingOutcome = co_await deliverPending();

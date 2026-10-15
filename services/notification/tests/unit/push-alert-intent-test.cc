@@ -10,20 +10,20 @@ namespace
 {
 struct AlwaysRings final : push_delivery::RingPlanner
 {
-  drogon::Task<bool> ringFollows(const push_delivery::RingPlanInput&) const override
+  drogon::Task<std::vector<int64_t>> ringFollowingUserIds(const push_delivery::RingPlanInput& input) const override
   {
-    co_return true;
+    co_return input.userIds;
   }
 };
 }
 
-TEST_CASE("an unbound planner answers no until the call engine is bound")
+TEST_CASE("an unbound planner answers no user until the call engine is bound")
 {
   push_delivery::LateRingPlanner planner;
-  const push_delivery::RingPlanInput input{.data = Json::Value(Json::objectValue), .userId = 1};
-  CHECK_FALSE(drogon::sync_wait(planner.ringFollows(input)));
+  const push_delivery::RingPlanInput input{.data = Json::Value(Json::objectValue), .userIds = {1, 2}};
+  CHECK(drogon::sync_wait(planner.ringFollowingUserIds(input)).empty());
   planner.bind(std::make_shared<AlwaysRings>());
-  CHECK(drogon::sync_wait(planner.ringFollows(input)));
+  CHECK(drogon::sync_wait(planner.ringFollowingUserIds(input)) == std::vector<int64_t>{1, 2});
 }
 
 namespace

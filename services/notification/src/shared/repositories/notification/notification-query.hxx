@@ -230,6 +230,7 @@ struct NotificationAlertRound
 {
   std::vector<NotificationCreateInput> inputs;
   std::vector<int64_t> notificationIds;
+  std::vector<int64_t> ringFollowingUserIds;
   drogon::orm::DbClient* client{nullptr};
 };
 
@@ -248,6 +249,7 @@ struct NotificationBatchCommitInput
   std::string commandId;
   int64_t at{0};
   std::shared_ptr<const NotificationAlertWriter> alerts{};
+  std::vector<int64_t> ringFollowingUserIds{};
 };
 
 struct NotificationSchemaBuildInput

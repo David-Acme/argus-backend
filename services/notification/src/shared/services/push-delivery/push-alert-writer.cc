@@ -9,6 +9,7 @@
 #include <config/config-service.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <string>
 #include <utility>
@@ -40,8 +41,7 @@ bool pushAlertsEnabled()
 PushAlertWriter::PushAlertWriter(PushAlertWriterDependencies dependencies)
     : devices_(std::move(dependencies.devices)),
       outbox_(std::move(dependencies.outbox)),
-      clock_(std::move(dependencies.clock)),
-      ringPlanner_(std::move(dependencies.ringPlanner))
+      clock_(std::move(dependencies.clock))
 {
 }
 
@@ -59,8 +59,8 @@ drogon::Task<void> PushAlertWriter::write(NotificationAlertRound round) const
                                              .call = false});
     const std::string episode = episodeOf(input.data);
     const bool ringFollows =
-        !episode.empty() && ringPlanner_ &&
-        co_await ringPlanner_->ringFollows({.data = input.data, .userId = input.userId});
+        !episode.empty() &&
+        std::ranges::find(round.ringFollowingUserIds, input.userId) != round.ringFollowingUserIds.end();
     const auto devices = co_await devices_->devicesOf(input.userId, round.client);
     for (const PushDevice& device : devices) {
       if (!push_envelope::combinationAllowed(device.provider, PushKind::Alert))

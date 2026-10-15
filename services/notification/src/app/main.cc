@@ -264,8 +264,7 @@ int main()
       alertWriter = std::make_shared<PushAlertWriter>(PushAlertWriterDependencies{
           .devices = pushDevices,
           .outbox = changeSink,
-          .clock = epochSecondsNow,
-          .ringPlanner = ringPlanner});
+          .clock = epochSecondsNow});
   }
 
   const auto modules = module_gate::install({.service = "notification", .bus = natsBus});
@@ -277,6 +276,7 @@ int main()
   const NotificationService::Dependencies deliveryDeps{
       .deliverySink = deliverySink,
       .alerts = alertWriter,
+      .ringPlanner = ringPlanner,
       .kindAllowed = kindAllowed};
 
   const NotificationIdentityConfig identityConfig =

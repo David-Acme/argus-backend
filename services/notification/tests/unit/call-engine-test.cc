@@ -412,8 +412,9 @@ TEST_CASE("the ring planner predicts exactly the delay-0 rings that considerNoti
     UpdateCallPreferenceDto update;
     update.pushDelaySeconds = scenario.delay;
     drogon::sync_wait(preferences.update(1, update));
-    const bool planned = drogon::sync_wait(harness.engine.ringFollows(
-        {.data = scenario.data, .userId = scenario.userId}));
+    const auto plannedIds = drogon::sync_wait(harness.engine.ringFollowingUserIds(
+        {.data = scenario.data, .userIds = {scenario.userId}}));
+    const bool planned = !plannedIds.empty();
     const auto outcomes = drogon::sync_wait(
         harness.engine.considerNotification(scenario.data, {scenario.userId}));
     const int actualDelay = scenario.userId == 1

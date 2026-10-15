@@ -3,6 +3,7 @@
 #include <drogon/utils/coroutine.h>
 #include <notification/notification-delivery-sink.hxx>
 #include <shared/repositories/notification/notification-repository.hxx>
+#include <shared/services/push-delivery/ring-planner.hxx>
 #include <sync/user-change-sink.hxx>
 #include <functional>
 #include <memory>
@@ -64,6 +65,7 @@ public:
   {
     std::shared_ptr<const NotificationDeliverySink> deliverySink;
     std::shared_ptr<const NotificationAlertWriter> alerts{};
+    std::shared_ptr<const push_delivery::RingPlanner> ringPlanner{};
     std::function<bool(std::string_view)> kindAllowed{};
   };
 
