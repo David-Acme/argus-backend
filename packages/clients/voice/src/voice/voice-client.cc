@@ -2,14 +2,13 @@
 
 #include <grpc/grpc-client-base.hxx>
 
+#include "frame-queue.hxx"
+
 #include <chrono>
-#include <deque>
 #include <mutex>
 
 namespace
 {
-constexpr size_t kMaxPendingWrites = 1024;
-
 struct VoiceStreamInput
 {
   argus::voice::v1::VoiceService::StubInterface* stub;
@@ -91,13 +90,9 @@ public:
   void finish() override
   {
     std::scoped_lock lock(mutex_);
-    if (done_ || writesDone_)
+    if (done_ || queue_.cancelled())
       return;
-    writesDone_ = true;
-    if (writing_ && !pending_.empty())
-      pending_.erase(std::next(pending_.begin()), pending_.end());
-    else
-      pending_.clear();
+    queue_.cancel();
     if (context_)
       context_->TryCancel();
   }
@@ -121,16 +116,8 @@ public:
   void OnWriteDone(bool ok) override
   {
     std::scoped_lock lock(mutex_);
-    if (!ok)
-      pending_.clear();
-    else if (!pending_.empty())
-      pending_.pop_front();
-    writing_ = false;
-    if (!pending_.empty()) {
-      drainLocked();
-      return;
-    }
-    maybeCloseLocked();
+    queue_.completeWrite(ok);
+    drainLocked();
   }
 
   void OnDone(const grpc::Status& status) override
@@ -167,26 +154,15 @@ private:
   void writeFrame(argus::voice::v1::ClientFrame frame)
   {
     std::scoped_lock lock(mutex_);
-    if (done_ || writesDone_)
+    if (done_ || !queue_.push(std::move(frame)))
       return;
-    if (pending_.size() >= kMaxPendingWrites)
-      return;
-    pending_.push_back(std::move(frame));
     drainLocked();
   }
 
   void drainLocked()
   {
-    if (writing_ || pending_.empty())
-      return;
-    writing_ = true;
-    StartWrite(&pending_.front());
-  }
-
-  void maybeCloseLocked()
-  {
-    if (writesDone_ && !writing_ && pending_.empty())
-      StartWritesDone();
+    if (auto* next = queue_.nextWrite())
+      StartWrite(next);
   }
 
   argus::voice::v1::VoiceService::StubInterface* stub_;
@@ -197,9 +173,7 @@ private:
   std::shared_ptr<VoiceStreamImpl> self_;
 
   std::mutex mutex_;
-  std::deque<argus::voice::v1::ClientFrame> pending_;
-  bool writing_{false};
-  bool writesDone_{false};
+  FrameQueue queue_;
   bool done_{false};
   argus::voice::v1::ServerFrame read_;
 };

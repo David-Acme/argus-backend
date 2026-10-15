@@ -38,3 +38,13 @@ add_test(NAME voice-client-test
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
                  $<TARGET_FILE:voice-client-test> 10)
 set_tests_properties(voice-client-test PROPERTIES SKIP_RETURN_CODE 77)
+
+add_executable(frame-queue-test tests/unit/frame-queue-test.cc)
+
+set_target_properties(frame-queue-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+target_link_libraries(frame-queue-test PRIVATE argus::clients::voice doctest::doctest)
+
+target_compile_options(frame-queue-test PRIVATE -Wall -Wextra)
+
+add_test(NAME frame-queue-test COMMAND $<TARGET_FILE:frame-queue-test>)
