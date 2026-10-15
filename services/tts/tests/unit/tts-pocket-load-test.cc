@@ -27,6 +27,7 @@ struct SlowComponentsInput
 std::vector<PocketLoadStep> slowComponents(const SlowComponentsInput& input)
 {
   std::vector<PocketLoadStep> steps;
+  steps.reserve(input.count);
   for (std::size_t index = 0; index < input.count; ++index) {
     steps.push_back({.name = "component " + std::to_string(index),
                      .load = [index, &loaded = input.loaded, afterEach = input.afterEach] {
