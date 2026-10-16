@@ -58,7 +58,7 @@ Merging to `master` stays fast-forward and follows the reviewer's acceptance of 
   - C: Phase 3 (`services/guard`).
   - D: Phase 4 (`services/llm` evals).
 
-  Then Phase 2.3 (frontend desktop) and 2.4 (frontend iOS module) as one frontend track. Phase 5 starts after the reviewer accepts the Phase 0 table.
+  Then Phase 2.2–2.4 and the F5 app side as frontend tracks, and Phase 4b's backend units. Phase 5 starts after the reviewer accepts the Phase 0 table.
 - **Reporting.** Every unit report states:
   - the branch and SHAs;
   - the files touched;
@@ -122,15 +122,19 @@ Each failure becomes a unit for the implementer, with the logs attached.
 - its latency from answer is measured before and after on a prod build;
 - a test pins the opening text.
 
-### 2.2 The session survives a lost keystore key
+### 2.2 A session lost to the keystore is recovered cleanly
 
-**Status: owner decision first.** `expo-secure-store` deletes entries it cannot decrypt.
+**Decided 2026-10-16: no second copy of the session.** Expo's guidance is that values restored from Auto Backup cannot be decrypted once the Keystore key is gone, so an unreadable value means signed out.
 
-**Options:**
-- a second encrypted copy outside the keystore-backed store;
-- an explicit re-pair path.
+**Task:**
+- **Exclude from Auto Backup every store whose key lives in the Android Keystore.** That is the `expo-secure-store` entries (verify the generated rules) and `argus_push_keyset_prefs`. Do it through a config plugin, because `android/` is generated.
+- **Record the exact cause when a stored session disappears.** Log the `SecureStoreModule` warning and the key name, and emit a `restore` trace with a reason.
+- **Make the re-entry one step.** The app shows "Vuelve a entrar con tu rostro" and goes straight to face login, keeping the pairing. No pairing code is asked again while the instance trust is intact.
 
-Implementation follows the decision.
+**Acceptance:**
+- uninstall, reinstall and cold start on the S21: no unreadable-key error, and push registers;
+- a forced unreadable token leads to face login with the pairing kept;
+- tests cover the restore-reason mapping.
 
 ### 2.3 Desktop audio panel
 
@@ -164,6 +168,44 @@ The Tauri commands `argus_rtc_devices` and `argus_rtc_select_device` and the cal
 - **`llm-tier-eval`** (`services/llm/tests/eval/llm-tier-eval.cc`, gate `selection.memory.accuracy` in `gates.json`). Memory selection measures 0.241 against the 0.6 gate. Find the cause in the context build, not in the model size, and raise it to the gate.
 - **`call-faithfulness-eval`** (`call-faithfulness-eval.cc`, cases `services/llm/tests/fixtures/eval/call-faithfulness.jsonl`). Bring its gates to green on the prod build. Numbers are reported through `scripts/measure-guard.sh`.
 
+## Phase 4b: owner decisions turned into units (implementer, 1–1.5 days)
+
+### F5: siren button in the app (decided 2026-10-16)
+
+**Behaviour, following Arlo and Doro:**
+- tapping Sirena opens a confirmation;
+- confirming starts a 5-second countdown with Cancelar;
+- the siren then sounds through the camera's existing siren action (`hasCameraAction`), and Detener is always one tap.
+
+**Owner setting.** `guard.app_siren_enabled`, off by default, with its consent text. Roles follow the camera action table; an inactive role or a disabled module refuses as usual.
+
+**Recording.** Each activation and stop writes an audit event and a `ResourceChanged` for the camera.
+
+**Acceptance:**
+- unit tests for the countdown and cancel;
+- a route test for the role and module refusals;
+- a device check with the owner.
+
+### Settings profiles (decided 2026-10-16)
+
+- RAM floors: 14 GB for "Máxima calidad", 7 GB for "Equilibrado".
+- "Equilibrado" uses the quality Spanish model; the fast model belongs to "Máximo rendimiento" only. The precedence is precision > speed > memory.
+- `gpu_layers = 0` is written explicitly in product config and profiles (CPU-only, decided 2026-10-09).
+
+The data change goes in `services/settings` profiles plus its tests.
+
+### Remote access when the relay is down (decided 2026-10-16)
+
+- At home, the app always talks to the server directly over the LAN (mDNS).
+- Away from home with the relay down: the app shows its cached data with the offline notice and retries with exponential backoff. Writes are refused with a clear message, never queued silently.
+- No second relay for now.
+
+**Acceptance.** A two-device test with the relay stopped.
+
+### VLM gRPC cutover (decided 2026-10-16)
+
+`services/vlm` moves to the same internal gRPC shape as stt, tts and llm, through its wire client. The frozen HTTP wire stays only where a caller still needs it, and is listed in the report.
+
 ## Phase 5: the open backlog, after Phase 0 (implementer, 2–4 days)
 
 The order follows `realtime-and-backlog-plan.md` §10, restricted to what Phase 0 marks open:
@@ -176,7 +218,7 @@ The order follows `realtime-and-backlog-plan.md` §10, restricted to what Phase 
 6. Q1–Q3.
 7. The D items: tidy paydown per unit, stale docs, named cleanups.
 
-F5 (the siren) waits for the owner's consent decision.
+F5 is in Phase 4b.
 
 ## Phase 6: the long programmes (each with its own plan, 6–8 weeks in all)
 
@@ -190,12 +232,15 @@ F5 (the siren) waits for the owner's consent decision.
 
 Each programme starts with the "measure first" section its plan names, and lands as units under this plan's rules.
 
-## Decisions the owner holds
+## Owner decisions, resolved 2026-10-16
 
-1. The session copy (2.2).
-2. The siren and its consent (F5).
-3. RAM floors per profile (14/7 GB), the fast Spanish model in Equilibrado, and `gpu_layers`.
-4. Remote access fallback and the VLM gRPC cutover (§8 items 5–6).
+The owner asked to apply the recommended option for each decision, after research. They are listed in 2.2 and Phase 4b:
+
+- session: no second copy; clean recovery;
+- siren: confirmation plus a 5-second countdown, behind an owner setting;
+- profiles: 14/7 GB, quality Spanish in Equilibrado, `gpu_layers = 0`;
+- remote: LAN direct, cached offline, no second relay;
+- VLM: gRPC.
 
 ## Review protocol (reviewer)
 
