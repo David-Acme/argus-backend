@@ -391,7 +391,6 @@ private:
   drogon::Task<std::vector<std::string>> supersedeRinging(const CallSchema& parent, int64_t at) const;
 
 
-  drogon::Task<void> noteDeclined(const CallSchema& call) const;
   drogon::Task<void> closeRoom(const CallRoomClose& input) const;
   drogon::Task<CallRoomCloseOutcome> closeCallRoomOnSignal(const CallRoomClose& input) const;
   drogon::Task<int64_t> closeStaleCalls(int64_t at) const;

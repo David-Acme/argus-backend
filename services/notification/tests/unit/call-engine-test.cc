@@ -854,6 +854,7 @@ TEST_CASE("a decline repeated for a call already declined ends again without a s
   };
 
   CHECK(decline() == CallEndStatus::Ended);
+  CHECK(harness.notifier->all().empty());
   const std::size_t cancels = harness.signal->of(SyncOperation::CallCancel).size();
   CHECK(decline() == CallEndStatus::Ended);
   CHECK(harness.signal->of(SyncOperation::CallCancel).size() == cancels);

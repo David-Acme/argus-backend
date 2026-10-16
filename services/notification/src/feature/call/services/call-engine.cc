@@ -468,20 +468,6 @@ drogon::Task<int64_t> CallEngine::closeStaleCalls(int64_t at) const
   co_return static_cast<int64_t>(updated.size());
 }
 
-drogon::Task<void> CallEngine::noteDeclined(const CallSchema& call) const
-{
-  if (!dependencies_.notifier)
-    co_return;
-  co_await dependencies_.notifier->notify(
-      {.userId = call.userId,
-       .type = "call",
-       .title = text(call.data, kMissedTitleKey),
-       .body = call.missedLine,
-       .data = missedData(call),
-       .commandId = "call-declined:" + call.callId()});
-  co_return;
-}
-
 drogon::Task<std::vector<CallUserOutcome>>
 CallEngine::considerNotification(const Json::Value& data,
                                  const std::vector<int64_t>& userIds) const
@@ -942,7 +928,6 @@ drogon::Task<CallEndStatus> CallEngine::end(const CallEndRequest& request) const
     co_await emit({.userId = request.userId,
                    .operation = SyncOperation::CallCancel,
                    .info = info});
-    co_await noteDeclined(*existing);
     co_return CallEndStatus::Ended;
   }
   if (existing->state == CallState::Answered) {
