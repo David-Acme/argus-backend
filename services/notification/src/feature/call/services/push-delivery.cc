@@ -79,7 +79,8 @@ drogon::Task<int64_t> CallPushDelivery::deliver(CallPushInput input) const
   intent["title"] = copy.title;
   intent["body"] = copy.body;
   intent["iat"] = static_cast<Json::Int64>(now);
-  intent["exp"] = static_cast<Json::Int64>(call.expiresAt);
+  const int64_t intentExpiresAt = input.cancelling ? now + kCancelTtlSeconds : call.expiresAt;
+  intent["exp"] = static_cast<Json::Int64>(intentExpiresAt);
   const std::string intentId = randomBytes(kIntentIdSize);
   if (intentId.size() != kIntentIdSize)
     co_return 0;
@@ -88,7 +89,7 @@ drogon::Task<int64_t> CallPushDelivery::deliver(CallPushInput input) const
     intent["cancel"] = true;
   const std::string plaintext = json_util::toString(intent);
   const uint32_t ttl = input.cancelling ? kCancelTtlSeconds : remainingSeconds(call.expiresAt, now);
-  const int64_t expiresAtMs = (input.cancelling ? now + kCancelTtlSeconds : call.expiresAt) * 1000;
+  const int64_t expiresAtMs = intentExpiresAt * 1000;
 
   int64_t recorded = 0;
   for (const auto& device : call_push_routing::devicesForCall(devices)) {

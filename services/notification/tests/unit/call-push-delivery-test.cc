@@ -162,6 +162,7 @@ TEST_CASE("a ring seals a call plaintext with its title, body and deep link, ope
   CHECK(plain["title"].asString() == "Argus te está llamando");
   CHECK(plain["body"].asString() == "Abre Argus para contestar.");
   CHECK(plain["deepLink"].asString() == "argus://call?callId=" + call.callId());
+  CHECK(plain["exp"].asInt64() == kNow + 120);
   CHECK_FALSE(plain.isMember("cancel"));
 }
 
@@ -175,6 +176,7 @@ TEST_CASE("a cancel seals the same call plaintext with cancel set, and the wrong
   const Json::Value plain = push_open::plaintextOf(outbox->entries[0].payload, "key-0001");
 
   CHECK(plain["cancel"].asBool());
+  CHECK(plain["exp"].asInt64() == kNow + kCancelTtlSeconds);
   CHECK(plain["callId"].asString() == call.callId());
   CHECK(plain["title"].asString() == "Argus te está llamando");
   CHECK(plain["deepLink"].asString() == "argus://call?callId=" + call.callId());
