@@ -839,6 +839,26 @@ TEST_CASE("an answered call the user hangs up before Argus spoke completes and l
                                               .sessionId = ""})) == CallEndStatus::NotFound);
 }
 
+TEST_CASE("a decline repeated for a call already declined ends again without a second cancel")
+{
+  Harness harness;
+  const auto rang = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("critical", 61), {1}));
+  const std::string callId = call_id::format(outcomeFor(rang, 1).callId);
+  const auto decline = [&harness, &callId] {
+    return drogon::sync_wait(harness.engine.end({.callId = callId,
+                                                 .userId = 1,
+                                                 .outcome = CallEndReport::Declined,
+                                                 .spoken = false,
+                                                 .sessionId = ""}));
+  };
+
+  CHECK(decline() == CallEndStatus::Ended);
+  const std::size_t cancels = harness.signal->of(SyncOperation::CallCancel).size();
+  CHECK(decline() == CallEndStatus::Ended);
+  CHECK(harness.signal->of(SyncOperation::CallCancel).size() == cancels);
+}
+
 TEST_CASE("a claimed call that ends completed stays completed when the phone sends no spoken line")
 {
   Harness harness;
