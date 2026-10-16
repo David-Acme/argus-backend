@@ -288,7 +288,7 @@ TEST_CASE("the Pocket engine streams speech and honours cancellation" *
           doctest::skip(!provisioned("es-fast")))
 {
   Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "tts-pocket-test");
-  PocketEngine engine({.env = env, .directory = pocketRoot() / "es-fast", .precision = "int8", .threads = 4});
+  PocketEngine engine({.env = env, .directory = pocketRoot() / "es-fast", .precision = "int8", .threads = 4, .stopRequested = {}});
   CHECK(engine.sampleRate() == 24000);
   CHECK(engine.tokenCount("Hola, ¿cómo estás?") == 11);
   const auto voice = engine.loadVoice(pocketRoot() / "es-fast" / "voices" / "lola.safetensors");
@@ -309,7 +309,7 @@ TEST_CASE("a fixed seed makes Pocket speech reproducible" *
           doctest::skip(!provisioned("es-fast")))
 {
   Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "tts-pocket-seed-test");
-  PocketEngine engine({.env = env, .directory = pocketRoot() / "es-fast", .precision = "int8", .threads = 1});
+  PocketEngine engine({.env = env, .directory = pocketRoot() / "es-fast", .precision = "int8", .threads = 1, .stopRequested = {}});
   const auto voice = engine.loadVoice(pocketRoot() / "es-fast" / "voices" / "lola.safetensors");
   const auto speak = [&engine, &voice](std::uint32_t seed) {
     std::vector<float> samples;
@@ -397,7 +397,7 @@ TEST_CASE("a reference recording becomes a Pocket voice when the bundle carries 
   REQUIRE(configured != nullptr);
   const std::filesystem::path bundle(configured);
   Ort::Env env(ORT_LOGGING_LEVEL_ERROR, "tts-pocket-cloning-test");
-  PocketEngine engine({.env = env, .directory = bundle, .precision = "int8", .threads = 4});
+  PocketEngine engine({.env = env, .directory = bundle, .precision = "int8", .threads = 4, .stopRequested = {}});
   REQUIRE(engine.canClone());
   const auto samples = loadReferenceAudio({.directory = bundle / "references", .name = "reference.wav", .targetRate = 24000});
   REQUIRE(samples.size() > 24000);
