@@ -225,3 +225,20 @@ TEST_CASE("a user who left and does not come back ends the call once the rejoin 
                                             .leftAt = leftAt,
                                             .grace = grace}));
 }
+
+TEST_CASE("a farewell for a call end ends the call only, and only a revoke ever says revoked")
+{
+  const Json::Value ended = parsed(rtc_wire::farewellMessage("ended").payload);
+  CHECK(ended["reason"].asString() == "hangup");
+  CHECK_FALSE(ended.isMember("cause"));
+  CHECK(parsed(rtc_wire::farewellMessage("declined").payload)["reason"].asString() == "hangup");
+  CHECK(parsed(rtc_wire::farewellMessage("expired").payload)["reason"].asString() == "hangup");
+  CHECK(parsed(rtc_wire::farewellMessage("answered_elsewhere").payload)["reason"].asString() == "hangup");
+
+  const Json::Value revoked = parsed(rtc_wire::farewellMessage("accountDisabled").payload);
+  CHECK(revoked["reason"].asString() == "revoked");
+  CHECK(revoked["cause"].asString() == "accountDisabled");
+  CHECK(parsed(rtc_wire::farewellMessage("").payload)["reason"].asString() == "revoked");
+  CHECK(rtc_wire::isSessionRevokeCause("revokedByOwner"));
+  CHECK_FALSE(rtc_wire::isSessionRevokeCause("ended"));
+}

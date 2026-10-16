@@ -86,7 +86,7 @@ void RtcCall::sayFarewell(const FarewellRequest& request)
   LOG_INFO << "Voice: RTC call " << join_.room() << " closes on a revoke or a disable ("
            << request.cause << ")";
   flushPlayout();
-  publish(rtc_wire::revokedMessage(request.cause));
+  publish(rtc_wire::farewellMessage(request.cause));
   sessions_.farewell(*this);
   publishPending();
   wantState(rtc_wire::AgentState::Listening);

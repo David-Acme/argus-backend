@@ -165,6 +165,21 @@ DataMessage revokedMessage(std::string_view cause)
   return messageOf(kTopicDone, payload);
 }
 
+bool isSessionRevokeCause(std::string_view cause)
+{
+  if (cause.empty())
+    return true;
+  return cause == "revoked" || cause == "revokedByOwner" || cause == "accountDisabled" ||
+         cause == "logout" || cause == "refreshTokenReuse";
+}
+
+DataMessage farewellMessage(std::string_view cause)
+{
+  if (isSessionRevokeCause(cause))
+    return revokedMessage(cause);
+  return doneMessage(DoneReason::Hangup);
+}
+
 ClientMessage clientMessageOf(const ClientPacket& packet)
 {
   ClientMessage message;

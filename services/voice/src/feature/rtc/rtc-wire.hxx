@@ -101,6 +101,8 @@ struct ClientPacket
 [[nodiscard]] std::optional<DataMessage> dataMessageOf(const argus::voice::v1::ServerFrame& frame);
 [[nodiscard]] DataMessage doneMessage(DoneReason reason);
 [[nodiscard]] DataMessage revokedMessage(std::string_view cause);
+[[nodiscard]] bool isSessionRevokeCause(std::string_view cause);
+[[nodiscard]] DataMessage farewellMessage(std::string_view cause);
 [[nodiscard]] ClientMessage clientMessageOf(const ClientPacket& packet);
 [[nodiscard]] std::optional<int64_t> userIdOfIdentity(std::string_view identity);
 [[nodiscard]] CallOutcome callOutcomeOf(const CallEnd& end);
