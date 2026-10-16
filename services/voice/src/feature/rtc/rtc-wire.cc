@@ -180,6 +180,11 @@ DataMessage farewellMessage(std::string_view cause)
   return doneMessage(DoneReason::Hangup);
 }
 
+DoneReason farewellEndReason(std::string_view cause)
+{
+  return isSessionRevokeCause(cause) ? DoneReason::Revoked : DoneReason::Hangup;
+}
+
 ClientMessage clientMessageOf(const ClientPacket& packet)
 {
   ClientMessage message;

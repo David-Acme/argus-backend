@@ -83,8 +83,15 @@ void RtcCall::farewell(const argus::voice::v1::RtcFarewell& request, std::functi
 
 void RtcCall::sayFarewell(const FarewellRequest& request)
 {
-  LOG_INFO << "Voice: RTC call " << join_.room() << " closes on a revoke or a disable ("
+  const rtc_wire::DoneReason reason = rtc_wire::farewellEndReason(request.cause);
+  LOG_INFO << "Voice: RTC call " << join_.room()
+           << (reason == rtc_wire::DoneReason::Revoked ? " closes on a session revoke (" : " closes on a call end (")
            << request.cause << ")";
+  {
+    std::scoped_lock lock(mutex_);
+    if (!stopReason_)
+      stopReason_ = reason;
+  }
   flushPlayout();
   publish(rtc_wire::farewellMessage(request.cause));
   sessions_.farewell(*this);

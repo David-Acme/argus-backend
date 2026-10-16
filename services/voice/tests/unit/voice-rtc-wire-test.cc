@@ -242,3 +242,11 @@ TEST_CASE("a farewell for a call end ends the call only, and only a revoke ever 
   CHECK(rtc_wire::isSessionRevokeCause("revokedByOwner"));
   CHECK_FALSE(rtc_wire::isSessionRevokeCause("ended"));
 }
+
+TEST_CASE("a farewell ends the call as a hangup for a call end, and as a revoke for a session cause")
+{
+  CHECK(rtc_wire::farewellEndReason("ended") == rtc_wire::DoneReason::Hangup);
+  CHECK(rtc_wire::farewellEndReason("expired") == rtc_wire::DoneReason::Hangup);
+  CHECK(rtc_wire::farewellEndReason("accountDisabled") == rtc_wire::DoneReason::Revoked);
+  CHECK(rtc_wire::farewellEndReason("") == rtc_wire::DoneReason::Revoked);
+}

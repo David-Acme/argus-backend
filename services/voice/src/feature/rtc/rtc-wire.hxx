@@ -103,6 +103,7 @@ struct ClientPacket
 [[nodiscard]] DataMessage revokedMessage(std::string_view cause);
 [[nodiscard]] bool isSessionRevokeCause(std::string_view cause);
 [[nodiscard]] DataMessage farewellMessage(std::string_view cause);
+[[nodiscard]] DoneReason farewellEndReason(std::string_view cause);
 [[nodiscard]] ClientMessage clientMessageOf(const ClientPacket& packet);
 [[nodiscard]] std::optional<int64_t> userIdOfIdentity(std::string_view identity);
 [[nodiscard]] CallOutcome callOutcomeOf(const CallEnd& end);
