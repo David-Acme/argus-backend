@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <ctime>
 #include <exception>
+#include <stdexcept>
 #include <system_error>
 #include <thread>
 #include <utility>
@@ -394,21 +395,77 @@ drogon::Task<void> CallEngine::closeRoom(const CallRoomClose& input) const
       LOG_WARN << "Call engine: the voice room of call-" << input.callId << " did not close after two tries (" << input.reason
                << "); the room may stay open until the phone leaves";
   }
-  if (!dependencies_.signal)
-    co_return;
-  const auto signal = dependencies_.signal;
-  bool removed = false;
-  if (!dependencies_.blockingOffLoop) {
-    removed = signal->closeCallRoom(input);
-  }
-  else {
-    removed = co_await BlockingTask<bool>([signal, input]() {
-      return signal->closeCallRoom(input);
-    });
-  }
-  if (!removed)
+  const CallRoomCloseOutcome outcome = co_await closeCallRoomOnSignal(input);
+  if (!outcome.ok)
     LOG_WARN << "Call engine: argus-sync did not close the room of call-" << input.callId << " (" << input.reason
              << "); the room may stay open";
+}
+
+drogon::Task<CallRoomCloseOutcome> CallEngine::closeCallRoomOnSignal(const CallRoomClose& input) const
+{
+  if (!dependencies_.signal)
+    co_return CallRoomCloseOutcome{.ok = true, .closed = true};
+  const auto signal = dependencies_.signal;
+  if (!dependencies_.blockingOffLoop)
+    co_return signal->closeCallRoom(input);
+  co_return co_await BlockingTask<CallRoomCloseOutcome>([signal, input]() {
+    return signal->closeCallRoom(input);
+  });
+}
+
+drogon::Task<int64_t> CallEngine::closeStaleCalls(int64_t at) const
+{
+  const CallEngineConfig config = this->config();
+  const int64_t staleBefore = at - config.answeredStaleS;
+  const auto stale = co_await callRepository_.findStale({.answeredBefore = staleBefore, .createdBefore = staleBefore});
+  std::vector<CallSchema> closable;
+  for (const auto& call : stale) {
+    const CallRoomClose room{.userId = call.userId, .callId = call.id, .reason = "expired", .onlyIfEmpty = true};
+    const CallRoomCloseOutcome outcome = co_await closeCallRoomOnSignal(room);
+    if (!outcome.ok) {
+      LOG_WARN << "Call engine: argus-sync could not check the room of call-" << call.id << "; checked again next sweep";
+      continue;
+    }
+    if (!outcome.closed) {
+      LOG_INFO << "Call engine: call-" << call.id << " still has a participant in its room; it stays open";
+      continue;
+    }
+    closable.push_back(call);
+  }
+  if (closable.empty())
+    co_return 0;
+
+  std::vector<int64_t> ids;
+  ids.reserve(closable.size());
+  for (const auto& call : closable)
+    ids.push_back(call.id);
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  std::vector<int64_t> updated;
+  try {
+    updated = co_await callRepository_.closeStaleByIds({.ids = ids, .now = at, .client = transaction.get()});
+    for (const auto& call : closable) {
+      if (std::ranges::find(updated, call.id) == updated.end())
+        continue;
+      if (dependencies_.sealedPush)
+        static_cast<void>(co_await dependencies_.sealedPush->cancel(call, transaction.get()));
+    }
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw std::runtime_error("stale call close did not commit");
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+
+  for (const auto& call : closable) {
+    if (std::ranges::find(updated, call.id) == updated.end())
+      continue;
+    Json::Value info(Json::objectValue);
+    info["callId"] = call.callId();
+    info["reason"] = "expired";
+    co_await emit({.userId = call.userId, .operation = SyncOperation::CallCancel, .info = info});
+  }
+  co_return static_cast<int64_t>(updated.size());
 }
 
 drogon::Task<void> CallEngine::noteDeclined(const CallSchema& call) const
@@ -1162,8 +1219,7 @@ drogon::Task<CallSweepReport> CallEngine::sweep() const
                        .notificationExists = false});
   }
 
-  report.closed =
-      co_await callRepository_.closeStaleAnswered(at - config.answeredStaleS, at);
+  report.closed = co_await closeStaleCalls(at);
   report.escalated = co_await advanceResponses(at);
   report.expired = static_cast<int64_t>(
       (co_await responseRepository_.expire(at - kResponseLifetimeS, at)).size());

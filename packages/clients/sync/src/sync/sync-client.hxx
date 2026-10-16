@@ -17,6 +17,19 @@ struct SyncClientConfig
   std::string fleetSecret;
 };
 
+struct SyncCallRoomClose
+{
+  int64_t userId{0};
+  int64_t callId{0};
+  bool onlyIfEmpty{false};
+};
+
+struct SyncCallRoomCloseResult
+{
+  bool ok{false};
+  bool closed{false};
+};
+
 class SyncClient : public SyncControlSink
 {
 public:
@@ -35,7 +48,7 @@ public:
   [[nodiscard]] bool emitToUser(int64_t userId,
                                 const SocketEmitDto& frame) const override;
 
-  [[nodiscard]] bool closeCallRoom(int64_t userId, int64_t callId) const;
+  [[nodiscard]] SyncCallRoomCloseResult closeCallRoom(const SyncCallRoomClose& input) const;
 
 private:
   std::shared_ptr<grpc::Channel> channel_;

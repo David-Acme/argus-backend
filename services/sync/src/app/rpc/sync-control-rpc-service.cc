@@ -1,13 +1,18 @@
 #include "sync-control-rpc-service.hxx"
 #include "sync-control-callers.hxx"
 
+#include <algorithm>
 #include <auth/user-role.hxx>
 #include <drogon/drogon.h>
 #include <exception>
 #include <feature/fanout/services/sync-fan-out.hxx>
+#include <feature/rtc/infra/livekit-room-client.hxx>
 #include <feature/rtc/services/rtc-naming.hxx>
 #include <grpc/grpc-server-identity.hxx>
+#include <memory>
+#include <string>
 #include <string_view>
+#include <vector>
 #include <sync/socket-emit-dto.hxx>
 #include <sync/sync-change.hxx>
 #include <sync/sync-operation.hxx>
@@ -52,6 +57,55 @@ grpc::ServerUnaryReactor* finishAck(grpc::CallbackServerContext* context,
 {
   input.response->set_ok(input.ok);
   input.response->set_reason(std::string(input.reason));
+  auto* reactor = context->DefaultReactor();
+  reactor->Finish(grpc::Status::OK);
+  return reactor;
+}
+
+struct CloseCallRoomOutcome
+{
+  bool ok{false};
+  bool closed{false};
+  std::string reason;
+};
+
+bool hasUserParticipant(const std::vector<std::string>& identities)
+{
+  return std::ranges::any_of(identities, [](const std::string& identity) {
+    return identity != rtc_naming::kAgentIdentity;
+  });
+}
+
+drogon::Task<CloseCallRoomOutcome> closeCallRoomIn(std::shared_ptr<const LiveKitRoomClient> rooms,
+                                                   std::string room,
+                                                   bool onlyIfEmpty)
+{
+  if (onlyIfEmpty) {
+    const RoomMembers members = co_await rooms->membersOf(room);
+    if (members.status == RoomMembersStatus::Failed)
+      co_return CloseCallRoomOutcome{.ok = false, .closed = false, .reason = "could not list the room"};
+    if (members.status == RoomMembersStatus::Listed && hasUserParticipant(members.identities))
+      co_return CloseCallRoomOutcome{.ok = true, .closed = false, .reason = "occupied"};
+    if (members.status == RoomMembersStatus::Gone)
+      co_return CloseCallRoomOutcome{.ok = true, .closed = true, .reason = "already gone"};
+  }
+  const RoomCloseStatus status = co_await rooms->closeRoom(room);
+  if (status == RoomCloseStatus::Failed)
+    co_return CloseCallRoomOutcome{.ok = false, .closed = false, .reason = "livekit did not close the room"};
+  if (status == RoomCloseStatus::Gone) {
+    LOG_INFO << "CloseCallRoom: " << room << " was already gone";
+    co_return CloseCallRoomOutcome{.ok = true, .closed = true, .reason = "already gone"};
+  }
+  co_return CloseCallRoomOutcome{.ok = true, .closed = true, .reason = ""};
+}
+
+grpc::ServerUnaryReactor* finishClose(grpc::CallbackServerContext* context,
+                                      argus::sync::v1::CloseCallRoomAck* response,
+                                      const CloseCallRoomOutcome& outcome)
+{
+  response->set_ok(outcome.ok);
+  response->set_closed(outcome.closed);
+  response->set_reason(outcome.reason);
   auto* reactor = context->DefaultReactor();
   reactor->Finish(grpc::Status::OK);
   return reactor;
@@ -165,33 +219,31 @@ grpc::ServerUnaryReactor* SyncControlRpcService::EmitToUser(
 grpc::ServerUnaryReactor* SyncControlRpcService::CloseCallRoom(
     grpc::CallbackServerContext* context,
     const argus::sync::v1::CloseCallRoomRequest* request,
-    argus::sync::v1::ControlAck* response)
+    argus::sync::v1::CloseCallRoomAck* response)
 {
   if (const auto admission = admit(context, sync_control_callers::kCloseCallRoom);
       !admission.admitted())
     return reject(context, admission.verdict);
 
   if (request->user_id() <= 0 || request->call_id() <= 0)
-    return finishAck(context, {.response = response,
-                               .ok = false,
-                               .reason = "user and call are required"});
+    return finishClose(context, response,
+                       {.ok = false, .closed = false, .reason = "user and call are required"});
   if (!rooms_)
-    return finishAck(context, {.response = response,
-                               .ok = false,
-                               .reason = "rtc is not configured"});
+    return finishClose(context, response,
+                       {.ok = false, .closed = false, .reason = "rtc is not configured"});
 
   const std::string room = rtc_naming::roomOf(request->user_id(),
                                               rtc_naming::proactiveCallId(request->call_id()));
+  const bool onlyIfEmpty = request->only_if_empty();
   auto* reactor = context->DefaultReactor();
   auto* responseWriter = response;
-  drogon::app().getLoop()->queueInLoop([this, reactor, room, responseWriter]() {
-    drogon::async_run([this, reactor, room, responseWriter]() -> drogon::Task<void> {
+  drogon::app().getLoop()->queueInLoop([this, reactor, room, onlyIfEmpty, responseWriter]() {
+    drogon::async_run([this, reactor, room, onlyIfEmpty, responseWriter]() -> drogon::Task<void> {
       try {
-        const RoomCloseStatus status = co_await rooms_->closeRoom(room);
-        if (status == RoomCloseStatus::Gone)
-          LOG_INFO << "CloseCallRoom: " << room << " was already gone";
-        responseWriter->set_ok(status != RoomCloseStatus::Failed);
-        responseWriter->set_reason(status == RoomCloseStatus::Failed ? "livekit did not close the room" : "");
+        const CloseCallRoomOutcome outcome = co_await closeCallRoomIn(rooms_, room, onlyIfEmpty);
+        responseWriter->set_ok(outcome.ok);
+        responseWriter->set_closed(outcome.closed);
+        responseWriter->set_reason(outcome.reason);
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& error) {

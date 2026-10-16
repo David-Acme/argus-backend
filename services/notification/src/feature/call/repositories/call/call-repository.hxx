@@ -48,8 +48,9 @@ public:
   drogon::Task<std::vector<CallCancelled>>
   cancelRingingForKey(const CallCancelForKeyInput& input) const;
 
-  drogon::Task<int64_t> closeStaleAnswered(int64_t answeredBefore,
-                                           int64_t now) const;
+  drogon::Task<std::vector<CallSchema>> findStale(const StaleCallsInput& input) const;
+
+  drogon::Task<std::vector<int64_t>> closeStaleByIds(const CloseStaleIdsInput& input) const;
 
   drogon::Task<int64_t> purgeSettled(int64_t createdBefore) const;
 };

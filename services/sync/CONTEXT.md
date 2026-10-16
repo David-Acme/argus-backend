@@ -896,6 +896,14 @@ notification's repeat is harmless. `Failed` (a LiveKit error or refusal) acks
 client acks `ok=false` with `rtc is not configured`. Notification calls it after
 every farewell attempt, whatever their outcome.
 
+With `only_if_empty = true` (the stale path, where nobody is listening any more)
+sync lists the room's participants first (`LiveKitRoomClient::membersOf`). A room
+with any identity other than the agent's (`argus-voice`) is left alone and acks
+`ok=true closed=false reason=occupied`; a room that cannot be listed acks
+`ok=false`; a room already gone acks `ok=true closed=true`; an agent-only or empty
+room is deleted and acks `closed=true`. The ack is `CloseCallRoomAck`, which
+carries `closed` beside `ok`.
+
 The table is `src/app/rpc/sync-control-callers.hxx`; the operation check runs
 before the request is validated, so a refused frame never reaches the
 dispatcher. A known caller outside its rights gets `PERMISSION_DENIED`, a

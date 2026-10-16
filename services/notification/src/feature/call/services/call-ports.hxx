@@ -23,6 +23,13 @@ struct CallRoomClose
   int64_t userId{0};
   int64_t callId{0};
   std::string reason;
+  bool onlyIfEmpty{false};
+};
+
+struct CallRoomCloseOutcome
+{
+  bool ok{false};
+  bool closed{false};
 };
 
 class CallSignal
@@ -32,9 +39,9 @@ public:
 
   [[nodiscard]] virtual bool emit(const CallSignalInput& input) const = 0;
 
-  [[nodiscard]] virtual bool closeCallRoom([[maybe_unused]] const CallRoomClose& input) const
+  [[nodiscard]] virtual CallRoomCloseOutcome closeCallRoom([[maybe_unused]] const CallRoomClose& input) const
   {
-    return false;
+    return {};
   }
 };
 

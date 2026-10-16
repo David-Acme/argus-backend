@@ -739,6 +739,14 @@ through `CloseCallRoom` whatever voice answered, so a refused farewell never
 leaves the room open. A room sync reports as already gone is a normal ok answer
 on a second end; a real refusal from sync is logged as a warning.
 
+Stale calls (`closeStaleCalls`, run by the sweep) are answered calls and injected
+calls older than `answeredStaleS` that nobody ended. The sweep selects them
+(`findStale`), then for each one asks sync to close the room only if it is empty
+(`onlyIfEmpty`, no farewell: nobody is listening). A room with a participant
+keeps its call as it is and is checked again on the next sweep. A closable call
+gets a `CallCancel` with reason `expired` to the user's devices, and then all the
+closable ids are closed as completed in one `UPDATE ... WHERE id IN (...)`.
+
 ### Triggers
 
 | Trigger | Source | Becomes a candidate when | Dedupe key |

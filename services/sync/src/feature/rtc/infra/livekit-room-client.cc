@@ -60,6 +60,22 @@ drogon::Task<std::optional<Json::Value>> LiveKitRoomClient::call(TwirpCall twirp
   co_return std::move(reply.body);
 }
 
+drogon::Task<RoomMembers> LiveKitRoomClient::membersOf(std::string room) const
+{
+  Json::Value body(Json::objectValue);
+  body["room"] = room;
+  const auto reply = co_await answer({.method = "ListParticipants", .body = std::move(body), .room = room, .list = false, .create = false});
+  if (reply.outcome == TwirpOutcome::NotFound)
+    co_return RoomMembers{.status = RoomMembersStatus::Gone, .identities = {}};
+  if (reply.outcome != TwirpOutcome::Ok)
+    co_return RoomMembers{.status = RoomMembersStatus::Failed, .identities = {}};
+  RoomMembers members{.status = RoomMembersStatus::Listed, .identities = {}};
+  for (const auto& participant : reply.body["participants"])
+    if (participant["identity"].isString())
+      members.identities.push_back(participant["identity"].asString());
+  co_return members;
+}
+
 drogon::Task<RoomCloseStatus> LiveKitRoomClient::closeRoom(std::string room) const
 {
   Json::Value body(Json::objectValue);

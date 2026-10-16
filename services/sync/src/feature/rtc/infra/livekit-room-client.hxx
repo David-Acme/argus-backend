@@ -28,6 +28,19 @@ enum class RoomCloseStatus : uint8_t
   Failed
 };
 
+enum class RoomMembersStatus : uint8_t
+{
+  Listed,
+  Gone,
+  Failed
+};
+
+struct RoomMembers
+{
+  RoomMembersStatus status{RoomMembersStatus::Failed};
+  std::vector<std::string> identities;
+};
+
 class LiveKitRoomClient
 {
 public:
@@ -43,6 +56,7 @@ public:
   virtual drogon::Task<bool> createRoom(std::string room) const;
   virtual drogon::Task<bool> deleteRoom(std::string room) const;
   virtual drogon::Task<RoomCloseStatus> closeRoom(std::string room) const;
+  virtual drogon::Task<RoomMembers> membersOf(std::string room) const;
   virtual drogon::Task<std::optional<std::vector<std::string>>> listParticipants(std::string room) const;
   virtual drogon::Task<bool> silenceParticipant(LiveKitParticipantRef participant) const;
 

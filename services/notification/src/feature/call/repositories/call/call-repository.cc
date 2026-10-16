@@ -152,13 +152,35 @@ drogon::Task<std::vector<CallSchema>> CallRepository::findRinging() const
   co_return rowsOf(co_await client->execSqlCoro(std::string(FIND_RINGING)));
 }
 
-drogon::Task<int64_t> CallRepository::closeStaleAnswered(int64_t answeredBefore,
-                                                         int64_t now) const
+drogon::Task<std::vector<CallSchema>> CallRepository::findStale(const StaleCallsInput& input) const
 {
   const auto client = DbService::client();
-  const auto result = co_await client->execSqlCoro(std::string(CLOSE_STALE_ANSWERED),
-                                                   now, answeredBefore);
-  co_return static_cast<int64_t>(result.affectedRows());
+  co_return rowsOf(co_await client->execSqlCoro(std::string(FIND_STALE), input.answeredBefore,
+                                                input.createdBefore));
+}
+
+drogon::Task<std::vector<int64_t>> CallRepository::closeStaleByIds(const CloseStaleIdsInput& input) const
+{
+  if (input.ids.empty())
+    co_return std::vector<int64_t>{};
+  std::string sql(CLOSE_STALE_PREFIX);
+  std::vector<std::string> args{std::to_string(input.now)};
+  for (std::size_t index = 0; index < input.ids.size(); ++index) {
+    if (index > 0)
+      sql += ", ";
+    sql += "?";
+    args.push_back(std::to_string(input.ids[index]));
+  }
+  sql += ") RETURNING id";
+  const auto pool = DbService::client();
+  drogon::orm::DbClient* executor = input.client != nullptr ? input.client : pool.get();
+  const auto& argsRef = args;
+  const auto rows = co_await executor->execSqlCoro(sql, argsRef);
+  std::vector<int64_t> closed;
+  closed.reserve(rows.size());
+  for (const auto& row : rows)
+    closed.push_back(row["id"].as<int64_t>());
+  co_return closed;
 }
 
 drogon::Task<std::vector<CallCancelled>>

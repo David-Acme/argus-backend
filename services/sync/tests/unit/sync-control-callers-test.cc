@@ -45,8 +45,8 @@ constexpr auto kResponseUpdate = static_cast<v1::SyncOperation>(10);
 class FakeCallRooms final : public LiveKitRoomClient
 {
 public:
-  explicit FakeCallRooms(RoomCloseStatus answer)
-      : LiveKitRoomClient(LiveKitAdminConfig{}), answer_(answer)
+  FakeCallRooms(RoomCloseStatus answer, RoomMembers members)
+      : LiveKitRoomClient(LiveKitAdminConfig{}), answer_(answer), members_(std::move(members))
   {
   }
 
@@ -57,12 +57,26 @@ public:
     co_return answer_;
   }
 
+  drogon::Task<RoomMembers> membersOf(std::string room) const override
+  {
+    const std::scoped_lock lock(mutex_);
+    listed.push_back(std::move(room));
+    co_return members_;
+  }
+
   mutable std::mutex mutex_;
   mutable std::vector<std::string> closed;
+  mutable std::vector<std::string> listed;
 
 private:
   RoomCloseStatus answer_;
+  RoomMembers members_;
 };
+
+RoomMembers agentOnly()
+{
+  return {.status = RoomMembersStatus::Listed, .identities = {"argus-voice"}};
+}
 
 class Harness
 {
@@ -138,11 +152,11 @@ public:
   struct CloseReply
   {
     grpc::StatusCode code{grpc::StatusCode::UNKNOWN};
-    v1::ControlAck ack;
+    v1::CloseCallRoomAck ack;
   };
 
   [[nodiscard]] CloseReply
-  closeCallRoom(const argus::client::PeerCredential& credential) const
+  closeCallRoom(const argus::client::PeerCredential& credential, bool onlyIfEmpty = false) const
   {
     grpc::ClientContext context;
     argus::client::setDeadline(context, 5000);
@@ -150,6 +164,7 @@ public:
     v1::CloseCallRoomRequest request;
     request.set_user_id(7);
     request.set_call_id(9);
+    request.set_only_if_empty(onlyIfEmpty);
     CloseReply reply;
     reply.code = stub_->CloseCallRoom(&context, request, &reply.ack).error_code();
     return reply;
@@ -173,6 +188,55 @@ argus::client::PeerCredential fleet(std::string value)
 
 }
 
+void onlyIfEmptyOutcomes()
+{
+  {
+    auto rooms = std::make_shared<FakeCallRooms>(
+        RoomCloseStatus::Closed,
+        RoomMembers{.status = RoomMembersStatus::Listed, .identities = {"u7.guest-1", "argus-voice"}});
+    const Harness harness({{"identity", identitySecret()}, {"notification", notificationSecret()}}, rooms);
+    REQUIRE(harness.listening());
+    const auto reply = harness.closeCallRoom(credential(notificationSecret()), true);
+    CHECK(reply.code == grpc::StatusCode::OK);
+    CHECK(reply.ack.ok());
+    CHECK_FALSE(reply.ack.closed());
+    CHECK(reply.ack.reason() == "occupied");
+    CHECK(rooms->closed.empty());
+    REQUIRE(rooms->listed.size() == 1);
+    CHECK(rooms->listed.front() == rtc_naming::roomOf(7, rtc_naming::proactiveCallId(9)));
+  }
+  {
+    auto rooms = std::make_shared<FakeCallRooms>(RoomCloseStatus::Closed, agentOnly());
+    const Harness harness({{"identity", identitySecret()}, {"notification", notificationSecret()}}, rooms);
+    REQUIRE(harness.listening());
+    const auto reply = harness.closeCallRoom(credential(notificationSecret()), true);
+    CHECK(reply.ack.ok());
+    CHECK(reply.ack.closed());
+    REQUIRE(rooms->closed.size() == 1);
+    CHECK(rooms->closed.front() == rtc_naming::roomOf(7, rtc_naming::proactiveCallId(9)));
+  }
+  {
+    auto rooms = std::make_shared<FakeCallRooms>(
+        RoomCloseStatus::Closed, RoomMembers{.status = RoomMembersStatus::Gone, .identities = {}});
+    const Harness harness({{"identity", identitySecret()}, {"notification", notificationSecret()}}, rooms);
+    REQUIRE(harness.listening());
+    const auto reply = harness.closeCallRoom(credential(notificationSecret()), true);
+    CHECK(reply.ack.ok());
+    CHECK(reply.ack.closed());
+    CHECK(rooms->closed.empty());
+  }
+  {
+    auto rooms = std::make_shared<FakeCallRooms>(
+        RoomCloseStatus::Closed, RoomMembers{.status = RoomMembersStatus::Failed, .identities = {}});
+    const Harness harness({{"identity", identitySecret()}, {"notification", notificationSecret()}}, rooms);
+    REQUIRE(harness.listening());
+    const auto reply = harness.closeCallRoom(credential(notificationSecret()), true);
+    CHECK_FALSE(reply.ack.ok());
+    CHECK_FALSE(reply.ack.closed());
+    CHECK(rooms->closed.empty());
+  }
+}
+
 TEST_CASE("argus-notification closes a call room, and only argus-notification does")
 {
   const Harness harness({{"identity", identitySecret()}, {"notification", notificationSecret()}});
@@ -187,9 +251,10 @@ TEST_CASE("argus-notification closes a call room, and only argus-notification do
 TEST_CASE("CloseCallRoom deletes the room the creation path names, and answers gone, failed and unconfigured rooms apart")
 {
   const test_support::AppRunner app;
+  onlyIfEmptyOutcomes();
 
   {
-    auto rooms = std::make_shared<FakeCallRooms>(RoomCloseStatus::Closed);
+    auto rooms = std::make_shared<FakeCallRooms>(RoomCloseStatus::Closed, agentOnly());
     const Harness harness({{"identity", identitySecret()}, {"notification", notificationSecret()}}, rooms);
     REQUIRE(harness.listening());
     const auto reply = harness.closeCallRoom(credential(notificationSecret()));
@@ -200,7 +265,7 @@ TEST_CASE("CloseCallRoom deletes the room the creation path names, and answers g
     CHECK(rtc_naming::callKindOf(rtc_naming::proactiveCallId(9)) == rtc_naming::CallKind::Proactive);
   }
   {
-    auto rooms = std::make_shared<FakeCallRooms>(RoomCloseStatus::Gone);
+    auto rooms = std::make_shared<FakeCallRooms>(RoomCloseStatus::Gone, agentOnly());
     const Harness harness({{"identity", identitySecret()}, {"notification", notificationSecret()}}, rooms);
     REQUIRE(harness.listening());
     const auto reply = harness.closeCallRoom(credential(notificationSecret()));
@@ -208,7 +273,7 @@ TEST_CASE("CloseCallRoom deletes the room the creation path names, and answers g
     CHECK(reply.ack.ok());
   }
   {
-    auto rooms = std::make_shared<FakeCallRooms>(RoomCloseStatus::Failed);
+    auto rooms = std::make_shared<FakeCallRooms>(RoomCloseStatus::Failed, agentOnly());
     const Harness harness({{"identity", identitySecret()}, {"notification", notificationSecret()}}, rooms);
     REQUIRE(harness.listening());
     const auto reply = harness.closeCallRoom(credential(notificationSecret()));

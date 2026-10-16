@@ -104,11 +104,13 @@ public:
     return true;
   }
 
-  [[nodiscard]] bool closeCallRoom(const CallRoomClose& input) const override
+  [[nodiscard]] CallRoomCloseOutcome closeCallRoom(const CallRoomClose& input) const override
   {
     const std::scoped_lock lock(mutex);
     rooms.push_back(input);
-    return true;
+    if (const auto found = answers.find(input.callId); found != answers.end())
+      return found->second;
+    return {.ok = true, .closed = true};
   }
 
   std::vector<CallSignalInput> of(SyncOperation operation) const
@@ -125,6 +127,7 @@ public:
   mutable std::mutex mutex;
   mutable std::vector<CallSignalInput> frames;
   mutable std::vector<CallRoomClose> rooms;
+  mutable std::map<int64_t, CallRoomCloseOutcome> answers;
 };
 
 class ScriptedAnnouncer final : public LiveCallAnnouncer
@@ -561,6 +564,103 @@ TEST_CASE("a user already talking to Argus hears the news instead of a ring")
   const auto repeat = drogon::sync_wait(
       harness.engine.considerNotification(guardData("critical", 46, "escalated"), {1}));
   CHECK(outcomeFor(repeat, 1).reason == "already_called");
+}
+
+TEST_CASE("a call Argus spoke into that nobody ends is closed by the sweep once it is stale")
+{
+  Harness harness;
+  harness.announcer->inCall[1] = true;
+  const auto outcomes = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("time_sensitive", 55), {1}));
+  const int64_t id = outcomeFor(outcomes, 1).callId;
+  REQUIRE(outcomeFor(outcomes, 1).resolution == CallResolution::Injected);
+  CHECK(stateOf(id) == "injected");
+
+  CHECK(drogon::sync_wait(harness.engine.sweep()).closed == 0);
+  CHECK(stateOf(id) == "injected");
+
+  harness.advance(7201);
+  CHECK(drogon::sync_wait(harness.engine.sweep()).closed == 1);
+  CHECK(stateOf(id) == "completed");
+}
+
+namespace
+{
+std::size_t expiredCancels(const RecordingSignal& signal)
+{
+  std::size_t count = 0;
+  for (const auto& frame : signal.of(SyncOperation::CallCancel))
+    if (frame.info["reason"].asString() == "expired")
+      ++count;
+  return count;
+}
+}
+
+TEST_CASE("a stale call whose room still has a participant stays open and is checked again")
+{
+  Harness harness;
+  harness.announcer->inCall[1] = true;
+  const auto outcomes = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("time_sensitive", 56), {1}));
+  const int64_t id = outcomeFor(outcomes, 1).callId;
+  harness.signal->answers[id] = {.ok = true, .closed = false};
+
+  harness.advance(7201);
+  CHECK(drogon::sync_wait(harness.engine.sweep()).closed == 0);
+  CHECK(stateOf(id) == "injected");
+  CHECK(expiredCancels(*harness.signal) == 0);
+
+  harness.signal->answers[id] = {.ok = true, .closed = true};
+  CHECK(drogon::sync_wait(harness.engine.sweep()).closed == 1);
+  CHECK(stateOf(id) == "completed");
+  CHECK(expiredCancels(*harness.signal) == 1);
+}
+
+TEST_CASE("a stale answered call whose room has gone is closed with a CallCancel")
+{
+  Harness harness;
+  const auto rang = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("critical", 57), {1}));
+  const int64_t id = outcomeFor(rang, 1).callId;
+  drogon::sync_wait(harness.engine.claim({.callId = call_id::format(id), .userId = 1, .sessionId = "phone"}));
+
+  const auto cancelPushesFor = [&harness, id] {
+    int count = 0;
+    for (const auto& record : harness.outbox->all()) {
+      const Json::Value plain = push_open::plaintextOf(record.payload, "key-0001");
+      if (plain["cancel"].asBool() && plain["callId"].asString() == call_id::format(id))
+        ++count;
+    }
+    return count;
+  };
+  const int cancelPushesBefore = cancelPushesFor();
+
+  harness.advance(7201);
+  CHECK(drogon::sync_wait(harness.engine.sweep()).closed == 1);
+  CHECK(stateOf(id) == "completed");
+  REQUIRE(expiredCancels(*harness.signal) == 1);
+  const auto cancels = harness.signal->of(SyncOperation::CallCancel);
+  CHECK(cancels.back().info["callId"].asString() == call_id::format(id));
+  CHECK(cancelPushesFor() == cancelPushesBefore + 1);
+}
+
+TEST_CASE("a mixed stale batch closes only the calls whose rooms are empty")
+{
+  Harness harness;
+  harness.announcer->inCall[1] = true;
+  harness.announcer->inCall[2] = true;
+  const auto outcomes = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("time_sensitive", 58), {1, 2}));
+  const int64_t occupied = outcomeFor(outcomes, 1).callId;
+  const int64_t empty = outcomeFor(outcomes, 2).callId;
+  harness.signal->answers[occupied] = {.ok = true, .closed = false};
+
+  harness.advance(7201);
+  CHECK(drogon::sync_wait(harness.engine.sweep()).closed == 1);
+  CHECK(stateOf(occupied) == "injected");
+  CHECK(stateOf(empty) == "completed");
+  REQUIRE(expiredCancels(*harness.signal) == 1);
+  CHECK(harness.signal->of(SyncOperation::CallCancel).back().info["callId"].asString() == call_id::format(empty));
 }
 
 TEST_CASE("an unreachable voice service never blocks the ring")

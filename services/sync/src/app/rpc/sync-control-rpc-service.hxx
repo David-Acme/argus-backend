@@ -17,7 +17,7 @@ public:
   grpc::ServerUnaryReactor*
   CloseCallRoom(grpc::CallbackServerContext* context,
                 const argus::sync::v1::CloseCallRoomRequest* request,
-                argus::sync::v1::ControlAck* response) override;
+                argus::sync::v1::CloseCallRoomAck* response) override;
 
   grpc::ServerUnaryReactor*
   ReplaceRoleRooms(grpc::CallbackServerContext* context,

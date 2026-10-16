@@ -85,19 +85,23 @@ bool SyncClient::emitToUser(int64_t userId, const SocketEmitDto& frame) const
   return answer(stub_->EmitToUser(&context, request, &ack), ack);
 }
 
-bool SyncClient::closeCallRoom(int64_t userId, int64_t callId) const
+SyncCallRoomCloseResult SyncClient::closeCallRoom(const SyncCallRoomClose& input) const
 {
-  if (userId <= 0 || callId <= 0)
-    return false;
+  if (input.userId <= 0 || input.callId <= 0)
+    return {};
 
   grpc::ClientContext context;
   argus::client::setDeadline(context, kCallTimeoutMs);
   argus::client::addPeerCredential(context, credential_);
 
   argus::sync::v1::CloseCallRoomRequest request;
-  request.set_user_id(userId);
-  request.set_call_id(callId);
+  request.set_user_id(input.userId);
+  request.set_call_id(input.callId);
+  request.set_only_if_empty(input.onlyIfEmpty);
 
-  argus::sync::v1::ControlAck ack;
-  return answer(stub_->CloseCallRoom(&context, request, &ack), ack);
+  argus::sync::v1::CloseCallRoomAck ack;
+  const grpc::Status status = stub_->CloseCallRoom(&context, request, &ack);
+  if (!status.ok())
+    return {};
+  return {.ok = ack.ok(), .closed = ack.closed()};
 }

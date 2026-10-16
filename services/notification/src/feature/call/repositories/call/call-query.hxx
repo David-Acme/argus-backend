@@ -79,10 +79,27 @@ inline constexpr std::string_view PURGE_SETTLED =
     "DELETE FROM call WHERE created_at < ? "
     "AND state NOT IN ('ringing', 'queued', 'answered')";
 
-inline constexpr std::string_view CLOSE_STALE_ANSWERED =
+inline constexpr std::string_view FIND_STALE =
+    "SELECT * FROM call WHERE (state = 'answered' AND answered_at < ?) "
+    "OR (state = 'injected' AND created_at < ?) ORDER BY id ASC";
+
+inline constexpr std::string_view CLOSE_STALE_PREFIX =
     "UPDATE call SET state = 'completed', ended_at = ? "
-    "WHERE state = 'answered' AND answered_at < ?";
+    "WHERE state IN ('answered', 'injected') AND id IN (";
 }
+
+struct StaleCallsInput
+{
+  int64_t answeredBefore{0};
+  int64_t createdBefore{0};
+};
+
+struct CloseStaleIdsInput
+{
+  std::vector<int64_t> ids;
+  int64_t now{0};
+  drogon::orm::DbClient* client{nullptr};
+};
 
 struct CallCreateInput
 {

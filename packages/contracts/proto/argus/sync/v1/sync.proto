@@ -29,6 +29,14 @@ message CloseCallRoomRequest
 {
   int64 user_id = 1;
   int64 call_id = 2;
+  bool only_if_empty = 3;
+}
+
+message CloseCallRoomAck
+{
+  bool ok = 1;
+  string reason = 2;
+  bool closed = 3;
 }
 
 message ControlAck
@@ -45,5 +53,5 @@ service SyncControlService
 
   rpc EmitToUser(EmitToUserRequest) returns (ControlAck) {}
 
-  rpc CloseCallRoom(CloseCallRoomRequest) returns (ControlAck) {}
+  rpc CloseCallRoom(CloseCallRoomRequest) returns (CloseCallRoomAck) {}
 }
