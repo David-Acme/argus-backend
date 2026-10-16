@@ -29,6 +29,7 @@ struct PublicUrlInput
 [[nodiscard]] std::string mintUserCallId();
 [[nodiscard]] CallKind callKindOf(std::string_view callId);
 [[nodiscard]] std::string roomOf(int64_t userId, std::string_view callId);
+[[nodiscard]] std::string proactiveCallId(int64_t callId);
 [[nodiscard]] std::string roomPrefixOf(int64_t userId);
 [[nodiscard]] std::string userIdentityOf(int64_t userId, std::string_view sessionId);
 [[nodiscard]] std::string userIdentityPrefixOf(int64_t userId);

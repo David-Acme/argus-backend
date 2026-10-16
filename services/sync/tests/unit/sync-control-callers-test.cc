@@ -4,11 +4,15 @@
 #include <app/rpc/sync-control-callers.hxx>
 #include <app/rpc/sync-control-rpc-service.hxx>
 #include <argus/sync/v1/sync.grpc.pb.h>
+#include <feature/rtc/infra/livekit-room-client.hxx>
+#include <feature/rtc/services/rtc-naming.hxx>
 #include <grpc/fleet-caller-gate.hxx>
 #include <grpc/grpc-client-base.hxx>
 #include <grpcpp/grpcpp.h>
+#include <test-support/app-runner.hxx>
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <utility>
 #include <vector>
@@ -38,16 +42,39 @@ std::string notificationSecret()
 
 constexpr auto kResponseUpdate = static_cast<v1::SyncOperation>(10);
 
+class FakeCallRooms final : public LiveKitRoomClient
+{
+public:
+  explicit FakeCallRooms(RoomCloseStatus answer)
+      : LiveKitRoomClient(LiveKitAdminConfig{}), answer_(answer)
+  {
+  }
+
+  drogon::Task<RoomCloseStatus> closeRoom(std::string room) const override
+  {
+    const std::scoped_lock lock(mutex_);
+    closed.push_back(std::move(room));
+    co_return answer_;
+  }
+
+  mutable std::mutex mutex_;
+  mutable std::vector<std::string> closed;
+
+private:
+  RoomCloseStatus answer_;
+};
+
 class Harness
 {
 public:
-  explicit Harness(std::vector<std::pair<std::string, std::string>> callers)
+  explicit Harness(std::vector<std::pair<std::string, std::string>> callers,
+                   std::shared_ptr<const LiveKitRoomClient> rooms = nullptr)
       : service_(std::make_shared<const argus::client::FleetCallerGate>(
             argus::client::FleetGateConfig{
                 .expectedCallers = sync_control_callers::expected(),
                 .callerPairs = std::move(callers),
                 .legacySecret = fleetSecret(),
-                .onFirstLegacy = {}}))
+                .onFirstLegacy = {}}), std::move(rooms))
   {
     int port = 0;
     grpc::ServerBuilder builder;
@@ -108,6 +135,26 @@ public:
     return stub_->EmitToUser(&context, request, &ack).error_code();
   }
 
+  struct CloseReply
+  {
+    grpc::StatusCode code{grpc::StatusCode::UNKNOWN};
+    v1::ControlAck ack;
+  };
+
+  [[nodiscard]] CloseReply
+  closeCallRoom(const argus::client::PeerCredential& credential) const
+  {
+    grpc::ClientContext context;
+    argus::client::setDeadline(context, 5000);
+    argus::client::addPeerCredential(context, credential);
+    v1::CloseCallRoomRequest request;
+    request.set_user_id(7);
+    request.set_call_id(9);
+    CloseReply reply;
+    reply.code = stub_->CloseCallRoom(&context, request, &reply.ack).error_code();
+    return reply;
+  }
+
 private:
   SyncControlRpcService service_;
   std::unique_ptr<grpc::Server> server_;
@@ -124,6 +171,59 @@ argus::client::PeerCredential fleet(std::string value)
   return {.credential = {}, .fleetSecret = std::move(value)};
 }
 
+}
+
+TEST_CASE("argus-notification closes a call room, and only argus-notification does")
+{
+  const Harness harness({{"identity", identitySecret()}, {"notification", notificationSecret()}});
+  REQUIRE(harness.listening());
+
+  CHECK(harness.closeCallRoom(credential(notificationSecret())).code ==
+        grpc::StatusCode::OK);
+  CHECK(harness.closeCallRoom(credential(identitySecret())).code ==
+        grpc::StatusCode::PERMISSION_DENIED);
+}
+
+TEST_CASE("CloseCallRoom deletes the room the creation path names, and answers gone, failed and unconfigured rooms apart")
+{
+  const test_support::AppRunner app;
+
+  {
+    auto rooms = std::make_shared<FakeCallRooms>(RoomCloseStatus::Closed);
+    const Harness harness({{"identity", identitySecret()}, {"notification", notificationSecret()}}, rooms);
+    REQUIRE(harness.listening());
+    const auto reply = harness.closeCallRoom(credential(notificationSecret()));
+    CHECK(reply.code == grpc::StatusCode::OK);
+    CHECK(reply.ack.ok());
+    REQUIRE(rooms->closed.size() == 1);
+    CHECK(rooms->closed.front() == rtc_naming::roomOf(7, rtc_naming::proactiveCallId(9)));
+    CHECK(rtc_naming::callKindOf(rtc_naming::proactiveCallId(9)) == rtc_naming::CallKind::Proactive);
+  }
+  {
+    auto rooms = std::make_shared<FakeCallRooms>(RoomCloseStatus::Gone);
+    const Harness harness({{"identity", identitySecret()}, {"notification", notificationSecret()}}, rooms);
+    REQUIRE(harness.listening());
+    const auto reply = harness.closeCallRoom(credential(notificationSecret()));
+    CHECK(reply.code == grpc::StatusCode::OK);
+    CHECK(reply.ack.ok());
+  }
+  {
+    auto rooms = std::make_shared<FakeCallRooms>(RoomCloseStatus::Failed);
+    const Harness harness({{"identity", identitySecret()}, {"notification", notificationSecret()}}, rooms);
+    REQUIRE(harness.listening());
+    const auto reply = harness.closeCallRoom(credential(notificationSecret()));
+    CHECK(reply.code == grpc::StatusCode::OK);
+    CHECK_FALSE(reply.ack.ok());
+    CHECK(reply.ack.reason() == "livekit did not close the room");
+  }
+  {
+    const Harness harness({{"identity", identitySecret()}, {"notification", notificationSecret()}});
+    REQUIRE(harness.listening());
+    const auto reply = harness.closeCallRoom(credential(notificationSecret()));
+    CHECK(reply.code == grpc::StatusCode::OK);
+    CHECK_FALSE(reply.ack.ok());
+    CHECK(reply.ack.reason() == "rtc is not configured");
+  }
 }
 
 TEST_CASE("argus-notification rings and cancels calls, and nothing else")

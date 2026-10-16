@@ -104,6 +104,13 @@ public:
     return true;
   }
 
+  [[nodiscard]] bool closeCallRoom(const CallRoomClose& input) const override
+  {
+    const std::scoped_lock lock(mutex);
+    rooms.push_back(input);
+    return true;
+  }
+
   std::vector<CallSignalInput> of(SyncOperation operation) const
   {
     const std::scoped_lock lock(mutex);
@@ -117,6 +124,7 @@ public:
 
   mutable std::mutex mutex;
   mutable std::vector<CallSignalInput> frames;
+  mutable std::vector<CallRoomClose> rooms;
 };
 
 class ScriptedAnnouncer final : public LiveCallAnnouncer
@@ -634,6 +642,10 @@ TEST_CASE("ending a call on the server closes its room on voice, once, with the 
   CHECK(harness.announcer->closed.front().userId == 1);
   CHECK(harness.announcer->closed.front().callId == id);
   CHECK(harness.announcer->closed.front().reason == "ended");
+  REQUIRE(harness.signal->rooms.size() == 1);
+  CHECK(harness.signal->rooms.front().userId == 1);
+  CHECK(harness.signal->rooms.front().callId == id);
+  CHECK(harness.signal->rooms.front().reason == "ended");
   const auto ends = [&] {
     std::vector<Json::Value> out;
     for (const auto& frame : harness.signal->of(SyncOperation::CallCancel))
@@ -666,6 +678,27 @@ TEST_CASE("a refused room close is retried once and never blocks the end of the 
                                               .spoken = true,
                                               .sessionId = "phone"})) == CallEndStatus::Ended);
   CHECK(harness.announcer->closed.size() == 2);
+  CHECK(stateOf(id) == "completed");
+}
+
+TEST_CASE("a room voice could not close is still removed on the sync side, once, and the end still lands")
+{
+  Harness harness;
+  const auto rang = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("critical", 53), {1}));
+  const int64_t id = outcomeFor(rang, 1).callId;
+  drogon::sync_wait(harness.engine.claim({.callId = call_id::format(id), .userId = 1, .sessionId = "phone"}));
+
+  harness.announcer->refusals = 2;
+  CHECK(drogon::sync_wait(harness.engine.end({.callId = call_id::format(id),
+                                              .userId = 1,
+                                              .outcome = CallEndReport::Completed,
+                                              .spoken = true,
+                                              .sessionId = "phone"})) == CallEndStatus::Ended);
+  CHECK(harness.announcer->closed.size() == 2);
+  REQUIRE(harness.signal->rooms.size() == 1);
+  CHECK(harness.signal->rooms.front().userId == 1);
+  CHECK(harness.signal->rooms.front().callId == id);
   CHECK(stateOf(id) == "completed");
 }
 

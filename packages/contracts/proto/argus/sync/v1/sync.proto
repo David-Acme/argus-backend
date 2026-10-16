@@ -25,6 +25,12 @@ message EmitToUserRequest
   SyncFrame frame = 2;
 }
 
+message CloseCallRoomRequest
+{
+  int64 user_id = 1;
+  int64 call_id = 2;
+}
+
 message ControlAck
 {
   bool ok = 1;
@@ -38,4 +44,6 @@ service SyncControlService
   rpc DisconnectUser(DisconnectUserRequest) returns (ControlAck) {}
 
   rpc EmitToUser(EmitToUserRequest) returns (ControlAck) {}
+
+  rpc CloseCallRoom(CloseCallRoomRequest) returns (ControlAck) {}
 }

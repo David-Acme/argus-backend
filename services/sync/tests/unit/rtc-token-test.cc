@@ -404,6 +404,7 @@ TEST_CASE("a proactive call is claimed first, and the opening line goes to the a
   const auto voice = std::make_shared<FakeVoice>(true);
   const auto calls = std::make_shared<FakeCalls>(RtcClaim{.status = RtcClaimStatus::Claimed,
                                                           .openingLine = "Hay alguien en el patio.",
+                                                          .laterLines = {},
                                                           .lang = "es",
                                                           .kind = "guard_episode",
                                                           .summary = "Persona desconocida",
@@ -436,6 +437,7 @@ TEST_CASE("a claim that fails maps to the call outcome, never to a token")
                                    .voice = voice,
                                    .calls = std::make_shared<FakeCalls>(RtcClaim{.status = status,
                                                                                   .openingLine = {},
+                                                                                  .laterLines = {},
                                                                                   .lang = {},
                                                                                   .kind = {},
                                                                                   .summary = {},

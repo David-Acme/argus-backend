@@ -733,6 +733,12 @@ own anything a call needs. The voice side (LiveKit room, the agent speaking
 first, the `/rtc/token` route that answers a call) belongs to argus-voice and
 argus-sync and is described in RTC-CONTRACT v1, section 5.
 
+When a call ends, the engine first asks argus-voice to say farewell and close
+its side (`closeRoom`, two tries), then asks argus-sync to close the call's room
+through `CloseCallRoom` whatever voice answered, so a refused farewell never
+leaves the room open. A room sync reports as already gone is a normal ok answer
+on a second end; a real refusal from sync is logged as a warning.
+
 ### Triggers
 
 | Trigger | Source | Becomes a candidate when | Dedupe key |

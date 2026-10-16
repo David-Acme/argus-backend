@@ -11,6 +11,7 @@ public:
   explicit SyncCallSignal(std::shared_ptr<const SyncClient> client);
 
   [[nodiscard]] bool emit(const CallSignalInput& input) const override;
+  [[nodiscard]] bool closeCallRoom(const CallRoomClose& input) const override;
 
 private:
   std::shared_ptr<const SyncClient> client_;

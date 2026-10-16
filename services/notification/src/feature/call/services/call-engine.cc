@@ -377,24 +377,38 @@ drogon::Task<std::vector<std::string>> CallEngine::supersedeRinging(const CallSc
 
 drogon::Task<void> CallEngine::closeRoom(const CallRoomClose& input) const
 {
-  if (!dependencies_.announcer)
-    co_return;
-  const auto announcer = dependencies_.announcer;
-  for (int attempt = 0; attempt < 2; ++attempt) {
+  if (dependencies_.announcer) {
+    const auto announcer = dependencies_.announcer;
     bool closed = false;
-    if (!dependencies_.blockingOffLoop) {
-      closed = announcer->closeRoom(input);
+    for (int attempt = 0; attempt < 2 && !closed; ++attempt) {
+      if (!dependencies_.blockingOffLoop) {
+        closed = announcer->closeRoom(input);
+      }
+      else {
+        closed = co_await BlockingTask<bool>([announcer, input]() {
+          return announcer->closeRoom(input);
+        });
+      }
     }
-    else {
-      closed = co_await BlockingTask<bool>([announcer, input]() {
-        return announcer->closeRoom(input);
-      });
-    }
-    if (closed)
-      co_return;
+    if (!closed)
+      LOG_WARN << "Call engine: the voice room of call-" << input.callId << " did not close after two tries (" << input.reason
+               << "); the room may stay open until the phone leaves";
   }
-  LOG_WARN << "Call engine: the voice room of call-" << input.callId << " did not close after two tries (" << input.reason
-           << "); the room may stay open until the phone leaves";
+  if (!dependencies_.signal)
+    co_return;
+  const auto signal = dependencies_.signal;
+  bool removed = false;
+  if (!dependencies_.blockingOffLoop) {
+    removed = signal->closeCallRoom(input);
+  }
+  else {
+    removed = co_await BlockingTask<bool>([signal, input]() {
+      return signal->closeCallRoom(input);
+    });
+  }
+  if (!removed)
+    LOG_WARN << "Call engine: argus-sync did not close the room of call-" << input.callId << " (" << input.reason
+             << "); the room may stay open";
 }
 
 drogon::Task<void> CallEngine::noteDeclined(const CallSchema& call) const
@@ -443,6 +457,7 @@ CallEngine::ringFollowingUserIds(const push_delivery::RingPlanInput& input) cons
   const CallRequest request{.candidate = *candidate, .userIds = userIds, .notificationExists = true};
   for (const int64_t userId : userIds) {
     UserContext user{.userId = userId,
+                     .recipient = {},
                      .preference = CallPreferenceSchema::defaultsFor(userId)};
     if (const auto found = preferences.find(userId); found != preferences.end())
       user.preference = found->second;

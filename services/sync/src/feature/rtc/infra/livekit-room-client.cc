@@ -12,7 +12,7 @@
 
 LiveKitRoomClient::LiveKitRoomClient(LiveKitAdminConfig config) : config_(std::move(config)) {}
 
-drogon::Task<std::optional<Json::Value>> LiveKitRoomClient::call(TwirpCall twirp) const
+drogon::Task<LiveKitRoomClient::TwirpReply> LiveKitRoomClient::answer(TwirpCall twirp) const
 {
   const std::string token = mintLiveKitToken({.apiKey = config_.apiKey,
                                               .apiSecret = config_.apiSecret,
@@ -39,17 +39,37 @@ drogon::Task<std::optional<Json::Value>> LiveKitRoomClient::call(TwirpCall twirp
   try {
     const auto client = drogon::HttpClient::newHttpClient(config_.serverUrl);
     const auto response = co_await client->sendRequestCoro(request, kRequestTimeoutSeconds);
-    if (response->statusCode() != drogon::k200OK) {
-      if (response->statusCode() != drogon::k404NotFound)
-        LOG_WARN << "LiveKit " << twirp.method << " answered " << static_cast<int>(response->statusCode());
-      co_return std::nullopt;
-    }
-    co_return json_util::fromString(std::string(response->body()));
+    if (response->statusCode() == drogon::k200OK)
+      co_return TwirpReply{.outcome = TwirpOutcome::Ok, .body = json_util::fromString(std::string(response->body()))};
+    if (response->statusCode() == drogon::k404NotFound)
+      co_return TwirpReply{.outcome = TwirpOutcome::NotFound, .body = Json::Value()};
+    LOG_WARN << "LiveKit " << twirp.method << " answered " << static_cast<int>(response->statusCode());
+    co_return TwirpReply{.outcome = TwirpOutcome::Failed, .body = Json::Value()};
   }
   catch (const std::exception& error) {
     LOG_WARN << "LiveKit " << twirp.method << " failed: " << error.what();
-    co_return std::nullopt;
+    co_return TwirpReply{.outcome = TwirpOutcome::Failed, .body = Json::Value()};
   }
+}
+
+drogon::Task<std::optional<Json::Value>> LiveKitRoomClient::call(TwirpCall twirp) const
+{
+  auto reply = co_await answer(std::move(twirp));
+  if (reply.outcome != TwirpOutcome::Ok)
+    co_return std::nullopt;
+  co_return std::move(reply.body);
+}
+
+drogon::Task<RoomCloseStatus> LiveKitRoomClient::closeRoom(std::string room) const
+{
+  Json::Value body(Json::objectValue);
+  body["room"] = room;
+  const auto reply = co_await answer({.method = "DeleteRoom", .body = std::move(body), .room = room, .list = false, .create = true});
+  if (reply.outcome == TwirpOutcome::Ok)
+    co_return RoomCloseStatus::Closed;
+  if (reply.outcome == TwirpOutcome::NotFound)
+    co_return RoomCloseStatus::Gone;
+  co_return RoomCloseStatus::Failed;
 }
 
 drogon::Task<std::optional<std::vector<std::string>>> LiveKitRoomClient::listRooms() const

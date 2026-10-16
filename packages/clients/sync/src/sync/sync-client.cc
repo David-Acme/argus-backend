@@ -84,3 +84,20 @@ bool SyncClient::emitToUser(int64_t userId, const SocketEmitDto& frame) const
   argus::sync::v1::ControlAck ack;
   return answer(stub_->EmitToUser(&context, request, &ack), ack);
 }
+
+bool SyncClient::closeCallRoom(int64_t userId, int64_t callId) const
+{
+  if (userId <= 0 || callId <= 0)
+    return false;
+
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addPeerCredential(context, credential_);
+
+  argus::sync::v1::CloseCallRoomRequest request;
+  request.set_user_id(userId);
+  request.set_call_id(callId);
+
+  argus::sync::v1::ControlAck ack;
+  return answer(stub_->CloseCallRoom(&context, request, &ack), ack);
+}

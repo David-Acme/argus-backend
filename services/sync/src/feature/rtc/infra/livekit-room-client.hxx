@@ -3,6 +3,7 @@
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -20,6 +21,13 @@ struct LiveKitParticipantRef
   std::string identity;
 };
 
+enum class RoomCloseStatus : uint8_t
+{
+  Closed,
+  Gone,
+  Failed
+};
+
 class LiveKitRoomClient
 {
 public:
@@ -34,6 +42,7 @@ public:
   virtual drogon::Task<bool> removeParticipant(LiveKitParticipantRef participant) const;
   virtual drogon::Task<bool> createRoom(std::string room) const;
   virtual drogon::Task<bool> deleteRoom(std::string room) const;
+  virtual drogon::Task<RoomCloseStatus> closeRoom(std::string room) const;
   virtual drogon::Task<std::optional<std::vector<std::string>>> listParticipants(std::string room) const;
   virtual drogon::Task<bool> silenceParticipant(LiveKitParticipantRef participant) const;
 
@@ -49,6 +58,20 @@ private:
     bool create{false};
   };
 
+  enum class TwirpOutcome : uint8_t
+  {
+    Ok,
+    NotFound,
+    Failed
+  };
+
+  struct TwirpReply
+  {
+    TwirpOutcome outcome{TwirpOutcome::Failed};
+    Json::Value body;
+  };
+
+  drogon::Task<TwirpReply> answer(TwirpCall twirp) const;
   drogon::Task<std::optional<Json::Value>> call(TwirpCall twirp) const;
 
   LiveKitAdminConfig config_;

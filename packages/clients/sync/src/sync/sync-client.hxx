@@ -35,6 +35,8 @@ public:
   [[nodiscard]] bool emitToUser(int64_t userId,
                                 const SocketEmitDto& frame) const override;
 
+  [[nodiscard]] bool closeCallRoom(int64_t userId, int64_t callId) const;
+
 private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::sync::v1::SyncControlService::StubInterface> stub_;

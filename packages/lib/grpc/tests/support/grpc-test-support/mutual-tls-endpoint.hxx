@@ -1,6 +1,7 @@
 #pragma once
 
 #include <grpc-test-support/internal-tls-probe.hxx>
+#include <optional>
 #include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 

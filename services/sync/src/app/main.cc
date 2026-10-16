@@ -387,7 +387,7 @@ int main()
     _exit(1);
   }
 
-  SyncControlRpcService controlRpc(controlGate);
+  SyncControlRpcService controlRpc(controlGate, rtcRooms);
   SyncModuleData moduleData;
   SettingsRegistry noSettings({});
   std::unique_ptr<SettingsRpcService> settingsRpc;

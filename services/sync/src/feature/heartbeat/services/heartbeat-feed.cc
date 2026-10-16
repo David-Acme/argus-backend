@@ -20,12 +20,6 @@ int64_t nowSeconds()
       .count();
 }
 
-int64_t nowMillis()
-{
-  return std::chrono::duration_cast<std::chrono::milliseconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
-}
 }
 
 std::optional<PresenceEntry> heartbeat::parsePresence(std::string_view payload)

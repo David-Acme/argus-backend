@@ -26,3 +26,10 @@ bool SyncCallSignal::emit(const CallSignalInput& input) const
              << input.userId;
   return sent;
 }
+
+bool SyncCallSignal::closeCallRoom(const CallRoomClose& input) const
+{
+  if (!client_)
+    return false;
+  return client_->closeCallRoom(input.userId, input.callId);
+}

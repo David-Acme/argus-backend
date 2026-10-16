@@ -110,8 +110,9 @@ protocol could not regress by accident in the commit that changed the endpoint.
   frame becomes a room emit; an identity catalog frame belongs
   to the memory replicas and is acked, not re-emitted.
 - **The control plane.** `argus.sync.v1.SyncControlService` on 7041, served
-  from `src/app/rpc/`: `ReplaceRoleRooms`, `DisconnectUser`, `EmitToUser`. The
-  three operations change no row, so they cannot travel as a change event; each
+  from `src/app/rpc/`: `ReplaceRoleRooms`, `DisconnectUser`, `EmitToUser`,
+  `CloseCallRoom`. The four operations change no row, so they cannot travel as a
+  change event; each
   typed frame is rebuilt into the change feed's envelope and handed to the same
   dispatcher the NATS leg uses, so the two transports cannot diverge.
   Each caller presents its own credential (`[rpc.callers]` `identity` and
@@ -883,6 +884,17 @@ in `[rpc.callers]`, paired with its `[sync] control_credential` by
 |---|---|---|
 | `ReplaceRoleRooms`, `DisconnectUser` | yes | no |
 | `EmitToUser` | any frame | `CallIncoming`, `CallCancel`, `ResponseUpdate` only |
+| `CloseCallRoom` | no | yes |
+
+`CloseCallRoom(user_id, call_id)` closes the proactive call room of that user
+and call: the name is `roomOf(user, proactiveCallId(call))`, the same helper the
+creation path reaches through its call id, and the close goes through
+`LiveKitRoomClient::closeRoom`. `Closed` and `Gone` both ack `ok=true`: a room
+that is already gone is the normal second end of a call, logged at info, and
+notification's repeat is harmless. `Failed` (a LiveKit error or refusal) acks
+`ok=false` with `livekit did not close the room`, and a sync without an rtc
+client acks `ok=false` with `rtc is not configured`. Notification calls it after
+every farewell attempt, whatever their outcome.
 
 The table is `src/app/rpc/sync-control-callers.hxx`; the operation check runs
 before the request is validated, so a refused frame never reaches the

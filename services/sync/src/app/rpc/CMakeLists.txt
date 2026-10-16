@@ -7,6 +7,7 @@ argus_module(NAME sync-control-rpc
         argus::sync-repositories
         argus::sync-services
         argus::sync-fanout
+        argus::sync-rtc
         argus::clients::sync
         argus::contracts::auth
         argus::contracts::sync

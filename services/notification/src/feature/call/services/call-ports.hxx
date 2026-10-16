@@ -18,12 +18,24 @@ struct CallSignalInput
   Json::Value info;
 };
 
+struct CallRoomClose
+{
+  int64_t userId{0};
+  int64_t callId{0};
+  std::string reason;
+};
+
 class CallSignal
 {
 public:
   virtual ~CallSignal() = default;
 
   [[nodiscard]] virtual bool emit(const CallSignalInput& input) const = 0;
+
+  [[nodiscard]] virtual bool closeCallRoom([[maybe_unused]] const CallRoomClose& input) const
+  {
+    return false;
+  }
 };
 
 struct CallAnnouncement
@@ -32,13 +44,6 @@ struct CallAnnouncement
   std::string text;
   std::string kind;
   std::string callId;
-};
-
-struct CallRoomClose
-{
-  int64_t userId{0};
-  int64_t callId{0};
-  std::string reason;
 };
 
 class LiveCallAnnouncer

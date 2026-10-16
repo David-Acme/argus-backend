@@ -66,6 +66,11 @@ std::string roomOf(int64_t userId, std::string_view callId)
   return roomPrefixOf(userId) + std::string(callId);
 }
 
+std::string proactiveCallId(int64_t callId)
+{
+  return std::string(kProactiveCallPrefix) + std::to_string(callId);
+}
+
 std::string userIdentityPrefixOf(int64_t userId)
 {
   return "user:" + std::to_string(userId) + ":";

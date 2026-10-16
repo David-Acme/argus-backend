@@ -2,7 +2,10 @@
 #include "sync-control-callers.hxx"
 
 #include <auth/user-role.hxx>
+#include <drogon/drogon.h>
+#include <exception>
 #include <feature/fanout/services/sync-fan-out.hxx>
+#include <feature/rtc/services/rtc-naming.hxx>
 #include <grpc/grpc-server-identity.hxx>
 #include <string_view>
 #include <sync/socket-emit-dto.hxx>
@@ -72,8 +75,9 @@ bool callFrame(const argus::sync::v1::SyncFrame& frame)
 }
 
 SyncControlRpcService::SyncControlRpcService(
-    std::shared_ptr<const argus::client::FleetCallerGate> gate)
-    : gate_(std::move(gate))
+    std::shared_ptr<const argus::client::FleetCallerGate> gate,
+    std::shared_ptr<const LiveKitRoomClient> rooms)
+    : gate_(std::move(gate)), rooms_(std::move(rooms))
 {
 }
 
@@ -156,4 +160,45 @@ grpc::ServerUnaryReactor* SyncControlRpcService::EmitToUser(
   return finishAck(context, {.response = response,
                              .ok = ok,
                              .reason = ok ? "" : "unroutable frame"});
+}
+
+grpc::ServerUnaryReactor* SyncControlRpcService::CloseCallRoom(
+    grpc::CallbackServerContext* context,
+    const argus::sync::v1::CloseCallRoomRequest* request,
+    argus::sync::v1::ControlAck* response)
+{
+  if (const auto admission = admit(context, sync_control_callers::kCloseCallRoom);
+      !admission.admitted())
+    return reject(context, admission.verdict);
+
+  if (request->user_id() <= 0 || request->call_id() <= 0)
+    return finishAck(context, {.response = response,
+                               .ok = false,
+                               .reason = "user and call are required"});
+  if (!rooms_)
+    return finishAck(context, {.response = response,
+                               .ok = false,
+                               .reason = "rtc is not configured"});
+
+  const std::string room = rtc_naming::roomOf(request->user_id(),
+                                              rtc_naming::proactiveCallId(request->call_id()));
+  auto* reactor = context->DefaultReactor();
+  auto* responseWriter = response;
+  drogon::app().getLoop()->queueInLoop([this, reactor, room, responseWriter]() {
+    drogon::async_run([this, reactor, room, responseWriter]() -> drogon::Task<void> {
+      try {
+        const RoomCloseStatus status = co_await rooms_->closeRoom(room);
+        if (status == RoomCloseStatus::Gone)
+          LOG_INFO << "CloseCallRoom: " << room << " was already gone";
+        responseWriter->set_ok(status != RoomCloseStatus::Failed);
+        responseWriter->set_reason(status == RoomCloseStatus::Failed ? "livekit did not close the room" : "");
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& error) {
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, error.what()));
+      }
+      co_return;
+    });
+  });
+  return reactor;
 }
