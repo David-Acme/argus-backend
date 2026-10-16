@@ -124,6 +124,16 @@ std::string JwtService::generateRefresh(
                    .expiresInSeconds = refreshTtlSeconds_});
 }
 
+bool JwtService::isExpired(const std::string& token) const
+{
+  try {
+    return jwt::decode(token).get_expires_at() <= std::chrono::system_clock::now();
+  }
+  catch (const std::exception&) {
+    return false;
+  }
+}
+
 std::map<std::string, std::string>
 JwtService::verifyAccess(const std::string& token) const
 {

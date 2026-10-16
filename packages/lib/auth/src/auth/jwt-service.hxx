@@ -40,6 +40,7 @@ public:
   generateRefresh(const std::map<std::string, std::string>& claims) const;
   std::map<std::string, std::string>
   verifyAccess(const std::string& token) const;
+  bool isExpired(const std::string& token) const;
   std::map<std::string, std::string>
   verifyRefresh(const std::string& token) const;
 

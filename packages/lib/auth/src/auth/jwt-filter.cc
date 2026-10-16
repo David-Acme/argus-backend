@@ -34,7 +34,8 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
 
   const auto claims = jwtService_.verifyAccess(token);
   if (claims.empty()) {
-    refuse(req, AuthErrors::AuthenticationRequired, "invalid");
+    refuse(req, AuthErrors::AuthenticationRequired,
+           jwtService_.isExpired(token) ? "expired" : "invalid");
   }
 
   const auto subIt = claims.find("sub");

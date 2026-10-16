@@ -1,7 +1,10 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <auth/jwt-service.hxx>
+#include <chrono>
 #include <config/config-service.hxx>
 #include <doctest/doctest.h>
+#include <jwt-cpp/jwt.h>
+#include <jwt-cpp/traits/nlohmann-json/defaults.h>
 #include <set>
 #include <stdexcept>
 #include <string>
@@ -18,6 +21,21 @@ void armSecrets()
   ConfigService::setRuntimeString("jwt.refresh_ttl_days", "30");
 }
 
+}
+
+TEST_CASE("a token past its expiry is reported as expired, and a fresh one is not")
+{
+  armSecrets();
+  const JwtService verifier{JwtRole::Verifier};
+  const JwtService issuer{JwtRole::Issuer};
+  const auto past = jwt::create()
+                        .set_issuer("argus")
+                        .set_subject("1")
+                        .set_expires_at(std::chrono::system_clock::now() - std::chrono::seconds(30))
+                        .sign(jwt::algorithm::hs256{std::string(40, 'a')});
+  CHECK(verifier.isExpired(past));
+  CHECK(verifier.verifyAccess(past).empty());
+  CHECK_FALSE(verifier.isExpired(issuer.generateAccess({{"sub", "1"}})));
 }
 
 TEST_CASE("every token minted for one subject is distinct")
