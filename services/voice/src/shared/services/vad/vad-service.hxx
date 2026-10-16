@@ -14,7 +14,7 @@ struct VadConfig
 {
   int sampleRate{16000};
   float threshold{0.45F};
-  float negThreshold{0.25F};
+  float negThreshold{0.30F};
   int minSpeechFrames{5};
   int minSilenceFrames{12};
   int maxTurnFrames{750};

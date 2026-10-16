@@ -46,7 +46,7 @@ grpc_credential = ""
 
 [vad]
 threshold = 0.45
-neg_threshold = 0.25
+neg_threshold = 0.30
 min_speech_frames = 5
 min_silence_frames = 12
 max_turn_frames = 750

@@ -1318,3 +1318,21 @@ for numbers before any offline choice, and no offline path was chosen.
 
 Removed: the unprompted "no te entendí" reply for overheard unintelligible turns
 (`answerUnheard` still runs for addressed turns, and for corrections).
+
+### Endpoint on the raw path (2026-10-16, measured)
+
+The raw VAD takes its probability tail from the microphone, not from the denoised
+stream, so after speech stops it stayed above the 0.25 negative threshold longer
+and closed each turn ~60 ms later than the base. Prod-path latency (in-process
+bench over the real streaming STT, end-of-speech reference from the recording,
+three runs, medians, same machine, both trees built Release):
+
+| segment | base 6176b907 | neg 0.25 | neg 0.30 (adopted) | neg 0.35 |
+|---|---|---|---|---|
+| turn2 | 505.9 ms | 495.7 | 493.7 (−12.2) | 505.9 (0.0) |
+| turn3 | 449.5 ms | 424.3 | 417.0 (−32.5) | 419.4 (−30.1) |
+| turn4 | 250.7 ms | 320.6 (+69.9) | 267.5 (+16.8) | 277.1 (+26.4) |
+
+`vad.neg_threshold` is therefore 0.30 (code default and `config.toml.example`).
+Replay margins and turn counts are unchanged at 0.30. The gate of +30 ms holds
+on every segment with 0.30.
