@@ -143,6 +143,12 @@ std::map<std::string, std::string> sessionClaims(int64_t userId,
   return {{"sub", std::to_string(userId)}, {"sid", sessionId}};
 }
 
+void logRefresh(int64_t userId, std::string_view outcome, std::string_view reason)
+{
+  LOG_INFO << "Auth refresh: user " << userId << " outcome " << outcome << " reason " << reason
+           << " binding " << (DeviceFilter::credentialMode() ? "credential" : "ip");
+}
+
 bool agentUpgradeAllowed(const RefreshTokenSchema& session,
                          const RefreshTokenInput& input)
 {
@@ -506,8 +512,11 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
   const auto claims =
       dependencies_.jwtService.verifyRefresh(input.body.refreshToken);
   const auto userId = userIdOfClaims(claims);
-  if (!userId)
+  if (!userId) {
+    logRefresh(0, "refused",
+               dependencies_.jwtService.isExpired(input.body.refreshToken) ? "expired" : "invalid");
     throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
+  }
 
   const auto sid = claims.find("sid");
   const RefreshPresentation presented{
@@ -517,12 +526,14 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
       .sessionId = sid == claims.end() ? std::string{} : sid->second};
   const auto existing = co_await presentedSession(presented);
   if (!existing) {
+    logRefresh(*userId, "refused", "invalid");
     co_await refuseDisabledAccount(*userId, IdentityLookup::BestEffort);
     throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
   }
 
   if (existing->refreshToken != presented.tokenHash &&
       existing->refreshToken != presented.token) {
+    logRefresh(*userId, "refused", "used");
     co_await settleStaleToken({.session = *existing,
                                .request = input,
                                .tokenHash = presented.tokenHash});
@@ -532,6 +543,7 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
   const auto now = static_cast<int64_t>(std::time(nullptr));
   if (existing->expiresAt <= now) {
     LOG_WARN << "Auth: expired refresh token for user " << *userId;
+    logRefresh(*userId, "refused", "expired");
     throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
   }
 
@@ -539,6 +551,7 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
   const bool upgraded = !bound && agentUpgradeAllowed(*existing, input);
   if (!bound && !upgraded) {
     LOG_WARN << "Auth: device mismatch on refresh for user " << *userId;
+    logRefresh(*userId, "refused", "device-mismatch");
     throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
   }
   if (upgraded)
@@ -556,8 +569,10 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
   auto transaction = co_await db_transaction::begin(DbService::client());
   try {
     if (!co_await dependencies_.refreshTokenRepository.markUsed(
-            existing->id, transaction.get()))
+            existing->id, transaction.get())) {
+      logRefresh(*userId, "refused", "used");
       throw ResponseException(AuthErrors::RefreshTokenInvalidOrExpired);
+    }
     co_await dependencies_.refreshTokenRepository.pruneStale(*userId,
                                                              transaction.get());
     co_await dependencies_.refreshTokenRepository.create(
@@ -587,6 +602,7 @@ AuthFeatureService::refreshToken(const RefreshTokenInput& input) const
     db_transaction::rollback(transaction);
     throw;
   }
+  logRefresh(*userId, "rotated", "ok");
   co_return result;
 }
 
