@@ -61,7 +61,8 @@ struct LiveServer
       auto listener = argus::client::startListening({.address = "127.0.0.1:0",
                                                      .tlsAddress = "127.0.0.1:0",
                                                      .tls = argus::client::test_support::pkiMaterial("camera"),
-                                                     .services = {service.get()}});
+                                                     .services = {service.get()},
+                                                     .maxReceiveBytes = {}});
       server = std::move(listener.server);
       port = listener.port;
       tlsPort = listener.tlsPort;

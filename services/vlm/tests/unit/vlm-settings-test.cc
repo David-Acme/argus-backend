@@ -121,7 +121,9 @@ VlmRpcInput serverInput(const VlmRpcConfig& config, VisionService& vision, Setti
               },
           .describe = [](const VisionDescribeMatInput&) { return std::string("a quiet yard"); },
           .slots = 1,
-          .services = {&settings}};
+          .services = {&settings},
+          .tlsAddress = {},
+          .tls = {}};
 }
 }
 

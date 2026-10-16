@@ -115,7 +115,9 @@ SttRpcInput fakeInput(const SttRpcConfig& config, SettingsRpcService& settings)
           .acceptsLanguage = [](const std::string&) { return true; },
           .transcribe = [](const TranscribeRequest&) { return std::string("heard"); },
           .slots = 1,
-          .services = {&settings}};
+          .services = {&settings},
+          .tlsAddress = {},
+          .tls = {}};
 }
 }
 
