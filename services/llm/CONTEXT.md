@@ -2099,3 +2099,12 @@ Representative turn: Spanish system text, a memory block, a five-turn history, a
 The cost is the prefill, about 250 tokens per second on this CPU. Reuse of the common prefix is what keeps a warm turn near 0.7 s. The target is first token under 1.5 s on prod; the cold p95 sits at that line, so a prompt that grows past about 350 tokens without reuse goes over it. The prefill log line (prompt, reused, decoded, ms, batch threads) is what shows which case a live turn is in.
 
 The dev build is not the reference: it measured 26 to 48 s turns, and its process was pinned to CPUs 8 to 15 (8 effective threads, 2 decode and 4 batch), on top of the debug build.
+
+## Eval gates red with the weights present (backlog, 2026-10-16)
+
+`llm-tier-eval` and `call-faithfulness-eval` exit 77 (skipped) when the LLM weights, the intent model, or a debug build is present in the wrong way. Where the weights and the intent model are present (the prod build, the stack's models), both run and their gates fail. The failure is not a batch-3 regression: the same numbers come from `ca416a52` and from `6176b907`, both built fresh with the same models (`LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf`, `intent.bin` with the same sha256). Nothing in `services/llm` changes between them but a log line.
+
+- `llm-tier-eval`, memory selection and recall (both commits): `selection.memory.accuracy` 0.241379 against 0.600; `tool.memory.forget.recall` 0.156250 against 0.600; `tool.memory.remember.recall` 0.227848 against 0.500; `tool.memory.remind.recall` 0.013333 against 0.750; `falseCompletionRate` 0.042 to 0.057 against 0 (en, neutral, pe, stt variants).
+- `call-faithfulness-eval` (both commits): `retryShare` 0.333333 against 0.050; `missedNameAsk`, `recital` and `relevance` 1.000000 each against 0 (32 cases, 34 turns).
+
+The gates stay as they are. Until this is worked, the build that runs these evals with the weights present exits 8 on exactly these two tests; the same build with the weights absent reports them skipped. The memory selection is the first to look at: it is the one whose recall tools fail, and the faithfulness failures are the retry share of the same turns.
