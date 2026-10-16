@@ -408,11 +408,11 @@ TEST_CASE("the ring planner predicts the delay-0 rings of considerNotification, 
     int64_t userId;
   };
   const std::vector<Scenario> scenarios{
-      {"critical guard episode, delay 0", true, 0, guardData("critical", 60), 1},
-      {"critical guard episode, delay 4", true, 4, guardData("critical", 61), 1},
-      {"calls switched off", false, 0, guardData("critical", 62), 1},
-      {"not call-worthy", true, 0, guardData("active", 63), 1},
-      {"unknown user", true, 0, guardData("critical", 64), 99},
+      {.name = "critical guard episode, delay 0", .enabled = true, .delay = 0, .data = guardData("critical", 60), .userId = 1},
+      {.name = "critical guard episode, delay 4", .enabled = true, .delay = 4, .data = guardData("critical", 61), .userId = 1},
+      {.name = "calls switched off", .enabled = false, .delay = 0, .data = guardData("critical", 62), .userId = 1},
+      {.name = "not call-worthy", .enabled = true, .delay = 0, .data = guardData("active", 63), .userId = 1},
+      {.name = "unknown user", .enabled = true, .delay = 0, .data = guardData("critical", 64), .userId = 99},
   };
   for (const Scenario& scenario : scenarios) {
     Harness harness;
