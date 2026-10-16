@@ -70,3 +70,27 @@ TEST_CASE("a tail flush takes at most one frame, so a burst held below the pre-r
   CHECK(tailPlayoutSamples(100, kFrame) == 100);
   CHECK(tailPlayoutSamples(0, kFrame) == 0);
 }
+
+TEST_CASE("a burst held below the pre-roll drains through the real tail flush, one frame at a time, never past the frame")
+{
+  constexpr size_t kFrame = 480;
+  constexpr size_t kBurst = 14400;
+  BasicSampleRing<int16_t> ring(32000);
+  std::vector<int16_t> burst(kBurst);
+  for (size_t i = 0; i < kBurst; ++i)
+    burst[i] = static_cast<int16_t>(i % 1000);
+  ring.push(burst.data(), burst.size());
+
+  std::vector<int16_t> frame(kFrame);
+  size_t drained = 0;
+  size_t ticks = 0;
+  while (ring.size() > 0 && ticks < 200) {
+    const size_t taken = takeTailFrame(ring, {frame.data(), frame.size()});
+    CHECK(taken <= kFrame);
+    drained += taken;
+    ++ticks;
+  }
+  CHECK(drained == kBurst);
+  CHECK(ring.size() == 0);
+  CHECK(ticks == kBurst / kFrame);
+}
