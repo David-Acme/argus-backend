@@ -269,7 +269,7 @@ public:
     co_return std::vector<PushDevice>{{.provider = PushProvider::Fcm,
                                        .token = "fcm-token-" + std::to_string(userId),
                                        .publicKey = push_open::recipientPublicKeyBase64Url(),
-                                       .keyId = "key-0001"}};
+                                       .keyId = "key-0001", .sessionId = ""}};
   }
 };
 

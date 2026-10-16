@@ -8,8 +8,8 @@
 TEST_CASE("a call to an iOS device goes to apns_voip only, never to apns")
 {
   const std::vector<PushDevice> ios{
-      {.provider = PushProvider::Apns, .token = "apns-alert-token", .publicKey = "k", .keyId = "kid"},
-      {.provider = PushProvider::ApnsVoip, .token = "apns-voip-token", .publicKey = "k", .keyId = "kid"}};
+      {.provider = PushProvider::Apns, .token = "apns-alert-token", .publicKey = "k", .keyId = "kid", .sessionId = ""},
+      {.provider = PushProvider::ApnsVoip, .token = "apns-voip-token", .publicKey = "k", .keyId = "kid", .sessionId = ""}};
   const auto routed = call_push_routing::devicesForCall(ios);
   REQUIRE(routed.size() == 1);
   CHECK(routed.front().provider == PushProvider::ApnsVoip);
@@ -21,8 +21,8 @@ TEST_CASE("a call to an iOS device goes to apns_voip only, never to apns")
 TEST_CASE("a call to an Android device goes to fcm and an iOS device with only apns gets no call")
 {
   const std::vector<PushDevice> mixed{
-      {.provider = PushProvider::Fcm, .token = "fcm-token", .publicKey = "k", .keyId = "kid"},
-      {.provider = PushProvider::Apns, .token = "apns-alert-token", .publicKey = "k", .keyId = "kid"}};
+      {.provider = PushProvider::Fcm, .token = "fcm-token", .publicKey = "k", .keyId = "kid", .sessionId = ""},
+      {.provider = PushProvider::Apns, .token = "apns-alert-token", .publicKey = "k", .keyId = "kid", .sessionId = ""}};
   const auto routed = call_push_routing::devicesForCall(mixed);
   REQUIRE(routed.size() == 1);
   CHECK(routed.front().provider == PushProvider::Fcm);

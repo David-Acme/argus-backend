@@ -18,6 +18,7 @@ struct NotificationTokenSchema
   std::string provider;
   std::string publicKey;
   std::string keyId;
+  std::string sessionId;
   bool isActive{true};
   int64_t createdAt{0};
   std::optional<int64_t> updatedAt;

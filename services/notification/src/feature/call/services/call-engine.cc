@@ -876,7 +876,8 @@ CallEngine::claim(const CallClaimRequest& request) const
                                                 .now = at,
                                                 .client = transaction.get()});
     if (dependencies_.sealedPush)
-      static_cast<void>(co_await dependencies_.sealedPush->cancel(claimed, transaction.get()));
+      static_cast<void>(co_await dependencies_.sealedPush->cancelOthers(
+          {.call = claimed, .client = transaction.get(), .claimedBySessionId = request.sessionId}));
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(NotificationErrors::ChangeNotRecorded);
   }

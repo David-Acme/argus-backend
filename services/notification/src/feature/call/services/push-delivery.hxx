@@ -27,6 +27,14 @@ struct CallPushInput
   CallSchema call;
   bool cancelling{false};
   drogon::orm::DbClient* client{nullptr};
+  std::string exceptSessionId;
+};
+
+struct CallClaimCancelInput
+{
+  CallSchema call;
+  drogon::orm::DbClient* client{nullptr};
+  std::string claimedBySessionId;
 };
 
 class CallPushDelivery
@@ -38,6 +46,7 @@ public:
                                            drogon::orm::DbClient* client) const;
   [[nodiscard]] drogon::Task<int64_t> cancel(const CallSchema& call,
                                              drogon::orm::DbClient* client) const;
+  [[nodiscard]] drogon::Task<int64_t> cancelOthers(const CallClaimCancelInput& input) const;
 
 private:
   [[nodiscard]] drogon::Task<int64_t> deliver(CallPushInput input) const;

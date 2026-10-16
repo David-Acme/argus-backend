@@ -53,7 +53,26 @@ public:
     co_return std::vector<PushDevice>{{.provider = PushProvider::Fcm,
                                        .token = "fcm-token-0001",
                                        .publicKey = base64UrlOf(fromHex(kRecipientPublicHex)),
-                                       .keyId = "key-0001"}};
+                                       .keyId = "key-0001", .sessionId = ""}};
+  }
+};
+
+class TwoSessionDevices final : public PushDeviceDirectory
+{
+public:
+  drogon::Task<std::vector<PushDevice>> devicesOf(int64_t, drogon::orm::DbClient*) const override
+  {
+    const std::string publicKey = base64UrlOf(fromHex(kRecipientPublicHex));
+    co_return std::vector<PushDevice>{{.provider = PushProvider::Fcm,
+                                       .token = "fcm-token-A",
+                                       .publicKey = publicKey,
+                                       .keyId = "key-0001",
+                                       .sessionId = "sess-A"},
+                                      {.provider = PushProvider::Fcm,
+                                       .token = "fcm-token-B",
+                                       .publicKey = publicKey,
+                                       .keyId = "key-0001",
+                                       .sessionId = "sess-B"}};
   }
 };
 
@@ -83,6 +102,13 @@ CallSchema ringingCall(int64_t expiresAt)
   call.createdAt = kNow;
   call.expiresAt = expiresAt;
   return call;
+}
+
+CallPushDelivery deliveryOverTwoSessions(const std::shared_ptr<RecordingOutbox>& outbox)
+{
+  return CallPushDelivery(CallPushDeliveryDependencies{.devices = std::make_shared<TwoSessionDevices>(),
+                                                       .outbox = outbox,
+                                                       .clock = [] { return kNow; }});
 }
 
 CallPushDelivery deliveryOver(const std::shared_ptr<RecordingOutbox>& outbox)
@@ -183,4 +209,30 @@ TEST_CASE("a cancel seals the same call plaintext with cancel set, and the wrong
   CHECK(plain["title"].asString() == "Argus te está llamando");
   CHECK(plain["deepLink"].asString() == "argus://call?callId=" + call.callId());
   CHECK(push_open::plaintextOf(outbox->entries[0].payload, "key-0002").isNull());
+}
+
+TEST_CASE("a cancel after a claim reaches the other devices only, never the claiming session's device")
+{
+  const auto outbox = std::make_shared<RecordingOutbox>();
+  const CallSchema call = ringingCall(kNow + 900);
+
+  const int64_t recorded = drogon::sync_wait(deliveryOverTwoSessions(outbox).cancelOthers(
+      {.call = call, .client = nullptr, .claimedBySessionId = "sess-A"}));
+
+  CHECK(recorded == 1);
+  REQUIRE(outbox->entries.size() == 1);
+  CHECK(payloadOf(outbox->entries[0])["token"].asString() == "fcm-token-B");
+  CHECK(push_open::plaintextOf(outbox->entries[0].payload, "key-0001")["cancel"].asBool());
+}
+
+TEST_CASE("a cancel whose claim names no session still reaches every device")
+{
+  const auto outbox = std::make_shared<RecordingOutbox>();
+  const CallSchema call = ringingCall(kNow + 900);
+
+  const int64_t recorded = drogon::sync_wait(deliveryOverTwoSessions(outbox).cancelOthers(
+      {.call = call, .client = nullptr, .claimedBySessionId = ""}));
+
+  CHECK(recorded == 2);
+  REQUIRE(outbox->entries.size() == 2);
 }

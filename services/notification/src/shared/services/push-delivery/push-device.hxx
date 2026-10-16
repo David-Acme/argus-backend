@@ -15,6 +15,7 @@ struct PushDevice
   std::string token;
   std::string publicKey;
   std::string keyId;
+  std::string sessionId;
 };
 
 class PushDeviceDirectory

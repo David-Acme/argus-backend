@@ -57,15 +57,15 @@ public:
     co_return std::vector<PushDevice>{{.provider = PushProvider::Fcm,
                                        .token = "fcm-token-0001",
                                        .publicKey = key,
-                                       .keyId = "key-0001"},
+                                       .keyId = "key-0001", .sessionId = ""},
                                       {.provider = PushProvider::Apns,
                                        .token = "apns-token-0001",
                                        .publicKey = key,
-                                       .keyId = "key-0002"},
+                                       .keyId = "key-0002", .sessionId = ""},
                                       {.provider = PushProvider::ApnsVoip,
                                        .token = "voip-token-0001",
                                        .publicKey = key,
-                                       .keyId = "key-0003"}};
+                                       .keyId = "key-0003", .sessionId = ""}};
   }
 };
 

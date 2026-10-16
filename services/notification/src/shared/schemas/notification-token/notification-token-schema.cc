@@ -13,6 +13,7 @@ NotificationTokenSchema::NotificationTokenSchema(const drogon::orm::Row& row)
   provider = row["provider"].as<std::string>();
   publicKey = row["public_key"].as<std::string>();
   keyId = row["key_id"].as<std::string>();
+  sessionId = row["session_id"].as<std::string>();
   isActive = row["is_active"].as<int>() != 0;
   createdAt = static_cast<int64_t>(row["created_at"].as<long long>());
   if (!row["updated_at"].isNull())

@@ -13,7 +13,8 @@ NotificationPushDeviceDirectory::devicesOf(int64_t userId, drogon::orm::DbClient
     devices.push_back({.provider = *provider,
                        .token = row.token,
                        .publicKey = row.publicKey,
-                       .keyId = row.keyId});
+                       .keyId = row.keyId,
+                       .sessionId = row.sessionId});
   }
   co_return devices;
 }

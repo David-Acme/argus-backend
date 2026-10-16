@@ -82,7 +82,7 @@ public:
     co_return std::vector<PushDevice>{{.provider = PushProvider::Fcm,
                                        .token = "fcm-token-0001",
                                        .publicKey = base64UrlOf(fromHex(kRecipientPublicHex)),
-                                       .keyId = "key-0001"}};
+                                       .keyId = "key-0001", .sessionId = ""}};
   }
 };
 

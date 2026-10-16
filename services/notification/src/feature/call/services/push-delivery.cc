@@ -47,13 +47,21 @@ CallPushDelivery::CallPushDelivery(CallPushDeliveryDependencies dependencies)
 drogon::Task<int64_t> CallPushDelivery::ring(const CallSchema& call,
                                              drogon::orm::DbClient* client) const
 {
-  co_return co_await deliver({.call = call, .cancelling = false, .client = client});
+  co_return co_await deliver({.call = call, .cancelling = false, .client = client, .exceptSessionId = {}});
 }
 
 drogon::Task<int64_t> CallPushDelivery::cancel(const CallSchema& call,
                                                drogon::orm::DbClient* client) const
 {
-  co_return co_await deliver({.call = call, .cancelling = true, .client = client});
+  co_return co_await deliver({.call = call, .cancelling = true, .client = client, .exceptSessionId = {}});
+}
+
+drogon::Task<int64_t> CallPushDelivery::cancelOthers(const CallClaimCancelInput& input) const
+{
+  co_return co_await deliver({.call = input.call,
+                              .cancelling = true,
+                              .client = input.client,
+                              .exceptSessionId = input.claimedBySessionId});
 }
 
 drogon::Task<int64_t> CallPushDelivery::deliver(CallPushInput input) const
@@ -93,7 +101,8 @@ drogon::Task<int64_t> CallPushDelivery::deliver(CallPushInput input) const
   const int64_t expiresAtMs = intentExpiresAt * 1000;
 
   int64_t recorded = 0;
-  for (const auto& device : call_push_routing::devicesForCall(devices)) {
+  const auto reached = call_push_routing::devicesExceptSession(devices, input.exceptSessionId);
+  for (const auto& device : call_push_routing::devicesForCall(reached)) {
     const std::string deliveryId = randomBytes(kDeliveryIdSize);
     if (deliveryId.size() != kDeliveryIdSize)
       continue;
