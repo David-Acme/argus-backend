@@ -1,6 +1,17 @@
 # Closing plan, 2026-10-16
 
-The owner asked to close every open point as fast as possible. A fast implementer agent writes the code. The reviewer (this session) gives it the units, checks code quality and requirements on every patch, and runs the device tests with the owner. Merging to `master` stays fast-forward and follows the reviewer's acceptance.
+The owner asked to close every open point as fast as possible.
+
+**Roles:**
+- **Implementer session, `backend-3e`.** Writes the code and splits the work across its own subagents.
+- **Reviewer session, `backend-37`.**
+  - Checks code quality, logic and requirements on every patch.
+  - Re-runs the tests.
+  - Runs the device tests with the owner.
+
+Merging to `master` stays fast-forward and follows the reviewer's acceptance of the exact SHAs.
+
+**Out of scope: Bonsai 2 2B.** It was tested on 2026-10-16 and is kept as a documented alternative (`docs/history/reports/model-eval-bonsai2-2b.md`). It is not implemented under this plan.
 
 ## 0. Ground rules for the implementer
 
@@ -33,7 +44,28 @@ The owner asked to close every open point as fast as possible. A fast implemente
   - Staging: explicit paths only, never `git add -A`.
 - **Device work** is the reviewer's, with the owner's phone. The implementer never touches the phone or the owner's live stack.
 
-## Phase 0: status audit (1–2 h)
+## 0b. How the implementer splits the work
+
+- **Parallel subagents in worktrees.** The implementer runs up to 4 subagents, one per independent unit, each in its own `wt/` worktree on its own `fix/*` or `feat/*` branch.
+  - Units that touch the same files never run in parallel.
+  - Every subagent prompt restates the no-comment rule.
+- **Builds are the serial resource.** Code writing runs in parallel; heavy builds and test runs queue through the gate one at a time, each with all 16 cores.
+- **Per-unit cheap checks** happen inside each subagent: tsc, eslint, unit tests, and the single-project build. The full `build-all.sh dev` runs once per integration batch.
+- **Integration.** The implementer rebases accepted units onto `integ/backend-candidate` or `integ/frontend-candidate`. It sends the reviewer the batch SHAs with each unit's report, never merges to `master`, and never pushes `master`.
+- **Parallel tracks that do not collide:**
+  - A: Phase 0, the audit (docs only).
+  - B: Phase 2.1 (`services/notification` and `services/voice`).
+  - C: Phase 3 (`services/guard`).
+  - D: Phase 4 (`services/llm` evals).
+
+  Then Phase 2.3 (frontend desktop) and 2.4 (frontend iOS module) as one frontend track. Phase 5 starts after the reviewer accepts the Phase 0 table.
+- **Reporting.** Every unit report states:
+  - the branch and SHAs;
+  - the files touched;
+  - the commands run, with their exit codes;
+  - the acceptance criterion of this plan, and the evidence that it holds.
+
+## Phase 0: status audit (1–2 h, one subagent)
 
 The backlog in `realtime-and-backlog-plan.md` §3–§9 was written on 2026-10-12, and much of it has landed since: real time, mTLS on the internal callers, call delivery, reminder snooze and more.
 
@@ -74,11 +106,18 @@ Each failure becomes a unit for the implementer, with the logs attached.
 
 **Problem.** Today Argus sometimes opens with "Hola administrador" and gives the reason seconds later.
 
+**Likely cause, to confirm with a test.**
+- `services/notification/src/feature/call/services/call-copy.cc` builds `openingLine`. Some call kinds start with `greeting()`, which ends in a period ("Hola, X. "), and put the reason in the next sentence. Others use `reasonGreeting()` ("Hola, X, …"), which keeps it in one sentence.
+- `services/voice/src/feature/voice/voice-session-service.cc` `speakOpening()` splits the line with `splitSentences()` and speaks only what fits `kOpeningBudgetMs = 4000` (`opening-budget.hxx`). The rest goes to `laterLines`, released later as announcements.
+
 **Task.**
-- Trace the opening line from the call's `openingLine` and reason (notification `call-copy.cc`, the push `reason`, `services/voice` first turn, `services/llm` opening act).
-- Make the first spoken sentence carry the reason, with no extra LLM round trip before it.
+- Every call kind's opening carries its reason inside the first sentence, through `reasonGreeting()` or an equivalent.
+- The budget never splits a greeting from its reason.
+- No extra LLM round trip before the first sentence.
 
 **Acceptance:**
+- a table-driven test over every call kind in `call-copy.cc` asserts the first sentence contains the reason;
+- an `opening-budget` test shows a greeting is never spoken alone while the reason waits;
 - the first TTS chunk contains the reason;
 - its latency from answer is measured before and after on a prod build;
 - a test pins the opening text.
@@ -122,8 +161,8 @@ The Tauri commands `argus_rtc_devices` and `argus_rtc_select_device` and the cal
 
 ## Phase 4: assistant quality (implementer, 0.5–1 day)
 
-- **`llm-tier-eval`.** Memory selection measures 0.241 against the 0.6 gate. Find the cause in the context build, not in the model size, and raise it to the gate.
-- **`call-faithfulness-eval`.** Bring its gates to green on the prod build. Numbers are reported through `scripts/measure-guard.sh`.
+- **`llm-tier-eval`** (`services/llm/tests/eval/llm-tier-eval.cc`, gate `selection.memory.accuracy` in `gates.json`). Memory selection measures 0.241 against the 0.6 gate. Find the cause in the context build, not in the model size, and raise it to the gate.
+- **`call-faithfulness-eval`** (`call-faithfulness-eval.cc`, cases `services/llm/tests/fixtures/eval/call-faithfulness.jsonl`). Bring its gates to green on the prod build. Numbers are reported through `scripts/measure-guard.sh`.
 
 ## Phase 5: the open backlog, after Phase 0 (implementer, 2–4 days)
 
@@ -151,17 +190,12 @@ F5 (the siren) waits for the owner's consent decision.
 
 Each programme starts with the "measure first" section its plan names, and lands as units under this plan's rules.
 
-## Phase 7 (optional): Bonsai 2 2B as the speaking LLM
-
-Only if the owner wants it. An experimental branch moves `services/llm` to the PrismML llama.cpp fork, then `call-faithfulness-eval` runs on Bonsai 2B against LFM2.5-1.2B. Adoption follows the model-artifact rules of `AGENTS.md` §13e.
-
 ## Decisions the owner holds
 
 1. The session copy (2.2).
 2. The siren and its consent (F5).
-3. Phase 7, yes or no.
-4. RAM floors per profile (14/7 GB), the fast Spanish model in Equilibrado, and `gpu_layers`.
-5. Remote access fallback and the VLM gRPC cutover (§8 items 5–6).
+3. RAM floors per profile (14/7 GB), the fast Spanish model in Equilibrado, and `gpu_layers`.
+4. Remote access fallback and the VLM gRPC cutover (§8 items 5–6).
 
 ## Review protocol (reviewer)
 
