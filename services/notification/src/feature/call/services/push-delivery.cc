@@ -78,6 +78,7 @@ drogon::Task<int64_t> CallPushDelivery::deliver(CallPushInput input) const
   intent["deepLink"] = callDeepLink(call.callId());
   intent["title"] = copy.title;
   intent["body"] = copy.body;
+  intent["reason"] = call.reason;
   intent["iat"] = static_cast<Json::Int64>(now);
   const int64_t intentExpiresAt = input.cancelling ? now + kCancelTtlSeconds : call.expiresAt;
   intent["exp"] = static_cast<Json::Int64>(intentExpiresAt);

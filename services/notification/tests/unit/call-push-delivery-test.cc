@@ -79,6 +79,7 @@ CallSchema ringingCall(int64_t expiresAt)
   call.lang = "es";
   call.title = "Puerta";
   call.summary = "Hay alguien en la puerta";
+  call.reason = "Persona en la puerta";
   call.createdAt = kNow;
   call.expiresAt = expiresAt;
   return call;
@@ -161,6 +162,7 @@ TEST_CASE("a ring seals a call plaintext with its title, body and deep link, ope
   CHECK(plain["episode"].asString() == "guard:episode:9");
   CHECK(plain["title"].asString() == "Argus te está llamando");
   CHECK(plain["body"].asString() == "Abre Argus para contestar.");
+  CHECK(plain["reason"].asString() == "Persona en la puerta");
   CHECK(plain["deepLink"].asString() == "argus://call?callId=" + call.callId());
   CHECK(plain["exp"].asInt64() == kNow + 120);
   CHECK_FALSE(plain.isMember("cancel"));
