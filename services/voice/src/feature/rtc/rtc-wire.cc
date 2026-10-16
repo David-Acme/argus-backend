@@ -222,6 +222,11 @@ std::optional<int64_t> userIdOfIdentity(std::string_view identity)
   return userId;
 }
 
+bool rejoinGraceExpired(const RejoinGraceInput& input)
+{
+  return input.userJoined && !input.userPresent && input.now - input.leftAt > input.grace;
+}
+
 CallOutcome callOutcomeOf(const CallEnd& end)
 {
   if (!end.callId.starts_with("call-"))

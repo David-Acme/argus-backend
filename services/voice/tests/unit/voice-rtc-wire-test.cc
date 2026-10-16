@@ -5,6 +5,7 @@
 
 #include <json/json.h>
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
@@ -195,4 +196,32 @@ TEST_CASE("a call with nothing to say starts listening, one with an opening star
   CHECK(rtc_wire::agentStateForOpening(false) == rtc_wire::AgentState::Listening);
   CHECK(rtc_wire::agentStateToString(rtc_wire::agentStateForOpening(true)) == "thinking");
   CHECK(rtc_wire::agentStateToString(rtc_wire::agentStateForOpening(false)) == "listening");
+}
+
+TEST_CASE("a user who left and does not come back ends the call once the rejoin grace has passed")
+{
+  using namespace std::chrono;
+  const auto leftAt = steady_clock::time_point{} + seconds(100);
+  const milliseconds grace{12000};
+
+  CHECK(rtc_wire::rejoinGraceExpired({.userJoined = true,
+                                      .userPresent = false,
+                                      .now = leftAt + seconds(13),
+                                      .leftAt = leftAt,
+                                      .grace = grace}));
+  CHECK_FALSE(rtc_wire::rejoinGraceExpired({.userJoined = true,
+                                            .userPresent = false,
+                                            .now = leftAt + seconds(5),
+                                            .leftAt = leftAt,
+                                            .grace = grace}));
+  CHECK_FALSE(rtc_wire::rejoinGraceExpired({.userJoined = true,
+                                            .userPresent = true,
+                                            .now = leftAt + seconds(60),
+                                            .leftAt = leftAt,
+                                            .grace = grace}));
+  CHECK_FALSE(rtc_wire::rejoinGraceExpired({.userJoined = false,
+                                            .userPresent = false,
+                                            .now = leftAt + seconds(60),
+                                            .leftAt = leftAt,
+                                            .grace = grace}));
 }

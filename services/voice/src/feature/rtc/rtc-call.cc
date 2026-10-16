@@ -201,7 +201,11 @@ std::optional<rtc_wire::DoneReason> RtcCall::endReason(std::chrono::steady_clock
     return stopReason_;
   if (!userJoined_ && now - startedAt_ > timings_.firstJoinWait)
     return rtc_wire::DoneReason::Timeout;
-  if (userJoined_ && !userPresent_ && now - userLeftAt_ > timings_.rejoinGrace)
+  if (rtc_wire::rejoinGraceExpired({.userJoined = userJoined_,
+                                    .userPresent = userPresent_,
+                                    .now = now,
+                                    .leftAt = userLeftAt_,
+                                    .grace = timings_.rejoinGrace}))
     return rtc_wire::DoneReason::Timeout;
   return std::nullopt;
 }
@@ -620,8 +624,15 @@ void RtcCall::onTrackSubscribed(livekit::Room&, const livekit::TrackSubscribedEv
 
 void RtcCall::onTrackUnsubscribed(livekit::Room&, const livekit::TrackUnsubscribedEvent& event)
 {
-  if (isUser(event.participant))
-    LOG_INFO << "Voice: RTC user track left " << join_.room();
+  if (!isUser(event.participant))
+    return;
+  LOG_INFO << "Voice: RTC user track left " << join_.room();
+  {
+    std::scoped_lock lock(mutex_);
+    userPresent_ = false;
+    userLeftAt_ = std::chrono::steady_clock::now();
+  }
+  cv_.notify_all();
 }
 
 void RtcCall::onParticipantConnected(livekit::Room&, const livekit::ParticipantConnectedEvent& event)

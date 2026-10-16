@@ -2,6 +2,7 @@
 
 #include <argus/voice/v1/voice.pb.h>
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <span>
@@ -103,5 +104,16 @@ struct ClientPacket
 [[nodiscard]] ClientMessage clientMessageOf(const ClientPacket& packet);
 [[nodiscard]] std::optional<int64_t> userIdOfIdentity(std::string_view identity);
 [[nodiscard]] CallOutcome callOutcomeOf(const CallEnd& end);
+
+struct RejoinGraceInput
+{
+  bool userJoined{false};
+  bool userPresent{false};
+  std::chrono::steady_clock::time_point now{};
+  std::chrono::steady_clock::time_point leftAt{};
+  std::chrono::milliseconds grace{0};
+};
+
+[[nodiscard]] bool rejoinGraceExpired(const RejoinGraceInput& input);
 
 }
