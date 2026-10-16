@@ -44,9 +44,33 @@ Merging to `master` stays fast-forward and follows the reviewer's acceptance of 
   - Staging: explicit paths only, never `git add -A`.
 - **Device work** is the reviewer's, with the owner's phone. The implementer never touches the phone or the owner's live stack.
 
+## 0a. Every change works on the three app platforms
+
+Any app-facing change is designed and verified for Android, iOS and desktop (Tauri), each through its platform split: `*.native.ts` / `*.web.ts`, the Nitro module, and the Tauri commands.
+
+| Platform | Build and verify | Device |
+|---|---|---|
+| Android | `bun run test`, `bunx eslint src`, `bunx tsc --noEmit -p .`. Native module JVM tests: `cd android && ./gradlew :argus-push:testDebugUnitTest --max-workers=16`. APK: `cd android && ./gradlew assembleRelease --max-workers=16`, then `./gradlew --stop`. Check that the dex contains the new classes before handing the APK over. | The reviewer installs on the owner's S21 |
+| iOS | The same TypeScript gates. Native code mirrors the Android module (Expo module or Nitro, Swift). Config through `app.config.ts` plugins: `UIBackgroundModes`, entitlements. No Mac is available, so iOS code is written and reviewed but marked "unverified until a Mac build". It must never break the Android or web bundle. | None until a Mac build |
+| Desktop (Tauri, WebKitGTK) | The same TypeScript gates. `bun run web:build`, then `bun run check:bundle`: Hermes and Bun miss browser-only crashes, so probe the web bundle in headless Chromium. Rust: `cd src-tauri && cargo test --lib` (it needs `../dist`, so run `web:build` first). WebKit Playwright with `mockIPC` for screens; `bun run desktop:build` for a real build when Rust or IPC changes. | The reviewer runs the desktop app |
+| Backend | `CMAKE_BUILD_PARALLEL_LEVEL=16 ./scripts/build-all.sh dev --only <project>`, 0 errors and 0 warnings. The comments, deps and routes gates run inside it. The full `./scripts/build-all.sh dev` runs once per integration batch (it adds tidy). | n/a |
+
+**One heavy job at a time.** Every build and heavy test above goes through the gate:
+
+`flock -x -o ~/.cache/argus-phase2/heavy-one.lock ~/.cache/argus-scratch-backup/heavy-gate.sh <capGB> <command>`
+
+| Job | capGB |
+|---|---|
+| Gradle | 12 |
+| CMake project | 10–14 |
+| cargo | 10 |
+| bun tests | 6 |
+
+While one runs, the other subagents keep writing code and wait for the lock; they never run builds side by side.
+
 ## 0b. How the implementer splits the work
 
-- **Parallel subagents in worktrees.** The implementer runs up to 4 subagents, one per independent unit, each in its own `wt/` worktree on its own `fix/*` or `feat/*` branch.
+- **Parallel subagents in worktrees.** The implementer runs up to 5 subagents, one per independent unit, each in its own `wt/` worktree on its own `fix/*` or `feat/*` branch.
   - Units that touch the same files never run in parallel.
   - Every subagent prompt restates the no-comment rule.
 - **Builds are the serial resource.** Code writing runs in parallel; heavy builds and test runs queue through the gate one at a time, each with all 16 cores.
