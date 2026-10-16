@@ -156,6 +156,35 @@ TEST_CASE("turn4 opens one turn: its level margin passes the gate")
   expectRecording("turn4.wav", 1, {{.marginDb = 39.1F, .heldMs = 1984, .passed = true}});
 }
 
+TEST_CASE("barge-in never fires on the background voice, and fires on turns 2 to 4 within 200 ms of onset")
+{
+  if (!recordingsPresent())
+    return;
+  const auto fires = [](const std::string& name, int onsetMs, long& firstMs) {
+    auto samples = readPcm16Mono(recordingsDir() / name);
+    samples.insert(samples.end(), kReplayTailSamples, 0.0F);
+    VadService vad(makeSileroVadModel());
+    int count = 0;
+    firstMs = -1;
+    for (std::size_t at = 0; at + kReplayWindow <= samples.size(); at += kReplayWindow) {
+      if (vad.listen({.samples = samples.data() + at, .count = kReplayWindow, .armed = true})) {
+        ++count;
+        if (firstMs < 0)
+          firstMs = static_cast<long>(at * 1000 / 16000) - onsetMs;
+      }
+    }
+    return count;
+  };
+  long unused = 0;
+  CHECK(fires(kBackground, 0, unused) == 0);
+  for (const auto& [name, onset] : std::vector<std::pair<std::string, int>>{
+           {"turn2.wav", 256}, {"turn3.wav", 448}, {"turn4.wav", 640}}) {
+    long latency = 0;
+    CHECK(fires(name, onset, latency) > 0);
+    CHECK(latency <= 200);
+  }
+}
+
 int main(int argc, char** argv)
 {
   if (!recordingsPresent())

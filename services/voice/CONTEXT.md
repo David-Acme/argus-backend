@@ -1336,3 +1336,26 @@ three runs, medians, same machine, both trees built Release):
 `vad.neg_threshold` is therefore 0.30 (code default and `config.toml.example`).
 Replay margins and turn counts are unchanged at 0.30. The gate of +30 ms holds
 on every segment with 0.30.
+
+### Barge-in tuning (2026-10-16, measured on the raw path)
+
+Measured with `listen(armed)` over the five recordings: background fires (must be
+0), and onset latency on each turn (first fire minus the -40 dBFS onset). Onsets:
+turn2 256 ms, turn3 448 ms, turn4 640 ms; turn1 is 512 ms.
+
+| threshold / frames | background fires | turn2 | turn3 | turn4 |
+|---|---|---|---|---|
+| 0.70 / 4 | 1 (false barge) | 96 | 128 | 96 |
+| 0.70 / 6 (adopted) | 0 | 160 | 192 | 160 |
+| 0.70 / 8 (was) | 0 | 224 | 256 | 224 |
+| 0.65 / 6 | 0 | 160 | 160 | 160 |
+| 0.60 / 8 | 3 (false barge) | 192 | 224 | 224 |
+
+`barge_min_frames` is 6. The threshold stays 0.70: every setting at 0.65 or
+below that stayed silent on the background also had a thinner margin, and 0.70 /
+4 already fired once, so 6 frames is two windows above that failure. The margin
+is measured on one background recording and is thin; it is not a claim about
+other rooms. Turn1 stays slow (about 1.0 s) because its raw probabilities rarely
+reach the threshold; a fix would need turn1-like speech, not a tuning change.
+The permanent test pins: the background never fires, and turns 2 to 4 fire
+within 200 ms of onset.

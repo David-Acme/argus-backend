@@ -22,7 +22,7 @@ struct VadConfig
   int minTurnMs{240};
   float minMeanProb{0.35F};
   float bargeThreshold{0.7F};
-  int bargeMinFrames{8};
+  int bargeMinFrames{6};
   float duckThreshold{0.5F};
   int duckMinFrames{3};
   int duckReleaseFrames{10};
