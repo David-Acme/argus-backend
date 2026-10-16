@@ -192,6 +192,19 @@ set_target_properties(playout-buffering-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME playout-buffering-test COMMAND playout-buffering-test)
 
+add_executable(audio-level-meter-test tests/unit/audio-level-meter-test.cc)
+
+target_link_libraries(audio-level-meter-test PRIVATE argus::voice-core
+    doctest::doctest)
+
+target_compile_options(audio-level-meter-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(audio-level-meter-test)
+
+set_target_properties(audio-level-meter-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME audio-level-meter-test COMMAND audio-level-meter-test)
+
 add_executable(playout-rate-test tests/unit/playout-rate-test.cc)
 
 target_link_libraries(playout-rate-test PRIVATE argus::voice-core

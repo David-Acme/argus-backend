@@ -4,6 +4,7 @@
 #include <feature/rtc/playout-gain.hxx>
 #include <feature/rtc/rtc-wire.hxx>
 #include <feature/voice/voice-session-service.hxx>
+#include <feature/rtc/audio-level-meter.hxx>
 #include <shared/wrapper/audio/sample-ring.hxx>
 
 #include <audio/audio-resampler.hxx>
@@ -153,6 +154,7 @@ private:
   std::unique_ptr<AudioResampler> resampler_;
   std::vector<int16_t> mono_;
   std::vector<int16_t> resampled_;
+  AudioLevelMeter inputLevel_{1000};
   std::vector<float> samples_;
 
   std::mutex playoutMutex_;

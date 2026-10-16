@@ -270,6 +270,14 @@ void RtcCall::feedAudio(const livekit::AudioFrame& frame)
     mono = mono_;
   }
 
+  const auto nowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                         std::chrono::steady_clock::now().time_since_epoch())
+                         .count();
+  if (const auto report = inputLevel_.add(mono, nowMs))
+    LOG_INFO << "Voice: RTC input " << join_.room() << " frames=" << report->frames
+             << " samples=" << report->samples << " rms_dbfs=" << report->rmsDbfs
+             << " peak=" << report->peak;
+
   std::span<const int16_t> pcm = mono;
   if (frame.sampleRate() != kSampleRate) {
     if (!resampler_ || resampler_->sourceRate() != frame.sampleRate())
