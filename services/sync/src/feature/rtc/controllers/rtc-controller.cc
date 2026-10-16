@@ -6,8 +6,11 @@
 #include <auth/request-context.hxx>
 #include <auth/role-filter.hxx>
 #include <auth/valid-json-filter.hxx>
+#include <errors/response-exception.hxx>
 #include <feature/rtc/dtos/rtc-decline-dto.hxx>
 #include <http/api-response.hxx>
+
+#include <exception>
 
 #include <utility>
 
@@ -23,9 +26,22 @@ drogon::Task<drogon::HttpResponsePtr> RtcController::token(drogon::HttpRequestPt
 {
   const auto body = RtcTokenDto::fromJson(*req->getJsonObject());
   const auto& caller = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
-  const auto result = co_await service_.issue(
-      {.body = body, .caller = caller, .host = req->getHeader("host")});
-  co_return ApiResponse::ok(result.toJson());
+  try {
+    const auto result = co_await service_.issue(
+        {.body = body, .caller = caller, .host = req->getHeader("host")});
+    LOG_INFO << "RTC token issued: user " << caller.sub << " call " << body.callId;
+    co_return ApiResponse::ok(result.toJson());
+  }
+  catch (const ResponseException& error) {
+    LOG_INFO << "RTC token refused: user " << caller.sub << " call " << body.callId << " status "
+             << error.statusCode() << " reason " << error.errorCode();
+    throw;
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "RTC token failed: user " << caller.sub << " call " << body.callId << " status 500 "
+             << error.what();
+    throw;
+  }
 }
 
 drogon::Task<drogon::HttpResponsePtr> RtcController::decline(drogon::HttpRequestPtr req)
