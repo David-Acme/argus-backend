@@ -10,25 +10,36 @@
 #include <errors/response-exception.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/auth-access.hxx>
+#include <auth/refusal-log.hxx>
 #include <auth/request-context.hxx>
 #include <trantor/utils/Logger.h>
+
+namespace
+{
+[[noreturn]] void refuse(const drogon::HttpRequestPtr& req, const ErrorDefinition& error,
+                        std::string_view reason)
+{
+  LOG_INFO << auth_refusal::line(req->getPath(), error.status, reason);
+  throw ResponseException(error);
+}
+}
 
 drogon::Task<drogon::HttpResponsePtr>
 JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
 {
   const auto token = extractToken(req);
   if (token.empty()) {
-    throw ResponseException(AuthErrors::MissingToken);
+    refuse(req, AuthErrors::MissingToken, "no-token");
   }
 
   const auto claims = jwtService_.verifyAccess(token);
   if (claims.empty()) {
-    throw ResponseException(AuthErrors::AuthenticationRequired);
+    refuse(req, AuthErrors::AuthenticationRequired, "invalid");
   }
 
   const auto subIt = claims.find("sub");
   if (subIt == claims.end()) {
-    throw ResponseException(AuthErrors::AuthenticationRequired);
+    refuse(req, AuthErrors::AuthenticationRequired, "invalid");
   }
 
   int64_t userId = 0;
@@ -36,14 +47,14 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
     userId = std::stoll(subIt->second);
   }
   catch (const std::exception&) {
-    throw ResponseException(AuthErrors::AuthenticationRequired);
+    refuse(req, AuthErrors::AuthenticationRequired, "invalid");
   }
   if (userId <= 0) {
-    throw ResponseException(AuthErrors::AuthenticationRequired);
+    refuse(req, AuthErrors::AuthenticationRequired, "invalid");
   }
 
   if (!req->getAttributes()->find(AuthContext::kDeviceKey))
-    throw ResponseException(AuthErrors::DeviceContextMissing);
+    refuse(req, AuthErrors::DeviceContextMissing, "device-mismatch");
   const auto& device =
       req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
   const std::string deviceHash = device.deviceHash;
@@ -62,13 +73,13 @@ JwtFilter::doFilter(const drogon::HttpRequestPtr& req)
       });
 
   if (!verdict)
-    throw ResponseException(AuthErrors::AuthUnavailable);
+    refuse(req, AuthErrors::AuthUnavailable, "auth-unavailable");
   if (!verdict->valid()) {
+    const auto reason = auth_refusal::reasonOfVerdict(verdict->reason());
     if (!verdict->reason().empty()) {
-      throw ResponseException(AuthErrors::AuthenticationRequired
-                                  .withMessage(verdict->reason()));
+      refuse(req, AuthErrors::AuthenticationRequired.withMessage(verdict->reason()), reason);
     }
-    throw ResponseException(AuthErrors::AuthenticationRequired);
+    refuse(req, AuthErrors::AuthenticationRequired, reason);
   }
 
   const auto& user = verdict->user();

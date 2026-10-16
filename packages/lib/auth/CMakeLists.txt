@@ -71,6 +71,7 @@ argus_lib(NAME auth
         src/auth/module-feed.cc
         src/auth/module-gate.cc
         src/auth/module-settings-read.cc
+        src/auth/refusal-log.cc
         src/auth/role-filter.cc
         src/auth/tool-gate.cc
         src/auth/remote-config.cc
@@ -85,6 +86,7 @@ argus_lib(NAME auth
         src/auth/admitted-call.hxx
         src/auth/linked-filter.hxx
         src/auth/module-feed.hxx
+        src/auth/refusal-log.hxx
         src/auth/module-gate.hxx
         src/auth/remote-config.hxx
         src/auth/remote-gate.hxx
@@ -114,6 +116,11 @@ add_executable(role-access-test tests/unit/role-access-test.cc)
 target_link_libraries(role-access-test PRIVATE argus::lib::auth doctest::doctest)
 target_compile_options(role-access-test PRIVATE -Wall -Wextra)
 add_test(NAME role-access-test COMMAND role-access-test)
+
+add_executable(refusal-log-test tests/unit/refusal-log-test.cc)
+target_link_libraries(refusal-log-test PRIVATE argus::lib::auth doctest::doctest)
+target_compile_options(refusal-log-test PRIVATE -Wall -Wextra)
+add_test(NAME refusal-log-test COMMAND refusal-log-test)
 
 add_executable(capability-test tests/unit/capability-test.cc)
 target_link_libraries(capability-test PRIVATE argus::lib::auth doctest::doctest)
