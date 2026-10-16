@@ -952,21 +952,18 @@ drogon::Task<CallEndStatus> CallEngine::end(const CallEndRequest& request) const
     if (!co_await callRepository_.end(
             {.id = id,
              .userId = request.userId,
-             .state = declined ? CallState::Declined : CallState::Completed,
+             .state = CallState::Completed,
              .now = at}))
       co_return CallEndStatus::Taken;
     if (dependencies_.sealedPush)
       static_cast<void>(co_await dependencies_.sealedPush->cancel(*existing, nullptr));
-    const std::string reason = declined ? "declined" : "ended";
-    co_await closeRoom({.userId = request.userId, .callId = id, .reason = reason});
+    co_await closeRoom({.userId = request.userId, .callId = id, .reason = "ended"});
     Json::Value info(Json::objectValue);
     info["callId"] = existing->callId();
-    info["reason"] = reason;
+    info["reason"] = "ended";
     co_await emit({.userId = request.userId,
                    .operation = SyncOperation::CallCancel,
                    .info = info});
-    if (declined)
-      co_await noteDeclined(*existing);
     co_return CallEndStatus::Ended;
   }
   if (existing->state == CallState::Completed ||

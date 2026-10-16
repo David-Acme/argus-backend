@@ -802,7 +802,7 @@ TEST_CASE("a room voice could not close is still removed on the sync side, once,
   CHECK(stateOf(id) == "completed");
 }
 
-TEST_CASE("a call hung up before Argus spoke counts as declined and leaves a note")
+TEST_CASE("an answered call the user hangs up before Argus spoke completes and leaves no note")
 {
   Harness harness;
   const auto rang = drogon::sync_wait(
@@ -830,12 +830,8 @@ TEST_CASE("a call hung up before Argus spoke counts as declined and leaves a not
                                               .outcome = CallEndReport::Declined,
                                               .spoken = false,
                                               .sessionId = ""})) == CallEndStatus::Ended);
-  CHECK(stateOf(outcomeFor(rang, 2).callId) == "declined");
-  const auto notices = harness.notifier->all();
-  REQUIRE(notices.size() == 1);
-  CHECK(notices.front().userId == 2);
-  CHECK(notices.front().title.starts_with("Missed call · "));
-  CHECK(notices.front().body == "I called you because there was an unknown person at Patio.");
+  CHECK(stateOf(outcomeFor(rang, 2).callId) == "completed");
+  CHECK(harness.notifier->all().empty());
   CHECK(drogon::sync_wait(harness.engine.end({.callId = second,
                                               .userId = 1,
                                               .outcome = CallEndReport::Completed,
