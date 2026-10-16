@@ -117,6 +117,8 @@ private:
   mutable int rejections_{0};
 };
 
+constexpr std::chrono::milliseconds kRealRetryBackoff{5};
+
 GuardService::Config quickRetries()
 {
   GuardService::Config config;
@@ -183,6 +185,12 @@ struct SafetyRig
                                              .retentionS = 30LL * 86400,
                                              .attempts = {.maxFailures = 3, .windowSeconds = 900}}};
   GuardFeatureService feature{GuardFeatureDependencies{.identity = &identity, .disarm = &safety}};
+
+  size_t sweep()
+  {
+    std::this_thread::sleep_for(kRealRetryBackoff);
+    return drogon::sync_wait(safety.sweepPending());
+  }
 
   [[nodiscard]] std::vector<Delivered> ofKind(const std::string& kind) const
   {
@@ -542,7 +550,7 @@ TEST_CASE("a single-member panic falls back to the emergency contacts instead of
   const std::string alertId = std::to_string(result.alertId);
   CHECK(scalar("SELECT notified_at > 0 FROM guard_safety_alert WHERE id = " + alertId) == "1");
   CHECK(scalar("SELECT closed_at FROM guard_safety_alert WHERE id = " + alertId) == "0");
-  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
+  CHECK(rig.sweep() == 0);
 }
 
 TEST_CASE("a single-member panic with nobody at all is terminal and tells the actor once")
@@ -569,7 +577,7 @@ TEST_CASE("a single-member panic with nobody at all is terminal and tells the ac
   CHECK(scalar("SELECT detail FROM guard_action WHERE command_id = 'safety:" + alertId +
                ":notify:1'") == "no_recipients");
   rig.clock += 600;
-  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
+  CHECK(rig.sweep() == 0);
   CHECK(rig.ofKind("guard_panic_unattended").size() == 1);
 }
 
@@ -605,7 +613,7 @@ TEST_CASE("a duress code from the only member disarms as usual and tells nobody"
   CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert WHERE kind = 'duress' AND user_id = 1 AND "
                "closed_at > 0 AND notified_at = 0") == "1");
   CHECK(rig.notifications.sent().empty());
-  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
+  CHECK(rig.sweep() == 0);
 }
 
 TEST_CASE("the duress phrase of the only member is recorded and reaches nobody")
@@ -640,15 +648,15 @@ TEST_CASE("an unattended panic stays open until the actor notice is delivered")
   CHECK(rig.ofKind("guard_panic_unattended").empty());
   CHECK(scalar("SELECT closed_at FROM guard_safety_alert WHERE id = " + alertId) == "0");
   rig.clock += 10;
-  static_cast<void>(drogon::sync_wait(rig.safety.sweepPending()));
+  static_cast<void>(rig.sweep());
   rig.clock += 10;
-  static_cast<void>(drogon::sync_wait(rig.safety.sweepPending()));
+  static_cast<void>(rig.sweep());
   const auto notices = rig.ofKind("guard_panic_unattended");
   REQUIRE(notices.size() == 1);
   CHECK(notices[0].body.find("No hay nadie más a quién avisar") != std::string::npos);
   CHECK(scalar("SELECT closed_at > 0 FROM guard_safety_alert WHERE id = " + alertId) == "1");
   rig.clock += 60;
-  static_cast<void>(drogon::sync_wait(rig.safety.sweepPending()));
+  static_cast<void>(rig.sweep());
   CHECK(rig.ofKind("guard_panic_unattended").size() == 1);
 }
 
@@ -684,17 +692,17 @@ TEST_CASE("a panic the notification service missed is swept with backoff until d
   CHECK_FALSE(result.sent);
   const std::string notified =
       "SELECT notified_at > 0 FROM guard_safety_alert WHERE id = " + std::to_string(result.alertId);
-  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
+  CHECK(rig.sweep() == 0);
   rig.clock += 1;
-  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
+  CHECK(rig.sweep() == 0);
   CHECK(rig.ofKind("guard_panic").empty());
   rig.clock += 1;
-  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 1);
+  CHECK(rig.sweep() == 1);
   CHECK_FALSE(rig.ofKind("guard_panic").empty());
   CHECK(scalar(notified) == "1");
   CHECK(scalar("SELECT closed_at FROM guard_safety_alert WHERE id = " +
                std::to_string(result.alertId)) == "0");
-  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
+  CHECK(rig.sweep() == 0);
 
   const PanicResult again = drogon::sync_wait(
       rig.safety.panic({.userId = 1, .userName = "Ana", .environmentId = std::nullopt}));
@@ -799,7 +807,7 @@ TEST_CASE("a refused safety alert is retried under a fresh command until it is d
   CHECK(scalar("SELECT notify_sequence FROM guard_safety_alert WHERE id = " + id) == "2");
   CHECK(rig.ofKind("guard_panic").empty());
   rig.clock += 2;
-  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 1);
+  CHECK(rig.sweep() == 1);
   const auto alerts = rig.ofKind("guard_panic");
   REQUIRE_FALSE(alerts.empty());
   for (const auto& alert : alerts) {
@@ -807,7 +815,7 @@ TEST_CASE("a refused safety alert is retried under a fresh command until it is d
     CHECK(alert.data["actorName"].asString() == "Ana");
   }
   CHECK(scalar("SELECT notified_at > 0 FROM guard_safety_alert WHERE id = " + id) == "1");
-  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
+  CHECK(rig.sweep() == 0);
 }
 
 TEST_CASE("an alert undelivered past the resume window is escalated and still retried, never purged")
@@ -819,7 +827,7 @@ TEST_CASE("an alert undelivered past the resume window is escalated and still re
          std::to_string(rig.clock - 2LL * 86400) + ", 0, 'Marta')");
   const std::string id = scalar("SELECT MAX(id) FROM guard_safety_alert");
   rig.notifications.failNext(1);
-  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 0);
+  CHECK(rig.sweep() == 0);
   CHECK(scalar("SELECT escalated_at > 0 FROM guard_safety_alert WHERE id = " + id) == "1");
   CHECK(scalar("SELECT notified_at FROM guard_safety_alert WHERE id = " + id) == "0");
   CHECK(scalar("SELECT notify_sequence FROM guard_safety_alert WHERE id = " + id) == "1");
@@ -828,7 +836,7 @@ TEST_CASE("an alert undelivered past the resume window is escalated and still re
   CHECK(scalar("SELECT COUNT(*) FROM guard_action WHERE command_id LIKE 'safety:" + id +
                ":r%'") == "0");
   rig.clock += 2;
-  CHECK(drogon::sync_wait(rig.safety.sweepPending()) == 1);
+  CHECK(rig.sweep() == 1);
   const auto alerts = rig.ofKind("guard_panic");
   REQUIRE_FALSE(alerts.empty());
   CHECK(alerts.front().data["actorName"].asString() == "Marta");
