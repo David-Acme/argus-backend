@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstdio>
 #include <doctest/doctest.h>
+#include <test-support/app-runner.hxx>
 #include <drogon/drogon.h>
 #include <app/rpc/notification-rpc-service.hxx>
 #include <shared/services/task-gate/task-gate.hxx>
@@ -14,10 +15,13 @@
 #include <notification/notification-client.hxx>
 #include <notification/notification-delivery-sink.hxx>
 #include <config/config-service.hxx>
+#include <optional>
 #include <sqlite/db-service.hxx>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <unistd.h>
+#include <text/json-util.hxx>
 #include <vector>
 
 #ifndef ARGUS_NOTIFICATION_SCHEMA
@@ -82,31 +86,7 @@ void writeConfig(const std::string& path)
       << "\"\ncaller_sync = \"" << kSyncCredential << "\"\ncaller_llm = \"" << kLlmCredential << "\"\n";
 }
 
-class AppRunner
-{
-public:
-  AppRunner() : runner_([] { drogon::app().run(); }) {}
-
-  ~AppRunner()
-  {
-    if (!runner_.joinable())
-      return;
-    for (int i = 0; i < 3000 && !drogon::app().getLoop()->isRunning(); ++i)
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    if (drogon::app().getLoop()->isRunning()) {
-      drogon::app().quit();
-      runner_.join();
-      return;
-    }
-    runner_.detach();
-  }
-
-  AppRunner(const AppRunner&) = delete;
-  AppRunner& operator=(const AppRunner&) = delete;
-
-private:
-  std::thread runner_;
-};
+using test_support::AppRunner;
 
 bool waitForBoot(std::chrono::milliseconds timeout)
 {
@@ -117,6 +97,45 @@ bool waitForBoot(std::chrono::milliseconds timeout)
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   return drogon::app().isRunning();
+}
+
+struct SharedBoot
+{
+  TempDb db{"notification-rpc-test"};
+  TempFile config{"notification-rpc-test", ".toml"};
+  std::optional<AppRunner> runner;
+
+  SharedBoot()
+  {
+    drogon::app().setLogLevel(trantor::Logger::kWarn);
+    drogon::app().addDbClient(
+        drogon::orm::Sqlite3Config{1, db.path(), "default", -1});
+    runner.emplace();
+    if (!waitForBoot(std::chrono::seconds(30)))
+      throw std::runtime_error("drogon loop did not boot");
+    if (!DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA))
+      throw std::runtime_error("notification schema apply failed");
+    writeConfig(config.path());
+    ConfigService::load(config.path());
+  }
+
+  ~SharedBoot()
+  {
+    runner.reset();
+  }
+};
+
+SharedBoot& sharedBoot()
+{
+  static SharedBoot boot;
+  return boot;
+}
+
+void resetNotificationTables()
+{
+  DbService::client()->execSqlSync("DELETE FROM notification_delivery");
+  DbService::client()->execSqlSync("DELETE FROM notification_command");
+  DbService::client()->execSqlSync("DELETE FROM notification");
 }
 
 struct RecordedDelivery
@@ -219,21 +238,11 @@ bool waitForPublishes(const WaitForPublishesInput& input)
 
 TEST_CASE("notification RPC creates fan-out rows and serves user pulls")
 {
-  const TempDb db("notification-rpc-test");
-  const TempFile config("notification-rpc-test", ".toml");
-  drogon::app().setLogLevel(trantor::Logger::kWarn);
-  drogon::app().addDbClient(
-      drogon::orm::Sqlite3Config{1, db.path(), "default", -1});
-
-  const AppRunner app;
-  REQUIRE(waitForBoot(std::chrono::seconds(30)));
-
-  REQUIRE(DbService::runScriptFile(ARGUS_NOTIFICATION_SCHEMA));
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  resetNotificationTables();
 
   auto deliverySink = std::make_shared<RecordingDeliverySink>();
-
-  writeConfig(config.path());
-  ConfigService::load(config.path());
 
   RpcHarness harness({.deliverySink = deliverySink});
   REQUIRE(harness.listening());
@@ -555,4 +564,109 @@ TEST_CASE("the task gate refuses new work after a stop and drains on the last ti
   }
   CHECK(gate->drained());
   CHECK(static_cast<bool>(TaskGate::enter(nullptr)));
+}
+
+namespace
+{
+class RecordingAlertWriter final : public NotificationAlertWriter
+{
+public:
+  drogon::Task<void> write(NotificationAlertRound round) const override
+  {
+    std::lock_guard lock(mutex_);
+    rounds_.push_back(std::move(round.ringFollowingUserIds));
+    co_return;
+  }
+
+  std::vector<std::vector<int64_t>> rounds() const
+  {
+    std::lock_guard lock(mutex_);
+    return rounds_;
+  }
+
+private:
+  mutable std::mutex mutex_;
+  mutable std::vector<std::vector<int64_t>> rounds_;
+};
+
+class PlanEveryone final : public push_delivery::RingPlanner
+{
+public:
+  drogon::Task<std::vector<int64_t>> ringFollowingUserIds(
+      const push_delivery::RingPlanInput& input) const override
+  {
+    co_return input.userIds;
+  }
+};
+}
+
+TEST_CASE("an alert created over the RPC carries the ring plan of the shared notification service")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  resetNotificationTables();
+
+  auto deliverySink = std::make_shared<RecordingDeliverySink>();
+  auto alerts = std::make_shared<RecordingAlertWriter>();
+
+  RpcHarness harness({.deliverySink = deliverySink,
+                      .alerts = alerts,
+                      .ringPlanner = std::make_shared<PlanEveryone>()});
+  REQUIRE(harness.listening());
+  NotificationClient sdk(
+      NotificationClientConfig{.target = harness.target(),
+                               .credential = kGuardCredential});
+
+  auto request = createRequest();
+  request.set_data("{\"cameraId\":1,\"threadKey\":\"guard:panic:9\"}");
+  const auto created = sdk.createNotifications(request, identityFor(0));
+  REQUIRE(created.outcome == NotificationRpcOutcome::Success);
+  CHECK(created.created == 2);
+
+  const auto rounds = alerts->rounds();
+  REQUIRE(rounds.size() == 1);
+  CHECK(rounds.front() == std::vector<int64_t>{7, 8});
+}
+
+TEST_CASE("a switched-off module refuses its notifications over the RPC exactly as the direct path does")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  resetNotificationTables();
+
+  auto deliverySink = std::make_shared<RecordingDeliverySink>();
+  auto alerts = std::make_shared<RecordingAlertWriter>();
+
+  const auto kindAllowed = [](std::string_view) { return false; };
+  RpcHarness harness({.deliverySink = deliverySink,
+                      .alerts = alerts,
+                      .ringPlanner = std::make_shared<PlanEveryone>(),
+                      .kindAllowed = kindAllowed});
+  REQUIRE(harness.listening());
+  NotificationClient sdk(
+      NotificationClientConfig{.target = harness.target(),
+                               .credential = kGuardCredential});
+
+  auto request = createRequest();
+  request.set_data("{\"kind\":\"camera_motion\",\"cameraId\":1,\"threadKey\":\"guard:panic:9\"}");
+  const auto created = sdk.createNotifications(request, identityFor(0));
+  REQUIRE(created.outcome == NotificationRpcOutcome::Success);
+  CHECK(created.created == 0);
+  CHECK(alerts->rounds().empty());
+
+  NotificationService direct({.deliverySink = deliverySink,
+                              .alerts = alerts,
+                              .ringPlanner = std::make_shared<PlanEveryone>(),
+                              .kindAllowed = kindAllowed});
+  NotificationBatchInput batch;
+  batch.userIds = {7, 8};
+  batch.notification.type = "camera";
+  batch.notification.title = "Front door: person";
+  batch.notification.body = "Severity critical; detected person";
+  batch.notification.data = json_util::fromString(
+      "{\"kind\":\"camera_motion\",\"cameraId\":1,\"threadKey\":\"guard:panic:9\"}");
+  batch.commandId = "cmd-direct";
+  const auto directOutcome = drogon::sync_wait(direct.createManyAndEmit(batch));
+  CHECK(directOutcome.createdCount == 0);
+  CHECK(alerts->rounds().empty());
 }

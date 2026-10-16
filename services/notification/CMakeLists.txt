@@ -204,6 +204,7 @@ add_test(NAME notification-controller-test
 
 add_executable(notification-rpc-test
     tests/unit/notification-rpc-test.cc)
+target_link_libraries(notification-rpc-test PRIVATE argus::lib::test-support)
 
 set_target_properties(notification-rpc-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
