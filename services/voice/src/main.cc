@@ -75,7 +75,8 @@ void reportCallEnd(const NotificationClient* notifications, const RtcCallReport&
   const NotificationRpcOutcome sent = notifications->endCall({.callId = report.callId,
                                                               .userId = report.userId,
                                                               .outcome = callOutcomeToProto(outcome),
-                                                              .spoken = report.openingSpoken});
+                                                              .spoken = report.openingSpoken,
+                                                              .sessionId = {}});
   if (sent != NotificationRpcOutcome::Success)
     LOG_WARN << "Voice: EndCall for " << report.callId << " was not accepted";
 }

@@ -247,14 +247,16 @@ TEST_CASE("the call methods carry their fields and the credential")
   CHECK(client.endCall({.callId = "call-4",
                         .userId = 7,
                         .outcome = v1::CALL_OUTCOME_DECLINED,
-                        .spoken = true}) == NotificationRpcOutcome::Success);
+                        .spoken = true,
+                        .sessionId = {}}) == NotificationRpcOutcome::Success);
   CHECK(service.ended.outcome() == v1::CALL_OUTCOME_DECLINED);
   CHECK(service.ended.spoken());
   service.endOk = false;
   CHECK(client.endCall({.callId = "call-4",
                         .userId = 7,
                         .outcome = v1::CALL_OUTCOME_COMPLETED,
-                        .spoken = false}) == NotificationRpcOutcome::Rejected);
+                        .spoken = false,
+                        .sessionId = {}}) == NotificationRpcOutcome::Rejected);
 
   const auto schedule = client.scheduleCall({.userId = 7,
                                              .fireAt = 1800000000,

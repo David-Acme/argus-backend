@@ -52,5 +52,5 @@ TEST_CASE("the llm client dials the mutual TLS port with the internal certificat
   const argus::llm::Client plaintext({.target = endpoint.plaintextToTlsPortTarget(),
                                       .credential = kCallerSecret,
                                       .timeout = std::chrono::seconds(5)});
-  CHECK_THROWS(plaintext.capabilities());
+  CHECK_THROWS(static_cast<void>(plaintext.capabilities()));
 }

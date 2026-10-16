@@ -4,6 +4,7 @@
 #include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -24,7 +25,8 @@ public:
       : listener_(startListening({.address = "127.0.0.1:0",
                                   .tlsAddress = "127.0.0.1:0",
                                   .tls = pkiMaterial(input.service),
-                                  .services = input.services}))
+                                  .services = input.services,
+                                  .maxReceiveBytes = std::nullopt}))
   {
     if (!listener_.server || listener_.tlsPort <= 0)
       throw std::runtime_error("the mutual TLS endpoint did not start");

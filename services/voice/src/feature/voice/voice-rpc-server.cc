@@ -5,7 +5,8 @@ argus::client::Listener startVoiceRpc(const VoiceRpcListenInput& input)
   return argus::client::startListening({.address = input.address,
                                         .tlsAddress = input.tlsAddress,
                                         .tls = input.tls,
-                                        .services = input.services});
+                                        .services = input.services,
+                                        .maxReceiveBytes = std::nullopt});
 }
 
 std::optional<std::string>
