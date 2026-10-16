@@ -1,10 +1,12 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <onnxruntime_cxx_api.h>
 #include <optional>
 #include <shared/wrapper/audio/sample-ring.hxx>
+#include <shared/services/vad/near-field-gate.hxx>
 #include <span>
 #include <vector>
 
@@ -24,6 +26,7 @@ struct VadConfig
   float duckThreshold{0.5F};
   int duckMinFrames{3};
   int duckReleaseFrames{10};
+  NearFieldConfig near;
 };
 
 [[nodiscard]] VadConfig resolveVadConfig();
@@ -33,6 +36,7 @@ struct VadTurn
   std::vector<float> samples;
   int speechFrames{0};
   float meanProb{0.0F};
+  NearFieldVerdict gate;
 };
 
 struct VadProcessInput
@@ -93,6 +97,10 @@ public:
 
   [[nodiscard]] float lastProb() const;
 
+  [[nodiscard]] NearFieldVerdict lastGate() const;
+
+  [[nodiscard]] std::size_t utteranceStart() const;
+
   void reset();
 
   static bool isLoaded();
@@ -100,10 +108,14 @@ public:
 private:
   float nextWindow();
   void keepPreRoll(int frames);
+  static std::size_t windowStart(std::size_t currentWindow, std::size_t framesBefore);
   void trackDuck(const DuckSample& sample);
   void clearDuck();
 
   VadConfig cfg_;
+  NoiseFloor floor_;
+  std::vector<GateWindow> gateWindows_;
+  NearFieldVerdict lastGate_;
   std::unique_ptr<VadModel> model_;
   std::vector<float> context_;
   SampleRing pending_;
@@ -111,6 +123,8 @@ private:
   std::vector<float> preRoll_;
   std::vector<float> buffer_;
   bool speech_{false};
+  std::size_t windows_{0};
+  std::size_t utteranceStart_{0};
   int bargeCounter_{0};
   float listenPeak_{0.0F};
   int listenWindows_{0};

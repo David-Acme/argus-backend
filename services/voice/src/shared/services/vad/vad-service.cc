@@ -130,6 +130,16 @@ VadConfig resolveVadConfig()
     cfg.bargeThreshold = static_cast<float>(v);
   if (const int v = ConfigService::getInt("vad.barge_min_frames"); v > 0)
     cfg.bargeMinFrames = v;
+  if (const double v = ConfigService::getDouble("vad.gate_margin_db"); v > 0.0)
+    cfg.near.marginDb = static_cast<float>(v);
+  if (const double v = ConfigService::getDouble("vad.gate_speech_prob"); v > 0.0)
+    cfg.near.speechProb = static_cast<float>(v);
+  if (const int v = ConfigService::getInt("vad.gate_held_ms"); v > 0)
+    cfg.near.heldMs = v;
+  if (const int v = ConfigService::getInt("vad.gate_floor_windows"); v > 0)
+    cfg.near.floorWindows = v;
+  if (const double v = ConfigService::getDouble("vad.gate_floor_percentile"); v > 0.0)
+    cfg.near.floorPercentile = static_cast<float>(v);
   if (const double v = ConfigService::getDouble("vad.duck_threshold"); v > 0.0)
     cfg.duckThreshold = static_cast<float>(v);
   if (const int v = ConfigService::getInt("vad.duck_min_frames"); v > 0)
@@ -140,7 +150,7 @@ VadConfig resolveVadConfig()
 }
 
 VadService::VadService(std::unique_ptr<VadModel> model)
-    : cfg_(resolveVadConfig()), model_(std::move(model)),
+    : cfg_(resolveVadConfig()), floor_(cfg_.near), model_(std::move(model)),
       pending_(static_cast<size_t>(kWindowSize) * 8), window_(kEffectiveWindow)
 {
   reset();
@@ -159,8 +169,15 @@ bool VadService::isLoaded()
   }
 }
 
+std::size_t VadService::windowStart(std::size_t currentWindow, std::size_t framesBefore)
+{
+  const std::size_t first = currentWindow > framesBefore ? currentWindow - framesBefore : 0;
+  return first * kWindowSize;
+}
+
 float VadService::nextWindow()
 {
+  ++windows_;
   std::ranges::copy(context_, window_.begin());
   pending_.pop(window_.data() + kContextSize, kWindowSize);
   std::copy(window_.end() - kContextSize, window_.end(), context_.begin());
@@ -187,12 +204,16 @@ std::optional<VadTurn> VadService::process(const VadProcessInput& input)
 
   while (pending_.size() >= static_cast<size_t>(kWindowSize)) {
     const float prob = nextWindow();
+    const float rmsDb = rmsDbOf(std::span<const float>(window_.data() + kContextSize, kWindowSize));
+    if (!speech_)
+      floor_.add(rmsDb);
 
     if (prob >= cfg_.threshold) {
       startCounter_++;
       silenceCounter_ = 0;
       if (!speech_ && startCounter_ >= cfg_.minSpeechFrames) {
         speech_ = true;
+        utteranceStart_ = windowStart(windows_ - 1, preRoll_.size() / kWindowSize);
         buffer_ = preRoll_;
       }
     }
@@ -214,6 +235,7 @@ std::optional<VadTurn> VadService::process(const VadProcessInput& input)
                      window_.end());
       speechProbSum_ += prob;
       frameCounter_++;
+      gateWindows_.push_back({.rmsDb = rmsDb, .prob = prob});
     }
 
     if (speech_ && (silenceCounter_ >= cfg_.minSilenceFrames ||
@@ -222,23 +244,28 @@ std::optional<VadTurn> VadService::process(const VadProcessInput& input)
           frameCounter_ > 0 ? speechProbSum_ / static_cast<float>(frameCounter_)
                             : 0.0F;
       const int speechMs = frameCounter_ * kWindowSize * 1000 / cfg_.sampleRate;
+      lastGate_ = evaluateNearField(gateWindows_, floor_.db(), cfg_.near);
       const bool accepted =
-          speechMs >= cfg_.minTurnMs && meanProb >= cfg_.minMeanProb;
+          speechMs >= cfg_.minTurnMs && meanProb >= cfg_.minMeanProb && lastGate_.passed;
       if (accepted)
         LOG_INFO << "Voice: turn accepted speech=" << speechMs << "ms meanProb=" << meanProb
                  << " samples=" << buffer_.size();
       if (!accepted) {
         LOG_DEBUG << "turn discarded: speech=" << speechMs << "ms meanProb="
                   << meanProb << " (min " << cfg_.minTurnMs << "ms / "
-                  << cfg_.minMeanProb << ")";
+                  << cfg_.minMeanProb << ")"
+                  << " level=" << lastGate_.levelDb << "dB floor=" << lastGate_.floorDb
+                  << "dB margin=" << lastGate_.marginDb << "dB held=" << lastGate_.heldMs << "ms";
       }
       if (accepted) {
         turn.samples = std::move(buffer_);
         turn.speechFrames = frameCounter_;
         turn.meanProb = meanProb;
+        turn.gate = lastGate_;
         completed = true;
       }
       buffer_.clear();
+      gateWindows_.clear();
       preRoll_.clear();
       speech_ = false;
       startCounter_ = 0;
@@ -279,6 +306,7 @@ bool VadService::listen(const VadListenInput& input)
 
     if (bargeCounter_ >= cfg_.bargeMinFrames) {
       speech_ = true;
+      utteranceStart_ = windowStart(windows_ - 1, preRoll_.size() / kWindowSize - 1);
       buffer_ = std::move(preRoll_);
       preRoll_.clear();
       startCounter_ = bargeCounter_;
@@ -360,9 +388,24 @@ float VadService::lastProb() const
   return lastProb_;
 }
 
+NearFieldVerdict VadService::lastGate() const
+{
+  return lastGate_;
+}
+
+std::size_t VadService::utteranceStart() const
+{
+  return utteranceStart_;
+}
+
 void VadService::reset()
 {
   model_->reset();
+  floor_.reset();
+  gateWindows_.clear();
+  windows_ = 0;
+  utteranceStart_ = 0;
+  lastGate_ = {};
   context_.assign(kContextSize, 0.0F);
   pending_.clear();
   speech_ = false;

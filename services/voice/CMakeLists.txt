@@ -86,6 +86,7 @@ find_package(doctest REQUIRED)
 
 set(VOICE_ENGINE_SOURCES
     src/shared/services/vad/vad-service.cc
+    src/shared/services/vad/near-field-gate.cc
     src/feature/voice/services/noise/noise-suppression-service.cc
     src/feature/voice/services/reaction/reaction-engine.cc
 )
@@ -94,8 +95,9 @@ argus_module(NAME voice-core
     SOURCES
         src/feature/voice/call-history.cc
         src/feature/voice/offer-reply.cc
-        src/feature/voice/turn-transcript.cc
         src/feature/voice/unheard-reply.cc
+        src/feature/voice/turn-coherence.cc
+        src/feature/voice/turn-transcript.cc
         src/feature/voice/voice-session-service.cc
         src/feature/voice/opening-budget.cc
         src/feature/voice/voice-engine-seam.cc
@@ -214,6 +216,47 @@ target_compile_options(opening-budget-test PRIVATE -Wall -Wextra)
 set_target_properties(opening-budget-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME opening-budget-test COMMAND opening-budget-test)
+
+add_executable(voice-near-field-gate-test tests/unit/voice-near-field-gate-test.cc)
+
+target_link_libraries(voice-near-field-gate-test PRIVATE argus::voice-core
+    doctest::doctest)
+
+target_compile_options(voice-near-field-gate-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-near-field-gate-test)
+
+set_target_properties(voice-near-field-gate-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME voice-near-field-gate-test COMMAND voice-near-field-gate-test)
+
+add_executable(voice-turn-coherence-test tests/unit/voice-turn-coherence-test.cc)
+
+target_link_libraries(voice-turn-coherence-test PRIVATE argus::voice-core
+    doctest::doctest)
+
+target_compile_options(voice-turn-coherence-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-turn-coherence-test)
+
+set_target_properties(voice-turn-coherence-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME voice-turn-coherence-test COMMAND voice-turn-coherence-test)
+
+add_executable(voice-gate-replay-test tests/unit/voice-gate-replay-test.cc)
+
+target_link_libraries(voice-gate-replay-test PRIVATE argus::voice-core
+    doctest::doctest)
+
+target_compile_options(voice-gate-replay-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-gate-replay-test)
+
+set_target_properties(voice-gate-replay-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME voice-gate-replay-test COMMAND voice-gate-replay-test
+    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+set_tests_properties(voice-gate-replay-test PROPERTIES SKIP_RETURN_CODE 77)
 
 add_executable(voice-call-history-test tests/unit/voice-call-history-test.cc)
 

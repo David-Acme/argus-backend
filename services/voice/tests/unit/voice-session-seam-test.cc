@@ -914,6 +914,7 @@ struct HeardStep
 constexpr HeardStep kEmpty{.transcript = "", .withhold = false, .marker = {}};
 constexpr HeardStep kWithheld{.transcript = "el gato está en el tejado", .withhold = true, .marker = {}};
 constexpr HeardStep kReadable{.transcript = "hola argus", .withhold = false, .marker = {}};
+constexpr HeardStep kAddressed{.transcript = "hola argus", .withhold = true, .marker = {}};
 constexpr HeardStep kWithheldLate{.transcript = "hola argus", .withhold = false, .marker = "unheard"};
 
 struct HeardTurnInput
@@ -1053,57 +1054,45 @@ TEST_CASE("A withheld transcript is answered as unheard and reaches no frame, no
   CHECK(answered.second == lines.back());
 }
 
-TEST_CASE("Under the same seed a withheld turn and an unintelligible turn get the same reply, byte for byte")
+TEST_CASE("An overheard unintelligible turn gets no reply, while a withheld turn that addressed Argus gets the unheard line")
 {
-  const HeardTurnOutcome withheld = heardTurn({.steps = {kWithheld}, .seed = 9});
+  const HeardTurnOutcome baseline = heardTurn({.steps = {}, .seed = 9});
+  const HeardTurnOutcome withheld = heardTurn({.steps = {kAddressed}, .seed = 9});
   const HeardTurnOutcome empty = heardTurn({.steps = {kEmpty}, .seed = 9});
   const HeardTurnOutcome garbled =
       heardTurn({.steps = {{.transcript = "¿?\u2026", .withhold = false, .marker = {}}}, .seed = 9});
 
-  CHECK(withheld.screened.size() == 1);
-  CHECK(empty.screened.empty());
-  CHECK(garbled.screened.empty());
-  CHECK(withheld.chatStreamCalls == 0);
-  CHECK(empty.chatStreamCalls == 0);
-  CHECK(garbled.chatStreamCalls == 0);
-
-  CHECK_FALSE(withheld.serialized.empty());
-  CHECK(withheld.serialized == empty.serialized);
-  CHECK(withheld.serialized == garbled.serialized);
-  CHECK(withheld.history == empty.history);
-  CHECK(withheld.history == garbled.history);
   REQUIRE_FALSE(spokenLines(withheld).empty());
   CHECK(isUnheardLine(spokenLines(withheld).back()));
+  CHECK(withheld.chatStreamCalls == 0);
 
-  const HeardTurnOutcome otherSeed = heardTurn({.steps = {kEmpty}, .seed = 10});
-  CHECK(otherSeed.serialized != empty.serialized);
+  for (const HeardTurnOutcome* overheard : {&empty, &garbled}) {
+    CHECK(overheard->screened.empty());
+    CHECK(overheard->chatStreamCalls == 0);
+    CHECK(spokenLines(*overheard) == spokenLines(baseline));
+    CHECK(overheard->history == baseline.history);
+  }
 }
 
-TEST_CASE("Argus asks once: the second unheard turn in a row is silent, whatever made either turn unheard")
+TEST_CASE("Argus asks once: the second unheard turn in a row is silent, whatever made the first one unheard")
 {
-  const HeardTurnOutcome emptyEmpty = heardTurn({.steps = {kEmpty, kEmpty}, .seed = 5});
-  const HeardTurnOutcome withheldWithheld = heardTurn({.steps = {kWithheld, kWithheld}, .seed = 5});
-  const HeardTurnOutcome withheldEmpty = heardTurn({.steps = {kWithheld, kEmpty}, .seed = 5});
+  const HeardTurnOutcome once = heardTurn({.steps = {kAddressed}, .seed = 5});
+  const HeardTurnOutcome twice = heardTurn({.steps = {kAddressed, kAddressed}, .seed = 5});
+  const HeardTurnOutcome withheldEmpty = heardTurn({.steps = {kAddressed, kEmpty}, .seed = 5});
 
-  CHECK_FALSE(emptyEmpty.serialized.empty());
-  CHECK(emptyEmpty.serialized == withheldWithheld.serialized);
-  CHECK(emptyEmpty.serialized == withheldEmpty.serialized);
-  CHECK(emptyEmpty.history == withheldWithheld.history);
-  CHECK(emptyEmpty.history == withheldEmpty.history);
-  CHECK(withheldWithheld.screened.size() == 2);
-  CHECK(withheldEmpty.screened.size() == 1);
-
-  const HeardTurnOutcome once = heardTurn({.steps = {kEmpty}, .seed = 5});
-  REQUIRE(emptyEmpty.serialized.size() == once.serialized.size() + 1);
-  CHECK(std::equal(once.serialized.begin(), once.serialized.end(), emptyEmpty.serialized.begin()));
-  const auto& second = emptyEmpty.frames.back();
+  CHECK_FALSE(once.serialized.empty());
+  REQUIRE(twice.serialized.size() == once.serialized.size() + 1);
+  CHECK(std::equal(once.serialized.begin(), once.serialized.end(), twice.serialized.begin()));
+  const auto& second = twice.frames.back();
   CHECK(second.has_event());
   CHECK(second.event().reaction() == argus::voice::v1::REACTION_CONFUSED);
   CHECK(second.event().because() == "stt_failed");
-  CHECK(spokenLines(emptyEmpty) == spokenLines(once));
-  CHECK(emptyEmpty.history == once.history);
+  CHECK(spokenLines(twice) == spokenLines(once));
+  CHECK(twice.history == once.history);
+  CHECK(withheldEmpty.serialized == once.serialized);
+  CHECK(withheldEmpty.history == once.history);
 
-  const HeardTurnOutcome lateSecond = heardTurn({.steps = {kWithheld, kWithheldLate}, .seed = 5});
+  const HeardTurnOutcome lateSecond = heardTurn({.steps = {kAddressed, kWithheldLate}, .seed = 5});
   CHECK(lateSecond.chatStreamCalls == 1);
   CHECK(spokenLines(lateSecond) == spokenLines(once));
   REQUIRE(lateSecond.frames.size() >= 2);
@@ -1115,17 +1104,13 @@ TEST_CASE("Argus asks once: the second unheard turn in a row is silent, whatever
     CHECK(entry.second.find("hola argus") == std::string::npos);
 }
 
-TEST_CASE("A readable turn resets the ask-once rule, the same way for both causes")
+TEST_CASE("A readable turn resets the ask-once rule for addressed unheard turns")
 {
-  const HeardTurnOutcome empty = heardTurn({.steps = {kEmpty, kReadable, kEmpty}, .seed = 7});
-  const HeardTurnOutcome withheld = heardTurn({.steps = {kWithheld, kReadable, kWithheld}, .seed = 7});
-  CHECK(empty.serialized == withheld.serialized);
-  CHECK(empty.history == withheld.history);
-  CHECK(empty.chatStreamCalls == 1);
+  const HeardTurnOutcome withheld = heardTurn({.steps = {kAddressed, kReadable, kAddressed}, .seed = 7});
   CHECK(withheld.chatStreamCalls == 1);
 
   std::vector<std::string> unheard;
-  for (const std::string& line : spokenLines(empty))
+  for (const std::string& line : spokenLines(withheld))
     if (isUnheardLine(line))
       unheard.push_back(line);
   REQUIRE(unheard.size() == 2);
@@ -1162,7 +1147,7 @@ TEST_CASE("Words argus-llm withholds after they were shown are corrected, and th
   for (const auto& entry : late.history)
     CHECK(entry.second.find("hola argus") == std::string::npos);
 
-  const HeardTurnOutcome unheard = heardTurn({.steps = {kEmpty}, .seed = 2});
+  const HeardTurnOutcome unheard = heardTurn({.steps = {kAddressed}, .seed = 2});
   std::optional<size_t> placeholder;
   for (size_t index = 0; index < unheard.frames.size(); ++index)
     if (unheard.frames[index].has_stt())

@@ -1251,3 +1251,70 @@ of that revision, and checked against the files installed on the
 development host. A present file whose hash does not match is replaced; a
 pin left empty makes the script refuse to download and say so, and
 `ARGUS_ALLOW_UNPINNED_MODELS=1` downloads it and prints its hash to pin.
+
+## Near-field gate and turn coherence (2026-10-16)
+
+Why: on 2026-10-15 at 15:32 UTC Argus answered a background voice that was not
+David. A turn now has to pass three layers before it can open: the VAD decides
+on the raw microphone, a near-field level gate rejects speech that is loud
+relative to the room, and the turn's words must carry a request before any
+action or reply.
+
+- The VAD (`vad-service`) consumes the raw microphone batch. The denoiser no
+  longer decides whether a turn exists: it runs in lockstep on the same 512-sample
+  chunks, and its output feeds only the streaming STT. A denoiser that suppresses
+  speech probability therefore cannot silence a real turn (on the denoised path
+  turn1 had a mean VAD probability of 0.146 and never opened; on the raw path it
+  opens with a 43.0 dB margin).
+- Near-field gate (`near-field-gate`): a turn passes when its level, the mean RMS
+  in dBFS of the windows whose VAD probability is at least `vad.gate_speech_prob`,
+  exceeds a rolling noise floor (the 20th percentile of the last
+  `vad.gate_floor_windows` non-speech windows, default -60 dB until ten windows
+  exist) by `vad.gate_margin_db`, AND the longest run of such windows lasts at
+  least `vad.gate_held_ms`. Both must pass; the verdict is logged on discard.
+- Coherence (`turn-coherence`): a turn with a content word (three bytes or more,
+  not a filler, not "argus") proceeds. A turn with no content word that names
+  "argus" gets one brief "¿Me hablas a mí?" (or "Are you talking to me?") and no
+  request is run. Any other low-signal turn gets no action, no LLM call and no
+  reply. An addressed turn whose words the screen withheld keeps the unheard line.
+  This is the second layer: a background voice that slips past the level gate
+  still cannot trigger an action or an unprompted reply.
+- Streaming STT stays. The streamed transcript follows the denoised stream from
+  the utterance start. The start is the VAD's own sample count mapped into the
+  denoised stream with the live lag (`rawFed - sttTotal`); the mapping is exact
+  to one denoiser frame (10 ms), and the stream is continuous: no sample is
+  dropped or repeated, which is what the STT needs.
+
+Measured on the private camera recordings (`~/.cache/argus-scratch-backup/camera-voice/voice-segments/`,
+16 kHz PCM16 mono; the replay test reads them and exits 77 when they are absent),
+raw microphone path, margin per VAD segment in dB, held in ms, default gate:
+
+| file | segment | margin | held | gate |
+|---|---|---|---|---|
+| background-no-turn | 1 | 27.8 | 992 | rejected (0 turns) |
+| turn1 | 1 | 43.0 | 544 | passed |
+| turn2 | 1 | 23.9 | 1184 | rejected |
+| turn2 | 2 | 39.7 | 2304 | passed (1 turn) |
+| turn3 | 1 | 41.9 | 1024 | passed |
+| turn4 | 1 | 39.1 | 1984 | passed |
+
+`vad.gate_margin_db` = 30 sits in the 11 dB gap between the background (27.8)
+and the lowest passing segment (39.1), nearer the background; it is not the
+midpoint (33.5). The margin is thin: the background is ONE sample, so a quieter
+or farther real turn in the gap would be rejected. The replay test asserts every
+segment's margin and held duration, so a later change to the denoiser, the AGC
+or the level measure that moves them is caught, not only the turn count.
+
+Not measured: the phone path (16 kHz from the app) may sit at very different
+levels. `vad.gate_margin_db` applies to every source; the phone recordings do not
+exist yet, so the phone source is UNMEASURED with the same 30 dB. A per-source
+key needs the session to carry its source, which the voice contract does not
+yet do, so none is invented here.
+
+Latency: the streamed path is unchanged in structure (the same streaming
+transcript, fed with denoised frames instead of raw ones; the denoiser still runs
+per voiced chunk). No prod latency was measured for this change; backend-37 asked
+for numbers before any offline choice, and no offline path was chosen.
+
+Removed: the unprompted "no te entendí" reply for overheard unintelligible turns
+(`answerUnheard` still runs for addressed turns, and for corrections).

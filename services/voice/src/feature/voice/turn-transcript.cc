@@ -21,9 +21,9 @@ void TurnTranscript::fail(const char* step)
   stream_.reset();
 }
 
-void TurnTranscript::follow(const VadService& vad)
+void TurnTranscript::follow(std::span<const float> utterance, int silenceFrames, bool inSpeech)
 {
-  if (!vad.inSpeech()) {
+  if (!inSpeech) {
     stream_.reset();
     pushed_ = 0;
     flushed_ = false;
@@ -42,9 +42,7 @@ void TurnTranscript::follow(const VadService& vad)
   if (!stream_)
     return;
 
-  const auto utterance = vad.utterance();
-  const int silence = vad.silenceFrames();
-  if (flushed_ && silence > 0)
+  if (flushed_ && silenceFrames > 0)
     return;
   flushed_ = false;
   try {
@@ -52,7 +50,7 @@ void TurnTranscript::follow(const VadService& vad)
       stream_->push(utterance.subspan(pushed_));
       pushed_ = utterance.size();
     }
-    if (silence >= flushSilenceFrames_) {
+    if (silenceFrames >= flushSilenceFrames_) {
       stream_->flush();
       flushed_ = true;
       LOG_DEBUG << "Voice: STT stream flushed at " << pushed_ << " samples";

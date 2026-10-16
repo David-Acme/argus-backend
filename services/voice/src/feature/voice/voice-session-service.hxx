@@ -217,12 +217,18 @@ private:
     VoiceSessionSink* sink{nullptr};
     VadService vad;
     NoiseSuppressor denoiser;
-    bool denoiseBypassed{false};
     std::vector<float> batch;
-    std::vector<float> cleaned;
     bool denoise{true};
     float denoiseGateRms{0.0035F};
+    bool denoiseBypassed{false};
     int denoiseLogCounter{0};
+    std::vector<float> stt;
+    std::size_t sttBase{0};
+    std::size_t sttTotal{0};
+    std::size_t rawFed{0};
+    std::size_t utteranceStart{0};
+    bool utteranceOpen{false};
+    std::shared_ptr<TurnTranscript> listening;
     CallHistory history;
     VoiceLang lang{VoiceLang::System};
     UnheardRotation unheard;
@@ -274,12 +280,12 @@ private:
     std::string deviceHash;
     std::string callKey;
     bool speakerHeard{false};
-    std::shared_ptr<TurnTranscript> listening;
   };
 
   struct HeardTurn
   {
     const std::vector<float>& samples;
+    std::vector<float> stt;
     std::shared_ptr<TurnTranscript> transcript;
     std::chrono::steady_clock::time_point detected{};
   };
@@ -288,8 +294,13 @@ private:
   void workerLoop(const std::shared_ptr<Session>& session);
   void duplexLoop(const std::shared_ptr<Session>& session);
   static bool nextBatch(Session& session);
-  static std::span<const float> cleanBatch(Session& session);
-  static void resetListening(Session& session);
+  static void feedStt(Session& session, std::span<const float> chunk);
+  static std::size_t sttIndexOf(const Session& session, std::size_t rawIndex);
+  static void resetVad(Session& session);
+  void followUtterance(Session& session);
+  std::shared_ptr<TurnTranscript> takeTranscript(Session& session);
+  static std::span<const float> sttSpan(const Session& session, std::size_t fromIndex);
+  static std::vector<float> closeUtterance(Session& session);
   void launchTurn(const std::shared_ptr<Session>& session,
                   std::function<void(Session&)> body);
   ListenState listenState(Session& session);
@@ -300,8 +311,6 @@ private:
   bool sendDuplexAssistant(Session& session, argus::voice::v1::ServerFrame frame);
   void processTurn(Session& session, const std::vector<float>& samples);
   void processTurn(Session& session, const HeardTurn& heard);
-  void followUtterance(Session& session);
-  std::shared_ptr<TurnTranscript> takeTranscript(Session& session);
   struct Transcript
   {
     std::string text;
@@ -311,6 +320,7 @@ private:
   static ChatRequest turnRequest(Session& session);
   bool answerOffer(Session& session, const std::string& userText);
   void answerUnheard(Session& session, UnheardTranscript transcript);
+  void answerAddressed(Session& session);
   std::shared_ptr<SpeakerProbe> probeSpeaker(Session& session, const std::vector<float>& samples);
   static std::optional<VoiceSpeaker> awaitSpeaker(const std::shared_ptr<SpeakerProbe>& probe);
   static void observeSpeaker(Session& session, const std::optional<VoiceSpeaker>& speaker);

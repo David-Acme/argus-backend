@@ -1,4 +1,5 @@
 #include "voice-session-service.hxx"
+#include <feature/voice/turn-coherence.hxx>
 
 #include <algorithm>
 #include <array>
@@ -41,7 +42,7 @@ std::string mintCallKey()
   return key;
 }
 
-float rmsOf(const std::vector<float>& samples)
+float rmsOf(std::span<const float> samples)
 {
   if (samples.empty())
     return 0.0F;
@@ -720,11 +721,102 @@ bool VoiceSessionService::nextBatch(Session& session)
   return true;
 }
 
-void VoiceSessionService::resetListening(Session& session)
+namespace
+{
+constexpr std::size_t kSttKeepSamples = 32000;
+}
+
+void VoiceSessionService::resetVad(Session& session)
 {
   session.vad.reset();
   session.denoiser.reset();
   session.denoiseBypassed = false;
+  session.stt.clear();
+  session.sttBase = 0;
+  session.sttTotal = 0;
+  session.rawFed = 0;
+  session.utteranceStart = 0;
+  session.utteranceOpen = false;
+  session.listening.reset();
+}
+
+void VoiceSessionService::feedStt(Session& session, std::span<const float> chunk)
+{
+  session.rawFed += chunk.size();
+  if (!session.denoise || (rmsOf(chunk) < session.denoiseGateRms && !session.denoiser.recentVoice())) {
+    session.denoiseBypassed = true;
+    session.stt.insert(session.stt.end(), chunk.begin(), chunk.end());
+    session.sttTotal += chunk.size();
+  }
+  else {
+    if (session.denoiseBypassed) {
+      session.denoiser.resync();
+      session.denoiseBypassed = false;
+    }
+    std::vector<float> cleaned;
+    session.denoiser.process(chunk, cleaned);
+    session.stt.insert(session.stt.end(), cleaned.begin(), cleaned.end());
+    session.sttTotal += cleaned.size();
+    if ((++session.denoiseLogCounter % 100) == 0)
+      LOG_DEBUG << "Voice: denoise prob=" << session.denoiser.lastVoiceProb();
+  }
+  if (!session.utteranceOpen && session.stt.size() > kSttKeepSamples) {
+    const auto dropped = session.stt.size() - kSttKeepSamples;
+    session.stt.erase(session.stt.begin(), session.stt.begin() + static_cast<std::ptrdiff_t>(dropped));
+    session.sttBase += dropped;
+  }
+}
+
+std::size_t VoiceSessionService::sttIndexOf(const Session& session, std::size_t rawIndex)
+{
+  const std::size_t lag = session.rawFed > session.sttTotal ? session.rawFed - session.sttTotal : 0;
+  const std::size_t mapped = rawIndex > lag ? rawIndex - lag : 0;
+  return std::clamp(mapped, session.sttBase, session.sttTotal);
+}
+
+std::span<const float> VoiceSessionService::sttSpan(const Session& session, std::size_t fromIndex)
+{
+  const std::size_t from = fromIndex > session.sttBase ? fromIndex - session.sttBase : 0;
+  if (from >= session.stt.size())
+    return {};
+  return std::span<const float>(session.stt).subspan(from);
+}
+
+void VoiceSessionService::followUtterance(Session& session)
+{
+  if (!session.listening)
+    std::ignore = takeTranscript(session);
+  if (session.vad.inSpeech()) {
+    if (!session.utteranceOpen) {
+      session.utteranceOpen = true;
+      session.utteranceStart = sttIndexOf(session, session.vad.utteranceStart());
+    }
+    session.listening->follow(sttSpan(session, session.utteranceStart), session.vad.silenceFrames(), true);
+    return;
+  }
+  session.utteranceOpen = false;
+  session.listening->follow({}, session.vad.silenceFrames(), false);
+}
+
+std::shared_ptr<TurnTranscript> VoiceSessionService::takeTranscript(Session& session)
+{
+  auto heard = std::move(session.listening);
+  session.listening = std::make_shared<TurnTranscript>(TurnTranscriptInput{
+      .stt = stt_,
+      .stream = {.sampleRate = kTargetRate, .language = voiceLangToString(session.lang)},
+      .flushSilenceFrames = TurnTranscript::flushFramesFor(session.vad.minSilenceFrames())});
+  return heard;
+}
+
+std::vector<float> VoiceSessionService::closeUtterance(Session& session)
+{
+  std::vector<float> turnStt;
+  if (session.utteranceOpen) {
+    const auto span = sttSpan(session, session.utteranceStart);
+    turnStt.assign(span.begin(), span.end());
+  }
+  session.utteranceOpen = false;
+  return turnStt;
 }
 
 void VoiceSessionService::workerLoop(const std::shared_ptr<Session>& session)
@@ -734,10 +826,8 @@ void VoiceSessionService::workerLoop(const std::shared_ptr<Session>& session)
       followDuck(*session, false);
       break;
     }
-    if (session->vadResetPending.exchange(false)) {
-      resetListening(*session);
-      followUtterance(*session);
-    }
+    if (session->vadResetPending.exchange(false))
+      resetVad(*session);
 
     if (!session->speaking && !session->vad.inSpeech()) {
       if (const auto notice = takeNotice(*session))
@@ -747,20 +837,22 @@ void VoiceSessionService::workerLoop(const std::shared_ptr<Session>& session)
     if (session->speaking || session->batch.empty())
       continue;
 
-    const std::span<const float> clean = cleanBatch(*session);
-
+    const std::span<const float> raw = session->batch;
     size_t offset = 0;
-    while (offset < clean.size() && session->active.load()) {
-      const size_t chunk = std::min<size_t>(512, clean.size() - offset);
-      if (const auto turn = session->vad.process(
-              {.samples = clean.data() + offset,
-               .count = static_cast<int>(chunk)})) {
+    while (offset < raw.size() && session->active.load()) {
+      const size_t chunk = std::min<size_t>(512, raw.size() - offset);
+      const std::span<const float> frame = raw.subspan(offset, chunk);
+      feedStt(*session, frame);
+      if (auto turn = session->vad.process({.samples = frame.data(), .count = static_cast<int>(chunk)})) {
         const auto detected = std::chrono::steady_clock::now();
+        std::vector<float> turnStt = closeUtterance(*session);
         auto heard = takeTranscript(*session);
         if (!turn->samples.empty()) {
           try {
-            processTurn(*session,
-                        {.samples = turn->samples, .transcript = std::move(heard), .detected = detected});
+            processTurn(*session, {.samples = turn->samples,
+                                   .stt = std::move(turnStt),
+                                   .transcript = std::move(heard),
+                                   .detected = detected});
           }
           catch (const std::exception& e) {
             LOG_WARN << "Voice: turn failed: " << e.what();
@@ -784,26 +876,6 @@ void VoiceSessionService::workerLoop(const std::shared_ptr<Session>& session)
   }
 }
 
-std::span<const float> VoiceSessionService::cleanBatch(Session& session)
-{
-  if (!session.denoise)
-    return session.batch;
-  const bool silent = rmsOf(session.batch) < session.denoiseGateRms &&
-                      !session.denoiser.recentVoice();
-  if (silent) {
-    session.denoiseBypassed = true;
-    return session.batch;
-  }
-  if (session.denoiseBypassed) {
-    session.denoiser.resync();
-    session.denoiseBypassed = false;
-  }
-  session.denoiser.process(session.batch, session.cleaned);
-  if ((++session.denoiseLogCounter % 25) == 0)
-    LOG_DEBUG << "Voice: denoise prob=" << session.denoiser.lastVoiceProb();
-  return session.cleaned;
-}
-
 void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
 {
   bool wasListening = false;
@@ -813,8 +885,7 @@ void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
       break;
     }
     if (session->vadResetPending.exchange(false)) {
-      resetListening(*session);
-      followUtterance(*session);
+      resetVad(*session);
       wasListening = false;
     }
 
@@ -830,15 +901,16 @@ void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
       continue;
     }
 
-    const std::span<const float> clean = cleanBatch(*session);
-
+    const std::span<const float> raw = session->batch;
     size_t offset = 0;
-    while (offset < clean.size() && session->active.load()) {
-      const size_t chunk = std::min<size_t>(512, clean.size() - offset);
+    while (offset < raw.size() && session->active.load()) {
+      const size_t chunk = std::min<size_t>(512, raw.size() - offset);
+      const std::span<const float> frame = raw.subspan(offset, chunk);
+      feedStt(*session, frame);
       const ListenState state = listenState(*session);
       if (state.listening) {
         wasListening = true;
-        if (session->vad.listen({.samples = clean.data() + offset,
+        if (session->vad.listen({.samples = frame.data(),
                                  .count = static_cast<int>(chunk),
                                  .armed = state.armed})) {
           wasListening = false;
@@ -858,17 +930,22 @@ void VoiceSessionService::duplexLoop(const std::shared_ptr<Session>& session)
           noteUnbargedSpeech(*session);
         }
         followDuck(*session, false);
-        auto turn = session->vad.process({.samples = clean.data() + offset,
-                                          .count = static_cast<int>(chunk)});
-        if (!turn)
+        auto turn = session->vad.process({.samples = frame.data(), .count = static_cast<int>(chunk)});
+        if (!turn) {
           followUtterance(*session);
-        else if (auto heard = takeTranscript(*session); !turn->samples.empty()) {
+        }
+        else {
           const auto detected = std::chrono::steady_clock::now();
-          launchTurn(session,
-                     [this, samples = std::move(turn->samples), heard = std::move(heard), detected](
-                         Session& active) {
-                       processTurn(active, {.samples = samples, .transcript = heard, .detected = detected});
-                     });
+          std::vector<float> turnStt = closeUtterance(*session);
+          auto heard = takeTranscript(*session);
+          if (!turn->samples.empty())
+            launchTurn(session, [this, samples = std::move(turn->samples), stt = std::move(turnStt),
+                                 heard = std::move(heard), detected](Session& active) {
+              processTurn(active, {.samples = samples,
+                                   .stt = stt,
+                                   .transcript = heard,
+                                   .detected = detected});
+            });
         }
       }
       offset += chunk;
@@ -1031,30 +1108,13 @@ void VoiceSessionService::releaseLaterLines(Session& session)
   }
 }
 
-void VoiceSessionService::followUtterance(Session& session)
-{
-  if (!session.listening)
-    std::ignore = takeTranscript(session);
-  session.listening->follow(session.vad);
-}
-
-std::shared_ptr<TurnTranscript> VoiceSessionService::takeTranscript(Session& session)
-{
-  auto heard = std::move(session.listening);
-  session.listening = std::make_shared<TurnTranscript>(TurnTranscriptInput{
-      .stt = stt_,
-      .stream = {.sampleRate = kTargetRate, .language = voiceLangToString(session.lang)},
-      .flushSilenceFrames = TurnTranscript::flushFramesFor(session.vad.minSilenceFrames())});
-  return heard;
-}
-
 VoiceSessionService::Transcript VoiceSessionService::transcribe(Session& session, const HeardTurn& heard)
 {
   if (heard.transcript) {
-    if (auto text = heard.transcript->finish(heard.samples))
+    if (auto text = heard.transcript->finish(heard.stt))
       return {.text = std::move(*text), .streamed = true};
   }
-  return {.text = stt_.transcribe({.samples = heard.samples,
+  return {.text = stt_.transcribe({.samples = heard.stt,
                                    .sampleRate = kTargetRate,
                                    .language = voiceLangToString(session.lang)}),
           .streamed = false};
@@ -1065,6 +1125,7 @@ void VoiceSessionService::processTurn(Session& session,
 {
   processTurn(session,
               {.samples = samples,
+               .stt = samples,
                .transcript = nullptr,
                .detected = std::chrono::steady_clock::now()});
 }
@@ -1118,12 +1179,23 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
     return;
   }
   clock.transcribed.store(std::chrono::steady_clock::now());
+  const std::string heardText = userText;
   if (session.userId > 0 && carriesWords(userText))
     userText = llm_.screen(
         {.userId = session.userId, .role = userRoleFromString(session.role), .text = userText});
-  if (!carriesWords(userText)) {
-    answerUnheard(session, UnheardTranscript::Send);
-    return;
+  switch (turnCoherenceOf(userText)) {
+    case TurnCoherence::Proceed:
+      break;
+    case TurnCoherence::AskAddressed:
+      answerAddressed(session);
+      return;
+    case TurnCoherence::Ignore:
+      if (!isAddressed(heardText)) {
+        LOG_INFO << "Voice: overheard speech carries no request; no action";
+        return;
+      }
+      answerUnheard(session, UnheardTranscript::Send);
+      return;
   }
   releaseLaterLines(session);
   LOG_INFO << "Voice: STT turn of " << userText.size() << " bytes";
@@ -1279,7 +1351,7 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
              << (interrupted ? " interrupted" : "");
 
   if (!session.duplex)
-    session.vad.reset();
+    resetVad(session);
   if (trimmed)
     primeLlm(session);
 }
@@ -1421,9 +1493,18 @@ void VoiceSessionService::answerUnheard(Session& session, UnheardTranscript tran
   }
   session.speaking = false;
   if (!session.duplex)
-    session.vad.reset();
+    resetVad(session);
   if (session.history.trim())
     primeLlm(session);
+}
+
+void VoiceSessionService::answerAddressed(Session& session)
+{
+  const std::string line(session.lang == VoiceLang::En ? "Are you talking to me?" : "¿Me hablas a mí?");
+  static_cast<void>(speak(session, line));
+  session.speaking = false;
+  if (!session.duplex)
+    resetVad(session);
 }
 
 ChatRequest VoiceSessionService::turnRequest(Session& session)

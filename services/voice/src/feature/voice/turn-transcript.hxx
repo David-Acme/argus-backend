@@ -21,7 +21,7 @@ class TurnTranscript
 public:
   explicit TurnTranscript(TurnTranscriptInput input);
 
-  void follow(const VadService& vad);
+  void follow(std::span<const float> utterance, int silenceFrames, bool inSpeech);
   [[nodiscard]] std::optional<std::string> finish(std::span<const float> turn);
   [[nodiscard]] bool open() const { return stream_ != nullptr; }
   [[nodiscard]] bool flushed() const { return flushed_; }
