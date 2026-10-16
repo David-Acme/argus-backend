@@ -230,6 +230,33 @@ The data change goes in `services/settings` profiles plus its tests.
 
 `services/vlm` moves to the same internal gRPC shape as stt, tts and llm, through its wire client. The frozen HTTP wire stays only where a caller still needs it, and is listed in the report.
 
+## Phase 4c (extra, low priority): cores for the services the user feels
+
+**Goal (owner, 2026-10-16).** The interactive engines feel fast: LLM, TTS, STT, VLM and YOLO.
+
+**Today.** `packages/lib/runtime/src/runtime/thread-budget.cc` gives the following on the 16-thread reference host:
+- LLM decode: `lightThreads()` = 4;
+- prefill: `batchThreads()` = 8;
+- TTS: `ttsThreads()` = 8.
+
+With 8 threads, `llama-bench` measured the LLM at 44 tok/s decode and 166 tok/s prefill on the same host (`docs/history/reports/model-eval-bonsai2-2b.md`). The service decodes with half of that.
+
+**Task. Measure first, then distribute.**
+1. On a prod build, measure each knob alone and then together in a simulated call: STT streaming, then the LLM reply, then TTS, with the camera's YOLO running.
+   - LLM decode tok/s and TTFT at `llm.threads` 4, 6 and 8;
+   - TTS RTF and first audio;
+   - STT latency;
+   - VLM per-image time;
+   - YOLO frame time.
+2. Choose budgets so the interactive chain (STT, LLM, TTS) gets the physical cores during a turn, with no TTS underrun and no oversubscription. Decode is bound by memory bandwidth, so more threads than physical cores do not help.
+3. Run background work at lower priority (`nice`/`SCHED_BATCH` or a smaller budget while a call is live): YOLO between alerts, VLM captions, embeddings, extraction, compaction.
+4. Keep the budgets derived from `ThreadBudget` (no hardcoded counts, AGENTS.md §13b), so 4-core and 64-core hosts still scale.
+
+**Acceptance.**
+- A before/after table on the prod build, reported through `scripts/measure-guard.sh`.
+- LLM decode tok/s up during a call, TTS never underruns, and STT and YOLO latency not worse.
+- Tests on the new budget functions.
+
 ## Phase 5: the open backlog, after Phase 0 (implementer, 2–4 days)
 
 The order follows `realtime-and-backlog-plan.md` §10, restricted to what Phase 0 marks open:
