@@ -213,7 +213,7 @@ The Tauri commands `argus_rtc_devices` and `argus_rtc_select_device` and the cal
 ### Settings profiles (decided 2026-10-16)
 
 - RAM floors: 14 GB for "Máxima calidad", 7 GB for "Equilibrado".
-- "Equilibrado" uses the quality Spanish model; the fast model belongs to "Máximo rendimiento" only. The precedence is precision > speed > memory.
+- "Equilibrado" keeps the **fast** Spanish voice (`tts.pocket_variant_es = fast`), as `services/settings/CONTEXT.md` measures. Equilibrado targets 4–7 cores, where the 24-layer quality voice runs at about RTF 0.6 while STT and the LLM share the cores. Both voices have the same WER, so the precision-first rule does not apply. "Máxima calidad" keeps `quality`, and quality stays one tap away in every profile. No profile data change is needed for this key.
 - `gpu_layers = 0` is written explicitly in product config and profiles (CPU-only, decided 2026-10-09).
 
 The data change goes in `services/settings` profiles plus its tests.
@@ -262,7 +262,7 @@ The owner asked to apply the recommended option for each decision, after researc
 
 - session: no second copy; clean recovery;
 - siren: confirmation plus a 5-second countdown, behind an owner setting;
-- profiles: 14/7 GB, quality Spanish in Equilibrado, `gpu_layers = 0`;
+- profiles: 14/7 GB, the fast Spanish voice kept in Equilibrado, `gpu_layers = 0`;
 - remote: LAN direct, cached offline, no second relay;
 - VLM: gRPC.
 
