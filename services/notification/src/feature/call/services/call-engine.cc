@@ -869,8 +869,7 @@ drogon::Task<CallEndStatus> CallEngine::end(const CallEndRequest& request) const
   if (!existing || existing->userId != request.userId)
     co_return CallEndStatus::NotFound;
   const int64_t at = now();
-  const bool declined =
-      request.outcome == CallEndReport::Declined || !request.spoken;
+  const bool declined = request.outcome == CallEndReport::Declined;
 
   if (existing->state == CallState::Ringing) {
     if (existing->expiresAt <= at)

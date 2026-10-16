@@ -743,6 +743,23 @@ TEST_CASE("a call hung up before Argus spoke counts as declined and leaves a not
                                               .sessionId = ""})) == CallEndStatus::NotFound);
 }
 
+TEST_CASE("a claimed call that ends completed stays completed when the phone sends no spoken line")
+{
+  Harness harness;
+  const auto rang = drogon::sync_wait(
+      harness.engine.considerNotification(guardData("critical", 54), {1}));
+  const int64_t id = outcomeFor(rang, 1).callId;
+  drogon::sync_wait(harness.engine.claim({.callId = call_id::format(id), .userId = 1, .sessionId = "phone"}));
+
+  CHECK(drogon::sync_wait(harness.engine.end({.callId = call_id::format(id),
+                                              .userId = 1,
+                                              .outcome = CallEndReport::Completed,
+                                              .spoken = false,
+                                              .sessionId = "phone"})) == CallEndStatus::Ended);
+  CHECK(stateOf(id) == "completed");
+  CHECK(harness.notifier->all().empty());
+}
+
 TEST_CASE("a refused decline changes nothing: an expired ring stays ringing, a taken call stays answered")
 {
   Harness harness;
