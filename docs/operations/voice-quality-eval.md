@@ -465,6 +465,15 @@ Time to first token is flat (p50 727 vs 734 ms, one run). Ablation confirms each
 used: dropping the camera facts costs a case, the agenda facts three, the guard facts one.
 Details and the per-seed table: `docs/history/project-log.md` and the unit's report.
 
+## Candidate models (measured 2026-10-16)
+
+Ternary Bonsai 2 2B was compared with the shipped LFM2.5-1.2B and LFM2.5-VL-450M on one llama.cpp
+runtime, with the production call prompt and the conversation corpus. It made 4–5× fewer false
+completions but more ungrounded and less speakable replies, decoded slower on x86, and lost on the
+owner's camera frames. Neither model meets the conversation gates without the speech pipeline. See
+[the report](../history/reports/model-eval-bonsai2-2b.md) for the setup, the numbers and why
+adopting it needs a runtime change.
+
 ## What these numbers do not say
 
 - The judges are short, written utterances. Nothing here is a recording of a household through a
