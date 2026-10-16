@@ -7,12 +7,15 @@
 
 namespace
 {
-const std::vector<std::string> kOpener = {
+std::vector<std::string> kOpener()
+{
+  return {
     "Hola, Administrador.",
     "Te llamo por algo urgente.",
     "Alguien de casa ha pulsado el botón de pánico.",
     "Puede necesitar ayuda ahora mismo.",
-};
+  };
+}
 
 int chargedMs(const std::string& sentence)
 {
@@ -34,7 +37,7 @@ TEST_CASE("sentences are synthesized only while they fit the budget; the rest be
 {
   std::vector<std::string> synthesized;
   OpeningBudgetInput input{
-      .sentences = kOpener,
+      .sentences = kOpener(),
       .budgetMs = kOpeningBudgetMs,
       .estimateMsPerChar = 90.0,
       .synthesizeMs = [&synthesized](const std::string& sentence) {

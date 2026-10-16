@@ -46,7 +46,7 @@ public:
     std::remove((path_ + "-shm").c_str());
   }
 
-  const std::string& path() const { return path_; }
+  [[nodiscard]] const std::string& path() const { return path_; }
 
 private:
   std::string path_;
@@ -63,7 +63,7 @@ public:
 
   ~TempFile() { std::remove(path_.c_str()); }
 
-  const std::string& path() const { return path_; }
+  [[nodiscard]] const std::string& path() const { return path_; }
 
 private:
   std::string path_;

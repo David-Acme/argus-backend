@@ -262,7 +262,7 @@ std::string actionFailureLine(const ActionFailureText& failure)
     text += ": ";
     text += failure.detail;
   }
-  text += ".";
+  text += '.';
   return text;
 }
 
@@ -275,7 +275,7 @@ std::string actionFailureEvent(const ActionFailureText& failure)
     event += ": ";
     event += failure.detail;
   }
-  event += ".";
+  event += '.';
   return event;
 }
 
@@ -597,8 +597,8 @@ void VoiceSessionService::feedPcm(VoiceSessionSink& sink, const PcmFrame& pcm)
   floats.resize(sampleCount);
   for (size_t i = 0; i < sampleCount; ++i) {
     const auto s = static_cast<int16_t>(
-        (static_cast<unsigned char>(pcm.data[i * 2]) |
-         (static_cast<unsigned char>(pcm.data[i * 2 + 1]) << 8)));
+        (static_cast<unsigned>(static_cast<unsigned char>(pcm.data[i * 2])) |
+         (static_cast<unsigned>(static_cast<unsigned char>(pcm.data[i * 2 + 1])) << 8U)));
     floats[i] = static_cast<float>(s) / 32768.0F;
   }
   feedSamples(sink, floats);

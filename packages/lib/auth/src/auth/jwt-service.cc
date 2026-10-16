@@ -29,8 +29,8 @@ std::string randomTokenId()
   std::string id;
   id.reserve(buffer.size() * 2);
   for (const unsigned char byte : buffer) {
-    id.push_back(kHexDigits[byte >> 4]);
-    id.push_back(kHexDigits[byte & 0x0f]);
+    id.push_back(kHexDigits[static_cast<unsigned>(byte) >> 4U]);
+    id.push_back(kHexDigits[static_cast<unsigned>(byte) & 0x0FU]);
   }
   return id;
 }
@@ -41,8 +41,8 @@ JwtService::JwtService(JwtRole role)
       refreshSecret_(role == JwtRole::Issuer
                          ? ConfigService::getString("jwt.refresh_secret")
                          : std::string{}),
-      accessTtlSeconds_(ConfigService::getInt("jwt.access_ttl_minutes") * 60),
-      refreshTtlSeconds_(ConfigService::getInt("jwt.refresh_ttl_days") * 86400)
+      accessTtlSeconds_(static_cast<int64_t>(ConfigService::getInt("jwt.access_ttl_minutes")) * 60),
+      refreshTtlSeconds_(static_cast<int64_t>(ConfigService::getInt("jwt.refresh_ttl_days")) * 86400)
 {
   if (isWeakSecret(accessSecret_) ||
       (role == JwtRole::Issuer && isWeakSecret(refreshSecret_)))

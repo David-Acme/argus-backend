@@ -61,8 +61,8 @@ struct FakeTts final : IVoiceTts
   int synthesizeCalls{0};
   std::string lastText;
 
-  float defaultSpeed(std::stop_token = {}) const override { return 1.25F; }
-  int sampleRate(std::stop_token = {}) const override { return 22050; }
+  [[nodiscard]] float defaultSpeed(std::stop_token = {}) const override { return 1.25F; }
+  [[nodiscard]] int sampleRate(std::stop_token = {}) const override { return 22050; }
 
   void synthesizeStream(TtsRemoteStreamInput input) override
   {
@@ -77,8 +77,8 @@ struct BlockingTts final : IVoiceTts
   std::atomic<bool> entered{false};
   std::atomic<bool> cancelled{false};
 
-  float defaultSpeed(std::stop_token = {}) const override { return 1.0F; }
-  int sampleRate(std::stop_token = {}) const override { return 16000; }
+  [[nodiscard]] float defaultSpeed(std::stop_token = {}) const override { return 1.0F; }
+  [[nodiscard]] int sampleRate(std::stop_token = {}) const override { return 16000; }
 
   void synthesizeStream(TtsRemoteStreamInput input) override
   {
@@ -505,7 +505,7 @@ void feed(const FeedInput& input)
 {
   const auto value = static_cast<int16_t>(input.prob * 32767.0F);
   const auto low = static_cast<char>(static_cast<uint16_t>(value) & 0xFFU);
-  const auto high = static_cast<char>((static_cast<uint16_t>(value) >> 8U) & 0xFFU);
+  const auto high = static_cast<char>((static_cast<unsigned>(static_cast<uint16_t>(value)) >> 8U) & 0xFFU);
   std::string pcm;
   pcm.reserve(static_cast<size_t>(input.windows) * kWindow * 2);
   for (int i = 0; i < input.windows * kWindow; ++i) {
@@ -3336,12 +3336,12 @@ TEST_CASE("A session that stops sending audio is closed at the production silenc
 
 struct ThreeSecondTts final : IVoiceTts
 {
-  float defaultSpeed(std::stop_token = {}) const override { return 1.0F; }
-  int sampleRate(std::stop_token = {}) const override { return 16000; }
+  [[nodiscard]] float defaultSpeed(std::stop_token = {}) const override { return 1.0F; }
+  [[nodiscard]] int sampleRate(std::stop_token = {}) const override { return 16000; }
 
   void synthesizeStream(TtsRemoteStreamInput input) override
   {
-    input.onChunk(std::vector<float>(16000 * 3, 0.1F));
+    input.onChunk(std::vector<float>(std::size_t{16000} * 3, 0.1F));
   }
 };
 

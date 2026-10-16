@@ -60,7 +60,7 @@ std::vector<std::string> tokensOf(std::string_view transcript)
 
 bool isFiller(std::string_view token)
 {
-  return std::find(kFillerWords.begin(), kFillerWords.end(), token) != kFillerWords.end();
+  return std::ranges::find(kFillerWords, token) != kFillerWords.end();
 }
 
 }
@@ -68,14 +68,14 @@ bool isFiller(std::string_view token)
 bool isAddressed(std::string_view transcript)
 {
   const auto tokens = tokensOf(transcript);
-  return std::find(tokens.begin(), tokens.end(), kAddressWord) != tokens.end();
+  return std::ranges::find(tokens, kAddressWord) != tokens.end();
 }
 
 bool hasContentWords(std::string_view transcript)
 {
   constexpr size_t kMinContentBytes = 3;
   const auto tokens = tokensOf(transcript);
-  return std::any_of(tokens.begin(), tokens.end(), [](const std::string& token) {
+  return std::ranges::any_of(tokens, [](const std::string& token) {
     return token.size() >= kMinContentBytes && token != kAddressWord && !isFiller(token);
   });
 }

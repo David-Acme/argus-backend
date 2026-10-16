@@ -100,8 +100,7 @@ TtsService& TtsService::instance()
 
 void TtsService::init()
 {
-  std::scoped_lock lifecycleLock(lifecycleMutex_);
-  std::scoped_lock lock(synthMutex_);
+  std::scoped_lock lock(lifecycleMutex_, synthMutex_);
   if (loaded_)
     return;
   try {
@@ -418,7 +417,7 @@ bool TtsService::streamPocket(const PocketStreamJob& job)
   }
 
   PcmRateConverter converter({.sourceRate = engine->sampleRate(), .targetRate = targetRate});
-  PauseLimiter limiter(targetRate, kPocketMaxPauseMs, kPocketSilenceRms);
+  PauseLimiter limiter({.sampleRate = targetRate, .maxPauseMs = kPocketMaxPauseMs, .silenceRms = kPocketSilenceRms});
   bool delivered = false;
   const auto emit = [&](std::vector<float> samples) {
     if (samples.empty() || job.stopped())

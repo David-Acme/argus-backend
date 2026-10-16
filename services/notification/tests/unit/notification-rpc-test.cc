@@ -56,7 +56,7 @@ public:
     std::remove((path_ + "-shm").c_str());
   }
 
-  const std::string& path() const { return path_; }
+  [[nodiscard]] const std::string& path() const { return path_; }
 
 private:
   std::string path_;
@@ -73,7 +73,7 @@ public:
 
   ~TempFile() { std::remove(path_.c_str()); }
 
-  const std::string& path() const { return path_; }
+  [[nodiscard]] const std::string& path() const { return path_; }
 
 private:
   std::string path_;
@@ -153,7 +153,7 @@ public:
 
   bool publish(const NotificationDeliveryEvent& event) const override
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     published.push_back({.deliveryId = event.deliveryId,
                          .notificationId = event.notificationId,
                          .userId = event.userId,
@@ -186,8 +186,8 @@ public:
       server_->Shutdown();
   }
 
-  bool listening() const { return server_ != nullptr; }
-  const std::string& target() const { return target_; }
+  [[nodiscard]] bool listening() const { return server_ != nullptr; }
+  [[nodiscard]] const std::string& target() const { return target_; }
 
 private:
   NotificationRpcService service_;
@@ -225,13 +225,13 @@ bool waitForPublishes(const WaitForPublishesInput& input)
   const auto deadline = std::chrono::steady_clock::now() + input.timeout;
   while (std::chrono::steady_clock::now() < deadline) {
     {
-      std::lock_guard lock(input.sink.mutex_);
+      std::scoped_lock lock(input.sink.mutex_);
       if (input.sink.published.size() >= input.expected)
         return true;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
-  std::lock_guard lock(input.sink.mutex_);
+  std::scoped_lock lock(input.sink.mutex_);
   return input.sink.published.size() >= input.expected;
 }
 }
@@ -264,7 +264,7 @@ TEST_CASE("notification RPC creates fan-out rows and serves user pulls")
                               .timeout = std::chrono::seconds(5)}));
 
     {
-      std::lock_guard lock(deliverySink->mutex_);
+      std::scoped_lock lock(deliverySink->mutex_);
       REQUIRE(deliverySink->published.size() == 2);
       for (const auto& delivery : deliverySink->published) {
         CHECK(delivery.deliveryId > 0);
@@ -478,6 +478,7 @@ TEST_CASE("notification RPC creates fan-out rows and serves user pulls")
                    .title = std::string(201, 'x')})
               .error_code() == grpc::StatusCode::INVALID_ARGUMENT);
     std::vector<int64_t> tooMany;
+    tooMany.reserve(1001);
     for (int64_t index = 0; index < 1001; ++index)
       tooMany.push_back(index + 1);
     CHECK(sendRaw({.commandId = "cmd-bounds-many",
@@ -573,14 +574,14 @@ class RecordingAlertWriter final : public NotificationAlertWriter
 public:
   drogon::Task<void> write(NotificationAlertRound round) const override
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     rounds_.push_back(std::move(round.ringFollowingUserIds));
     co_return;
   }
 
   std::vector<std::vector<int64_t>> rounds() const
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     return rounds_;
   }
 
@@ -618,7 +619,7 @@ TEST_CASE("an alert created over the RPC carries the ring plan of the shared not
                                .credential = kGuardCredential});
 
   auto request = createRequest();
-  request.set_data("{\"cameraId\":1,\"threadKey\":\"guard:panic:9\"}");
+  request.set_data(R"({"cameraId":1,"threadKey":"guard:panic:9"})");
   const auto created = sdk.createNotifications(request, identityFor(0));
   REQUIRE(created.outcome == NotificationRpcOutcome::Success);
   CHECK(created.created == 2);
@@ -648,7 +649,7 @@ TEST_CASE("a switched-off module refuses its notifications over the RPC exactly 
                                .credential = kGuardCredential});
 
   auto request = createRequest();
-  request.set_data("{\"kind\":\"camera_motion\",\"cameraId\":1,\"threadKey\":\"guard:panic:9\"}");
+  request.set_data(R"({"kind":"camera_motion","cameraId":1,"threadKey":"guard:panic:9"})");
   const auto created = sdk.createNotifications(request, identityFor(0));
   REQUIRE(created.outcome == NotificationRpcOutcome::Success);
   CHECK(created.created == 0);
@@ -664,7 +665,7 @@ TEST_CASE("a switched-off module refuses its notifications over the RPC exactly 
   batch.notification.title = "Front door: person";
   batch.notification.body = "Severity critical; detected person";
   batch.notification.data = json_util::fromString(
-      "{\"kind\":\"camera_motion\",\"cameraId\":1,\"threadKey\":\"guard:panic:9\"}");
+      R"({"kind":"camera_motion","cameraId":1,"threadKey":"guard:panic:9"})");
   batch.commandId = "cmd-direct";
   const auto directOutcome = drogon::sync_wait(direct.createManyAndEmit(batch));
   CHECK(directOutcome.createdCount == 0);

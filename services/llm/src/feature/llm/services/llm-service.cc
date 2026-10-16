@@ -28,7 +28,7 @@ std::string backendDevices()
   std::string names;
   for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
     if (!names.empty())
-      names += ",";
+      names += ',';
     names += ggml_backend_dev_name(ggml_backend_dev_get(i));
   }
   return names;
@@ -420,7 +420,7 @@ LlmService::buildChatMlPrompt(const std::vector<ChatMessage>& messages)
   for (const auto& msg : messages) {
     prompt += "<|im_start|>";
     prompt += msg.role;
-    prompt += "\n";
+    prompt += '\n';
     prompt += msg.content;
     prompt += "<|im_end|>\n";
   }
@@ -578,7 +578,7 @@ void LlmService::generateStream(const GenerateInput& input,
 
   const llama_token eosToken = llama_vocab_eos(vocab);
   const llama_token eotToken = llama_vocab_eot(vocab);
-  llama_pos pos = static_cast<llama_pos>(promptTokens.size());
+  auto pos = static_cast<llama_pos>(promptTokens.size());
 
   auto& batch = *genBatch_;
   std::string tail;

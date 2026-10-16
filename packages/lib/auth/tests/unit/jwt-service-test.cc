@@ -128,7 +128,7 @@ TEST_CASE("a verifier loads the access secret alone and can neither verify nor m
   const JwtService verifier{JwtRole::Verifier};
   CHECK(verifier.verifyAccess(issuer.generateAccess({{"sub", "2"}})).at("sub") == "2");
   CHECK(verifier.verifyRefresh(refresh).empty());
-  CHECK_THROWS(verifier.generateRefresh({{"sub", "1"}}));
+  CHECK_THROWS(static_cast<void>(verifier.generateRefresh({{"sub", "1"}})));
   CHECK_THROWS_AS(JwtService{JwtRole::Issuer}, std::runtime_error);
   armSecrets();
 }

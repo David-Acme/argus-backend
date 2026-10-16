@@ -75,7 +75,7 @@ public:
   drogon::Task<NotificationCreateOutcome> createManyAndEmit(
       const NotificationBatchInput& input) const;
 
-  bool hasDeliverySink() const
+  [[nodiscard]] bool hasDeliverySink() const
   {
     return dependencies_.deliverySink != nullptr;
   }

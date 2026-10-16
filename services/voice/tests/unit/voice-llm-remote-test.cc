@@ -18,8 +18,8 @@ namespace
 
 struct FakeTts final : IVoiceTts
 {
-  float defaultSpeed(std::stop_token = {}) const override { return 1.25F; }
-  int sampleRate(std::stop_token = {}) const override { return 22050; }
+  [[nodiscard]] float defaultSpeed(std::stop_token = {}) const override { return 1.25F; }
+  [[nodiscard]] int sampleRate(std::stop_token = {}) const override { return 22050; }
 
   void synthesizeStream(TtsRemoteStreamInput input) override
   {

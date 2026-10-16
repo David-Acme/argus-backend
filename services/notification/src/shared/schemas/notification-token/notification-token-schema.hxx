@@ -25,5 +25,5 @@ struct NotificationTokenSchema
 
   NotificationTokenSchema() = default;
   explicit NotificationTokenSchema(const drogon::orm::Row& row);
-  Json::Value toJson() const;
+  [[nodiscard]] Json::Value toJson() const;
 };

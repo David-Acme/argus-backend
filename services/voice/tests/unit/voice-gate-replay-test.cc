@@ -20,7 +20,10 @@ namespace
 constexpr int kReplayWindow = 512;
 constexpr std::size_t kReplayTailSamples = 16000;
 constexpr const char* kBackground = "background-no-turn.wav";
-const std::vector<std::string> kTurns{"turn1.wav", "turn2.wav", "turn3.wav", "turn4.wav"};
+std::vector<std::string> kTurns()
+{
+  return {"turn1.wav", "turn2.wav", "turn3.wav", "turn4.wav"};
+}
 
 std::filesystem::path recordingsDir()
 {
@@ -36,7 +39,7 @@ bool recordingsPresent()
   const auto dir = recordingsDir();
   if (!std::filesystem::exists(dir / kBackground))
     return false;
-  for (const auto& name : kTurns)
+  for (const auto& name : kTurns())
     if (!std::filesystem::exists(dir / name))
       return false;
   return true;
@@ -50,9 +53,9 @@ std::vector<float> readPcm16Mono(const std::filesystem::path& path)
   while (at + 8 <= bytes.size()) {
     const std::string id(bytes.data() + at, 4);
     const auto size = static_cast<std::size_t>(static_cast<unsigned char>(bytes[at + 4])) |
-                      (static_cast<std::size_t>(static_cast<unsigned char>(bytes[at + 5])) << 8) |
-                      (static_cast<std::size_t>(static_cast<unsigned char>(bytes[at + 6])) << 16) |
-                      (static_cast<std::size_t>(static_cast<unsigned char>(bytes[at + 7])) << 24);
+                      (static_cast<std::size_t>(static_cast<unsigned char>(bytes[at + 5])) << 8U) |
+                      (static_cast<std::size_t>(static_cast<unsigned char>(bytes[at + 6])) << 16U) |
+                      (static_cast<std::size_t>(static_cast<unsigned char>(bytes[at + 7])) << 24U);
     if (id == "data") {
       const std::size_t begin = at + 8;
       const std::size_t count = std::min(size, bytes.size() - begin) / 2;
@@ -60,12 +63,12 @@ std::vector<float> readPcm16Mono(const std::filesystem::path& path)
       for (std::size_t i = 0; i < count; ++i) {
         const auto lo = static_cast<std::uint16_t>(static_cast<unsigned char>(bytes[begin + 2 * i]));
         const auto hi = static_cast<std::uint16_t>(static_cast<unsigned char>(bytes[begin + 2 * i + 1]));
-        const auto value = static_cast<std::int16_t>(static_cast<std::uint16_t>(lo | (hi << 8)));
+        const auto value = static_cast<std::int16_t>(static_cast<std::uint16_t>(lo | (hi << 8U)));
         samples[i] = static_cast<float>(value) / 32768.0F;
       }
       return samples;
     }
-    at += 8 + size + (size & 1);
+    at += 8 + size + (size & 1U);
   }
   return {};
 }

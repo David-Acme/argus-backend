@@ -733,20 +733,20 @@ TEST_CASE("fallback retention purges only old rows")
   REQUIRE(boot.applySchema());
   CHECK(camera_notifier::resolveConfig().fallbackRetentionDays == 90);
   const CameraFallbackLogRepository repository;
-  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const auto now = static_cast<int64_t>(std::time(nullptr));
   REQUIRE(drogon::sync_wait(repository.log(
       {.cameraId = 21,
        .rule = "person_in_alert_zone",
        .severity = "critical",
        .reason = FallbackDropReason::NonHardSignal,
-       .createdAt = now - 100 * 86400})));
+       .createdAt = now - std::int64_t{100} * 86400})));
   REQUIRE(drogon::sync_wait(repository.log(
       {.cameraId = 22,
        .rule = "person_in_alert_zone",
        .severity = "critical",
        .reason = FallbackDropReason::NonHardSignal,
        .createdAt = now})));
-  CHECK(drogon::sync_wait(repository.purgeOlderThan(now - 90 * 86400)) == 1);
+  CHECK(drogon::sync_wait(repository.purgeOlderThan(now - std::int64_t{90} * 86400)) == 1);
   CHECK(countRows("SELECT COUNT(*) AS total FROM camera_fallback_event WHERE "
                   "camera_id = 21") == 0);
   CHECK(countRows("SELECT COUNT(*) AS total FROM camera_fallback_event WHERE "

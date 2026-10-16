@@ -16,6 +16,7 @@ int underrunTicksFor(size_t preRollSamples)
 {
   PlayoutBuffering buffering(preRollSamples, kPlayoutTailFlushAfter);
   std::vector<int> arrival;
+  arrival.reserve(60);
   for (int k = 0; k < 60; ++k)
     arrival.push_back(kChunkMs * k + (k % 5 == 0 ? 60 : 0));
   size_t buffered = 0;

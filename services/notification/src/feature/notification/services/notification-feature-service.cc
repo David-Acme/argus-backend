@@ -44,7 +44,7 @@ drogon::Task<int64_t> NotificationFeatureService::ackDeliveries(
 drogon::Task<Json::Value> NotificationFeatureService::deliverySummary(
     int64_t since) const
 {
-  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const auto now = static_cast<int64_t>(std::time(nullptr));
   const DeliverySummary summary = co_await notificationService_->deliverySummary(
       since > 0 ? since : now - kDefaultSummaryWindowS, NotificationConfig::resolveAckWindowS());
   Json::Value response(Json::objectValue);

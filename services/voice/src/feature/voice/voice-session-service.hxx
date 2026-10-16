@@ -38,7 +38,7 @@ class VoiceSessionSink
 public:
   virtual ~VoiceSessionSink() = default;
 
-  virtual bool connected() const = 0;
+  [[nodiscard]] virtual bool connected() const = 0;
   virtual void sendServerFrame(argus::voice::v1::ServerFrame frame) = 0;
   virtual void duckPlayout(bool) {}
   [[nodiscard]] virtual int playoutRate() const { return kSinkPcmRate; }

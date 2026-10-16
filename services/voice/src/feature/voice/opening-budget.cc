@@ -6,7 +6,7 @@ std::size_t utf8Length(const std::string& text)
 {
   std::size_t count = 0;
   for (const unsigned char byte : text)
-    if ((byte & 0xC0) != 0x80)
+    if ((static_cast<unsigned>(byte) & 0xC0U) != 0x80U)
       ++count;
   return count;
 }

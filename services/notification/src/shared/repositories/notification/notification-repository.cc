@@ -106,8 +106,8 @@ normalizeBatch(const std::vector<NotificationCreateInput>& inputs)
       throw NotificationValidationError("recipients must share one payload");
     userIds.push_back(input.userId);
   }
-  std::sort(userIds.begin(), userIds.end());
-  userIds.erase(std::unique(userIds.begin(), userIds.end()), userIds.end());
+  std::ranges::sort(userIds);
+  userIds.erase(std::ranges::unique(userIds).begin(), userIds.end());
 
   std::vector<NotificationCreateInput> normalized;
   normalized.reserve(userIds.size());
@@ -207,7 +207,7 @@ NotificationRepository::createMany(
     ids.push_back(row["id"].as<int64_t>());
   if (ids.size() != inputs.size())
     throw std::runtime_error("notification batch insert returned wrong size");
-  std::sort(ids.begin(), ids.end());
+  std::ranges::sort(ids);
   co_return schemasFromIds({.inputs = inputs,
                              .ids = ids,
                              .now = std::time(nullptr)});

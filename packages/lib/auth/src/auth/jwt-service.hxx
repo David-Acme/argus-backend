@@ -30,22 +30,22 @@ public:
   explicit JwtService(JwtRole role);
   ~JwtService() = default;
 
-  std::string generate(const JwtGenerateInput& input) const;
+  [[nodiscard]] std::string generate(const JwtGenerateInput& input) const;
 
-  std::map<std::string, std::string> verify(const JwtVerifyInput& input) const;
+  [[nodiscard]] std::map<std::string, std::string> verify(const JwtVerifyInput& input) const;
 
-  std::string
+  [[nodiscard]] std::string
   generateAccess(const std::map<std::string, std::string>& claims) const;
-  std::string
+  [[nodiscard]] std::string
   generateRefresh(const std::map<std::string, std::string>& claims) const;
-  std::map<std::string, std::string>
+  [[nodiscard]] std::map<std::string, std::string>
   verifyAccess(const std::string& token) const;
-  bool isExpired(const std::string& token) const;
-  std::map<std::string, std::string>
+  [[nodiscard]] bool isExpired(const std::string& token) const;
+  [[nodiscard]] std::map<std::string, std::string>
   verifyRefresh(const std::string& token) const;
 
-  int64_t refreshTtlSeconds() const { return refreshTtlSeconds_; }
-  int64_t accessTtlSeconds() const { return accessTtlSeconds_; }
+  [[nodiscard]] int64_t refreshTtlSeconds() const { return refreshTtlSeconds_; }
+  [[nodiscard]] int64_t accessTtlSeconds() const { return accessTtlSeconds_; }
 
   static constexpr std::string_view kTypeClaim = "typ";
   static constexpr std::string_view kAccessType = "access";

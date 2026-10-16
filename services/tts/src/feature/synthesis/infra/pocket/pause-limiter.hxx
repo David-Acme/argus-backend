@@ -4,10 +4,17 @@
 #include <span>
 #include <vector>
 
+struct PauseLimiterConfig
+{
+  int sampleRate{0};
+  int maxPauseMs{0};
+  float silenceRms{0.0F};
+};
+
 class PauseLimiter
 {
 public:
-  PauseLimiter(int sampleRate, int maxPauseMs, float silenceRms);
+  explicit PauseLimiter(PauseLimiterConfig config);
 
   [[nodiscard]] std::vector<float> process(std::span<const float> pcm);
   [[nodiscard]] std::vector<float> flush();

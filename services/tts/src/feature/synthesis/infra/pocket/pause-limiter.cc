@@ -8,10 +8,10 @@ namespace
 constexpr int kFrameMs = 10;
 }
 
-PauseLimiter::PauseLimiter(int sampleRate, int maxPauseMs, float silenceRms)
-    : frameSamples_(static_cast<std::size_t>(sampleRate) * kFrameMs / 1000),
-      maxQuietSamples_(static_cast<std::size_t>(sampleRate) * static_cast<std::size_t>(maxPauseMs) / 1000),
-      silenceRms_(silenceRms)
+PauseLimiter::PauseLimiter(PauseLimiterConfig config)
+    : frameSamples_(static_cast<std::size_t>(config.sampleRate) * kFrameMs / 1000),
+      maxQuietSamples_(static_cast<std::size_t>(config.sampleRate) * static_cast<std::size_t>(config.maxPauseMs) / 1000),
+      silenceRms_(config.silenceRms)
 {
 }
 

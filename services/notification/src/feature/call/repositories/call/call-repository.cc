@@ -168,7 +168,7 @@ drogon::Task<std::vector<int64_t>> CallRepository::closeStaleByIds(const CloseSt
   for (std::size_t index = 0; index < input.ids.size(); ++index) {
     if (index > 0)
       sql += ", ";
-    sql += "?";
+    sql += '?';
     args.push_back(std::to_string(input.ids[index]));
   }
   sql += ") RETURNING id";

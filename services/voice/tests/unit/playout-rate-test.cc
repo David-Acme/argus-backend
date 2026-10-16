@@ -5,11 +5,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <numbers>
 #include <vector>
 
 namespace
 {
-constexpr double kPi = 3.14159265358979323846;
+constexpr double kPi = std::numbers::pi;
 constexpr int kTtsRate = 24000;
 constexpr int kPlayoutRate = 48000;
 constexpr int kUplinkRate = 16000;
@@ -17,11 +18,17 @@ constexpr double kToneHz = 1000.0;
 constexpr double kAmplitude = 8000.0;
 constexpr size_t kTtsSamples = kTtsRate;
 
-std::vector<int16_t> toneAt(int rate, size_t samples)
+struct ToneSpec
 {
-  std::vector<int16_t> out(samples);
-  for (size_t i = 0; i < samples; ++i)
-    out[i] = static_cast<int16_t>(std::lround(kAmplitude * std::sin(2.0 * kPi * kToneHz * static_cast<double>(i) / rate)));
+  int rate{0};
+  size_t samples{0};
+};
+
+std::vector<int16_t> toneAt(ToneSpec spec)
+{
+  std::vector<int16_t> out(spec.samples);
+  for (size_t i = 0; i < spec.samples; ++i)
+    out[i] = static_cast<int16_t>(std::lround(kAmplitude * std::sin(2.0 * kPi * kToneHz * static_cast<double>(i) / spec.rate)));
   return out;
 }
 
@@ -48,7 +55,7 @@ double bestSnrDb(const std::vector<int16_t>& got, int rate)
 
 TEST_CASE("the TTS audio reaches the 48 kHz playout with one resample, cleaner than through the 16 kHz uplink rate")
 {
-  const auto tts = toneAt(kTtsRate, kTtsSamples);
+  const auto tts = toneAt({.rate = kTtsRate, .samples = kTtsSamples});
 
   AudioResampler single({.sourceRate = kTtsRate, .targetRate = kPlayoutRate});
   const auto playout = single.process(tts.data(), tts.size());

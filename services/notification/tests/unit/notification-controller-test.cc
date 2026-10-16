@@ -62,7 +62,7 @@ class RecordingSink final : public UserEmitSink
 public:
   drogon::Task<void> publishAudit(const UserAuditInput& input) const override
   {
-    std::lock_guard lock(mutex_);
+    std::scoped_lock lock(mutex_);
     audits.push_back({input.recordId, tableNameToString(input.tableName),
                       json_util::toString(input.before),
                       json_util::toString(input.after), input.userIds});

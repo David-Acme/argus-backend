@@ -309,7 +309,7 @@ drogon::Task<SelfTestState> NotificationService::runProbe() const
   SelfTestState state;
   const int64_t startMs = nowMillis();
   {
-    const int64_t at = static_cast<int64_t>(std::time(nullptr));
+    const auto at = static_cast<int64_t>(std::time(nullptr));
     const ProbeInsertResult inserted =
         co_await repository_.insertProbe(at, startMs);
     if (inserted.deliveryId > 0)

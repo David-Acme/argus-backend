@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 #include <vector>
 
 namespace
@@ -15,7 +16,7 @@ std::vector<float> tone(std::size_t samples)
 {
   std::vector<float> out(samples);
   for (std::size_t i = 0; i < samples; ++i)
-    out[i] = 0.2F * std::sin(2.0F * 3.14159265F * 220.0F * static_cast<float>(i) / kRate);
+    out[i] = 0.2F * std::sin(2.0F * std::numbers::pi_v<float> * 220.0F * static_cast<float>(i) / kRate);
   return out;
 }
 
@@ -28,12 +29,12 @@ TEST_CASE("a pause longer than the limit is shortened to the limit, speech is un
   const auto speech = tone(kRate / 2);
   input.insert(input.end(), speech.begin(), speech.end());
 
-  PauseLimiter limiter(kRate, 350, kSilence);
+  PauseLimiter limiter({.sampleRate = kRate, .maxPauseMs = 350, .silenceRms = kSilence});
   auto out = limiter.process(input);
   const auto tail = limiter.flush();
   out.insert(out.end(), tail.begin(), tail.end());
 
-  const std::size_t speechSamples = static_cast<std::size_t>(kRate);
+  const auto speechSamples = static_cast<std::size_t>(kRate);
   const std::size_t limitSamples = static_cast<std::size_t>(kRate) * 350 / 1000;
   CHECK(out.size() == speechSamples + limitSamples);
 }
@@ -45,7 +46,7 @@ TEST_CASE("a short natural pause passes through whole")
   const auto speech = tone(kRate / 4);
   input.insert(input.end(), speech.begin(), speech.end());
 
-  PauseLimiter limiter(kRate, 350, kSilence);
+  PauseLimiter limiter({.sampleRate = kRate, .maxPauseMs = 350, .silenceRms = kSilence});
   auto out = limiter.process(input);
   const auto tail = limiter.flush();
   out.insert(out.end(), tail.begin(), tail.end());
@@ -59,12 +60,12 @@ TEST_CASE("a stream split into many calls comes out the same as one call")
   const auto speech = tone(kRate / 3);
   input.insert(input.end(), speech.begin(), speech.end());
 
-  PauseLimiter whole(kRate, 350, kSilence);
+  PauseLimiter whole({.sampleRate = kRate, .maxPauseMs = 350, .silenceRms = kSilence});
   auto expected = whole.process(input);
   const auto expectedTail = whole.flush();
   expected.insert(expected.end(), expectedTail.begin(), expectedTail.end());
 
-  PauseLimiter split(kRate, 350, kSilence);
+  PauseLimiter split({.sampleRate = kRate, .maxPauseMs = 350, .silenceRms = kSilence});
   std::vector<float> actual;
   for (std::size_t at = 0; at < input.size(); at += 1000) {
     const std::size_t count = std::min<std::size_t>(1000, input.size() - at);

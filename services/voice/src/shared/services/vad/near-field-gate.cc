@@ -31,7 +31,7 @@ void NoiseFloor::add(float rmsDb)
 
 void NoiseFloor::reset()
 {
-  std::fill(ring_.begin(), ring_.end(), kSilentDb);
+  std::ranges::fill(ring_, kSilentDb);
   next_ = 0;
   count_ = 0;
 }

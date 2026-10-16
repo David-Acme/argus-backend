@@ -97,8 +97,8 @@ std::string randomSecret()
   std::string secret;
   secret.reserve(buffer.size() * 2);
   for (const unsigned char byte : buffer) {
-    secret.push_back(kHexDigits[byte >> 4]);
-    secret.push_back(kHexDigits[byte & 0x0f]);
+    secret.push_back(kHexDigits[static_cast<unsigned>(byte) >> 4U]);
+    secret.push_back(kHexDigits[static_cast<unsigned>(byte) & 0x0FU]);
   }
   return secret;
 }
