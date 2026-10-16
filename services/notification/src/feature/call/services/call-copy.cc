@@ -46,7 +46,7 @@ std::string reasonGreeting(const std::string& name, bool english)
 
 std::string doer(const Json::Value& data, bool english)
 {
-  const std::string actor = text(data, "actorName");
+  std::string actor = text(data, "actorName");
   if (!actor.empty())
     return actor;
   return pick({.es = "alguien de casa", .en = "someone at home"}, english);
