@@ -37,6 +37,21 @@ std::string greeting(const std::string& name, bool english)
   return (english ? "Hi " : "Hola, ") + name + ". ";
 }
 
+std::string reasonGreeting(const std::string& name, bool english)
+{
+  if (name.empty())
+    return english ? "Hi, " : "Hola, ";
+  return (english ? "Hi " : "Hola, ") + name + ", ";
+}
+
+std::string doer(const Json::Value& data, bool english)
+{
+  const std::string actor = text(data, "actorName");
+  if (!actor.empty())
+    return actor;
+  return pick({.es = "alguien de casa", .en = "someone at home"}, english);
+}
+
 std::string place(const Json::Value& data)
 {
   std::string camera = text(data, "cameraName");
@@ -156,14 +171,11 @@ CallCopy panicCopy(const CallCopyInput& input, bool english)
                (environment.empty() ? "" : " · " + environment);
   copy.summary = english ? actor + " pressed the panic button" + at + "."
                          : actor + " ha pulsado el botón de pánico" + at + ".";
-  copy.openingLine = greeting(input.userName, english) +
-                     pick({.es = "Te llamo por algo urgente. ",
-                           .en = "I am calling about something urgent. "},
+  copy.openingLine = reasonGreeting(input.userName, english) + doer(data, english) +
+                     pick({.es = " pulsó el botón de pánico",
+                           .en = " pressed the panic button"},
                           english) +
-                     copy.summary +
-                     pick({.es = " Puede necesitar ayuda ahora mismo.",
-                           .en = " They may need help right now."},
-                          english);
+                     at + ".";
   copy.missedLine = english ? "I called because " + actor +
                                   " pressed the panic button" + at + "."
                             : "Te llamé porque " + actor +
@@ -189,11 +201,14 @@ CallCopy duressCopy(const CallCopyInput& input, bool english)
                                ". They may be under threat: do not call them."
                          : actor + " ha enviado una alerta silenciosa" + at +
                                ". Puede estar bajo amenaza: no le llames.";
-  copy.openingLine = greeting(input.userName, english) +
-                     pick({.es = "Te llamo por algo muy urgente. ",
-                           .en = "I am calling about something very urgent. "},
+  copy.openingLine = reasonGreeting(input.userName, english) + doer(data, english) +
+                     pick({.es = " ha enviado una alerta silenciosa",
+                           .en = " sent a silent alert"},
                           english) +
-                     copy.summary;
+                     at +
+                     pick({.es = "; puede estar bajo amenaza, no le llames.",
+                           .en = "; they may be under threat, do not call them."},
+                          english);
   copy.missedLine = english ? "I called because " + actor +
                                   " sent a silent alert" + at + "."
                             : "Te llamé porque " + actor +
@@ -210,13 +225,11 @@ CallCopy tamperCopy(const CallCopyInput& input, bool english)
                (where.empty() ? "" : " · " + where);
   copy.summary = english ? "The camera " + where + " stopped seeing."
                          : "La cámara " + where + " ha dejado de ver.";
-  copy.openingLine = greeting(input.userName, english) +
-                     pick({.es = "Te llamo por la vigilancia. ",
-                           .en = "I am calling about the security. "},
-                          english) +
-                     copy.summary +
-                     pick({.es = " Puede estar tapada o desconectada.",
-                           .en = " It may be covered or unplugged."},
+  const std::string camera = pick({.es = "la cámara", .en = "the camera"}, english);
+  copy.openingLine = reasonGreeting(input.userName, english) +
+                     (where.empty() ? camera : camera + " " + where) +
+                     pick({.es = " ha dejado de ver; puede estar tapada o desconectada.",
+                           .en = " stopped seeing; it may be covered or unplugged."},
                           english);
   copy.missedLine = english ? "I called because the camera " + where +
                                   " stopped seeing."
@@ -397,10 +410,13 @@ CallCopy assistantCopy(const CallCopyInput& input, bool english)
                clipped(topic, 48);
   copy.summary = topic;
   copy.openingLine =
-      greeting(input.userName, english) +
-      (english ? "You asked me to call you to remind you: "
-               : "Me pediste que te llamara para recordarte: ") +
-      topic + ".";
+      topic.empty()
+          ? greeting(input.userName, english) +
+                pick({.es = "¿En qué te ayudo?", .en = "How can I help?"}, english)
+          : greeting(input.userName, english) +
+                (english ? "You asked me to call you to remind you: "
+                         : "Me pediste que te llamara para recordarte: ") +
+                topic + ".";
   copy.missedTitle =
       pick({.es = "Llamada perdida · ", .en = "Missed call · "}, english) +
       copy.title;

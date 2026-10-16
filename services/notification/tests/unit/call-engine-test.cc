@@ -1685,7 +1685,7 @@ TEST_CASE("panic and duress never reach the person who raised them")
   CHECK(incoming.front().info["reason"].asString() == "Botón de pánico · Casa");
   const auto claimed = drogon::sync_wait(harness.engine.claim(
       {.callId = call_id::format(outcomeFor(outcomes, 1).callId), .userId = 1, .sessionId = "s1"}));
-  CHECK(claimed.openingLine.find("Tom ha pulsado el botón de pánico") != std::string::npos);
+  CHECK(claimed.openingLine.find("Tom pulsó el botón de pánico") != std::string::npos);
   drogon::sync_wait(harness.engine.verdict(
       {.responseId = id, .userId = 1, .verdict = ResponseVerdict::FalseAlarm}));
   CHECK(harness.verdicts->events.front().kind == "guard_panic");

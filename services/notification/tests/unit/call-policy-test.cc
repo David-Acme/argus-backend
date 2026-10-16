@@ -560,13 +560,19 @@ TEST_CASE("panic, duress and tamper read as what they are, and contacts are offe
   const CallCopy es = call_copy::render(
       {.trigger = CallTrigger::GuardCritical, .lang = "es", .data = panic, .userName = "Laura", .now = kNow});
   CHECK(es.title == "Botón de pánico · Casa");
-  CHECK(es.openingLine.find("Tom ha pulsado el botón de pánico en Casa") != std::string::npos);
+  CHECK(es.openingLine == "Hola, Laura, Tom pulsó el botón de pánico en Casa.");
+  Json::Value anonymous = panic;
+  anonymous.removeMember("actorName");
+  const CallCopy anonymousEn = call_copy::render(
+      {.trigger = CallTrigger::GuardCritical, .lang = "en", .data = anonymous, .userName = "", .now = kNow});
+  CHECK(anonymousEn.openingLine == "Hi, someone at home pressed the panic button at Casa.");
   Json::Value duress = panic;
   duress["kind"] = "guard_duress";
   const CallCopy silent = call_copy::render(
       {.trigger = CallTrigger::GuardCritical, .lang = "en", .data = duress, .userName = "", .now = kNow});
   CHECK(silent.title == "Silent alert · Casa");
   CHECK(silent.summary.find("do not call them") != std::string::npos);
+  CHECK(silent.openingLine == "Hi, Tom sent a silent alert at Casa; they may be under threat, do not call them.");
   Json::Value tamper(Json::objectValue);
   tamper["kind"] = "guard_tamper";
   tamper["cameraName"] = "Patio";
@@ -656,4 +662,13 @@ TEST_CASE("a recognised visitor is named in the call, in the user's language")
                                         .userName = "",
                                         .now = kNow});
   CHECK(plain.openingLine.find("repartidor") == std::string::npos);
+}
+
+TEST_CASE("an assistant call without a topic opens with a short greeting and an offer")
+{
+  Json::Value data(Json::objectValue);
+  data["topic"] = "";
+  const CallCopy es = call_copy::render(
+      {.trigger = CallTrigger::Assistant, .lang = "es", .data = data, .userName = "Laura", .now = kNow});
+  CHECK(es.openingLine == "Hola, Laura. ¿En qué te ayudo?");
 }

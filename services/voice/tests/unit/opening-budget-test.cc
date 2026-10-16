@@ -76,3 +76,18 @@ TEST_CASE("the measured rate replaces the estimate for the next sentence")
   REQUIRE(result.later.size() == 1);
   CHECK(result.msPerChar == doctest::Approx(90.0));
 }
+
+TEST_CASE("a panic opener is one sentence that carries the reason, so the budget never defers it")
+{
+  const auto sentences = splitSentences("Hola, Administrador, Tom pulsó el botón de pánico en Casa.");
+  REQUIRE(sentences.size() == 1);
+  OpeningBudgetInput input{
+      .sentences = sentences,
+      .budgetMs = kOpeningBudgetMs,
+      .estimateMsPerChar = 90.0,
+      .synthesizeMs = [](const std::string& sentence) { return chargedMs(sentence); }};
+  const auto result = fitOpening(input);
+  REQUIRE(result.spoken.size() == 1);
+  CHECK(result.spoken[0].find("botón de pánico") != std::string::npos);
+  CHECK(result.later.empty());
+}
