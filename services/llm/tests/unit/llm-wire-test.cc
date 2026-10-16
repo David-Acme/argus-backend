@@ -278,6 +278,34 @@ bool waitForBoot(std::chrono::milliseconds timeout)
   return drogon::app().isRunning();
 }
 
+bool acceptsConnections(int port)
+{
+  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  if (fd < 0)
+    return false;
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(static_cast<uint16_t>(port));
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  const bool open = ::connect(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0;
+  ::close(fd);
+  return open;
+}
+
+int listeningPort(std::chrono::milliseconds timeout)
+{
+  const auto deadline = std::chrono::steady_clock::now() + timeout;
+  while (std::chrono::steady_clock::now() < deadline) {
+    for (const auto& listener : drogon::app().getListeners()) {
+      const int port = listener.toPort();
+      if (port > 0 && acceptsConnections(port))
+        return port;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return 0;
+}
+
 class AppRunner
 {
 public:
@@ -350,9 +378,7 @@ TEST_CASE("the argus-llm internal wire serves the chat capacity")
   std::optional<AppRunner> runner;
   runner.emplace();
   REQUIRE(waitForBoot(std::chrono::seconds(30)));
-  const auto listeners = drogon::app().getListeners();
-  REQUIRE_FALSE(listeners.empty());
-  const int port = listeners.front().toPort();
+  const int port = listeningPort(std::chrono::seconds(30));
   REQUIRE(port > 0);
 
   const auto health = request({.port = port,
