@@ -18,7 +18,7 @@ constexpr std::string_view kEnglish = "en";
 }
 
 NotificationModuleRequest::NotificationModuleRequest(NotificationModuleRequestInput input)
-    : identity_(std::move(input.identity)), service_(std::move(input.delivery))
+    : identity_(std::move(input.identity)), service_(std::move(input.notifications))
 {
 }
 
@@ -60,7 +60,7 @@ drogon::Task<ModuleRequestOutcome> NotificationModuleRequest::requestAsync(Modul
     data["threadKey"] = threadKey;
     data["urgency"] = std::string(kUrgency);
     data["lang"] = lang;
-    const auto created = co_await service_.createManyAndEmit(
+    const auto created = co_await service_->createManyAndEmit(
         {.userIds = {owner.user_id()},
          .notification = {.userId = 0, .type = std::string(kType), .title = text.title, .body = text.body, .data = data},
          .commandId = threadKey + ":" + std::to_string(owner.user_id())});

@@ -162,7 +162,7 @@ TEST_CASE("a module request notifies every active Owner in their language, once 
       user({.id = 3, .name = "Otto", .role = "owner", .lang = "es", .active = false}),
       user({.id = 5, .name = "Rita", .role = "resident", .lang = "es"}),
       user({.id = 6, .name = "Gus", .role = "guard", .lang = "es"})});
-  NotificationModuleRequest host({.identity = household, .delivery = {}});
+  NotificationModuleRequest host({.identity = household, .notifications = std::make_shared<const NotificationService>()});
 
   const auto first = host.request(asked("2026-10-06"));
   CHECK(first.notified == 2);
@@ -206,14 +206,14 @@ TEST_CASE("a module request without an identity roster fails instead of telling 
 {
   SharedBoot& boot = sharedBoot();
   REQUIRE(boot.applySchema());
-  NotificationModuleRequest withoutIdentity({.identity = nullptr, .delivery = {}});
+  NotificationModuleRequest withoutIdentity({.identity = nullptr, .notifications = std::make_shared<const NotificationService>()});
   CHECK_THROWS(static_cast<void>(withoutIdentity.request(asked("2026-10-08"))));
-  NotificationModuleRequest unreadable({.identity = std::make_shared<FixedHousehold>(std::nullopt), .delivery = {}});
+  NotificationModuleRequest unreadable({.identity = std::make_shared<FixedHousehold>(std::nullopt), .notifications = std::make_shared<const NotificationService>()});
   CHECK_THROWS(static_cast<void>(unreadable.request(asked("2026-10-08"))));
   NotificationModuleRequest alone(
       {.identity = std::make_shared<FixedHousehold>(std::vector<argus::identity::v1::UserIdentity>{
            user({.id = 5, .name = "Rita", .role = "resident", .lang = "es"})}),
-       .delivery = {}});
+       .notifications = std::make_shared<const NotificationService>()});
   const auto nobody = alone.request(asked("2026-10-08"));
   CHECK(nobody.notified == 0);
   CHECK_FALSE(nobody.duplicate);

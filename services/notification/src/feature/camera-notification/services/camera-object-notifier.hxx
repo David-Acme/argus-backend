@@ -17,7 +17,7 @@ class NatsBus;
 struct CameraNotifierDependencies
 {
   std::shared_ptr<IdentityClient> identityClient;
-  NotificationService::Dependencies delivery;
+  std::shared_ptr<const NotificationService> notifications;
   std::shared_ptr<TaskGate> tasks;
 };
 
@@ -47,7 +47,7 @@ private:
 
   void purgeFallbackLog(int64_t nowS);
 
-  NotificationService notificationService_;
+  std::shared_ptr<const NotificationService> notificationService_;
   std::shared_ptr<IdentityClient> identityClient_;
   std::shared_ptr<TaskGate> tasks_;
   CameraFallbackLogRepository fallbackLogRepository_;

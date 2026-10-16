@@ -2,13 +2,14 @@
 
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
+#include <memory>
 #include <shared/services/notification/notification-service.hxx>
 #include <vector>
 
 class NotificationFeatureService
 {
 public:
-  NotificationFeatureService() = default;
+  explicit NotificationFeatureService(std::shared_ptr<const NotificationService> notifications);
 
   drogon::Task<void> markAsRead(int64_t userId,
                                 const std::vector<int64_t>& ids) const;
@@ -24,5 +25,5 @@ public:
   drogon::Task<Json::Value> deliverySummary(int64_t since) const;
 
 private:
-  NotificationService notificationService_;
+  std::shared_ptr<const NotificationService> notificationService_;
 };

@@ -10,7 +10,7 @@
 struct NotificationModuleRequestInput
 {
   std::shared_ptr<IdentityClient> identity;
-  NotificationService::Dependencies delivery;
+  std::shared_ptr<const NotificationService> notifications;
 };
 
 class NotificationModuleRequest final : public ModuleRequestHost
@@ -23,5 +23,5 @@ public:
 
 private:
   std::shared_ptr<IdentityClient> identity_;
-  NotificationService service_;
+  std::shared_ptr<const NotificationService> service_;
 };

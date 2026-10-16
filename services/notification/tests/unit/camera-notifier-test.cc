@@ -225,7 +225,7 @@ std::shared_ptr<CameraObjectNotifier> makeNotifier(
   return std::make_shared<CameraObjectNotifier>(
       config,
       CameraNotifierDependencies{.identityClient = std::move(identityClient),
-                                 .delivery = {},
+                                 .notifications = std::make_shared<const NotificationService>(),
                                  .tasks = nullptr});
 }
 }

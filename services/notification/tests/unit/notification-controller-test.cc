@@ -288,7 +288,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
   RecordingSink sink;
   user_change::setNotificationSink(&sink);
 
-  NotificationController notificationController;
+  NotificationController notificationController(std::make_shared<const NotificationService>());
 
   auto readReq = [&](std::vector<int64_t> ids) {
     Json::Value json;

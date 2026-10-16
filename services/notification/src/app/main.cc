@@ -4,6 +4,7 @@
 #include <app/rpc/notification-rpc-service.hxx>
 #include <feature/call/controllers/call-preference-controller.hxx>
 #include <feature/call/controllers/call-response-controller.hxx>
+#include <feature/notification/controllers/notification-controller.hxx>
 #include <feature/call/infra/identity-call-directory.hxx>
 #include <feature/call/infra/nats-response-verdict-sink.hxx>
 #include <feature/call/infra/notification-call-sink.hxx>
@@ -300,7 +301,7 @@ int main()
     cameraNotifier = std::make_shared<CameraObjectNotifier>(
         camera_notifier::resolveConfig(),
         CameraNotifierDependencies{.identityClient = identityClient,
-                                   .delivery = deliveryDeps,
+                                   .notifications = notifications,
                                    .tasks = tasks});
     camera_notifier::subscribe(*natsBus, *cameraNotifier);
     LOG_INFO << "Camera object fallback subscribed on "
@@ -366,6 +367,7 @@ int main()
   });
   drogon::app().registerController(std::make_shared<CallPreferenceController>());
   drogon::app().registerController(std::make_shared<CallResponseController>(callEngine));
+  drogon::app().registerController(std::make_shared<NotificationController>(notifications));
   if (natsBus) {
     call_feed::subscribe({.bus = natsBus,
                           .engine = callEngine,
@@ -450,7 +452,7 @@ int main()
     callEngine->reconfigure(NotificationConfig::resolveCalls());
   });
   NotificationModuleRequest moduleRequest(
-      {.identity = identityClient, .delivery = deliveryDeps});
+      {.identity = identityClient, .notifications = notifications});
   std::unique_ptr<SettingsRpcService> settingsRpc;
   if (auto callers = NotificationConfig::resolveSettingsCallers();
       !callers.empty()) {

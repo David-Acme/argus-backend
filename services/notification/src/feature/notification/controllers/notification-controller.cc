@@ -9,6 +9,12 @@
 #include <auth/request-context.hxx>
 #include <notification/notification-errors.hxx>
 
+NotificationController::NotificationController(
+    std::shared_ptr<const NotificationService> notifications)
+    : service_(std::move(notifications))
+{
+}
+
 drogon::Task<drogon::HttpResponsePtr>
 NotificationController::markAsRead(drogon::HttpRequestPtr req)
 {

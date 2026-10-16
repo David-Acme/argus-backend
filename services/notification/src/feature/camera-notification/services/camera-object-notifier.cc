@@ -81,7 +81,7 @@ int64_t nowMs()
 CameraObjectNotifier::CameraObjectNotifier(
     CameraNotificationPolicy::Config config,
     CameraNotifierDependencies dependencies)
-    : notificationService_(std::move(dependencies.delivery)),
+    : notificationService_(std::move(dependencies.notifications)),
       identityClient_(std::move(dependencies.identityClient)),
       tasks_(std::move(dependencies.tasks)),
       policy_(config)
@@ -271,7 +271,7 @@ void CameraObjectNotifier::deliver(const DeliverInput& input)
         data["urgency"] = digest ? "passive" : "time_sensitive";
         data["lang"] = lang;
         const NotificationCreateOutcome outcome =
-            co_await notificationService_.createManyAndEmit(
+            co_await notificationService_->createManyAndEmit(
                 {.userIds = userIds,
                  .notification = {.userId = 0,
                                   .type = "camera",
