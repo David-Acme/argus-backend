@@ -1,11 +1,17 @@
 #pragma once
 
+#include <algorithm>
 #include <chrono>
 #include <cstddef>
 
 inline constexpr int kPlayoutPreRollMs = 400;
 inline constexpr int kLiveKitSourceQueueMs = 160;
 inline constexpr std::chrono::milliseconds kPlayoutTailFlushAfter{200};
+
+inline size_t tailPlayoutSamples(size_t buffered, size_t frameSamples)
+{
+  return std::min(buffered, frameSamples);
+}
 
 class PlayoutBuffering
 {

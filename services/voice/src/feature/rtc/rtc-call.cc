@@ -487,7 +487,7 @@ void RtcCall::playoutLoop()
         have = true;
       }
       else if (!flush && playout_.size() > 0 && buffering_.tailDue(now - lastChunkAt_)) {
-        const size_t tail = playout_.size();
+        const size_t tail = tailPlayoutSamples(playout_.size(), static_cast<size_t>(kFrameSamples));
         playout_.pop(samples, tail);
         std::fill(samples + tail, samples + kFrameSamples, int16_t{0});
         gain_.apply({samples, static_cast<size_t>(kFrameSamples)});

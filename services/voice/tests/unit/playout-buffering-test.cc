@@ -60,3 +60,13 @@ TEST_CASE("the pre-roll absorbs the stalls of a stream that runs at real time")
   CHECK(underrunTicksFor(0) > 0);
   CHECK(underrunTicksFor(kPreRollSamples) == 0);
 }
+
+TEST_CASE("a tail flush takes at most one frame, so a burst held below the pre-roll never overruns the frame buffer")
+{
+  constexpr size_t kFrame = 480;
+  CHECK(tailPlayoutSamples(14400, kFrame) == kFrame);
+  CHECK(tailPlayoutSamples(19200, kFrame) == kFrame);
+  CHECK(tailPlayoutSamples(kFrame, kFrame) == kFrame);
+  CHECK(tailPlayoutSamples(100, kFrame) == 100);
+  CHECK(tailPlayoutSamples(0, kFrame) == 0);
+}
