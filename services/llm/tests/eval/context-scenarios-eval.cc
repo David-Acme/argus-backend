@@ -83,6 +83,7 @@ struct Options
   std::string route;
   float temperature{0.3F};
   uint32_t seed{42};
+  bool argsGiven{false};
   int limit{0};
   bool verbose{false};
   bool force{false};
@@ -139,10 +140,14 @@ Options parseOptions(int argc, char** argv)
       options.locales.emplace_back(argv[++i]);
     else if (arg == "--route" && hasValue)
       options.route = argv[++i];
-    else if (arg == "--temperature" && hasValue)
+    else if (arg == "--temperature" && hasValue) {
       options.temperature = std::strtof(argv[++i], nullptr);
-    else if (arg == "--seed" && hasValue)
+      options.argsGiven = true;
+    }
+    else if (arg == "--seed" && hasValue) {
       options.seed = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
+      options.argsGiven = true;
+    }
     else if (arg == "--limit" && hasValue)
       options.limit = static_cast<int>(std::strtol(argv[++i], nullptr, 10));
     else if (arg == "--verbose")
@@ -951,14 +956,15 @@ int main(int argc, char** argv)
     std::cout << "[ERROR] " << gates.error << "\n";
     return 1;
   }
-  if (gates.pinned && !pinnedFor(gates, options)) {
+  if (gates.argsPinned && (!options.argsGiven || !pinnedFor(gates, options))) {
     std::cout << std::format("[SKIPPED] gates pinned for different args: {} pinned at --temperature {} --seed {}, "
-                             "this run --temperature {} --seed {}\n",
+                             "this run {}",
                              options.gates,
                              gates.temperature,
                              gates.seed,
-                             options.temperature,
-                             options.seed);
+                             options.argsGiven
+                                 ? std::format("--temperature {} --seed {}\n", options.temperature, options.seed)
+                                 : std::string("gave neither --temperature nor --seed; ask for the pinned cell\n"));
     return kSkipped;
   }
   if (!std::filesystem::exists(options.llmModel)) {
