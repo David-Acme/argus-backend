@@ -8,6 +8,7 @@
 #include <drogon/drogon.h>
 #include <feature/recording/infra/disk-space.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
+#include <shared/services/privacy-state/privacy-state.hxx>
 #include <shared/schemas/camera/camera-schema.hxx>
 #include <shared/services/stream/ws-frame.hxx>
 #include <sync/camera-change-sink.hxx>
@@ -299,12 +300,18 @@ drogon::Task<void> ClipRecorder::reconcile()
       std::scoped_lock lock(slot->mtx);
       slot->mode = camera.recordMode;
     }
+    const bool masked = PrivacyStateService::instance().masked(camera.id);
     const bool wanted = config_.enabled && surveillance &&
-                        !paused_.load(std::memory_order_acquire) &&
+                        !paused_.load(std::memory_order_acquire) && !masked &&
                         camera.recordMode != CameraRecordMode::Off;
     if (!wanted) {
       if (slot->subId.load(std::memory_order_acquire) != 0)
+      {
         detach(slot);
+        if (masked)
+          LOG_INFO << "Camera recording: camera " << camera.id
+                   << " is lens-masked; its recording is paused";
+      }
       continue;
     }
     if (slot->subId.load(std::memory_order_acquire) == 0) {
@@ -540,6 +547,8 @@ void ClipRecorder::watchdogTick()
       std::scoped_lock lock(slot->mtx);
       if (slot->subId.load(std::memory_order_acquire) == 0 ||
           slot->mode == CameraRecordMode::Off)
+        continue;
+      if (PrivacyStateService::instance().masked(slot->cameraId))
         continue;
       const auto verdict = record_watchdog::verdict(
           {.lastFragmentMs = slot->lastFragmentMs,

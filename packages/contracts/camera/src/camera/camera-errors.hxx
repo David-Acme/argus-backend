@@ -45,6 +45,14 @@ inline constexpr ErrorDefinition CameraUnreachable{
     .code = ErrorCode::CameraUnreachable,
     .status = 502,
     .message = "The camera refused the command"};
+inline constexpr ErrorDefinition CameraPrivacyUnsupported{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "This camera model does not support the privacy lens mask"};
+inline constexpr ErrorDefinition CameraPrivacyOn{
+    .code = ErrorCode::Conflict,
+    .status = 409,
+    .message = "This camera is in privacy mode"};
 inline constexpr ErrorDefinition CameraControlLocked{
     .code = ErrorCode::CameraControlLocked,
     .status = 503,

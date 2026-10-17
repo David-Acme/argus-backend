@@ -184,6 +184,12 @@ CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
     sql += UPDATE_COL_IS_ONLINE;
     args.push_back(*input.isOnline ? "1" : "0");
   }
+  if (input.privacyState) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_PRIVACY_STATE;
+    args.push_back(cameraPrivacyStateToString(*input.privacyState));
+  }
 
   if (input.resetTapoTrust && !args.empty()) {
     sql += ", ";
@@ -318,6 +324,20 @@ bool CameraRepository::acceptTapoTrust()
     client->execSqlSync(std::string(ADD_CONTROL_CREDENTIAL_KEY));
   if (!credential || !credentialKey)
     LOG_INFO << "Camera schema: camera rows remember the credential that controls them";
+  return true;
+}
+
+bool CameraRepository::acceptPrivacyState()
+{
+  const auto client = DbService::cameraClient();
+  bool present = false;
+  for (const auto& row : client->execSqlSync(std::string(TABLE_COLUMNS)))
+    present = present || row["name"].as<std::string>() == "privacy_state";
+  if (present)
+    return true;
+  client->execSqlSync(std::string(ADD_PRIVACY_STATE));
+  LOG_INFO << "Camera schema: camera rows carry the lens mask state "
+              "(on, off, unknown)";
   return true;
 }
 

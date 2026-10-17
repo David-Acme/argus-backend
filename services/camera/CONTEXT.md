@@ -386,7 +386,8 @@ the sync RPC service is its only reader), so `argus_camera-sync` carries
   `moved`, so real tampering is still reported once, and a re-aimed camera is
   not reported for ever. Aiming through Argus (a move, a preset goto, a
   day/night change, privacy off, a new address) re-baselines at once through
-  `CameraSceneLog`, and a camera Argus put in privacy mode is not sampled.
+  `CameraSceneLog`, and a camera whose lens mask is on (however it was set)
+  is not sampled.
   What Argus did not do (the vendor app, auto-tracking) waits out the window.
 - **The aimed re-baseline is a window, not one frame.** A sample taken while
   the camera is still moving can pass the sane test (motion blur does not
@@ -941,7 +942,7 @@ marks a camera online, two consecutive misses offline, so a single slow grab
 does not flicker the badge. The flip is a normal camera update: the row and its
 before/after audit go through the change outbox in one transaction, so the app
 receives it as an ordinary audit `Log`. Nothing is written while the state
-holds, and a camera Argus put in privacy mode is not sampled, so it keeps its
+holds, and a camera whose lens mask is on is not sampled, so it keeps its
 last state.
 
 The monitor no longer sleeps a whole interval after each round: it rescans the
@@ -2430,3 +2431,50 @@ fixture masks `freeGb`/`freeBytes` as volatile: they are the answering host's nu
 and the recorder on one camera. `record-mode-migration-test` covers the rebuild that widens the
 old `record_mode` CHECK on an existing database: the rewrite, the idempotent no-op (no backup),
 and the row-preserving apply with its backup.
+
+## Privacy mode (the lens mask, 2026-10-17, PM)
+
+The Tapo lens mask is the owner's promise that the camera neither streams nor
+records. Argus now keeps that promise from the camera's own state, whatever
+set it (the Tapo app, an automation, a Home/Away preset, the physical button):
+TP-Link sends no push event, `getLensMaskConfig` (read by the Tapo driver
+inside its one `getStatus` batch as `privacyEnabled`) is the only way to read
+it, and firmware around 1.5.x can refuse the local API entirely.
+
+**One truth.** `camera.privacy_state` is `on`, `off` or `unknown` (a fresh
+column; `CameraRepository::acceptPrivacyState` adds it to an older database),
+`CameraPrivacyState` in `packages/contracts/camera` is its vocabulary, and
+`PrivacyStateService` (`src/shared/services/privacy-state/`) is its only
+writer. The boot seeds `CameraSceneLog` from the column before the first
+sample; the health monitor refreshes it on every tick for the cameras whose
+capabilities claim `privacy` (one driver read, backed off ten minutes after an
+error) and `GET /camera/{id}/status` refreshes it from the same call; the
+settings route reads it back after a toggle. A transition persists the row,
+publishes a camera audit Log, announces `Status` and `Overview`, and — turning
+on — clears `SnapshotStore` and the hub's cached fragments so no pre-mask
+frame can be replayed. **An unreadable state is `unknown`, never `off`**: a
+camera whose privacy cannot be read is treated exactly as before this change.
+
+**What privacy on means.** The recorder detaches that camera and logs once
+(`its recording is paused`): the watchdog neither warns nor re-subscribes
+while masked, and the operator runs no loop for it. The health monitor takes
+no sample, so a masked camera is never `covered`, `dark` or `tampered`, and
+the presence never marks it offline — the device is reachable and simply
+not seeing. Live view answers `{"type":"camera:privacy"}` instead of an error
+or a black picture. Listen is refused at the actions RPC; the siren and
+announcements stay allowed (outbound and safety-related) and the camera's own
+refusal is reported. PTZ and presets answer `CAMERA_PRIVACY_ON` (409) while
+masked. `PATCH /camera/{id}/settings` refuses a model that does not claim
+privacy with `CAMERA_PRIVACY_UNSUPPORTED` (422) — a doorbell no longer gets
+`setLensMaskConfig` — and an unknown model claims it only after a successful
+`getLensMaskConfig` probe. Turning the mask off re-attaches the camera and
+re-baselines the scene at once.
+
+**Measured, synthetic.** A masked Tapo has been reported both ways: a DESCRIBE
+404 and a reconnect storm (Frigate #9096, firmware 1.5.x), or an alive stream
+of black frames with a "Privacy Mode is On" overlay (newer firmware, and what
+third-party streamers copy). Measured on the synthetic camera: the alive case
+reads `covered` by the old health monitor and records ~0.23 GB/day of black
+(pre-fix), the dropped case reads `unreachable`, marks the camera offline and
+loops the recorder's re-subscribe. Both are moot once the truth is known: the
+camera is skipped from the persisted state, never from the frame's content.

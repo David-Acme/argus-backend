@@ -61,6 +61,7 @@
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <feature/camera/services/camera-feature-service.hxx>
 #include <feature/camera/services/record-mode-migration.hxx>
+#include <shared/services/privacy-state/privacy-state.hxx>
 #include <shared/services/privacy/camera-audio-policy.hxx>
 #include <shared/services/secret-box/secret-box.hxx>
 #include <shared/services/stream/stream-hub.hxx>
@@ -118,6 +119,9 @@ drogon::Task<void> applyInitialSources()
     auto cameras = co_await repository.findEnabled();
     if (cameras.empty())
       co_return;
+    co_await BlockingTask<void>([cameras] {
+      PrivacyStateService::instance().seed(cameras);
+    });
     co_await BlockingTask<void>([cameras = std::move(cameras)] {
       cameraSourceRegistrar().applyAll(cameras);
     });
@@ -484,6 +488,7 @@ int main()
 
     ZoneRepository::acceptPrivacyZones();
     CameraRepository::acceptTapoTrust();
+    CameraRepository::acceptPrivacyState();
     if (const int64_t unreadable = CameraRepository::unreadableSecrets(); unreadable > 0) {
       if (keyCreated)
         ::unlink(cameraDb.secretKeyPath.c_str());

@@ -4,7 +4,10 @@
 #include <opencv2/imgproc.hpp>
 #include <shared/services/stream/camera-live-board.hxx>
 #include <shared/services/stream/frame-source.hxx>
+#include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
+#include <shared/services/privacy-state/privacy-state.hxx>
+#include <runtime/blocking-task.hxx>
 #include <sqlite/db-service.hxx>
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
@@ -24,6 +27,7 @@ namespace
 constexpr int kSampleWidth = 160;
 constexpr int64_t kRescanMs = 5000;
 constexpr int kSampleHeight = 90;
+constexpr int64_t kPrivacyBackoffMs = 600000;
 constexpr int64_t kFrameMaxAgeMs = 1000;
 
 constexpr double kInvertedSpread = 1.5957691216057308;
@@ -166,9 +170,13 @@ CameraHealthMonitor::loadCameras()
   std::vector<CameraRef> cameras;
   try {
     const auto rows = DbService::client()->execSqlSync(
-        "SELECT id, name FROM camera WHERE deleted_at IS NULL AND is_enabled = 1");
+        "SELECT * FROM camera WHERE deleted_at IS NULL AND is_enabled = 1");
     for (const auto& row : rows)
-      cameras.push_back({row["id"].as<int64_t>(), row["name"].as<std::string>()});
+    {
+      CameraSchema camera(row);
+      cameras.push_back(
+          {.id = camera.id, .name = camera.name, .camera = std::move(camera)});
+    }
   }
   catch (const std::exception& e) {
     LOG_WARN << "Camera health: camera discovery failed (" << e.what() << ")";
@@ -296,9 +304,42 @@ drogon::Task<void> CameraHealthMonitor::run()
   co_return;
 }
 
+drogon::Task<bool> CameraHealthMonitor::refreshPrivacy(const CameraRef& camera)
+{
+  if (!PrivacyStateService::privacyCapable(camera.camera))
+    co_return true;
+  int64_t backoffUntil = 0;
+  {
+    std::scoped_lock lock(stateMutex_);
+    backoffUntil = states_[camera.id].privacyBackoffUntilMs;
+  }
+  if (nowMs() < backoffUntil)
+    co_return true;
+  DriverResult result;
+  co_await BlockingTask<void>([&camera, &result]() {
+    const auto driver =
+        CameraDriverRegistry::instance().driverFor(camera.camera);
+    result = driver ? driver->status() : DriverResult{};
+  });
+  if (!result.ok)
+  {
+    std::scoped_lock lock(stateMutex_);
+    states_[camera.id].privacyBackoffUntilMs = nowMs() + kPrivacyBackoffMs;
+    co_return true;
+  }
+  {
+    std::scoped_lock lock(stateMutex_);
+    states_[camera.id].privacyBackoffUntilMs = 0;
+  }
+  co_await PrivacyStateService::instance().refresh(
+      {.camera = camera.camera, .driverStatus = result.data, .readable = true});
+  co_return true;
+}
+
 drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
 {
-  if (CameraSceneLog::instance().sceneOf(camera.id).privacy)
+  co_await refreshPrivacy(camera);
+  if (PrivacyStateService::instance().masked(camera.id))
     co_return;
   auto frame = co_await dependencies_.source->grab(
       {.cameraId = camera.id, .cameraName = camera.name, .maxAgeMs = kFrameMaxAgeMs});

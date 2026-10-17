@@ -77,6 +77,7 @@ public:
   void init();
   void shutdown();
   void refreshViewerLimits();
+  void dropCachedFrames(int64_t cameraId);
   void restartUpstreams();
   [[nodiscard]] ViewerLimits viewerLimits();
 

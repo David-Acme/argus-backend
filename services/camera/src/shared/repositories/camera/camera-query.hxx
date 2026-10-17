@@ -1,5 +1,6 @@
 #pragma once
 #include <camera/camera-driver.hxx>
+#include <camera/camera-privacy-state.hxx>
 #include <camera/camera-record-mode.hxx>
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
@@ -90,6 +91,11 @@ inline constexpr std::string_view FIND_DELETED_BOUNDARY =
     "AND id <= ? ORDER BY id ASC LIMIT 200";
 inline constexpr std::string_view TABLE_COLUMNS =
     "SELECT name FROM pragma_table_info('camera')";
+inline constexpr std::string_view ADD_PRIVACY_STATE =
+    "ALTER TABLE camera ADD COLUMN privacy_state TEXT NOT NULL "
+    "DEFAULT 'unknown'";
+inline constexpr std::string_view UPDATE_COL_PRIVACY_STATE =
+    "privacy_state = ?";
 inline constexpr std::string_view ADD_TLS_FINGERPRINT =
     "ALTER TABLE camera ADD COLUMN tls_fingerprint TEXT NOT NULL DEFAULT ''";
 inline constexpr std::string_view ADD_TAPO_SECURE =
@@ -174,6 +180,7 @@ struct CameraUpdateInput
   std::optional<std::string> config;
   std::optional<bool> isEnabled;
   std::optional<bool> isOnline;
+  std::optional<CameraPrivacyState> privacyState;
   bool resetTapoTrust{false};
   drogon::orm::DbClient* client{nullptr};
 };

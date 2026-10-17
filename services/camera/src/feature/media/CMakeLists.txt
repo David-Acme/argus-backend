@@ -8,6 +8,7 @@ argus_module(NAME camera-media
     INCLUDES
         ../..
     DEPENDS
+        argus::camera-privacy-state
         argus::camera-repositories
         argus::camera-stream
         argus::camera-talk

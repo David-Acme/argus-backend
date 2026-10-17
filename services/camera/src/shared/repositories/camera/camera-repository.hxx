@@ -26,6 +26,7 @@ public:
   drogon::Task<bool> remove(int64_t id, drogon::orm::DbClient* client) const;
 
   static bool acceptTapoTrust();
+  static bool acceptPrivacyState();
   static int64_t sealPlaintextSecrets();
   static int64_t unreadableSecrets();
   static void saveTapoTrust(const CameraTapoTrustInput& input);

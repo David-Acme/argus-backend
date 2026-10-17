@@ -251,6 +251,20 @@ void StreamHub::init()
            << " viewers/total=" << limits.total << ")";
 }
 
+void StreamHub::dropCachedFrames(int64_t cameraId)
+{
+  std::scoped_lock hubLock(hubMutex_);
+  for (auto& [name, up] : upstreams_)
+  {
+    if (up->cameraId != cameraId)
+      continue;
+    std::scoped_lock upLock(up->mtx);
+    up->gop.clear();
+    up->hasInit = false;
+    up->init.clear();
+  }
+}
+
 void StreamHub::refreshViewerLimits()
 {
   const auto configured = [](const std::string& key, int fallback) {

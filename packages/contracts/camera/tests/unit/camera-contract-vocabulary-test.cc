@@ -3,6 +3,7 @@
 
 #include <camera/camera-driver.hxx>
 #include <camera/camera-clip-trigger.hxx>
+#include <camera/camera-privacy-state.hxx>
 #include <camera/camera-record-mode.hxx>
 #include <camera/camera-row-projection.hxx>
 #include <camera/event-severity.hxx>
@@ -35,6 +36,23 @@ static void checkRoundTrip(const CheckRoundTripInput<Enum>& input)
         CHECK(toString(values[i]) == names[i]);
         CHECK(fromString(names[i]) == values[i]);
     }
+}
+
+TEST_CASE("the privacy state round-trips and refuses what it does not know")
+{
+  CHECK(cameraPrivacyStateToString(CameraPrivacyState::On) == "on");
+  CHECK(cameraPrivacyStateToString(CameraPrivacyState::Off) == "off");
+  CHECK(cameraPrivacyStateToString(CameraPrivacyState::Unknown) == "unknown");
+  for (int value = 0; value <= static_cast<int>(CameraPrivacyState::Off); ++value)
+  {
+    const auto state = static_cast<CameraPrivacyState>(value);
+    CHECK(cameraPrivacyStateFromString(cameraPrivacyStateToString(state)) == state);
+  }
+  CHECK(cameraPrivacyStateFromString("masked") == std::nullopt);
+  CHECK(cameraPrivacyStateFromString("") == std::nullopt);
+  CHECK(cameraPrivacyMasked(CameraPrivacyState::On));
+  CHECK_FALSE(cameraPrivacyMasked(CameraPrivacyState::Off));
+  CHECK_FALSE(cameraPrivacyMasked(CameraPrivacyState::Unknown));
 }
 
 TEST_CASE("event severity strings round-trip")

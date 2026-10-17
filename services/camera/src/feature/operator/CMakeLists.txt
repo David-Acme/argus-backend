@@ -18,6 +18,7 @@ argus_module(NAME camera-operator
         argus::camera-motion
         argus::camera-objects
         argus::camera-privacy
+        argus::camera-privacy-state
         argus::camera-recording
         argus::camera-repositories
         argus::camera-stream

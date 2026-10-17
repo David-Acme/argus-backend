@@ -1,6 +1,7 @@
 #include <feature/operator/camera-operator-service.hxx>
 #include <shared/services/camera-motion/camera-motion-board.hxx>
 #include <shared/services/privacy/privacy-mask.hxx>
+#include <shared/services/privacy-state/privacy-state.hxx>
 #include <drogon/HttpAppFramework.h>
 #include <drogon/utils/coroutine.h>
 
@@ -186,7 +187,12 @@ void CameraOperatorService::rescan()
         "SELECT id, name FROM camera "
         "WHERE deleted_at IS NULL AND is_enabled = 1");
     for (const auto& row : rows)
-      cameras.push_back({row["id"].as<int64_t>(), row["name"].as<std::string>()});
+    {
+      const int64_t id = row["id"].as<int64_t>();
+      if (PrivacyStateService::instance().masked(id))
+        continue;
+      cameras.push_back({id, row["name"].as<std::string>()});
+    }
   }
   catch (const std::exception& e) {
     LOG_WARN << "Camera operator: camera discovery failed ("

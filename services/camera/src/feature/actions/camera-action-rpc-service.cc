@@ -9,6 +9,7 @@
 #include <drogon/drogon.h>
 #include <feature/actions/audio-capture.hxx>
 #include <shared/services/privacy/camera-audio-policy.hxx>
+#include <shared/services/privacy-state/privacy-state.hxx>
 #include <feature/camera-control/dtos/camera-talk-dto.hxx>
 #include <feature/camera-control/services/camera-control-feature-service.hxx>
 #include <optional>
@@ -809,6 +810,13 @@ CameraActionRpcService::Listen(grpc::CallbackServerContext* context,
     reactor->Finish(grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
                                  "camera audio is off by the household's "
                                  "privacy choices"));
+    return reactor;
+  }
+  if (PrivacyStateService::instance().masked(request->camera_id())) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::FAILED_PRECONDITION,
+                                 "the camera is in privacy mode; Argus does "
+                                 "not listen"));
     return reactor;
   }
 

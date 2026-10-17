@@ -2,12 +2,17 @@
 
 #include <drogon/utils/Utilities.h>
 #include <runtime/blocking-task.hxx>
+#include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
+#include <shared/services/privacy-state/privacy-state.hxx>
 #include <sync/camera-change-sink.hxx>
 #include <shared/services/camera-driver/stream-only-driver.hxx>
 #include <shared/services/privacy/privacy-mask.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 
+#include <text/json-util.hxx>
+
+#include <algorithm>
 #include <chrono>
 #include <utility>
 
@@ -58,8 +63,17 @@ drogon::Task<CameraControlResult> CameraControlFeatureService::onDevice(
 drogon::Task<CameraControlResult>
 CameraControlFeatureService::status(int64_t cameraId) const
 {
-  co_return co_await onDevice(cameraId,
-                              [](ICameraDriver& driver) { return driver.status(); });
+  auto result = co_await onDevice(
+      cameraId, [](ICameraDriver& driver) { return driver.status(); });
+  if (succeeded(result))
+  {
+    CameraRepository repository;
+    const auto camera = co_await repository.findById(cameraId);
+    if (camera)
+      co_await PrivacyStateService::instance().refresh(
+          {.camera = *camera, .driverStatus = result->data, .readable = true});
+  }
+  co_return result;
 }
 
 drogon::Task<CameraControlResult>
@@ -80,6 +94,12 @@ CameraControlFeatureService::presets(int64_t cameraId) const
 drogon::Task<CameraControlResult>
 CameraControlFeatureService::move(int64_t cameraId, const CameraPtzDto& body) const
 {
+  if (PrivacyStateService::instance().masked(cameraId))
+    co_return DriverResult{.ok = false,
+                            .error = "This camera is in privacy mode",
+                            .data = Json::Value(),
+                            .attempted = true,
+                            .failure = "privacy_on"};
   auto result = co_await onDevice(cameraId, [body](ICameraDriver& driver) {
     return driver.move({.x = body.x, .y = body.y, .angle = body.angle, .stop = body.stop});
   });
@@ -103,6 +123,12 @@ CameraControlFeatureService::announceStatus(int64_t cameraId) const
 drogon::Task<CameraControlResult>
 CameraControlFeatureService::preset(int64_t cameraId, const CameraPresetDto& body) const
 {
+  if (PrivacyStateService::instance().masked(cameraId))
+    co_return DriverResult{.ok = false,
+                            .error = "This camera is in privacy mode",
+                            .data = Json::Value(),
+                            .attempted = true,
+                            .failure = "privacy_on"};
   auto result = co_await onDevice(cameraId, [body](ICameraDriver& driver) {
     return driver.preset({.action = body.action, .id = body.id, .name = body.name});
   });
@@ -113,9 +139,43 @@ CameraControlFeatureService::preset(int64_t cameraId, const CameraPresetDto& bod
   co_return result;
 }
 
+namespace
+{
+bool privacyClaimed(const std::string& capabilities)
+{
+  const Json::Value list = json_util::fromString(capabilities);
+  if (!list.isArray())
+    return false;
+  return std::ranges::any_of(list, [](const Json::Value& name) {
+    return name.isString() && name.asString() == "privacy";
+  });
+}
+}
+
 drogon::Task<CameraControlResult>
 CameraControlFeatureService::settings(int64_t cameraId, const CameraSettingsDto& body) const
 {
+  if (body.privacy)
+  {
+    CameraRepository repository;
+    const auto camera = co_await repository.findById(cameraId);
+    if (!camera)
+      co_return DriverResult::failed("Camera not found");
+    if (!privacyClaimed(camera->capabilities))
+    {
+      const auto probe = co_await onDevice(
+          cameraId, [](ICameraDriver& driver) { return driver.status(); });
+      const bool claims =
+          succeeded(probe) && probe->data["privacyEnabled"].isBool();
+      if (!claims)
+        co_return DriverResult{.ok = false,
+                                .error = "This camera model does not support "
+                                         "the privacy lens mask",
+                                .data = Json::Value(),
+                                .attempted = true,
+                                .failure = "privacy_unsupported"};
+    }
+  }
   auto result = co_await onDevice(cameraId, [body](ICameraDriver& driver) {
     return driver.settings({.privacy = body.privacy,
                             .led = body.led,
@@ -129,9 +189,20 @@ CameraControlFeatureService::settings(int64_t cameraId, const CameraSettingsDto&
   });
   if (!succeeded(result))
     co_return result;
-  auto& scenes = CameraSceneLog::instance();
   if (body.privacy)
-    scenes.notePrivacy(cameraId, *body.privacy);
+  {
+    const auto readBack = co_await onDevice(
+        cameraId, [](ICameraDriver& driver) { return driver.status(); });
+    if (succeeded(readBack))
+    {
+      CameraRepository repository;
+      const auto camera = co_await repository.findById(cameraId);
+      if (camera)
+        co_await PrivacyStateService::instance().refresh(
+            {.camera = *camera, .driverStatus = readBack->data, .readable = true});
+    }
+  }
+  auto& scenes = CameraSceneLog::instance();
   if ((body.privacy && !*body.privacy) || body.dayNight)
     scenes.noteAimed(cameraId, nowMs());
   co_await announceStatus(cameraId);

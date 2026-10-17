@@ -15,6 +15,10 @@ drogon::HttpResponsePtr respond(const CameraControlResult& result)
       throw ResponseException(CameraErrors::CameraControlLocked.withMessage(
           "The camera locked its control login; Argus tries again in " +
           std::to_string(result->retryAfterSeconds) + " s"));
+    if (result->failure == "privacy_unsupported")
+      throw ResponseException(CameraErrors::CameraPrivacyUnsupported);
+    if (result->failure == "privacy_on")
+      throw ResponseException(CameraErrors::CameraPrivacyOn);
     if (result->failure == "credential_refused")
       throw ResponseException(result->error.empty()
                                   ? CameraErrors::CameraControlRefused

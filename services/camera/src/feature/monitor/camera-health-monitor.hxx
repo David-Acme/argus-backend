@@ -13,6 +13,7 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/monitor/camera-presence.hxx>
 #include <feature/monitor/health-event.hxx>
+#include <shared/schemas/camera/camera-schema.hxx>
 #include <shared/utils/in-flight/in-flight.hxx>
 
 class IFrameSource;
@@ -32,6 +33,7 @@ public:
   {
     int64_t id{0};
     std::string name;
+    CameraSchema camera;
   };
 
   CameraHealthMonitor(Dependencies dependencies, CameraHealthConfig config);
@@ -61,6 +63,7 @@ private:
     int64_t sampledAtMs{0};
     bool sampled{false};
     int misses{0};
+    int64_t privacyBackoffUntilMs{0};
   };
 
   struct TickInput
@@ -75,6 +78,7 @@ private:
   drogon::Task<void> run();
 
   std::vector<CameraRef> loadCameras();
+  drogon::Task<bool> refreshPrivacy(const CameraRef& camera);
   [[nodiscard]] bool dueForSample(int64_t cameraId);
 
   HealthMetrics measure(const TickInput& input, CameraState& state) const;

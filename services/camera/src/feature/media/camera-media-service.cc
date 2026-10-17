@@ -3,6 +3,7 @@
 #include <camera/camera-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <auth/jwt-filter.hxx>
+#include <shared/services/privacy-state/privacy-state.hxx>
 #include <auth/role-access.hxx>
 #include <config/config-service.hxx>
 
@@ -71,6 +72,16 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
       throw ResponseException(404, CameraErrors::CameraNotFound);
     if (!camera->isEnabled)
       throw ResponseException(CameraErrors::CameraDisabled);
+    if (PrivacyStateService::instance().masked(cameraId))
+    {
+      Json::Value masked;
+      masked["type"] = "camera:privacy";
+      masked["payload"]["cameraId"] = static_cast<Json::Int64>(cameraId);
+      masked["payload"]["state"] = cameraPrivacyStateToString(
+          CameraPrivacyState::On);
+      conn->sendJson(masked);
+      co_return true;
+    }
     if (conn->disconnected())
       co_return true;
 

@@ -21,6 +21,7 @@ argus_module(NAME camera-recording
     DEPENDS
         argus::camera-config
         argus::camera-motion
+        argus::camera-privacy-state
         argus::camera-repositories
         argus::camera-stream
         argus::contracts::auth

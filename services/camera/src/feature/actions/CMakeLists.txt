@@ -10,6 +10,7 @@ argus_module(NAME camera-actions
         argus::camera-control
         argus::camera-driver
         argus::camera-privacy
+        argus::camera-privacy-state
         argus::camera-repositories
         argus::camera-stream
         argus::clients::camera-actions

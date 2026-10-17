@@ -145,6 +145,7 @@ add_subdirectory(src/shared/services/tapo)
 add_subdirectory(src/shared/services/onvif)
 add_subdirectory(src/shared/services/camera-driver)
 add_subdirectory(src/shared/services/privacy)
+add_subdirectory(src/shared/services/privacy-state)
 add_subdirectory(src/shared/services/stream)
 add_subdirectory(src/shared/services/event-stream)
 add_subdirectory(src/shared/services/camera-motion)
@@ -211,6 +212,7 @@ set(CAMERA_UNIT_TESTS
     camera-media-session-test
     camera-change-transaction-test
     camera-clip-recorder-test
+    camera-privacy-state-test
     camera-privacy-test
     camera-webrtc-test
 )
@@ -305,6 +307,11 @@ target_link_libraries(camera-media-session-test PRIVATE
 target_link_libraries(camera-change-transaction-test PRIVATE
     argus::camera-change-sink
     argus::camera-feature)
+
+target_link_libraries(camera-privacy-state-test PRIVATE
+    argus::camera-driver
+    argus::camera-privacy-state
+    argus::contracts::sync)
 
 target_link_libraries(camera-clip-recorder-test PRIVATE
     argus::camera-recording

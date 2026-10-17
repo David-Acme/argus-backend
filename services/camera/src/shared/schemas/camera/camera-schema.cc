@@ -1,5 +1,7 @@
 #include "camera-schema.hxx"
 
+#include <camera/camera-privacy-state.hxx>
+
 #include <shared/services/secret-box/secret-box.hxx>
 
 CameraSchema::CameraSchema(const drogon::orm::Row& row)
@@ -27,6 +29,9 @@ CameraSchema::CameraSchema(const drogon::orm::Row& row)
   config = row["config"].as<std::string>();
   isEnabled = row["is_enabled"].as<int>() != 0;
   isOnline = row["is_online"].as<int>() != 0;
+  privacyState =
+      cameraPrivacyStateFromString(row["privacy_state"].as<std::string>())
+          .value_or(CameraPrivacyState::Unknown);
   tlsFingerprint = row["tls_fingerprint"].as<std::string>();
   tapoSecure = row["tapo_secure"].as<int>() != 0;
   controlCredential = row["control_credential"].as<std::string>();
@@ -58,6 +63,7 @@ Json::Value CameraSchema::toJson() const
   json["config"] = config;
   json["isEnabled"] = isEnabled;
   json["isOnline"] = isOnline;
+  json["privacyState"] = cameraPrivacyStateToString(privacyState);
   json["createdAt"] = Json::Int64(createdAt);
   json["updatedAt"] = updatedAt ? Json::Value(Json::Int64(*updatedAt)) : Json::Value();
   json["deletedAt"] = deletedAt ? Json::Value(Json::Int64(*deletedAt)) : Json::Value();

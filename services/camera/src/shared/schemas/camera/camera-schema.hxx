@@ -1,6 +1,7 @@
 #pragma once
 
 #include <camera/camera-driver.hxx>
+#include <camera/camera-privacy-state.hxx>
 #include <camera/camera-record-mode.hxx>
 #include <cstdint>
 #include <drogon/orm/Field.h>
@@ -35,6 +36,7 @@ struct CameraSchema
   std::string config;
   bool isEnabled{true};
   bool isOnline{false};
+  CameraPrivacyState privacyState{CameraPrivacyState::Unknown};
   std::string tlsFingerprint;
   bool tapoSecure{false};
   std::string controlCredential;
