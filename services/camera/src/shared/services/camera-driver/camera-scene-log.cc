@@ -12,12 +12,6 @@ void CameraSceneLog::noteAimed(int64_t cameraId, int64_t atMs)
   scenes_[cameraId].aimedAtMs = atMs;
 }
 
-void CameraSceneLog::notePrivacy(int64_t cameraId, bool enabled)
-{
-  std::scoped_lock lock(mutex_);
-  scenes_[cameraId].privacy = enabled;
-}
-
 CameraScene CameraSceneLog::sceneOf(int64_t cameraId) const
 {
   std::scoped_lock lock(mutex_);

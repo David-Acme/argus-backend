@@ -7,6 +7,7 @@
 #include <shared/services/camera-driver/camera-capabilities.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
+#include <shared/services/privacy-state/privacy-state.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <shared/services/stream/camera-live-board.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
@@ -266,6 +267,7 @@ drogon::Task<bool> CameraFeatureService::remove(int64_t id) const
   }
   CameraDriverRegistry::instance().forget(id);
   CameraSceneLog::instance().forget(id);
+  PrivacyStateService::instance().forget(id);
   SnapshotStore::instance().forget(id);
   CameraLiveBoard::instance().forget(id);
   co_await dropSource(id);

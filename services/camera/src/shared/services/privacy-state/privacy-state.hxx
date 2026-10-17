@@ -4,7 +4,10 @@
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <json/value.h>
+#include <mutex>
+#include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/schemas/camera/camera-schema.hxx>
+#include <unordered_map>
 #include <vector>
 
 struct PrivacyRefreshInput
@@ -36,5 +39,19 @@ public:
   void forget(int64_t cameraId);
 
 private:
+  struct Entry
+  {
+    CameraPrivacyState state{CameraPrivacyState::Unknown};
+    CameraPrivacyState persisted{CameraPrivacyState::Unknown};
+    bool writing{false};
+  };
+
   PrivacyStateService() = default;
+
+  [[nodiscard]] drogon::Task<bool> persistState(int64_t cameraId,
+                                                CameraPrivacyState state);
+
+  mutable std::mutex mutex_;
+  std::unordered_map<int64_t, Entry> entries_;
+  CameraRepository repository_;
 };

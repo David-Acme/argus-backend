@@ -7,6 +7,7 @@ argus_module(NAME camera-module-data
         ../..
     DEPENDS
         argus::camera-driver
+        argus::camera-privacy-state
         argus::camera-stream
         argus::contracts::settings-wire
         argus::lib::auth

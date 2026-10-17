@@ -4,7 +4,6 @@
 #include <chrono>
 #include <drogon/HttpAppFramework.h>
 #include <drogon/drogon.h>
-#include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 #include <shared/services/stream/stream-hub.hxx>
@@ -23,6 +22,14 @@ int64_t epochNowMs()
              std::chrono::system_clock::now().time_since_epoch())
       .count();
 }
+
+CameraPrivacyState observedState(const Json::Value& status)
+{
+  const Json::Value& enabled = status[kPrivacyEnabledKey];
+  if (!enabled.isBool())
+    return CameraPrivacyState::Unknown;
+  return enabled.asBool() ? CameraPrivacyState::On : CameraPrivacyState::Off;
+}
 }
 
 PrivacyStateService& PrivacyStateService::instance()
@@ -33,23 +40,27 @@ PrivacyStateService& PrivacyStateService::instance()
 
 void PrivacyStateService::seed(const std::vector<CameraSchema>& cameras)
 {
+  std::scoped_lock lock(mutex_);
   for (const auto& camera : cameras)
   {
     if (camera.id <= 0)
       continue;
-    CameraSceneLog::instance().notePrivacy(
-        camera.id, cameraPrivacyMasked(camera.privacyState));
+    entries_[camera.id] = {.state = camera.privacyState,
+                           .persisted = camera.privacyState,
+                           .writing = false};
   }
 }
 
 CameraPrivacyState PrivacyStateService::stateOf(int64_t cameraId) const
 {
-  return masked(cameraId) ? CameraPrivacyState::On : CameraPrivacyState::Off;
+  std::scoped_lock lock(mutex_);
+  const auto it = entries_.find(cameraId);
+  return it == entries_.end() ? CameraPrivacyState::Unknown : it->second.state;
 }
 
 bool PrivacyStateService::masked(int64_t cameraId) const
 {
-  return CameraSceneLog::instance().sceneOf(cameraId).privacy;
+  return stateOf(cameraId) == CameraPrivacyState::On;
 }
 
 bool PrivacyStateService::maskedOf(const CameraSchema& camera) const
@@ -69,73 +80,111 @@ bool PrivacyStateService::privacyCapable(const CameraSchema& camera)
 
 void PrivacyStateService::forget(int64_t cameraId)
 {
-  CameraSceneLog::instance().forget(cameraId);
+  std::scoped_lock lock(mutex_);
+  entries_.erase(cameraId);
+}
+
+drogon::Task<bool> PrivacyStateService::persistState(int64_t cameraId,
+                                                     CameraPrivacyState state)
+{
+  bool written = false;
+  if (drogon::app().isRunning())
+  {
+    try
+    {
+      const auto updated = co_await repository_.update(
+          cameraId, {.privacyState = state, .client = nullptr});
+      written = updated.id == cameraId;
+    }
+    catch (const std::exception& error)
+    {
+      LOG_WARN << "Camera privacy: the state of camera " << cameraId
+               << " could not be persisted: " << error.what();
+    }
+  }
+  std::scoped_lock lock(mutex_);
+  const auto it = entries_.find(cameraId);
+  if (it == entries_.end())
+    co_return written;
+  it->second.writing = false;
+  if (written)
+  {
+    it->second.persisted = state;
+    co_return true;
+  }
+  if (it->second.state == state && it->second.persisted != state &&
+      state != CameraPrivacyState::On)
+    it->second.state = it->second.persisted;
+  co_return false;
 }
 
 drogon::Task<PrivacyTransition> PrivacyStateService::refresh(
     PrivacyRefreshInput input)
 {
   PrivacyTransition transition;
-  if (input.camera.id <= 0)
+  const int64_t cameraId = input.camera.id;
+  if (cameraId <= 0)
     co_return transition;
-  transition.before = stateOf(input.camera.id);
-  transition.after = transition.before;
   if (!input.readable)
-    co_return transition;
-  CameraPrivacyState after = CameraPrivacyState::Unknown;
-  const Json::Value& enabled = input.driverStatus[kPrivacyEnabledKey];
-  if (enabled.isBool())
-    after = enabled.asBool() ? CameraPrivacyState::On : CameraPrivacyState::Off;
-  transition.after = after;
-  transition.changed = after != transition.before;
-  if (!transition.changed)
-    co_return transition;
-  if (drogon::app().isRunning())
   {
-    try
-    {
-      CameraRepository repository;
-      static_cast<void>(co_await repository.update(
-          input.camera.id, {.privacyState = after, .client = nullptr}));
-    }
-    catch (const std::exception& error)
-    {
-      LOG_WARN << "Camera privacy: the state of camera " << input.camera.id
-               << " could not be persisted: " << error.what();
-    }
+    transition.before = stateOf(cameraId);
+    transition.after = transition.before;
+    co_return transition;
   }
+
+  const CameraPrivacyState observed = observedState(input.driverStatus);
+  bool persist = false;
+  {
+    std::scoped_lock lock(mutex_);
+    auto& entry = entries_[cameraId];
+    transition.before = entry.state;
+    entry.state = observed;
+    persist = observed != entry.persisted && !entry.writing;
+    if (persist)
+      entry.writing = true;
+  }
+
+  bool written = true;
+  if (persist)
+    written = co_await persistState(cameraId, observed);
+  const CameraPrivacyState after = written ? observed : stateOf(cameraId);
+  transition.after = after;
+  transition.changed = transition.before != after;
+
+  if (transition.changed && after == CameraPrivacyState::On)
+  {
+    SnapshotStore::instance().forget(cameraId);
+    StreamHub::instance().dropCachedFrames(cameraId);
+    LOG_WARN << "Camera privacy: camera " << cameraId
+             << " is lens-masked; Argus stops seeing, hearing and recording it";
+  }
+  if (!transition.changed || !written)
+    co_return transition;
+
   if (const auto* sink = camera_change::getSink())
   {
     Json::Value before = input.camera.toJson();
     before["privacyState"] = cameraPrivacyStateToString(transition.before);
     Json::Value row = before;
     row["privacyState"] = cameraPrivacyStateToString(after);
-    co_await sink->publishAudit({.recordId = input.camera.id,
+    co_await sink->publishAudit({.recordId = cameraId,
                                  .tableName = TableName::Camera,
                                  .before = before,
                                  .after = row,
                                  .actorId = std::nullopt,
                                  .client = nullptr});
   }
-  CameraSceneLog::instance().notePrivacy(input.camera.id,
-                                         after == CameraPrivacyState::On);
-  if (after == CameraPrivacyState::On)
+  if (after != CameraPrivacyState::On &&
+      transition.before == CameraPrivacyState::On)
   {
-    SnapshotStore::instance().forget(input.camera.id);
-    StreamHub::instance().dropCachedFrames(input.camera.id);
-    LOG_WARN << "Camera privacy: camera " << input.camera.id
-             << " is lens-masked; Argus stops seeing, hearing and recording it";
-  }
-  else if (transition.before == CameraPrivacyState::On)
-  {
-    CameraSceneLog::instance().noteAimed(input.camera.id, epochNowMs());
-    LOG_INFO << "Camera privacy: camera " << input.camera.id
+    CameraSceneLog::instance().noteAimed(cameraId, epochNowMs());
+    LOG_INFO << "Camera privacy: camera " << cameraId
              << " is unmasked; Argus sees it again";
   }
   if (const auto* changes = camera_change::getSink())
   {
     co_await changes->publishResource({.scope = ResourceScope::Status,
-                                       .ids = {input.camera.id},
+                                       .ids = {cameraId},
                                        .user = 0,
                                        .client = nullptr});
     co_await changes->publishResource({.scope = ResourceScope::Overview,

@@ -4,6 +4,7 @@
 #include <runtime/blocking-task.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
+#include <shared/services/privacy-state/privacy-state.hxx>
 #include <shared/services/stream/camera-live-board.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
@@ -27,6 +28,7 @@ void forgetCameraEverywhere(std::int64_t cameraId)
 {
   CameraDriverRegistry::instance().forget(cameraId);
   CameraSceneLog::instance().forget(cameraId);
+  PrivacyStateService::instance().forget(cameraId);
   SnapshotStore::instance().forget(cameraId);
   CameraLiveBoard::instance().forget(cameraId);
   cameraSourceRegistrar().remove(cameraId);
