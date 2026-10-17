@@ -253,7 +253,9 @@ std::string askSituation(const AskSlot& ask, std::string_view lang, int64_t now)
     line += english ? "ask which one, naming: " : "pregunta cuál quiere, nombrando: ";
     line += joinNamed(ask.options, lang, english ? " or " : " o ");
   } else {
-    line += english ? "ask for it in one short question" : "pregunta solo por eso en una sola pregunta corta";
+    const std::string label = slotLabelOf(ask.slot, lang);
+    line += english ? "ask for " + label + " in one short question"
+                    : "pregunta solo por " + label + ", en una sola pregunta corta";
   }
   line += '.';
   return line;

@@ -899,7 +899,7 @@ TEST_CASE("a question is rendered by the model, sync and streamed, and the act r
   CHECK(output.act == "ask_slot");
   CHECK(sync.script.requests.front().messages.back().role == "user");
   CHECK(sync.script.requests.front().messages.back().content.find(
-            "Nota de la app: falta la fecha y hora; pregunta solo por eso en una sola pregunta corta.") !=
+            "Nota de la app: falta la fecha y hora; pregunta solo por la fecha y hora, en una sola pregunta corta.") !=
         std::string::npos);
 
   Spoken streamed;

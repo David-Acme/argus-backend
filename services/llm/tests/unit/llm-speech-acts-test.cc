@@ -192,8 +192,9 @@ TEST_CASE("every act renders a situation in both languages, without a command or
 TEST_CASE("the ask situation is the missing fact plus the one thing to do")
 {
   CHECK(tailOf(askSlot(), "es") ==
-        "Nota de la app: falta la fecha y hora; pregunta solo por eso en una sola pregunta corta.");
-  CHECK(tailOf(askSlot(), "en") == "App note: missing the date and time; ask for it in one short question.");
+        "Nota de la app: falta la fecha y hora; pregunta solo por la fecha y hora, en una sola pregunta corta.");
+  CHECK(tailOf(askSlot(), "en") ==
+        "App note: missing the date and time; ask for the date and time in one short question.");
   const Act title = AskSlot{.slot = "title",
                             .tool = "task.create",
                             .knownArgs = Json::Value(Json::objectValue),
@@ -201,7 +202,7 @@ TEST_CASE("the ask situation is the missing fact plus the one thing to do")
                             .dates = {},
                             .options = {}};
   CHECK(tailOf(title, "es") ==
-        "Nota de la app: falta el nombre de la tarea; pregunta solo por eso en una sola pregunta corta.");
+        "Nota de la app: falta el nombre de la tarea; pregunta solo por el nombre de la tarea, en una sola pregunta corta.");
 }
 
 TEST_CASE("the slot is rendered as a human label, never as its name or its tool")

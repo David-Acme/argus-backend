@@ -2121,3 +2121,30 @@ The dev build is not the reference: it measured 26 to 48 s turns, and its proces
 - `call-faithfulness-eval` (both commits): `retryShare` 0.333333 against 0.050; `missedNameAsk`, `recital` and `relevance` 1.000000 each against 0 (32 cases, 34 turns).
 
 The gates stay as they are. Until this is worked, the build that runs these evals with the weights present exits 8 on exactly these two tests; the same build with the weights absent reports them skipped. The memory selection is the first to look at: it is the one whose recall tools fail, and the faithfulness failures are the retry share of the same turns.
+
+### What the first working pass measured (2026-10-16)
+
+The memory selection is green: `RouterDecider` marks its candidate exact when its own arbitration decided
+(see "The turn" above), and the same prod build that measured 0.241379 measures `selection.memory.accuracy`
+0.620690 with every memory recall and precision inside its gate; the details are in the commit and the
+unit's report. `falseCompletionRate` stays red, and the unit's dump shows why it is not the memory path's:
+the metric is the old tool-loop marker list applied per sentence with no negation rule, so it fires on
+sentences the shipped gate is right to leave alone — "la lavadora no está registrada en el sistema"
+(`registrada`), "we seem to have forgotten the toolbox" (`forgotten`), "estoy listo para ayudarte, pero el
+módulo productividad no está activo" (`listo`), "it was completed in 1889" (`completed`), "which modules are
+active" (`active `) — while one real miss remains in the shipped gate itself: `kEnglishRequests` has no
+"erase", so `asked` is false on "…, erase it" and the guard lets "That's done, I've cleared the home
+insurance details." through. Both are follow-ups, not measurement changes.
+
+`call-faithfulness-eval` (prod, 32 cases/34 turns, `--temperature 0.3 --seed 42`): the three slot turns
+that retried were the guard doing its job on a bad question — "Necesito confirmar la fecha y hora…"
+(`not_a_question`) and "¿Cuál es la tarea que falta en la nota de la app?" (`slot_not_asked`, which the
+cue list did not know) — so the `title`/`name` cue lists now carry the asks the model actually produces
+("que tarea", "cual es la tarea", "nombre de la tarea"; "what task", "which task", "task name") and the ask
+situation names the missing slot twice ("falta el nombre de la tarea; pregunta solo por el nombre de la
+tarea, en una sola pregunta corta"): `retryShare` 0.333333 to 0.111111 on the shipped corpus (one turn,
+`es-slot-task-turn`, still speaks a statement first). `missedNameAsk` on `es-name-unknown`, `relevance` on
+`es-greeting-name` and `recital` on `es-memory-only` are the model's own misses on corpus rows added after
+the pins were measured (the U19 prompt items); their fix is the call prompt
+(`services/voice/src/feature/voice/call-history.cc`, another unit's surface in this batch) or the corpus
+itself, never the fixture.
