@@ -7,10 +7,12 @@
 
 #include <json/reader.h>
 #include <json/value.h>
+#include <text/secret-phrase.hxx>
 
 #include <algorithm>
 #include <fstream>
 #include <map>
+#include <optional>
 #include <set>
 #include <string>
 #include <vector>
@@ -432,4 +434,22 @@ TEST_CASE("the pack is large enough to report a scenario by metric table")
   CHECK(scenarioTurns == 108);
   CHECK(axisTurns == 60);
   CHECK(static_cast<int>(pack().size()) == 63);
+}
+
+TEST_CASE("every duress phrase of the pack arms with the harness salt and matches the turn that says it")
+{
+  int duressCases = 0;
+  for (const context_eval::ScenarioCase* item : pack()) {
+    if (!item->duress)
+      continue;
+    ++duressCases;
+    const std::optional<std::string> stored = context_eval::sealedDuressPhrase(item->duress->phrase);
+    REQUIRE_MESSAGE(stored.has_value(), item->id << " cannot seal " << item->duress->phrase);
+    const std::optional<secret_phrase::PhraseKey> key = secret_phrase::decode(*stored);
+    REQUIRE_MESSAGE(key.has_value(), item->id << " cannot read back " << item->duress->phrase);
+    REQUIRE(item->duress->turn < static_cast<int>(item->turns.size()));
+    const std::string& said = item->turns.at(static_cast<std::size_t>(item->duress->turn)).user;
+    CHECK_MESSAGE(secret_phrase::spokenIn(*key, said), item->id << " does not match its own duress turn");
+  }
+  CHECK(duressCases >= 3);
 }

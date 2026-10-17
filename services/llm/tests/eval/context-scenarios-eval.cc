@@ -1075,11 +1075,15 @@ int runContextScenarios(int argc, char** argv)
   for (const auto& item : cases) {
     const bool englishCase = item.lang == "en";
     if (item.duress) {
-      const auto sealed = secret_phrase::seal({.phrase = item.duress->phrase,
-                                               .salt = "context-scenarios-duress",
-                                               .iterations = secret_phrase::kMinIterations});
-      if (!sealed || !armDuress(*rig, secret_phrase::encode(*sealed))) {
+      const std::optional<std::string> sealed = context_eval::sealedDuressPhrase(item.duress->phrase);
+      const bool armed = sealed.has_value() && armDuress(*rig, *sealed);
+      if (!sealed)
+        std::cout << "[ERROR] the harness cannot seal the phrase of " << item.id << ": a phrase of "
+                  << secret_phrase::kMinWords << " to " << secret_phrase::kMaxWords << " words and a "
+                  << secret_phrase::kSaltBytes << "-byte salt\n";
+      else if (!armed)
         std::cout << "[ERROR] the duress screen did not take the phrase of " << item.id << "\n";
+      if (!armed) {
         controller.shutdownEngine();
         llama_backend_free();
         return 1;

@@ -149,6 +149,15 @@ bool appendFile(const std::string& path, LoadedScenarios& loaded)
 
 }
 
+std::optional<std::string> sealedDuressPhrase(std::string_view phrase)
+{
+  const std::optional<secret_phrase::PhraseKey> key =
+      secret_phrase::seal({.phrase = phrase, .salt = kDuressSalt, .iterations = secret_phrase::kMinIterations});
+  if (!key)
+    return std::nullopt;
+  return secret_phrase::encode(*key);
+}
+
 LoadedScenarios loadScenarios(const std::string& path)
 {
   LoadedScenarios loaded;

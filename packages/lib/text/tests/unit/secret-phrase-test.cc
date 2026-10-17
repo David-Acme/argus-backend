@@ -69,6 +69,12 @@ TEST_CASE("a sealed phrase is the PBKDF2 of its folded words and refuses bad inp
                                    .salt = testSalt(),
                                    .iterations = 1024}));
   CHECK_FALSE(secret_phrase::seal({.phrase = "el gato pardo", .salt = "short", .iterations = 1024}));
+  const std::string fifteen = testSalt().substr(0, 15);
+  CHECK_FALSE(
+      secret_phrase::seal({.phrase = "el gato pardo", .salt = fifteen, .iterations = secret_phrase::kMinIterations}));
+  CHECK_FALSE(secret_phrase::seal({.phrase = "el gato pardo",
+                                   .salt = "context-scenarios-duress",
+                                   .iterations = secret_phrase::kMinIterations}));
   CHECK_FALSE(secret_phrase::seal({.phrase = "el gato pardo", .salt = testSalt(), .iterations = 1000}));
 }
 

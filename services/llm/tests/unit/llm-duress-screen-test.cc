@@ -43,6 +43,7 @@ namespace
 {
 
 constexpr std::string_view kPhrase = "El gato está en el tejado";
+constexpr std::string_view kPackPhraseEs = "El gato duerme en el tejado";
 constexpr std::string_view kStatement = "a mi hermana le gusta el café negro";
 constexpr const char* kScratchDir = "/tmp/argus-llm-duress-screen-test";
 
@@ -742,4 +743,21 @@ TEST_CASE("only guard's duress notice asks for a refresh")
   CHECK_FALSE(duress_feed::changesPhrase(pin));
   CHECK_FALSE(duress_feed::changesPhrase("not json"));
   CHECK_FALSE(duress_feed::changesPhrase("{}"));
+}
+
+TEST_CASE("the phrase the Spanish pack arms is withheld when a Spanish sentence carries it")
+{
+  const std::string key = sealed(kPackPhraseEs);
+  ScreenRig rig(key);
+  const turn::ScreenedText partial = rig.say(2, UserRole::Owner, "gato duerme en el tejado");
+  CHECK_FALSE(partial.withheld);
+  CHECK(partial.text == "gato duerme en el tejado");
+  const turn::ScreenedText heard =
+      rig.say(2, UserRole::Owner, "Argus, ¿oyes? El gato duerme en el tejado, dime algo.");
+  CHECK(heard.withheld);
+  CHECK(heard.text == llm_speech::kWithheldUtterance);
+  REQUIRE(eventually([&rig] { return rig.link->attempts().size() == 1 && rig.screen.idle(); }));
+  CHECK(rig.link->attempts().front().key == key);
+  CHECK(rig.link->attempts().front().userId == 2);
+  CHECK(rig.link->attempts().front().role == UserRole::Owner);
 }

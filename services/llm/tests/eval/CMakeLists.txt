@@ -197,7 +197,7 @@ add_library(llm-context-eval STATIC context-scenarios.cc)
 
 target_include_directories(llm-context-eval PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_link_libraries(llm-context-eval PUBLIC Drogon::Drogon)
+target_link_libraries(llm-context-eval PUBLIC Drogon::Drogon argus::lib::text)
 
 target_compile_options(llm-context-eval PRIVATE -Wall -Wextra)
 

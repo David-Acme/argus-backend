@@ -1,12 +1,20 @@
 #pragma once
 
+#include <text/secret-phrase.hxx>
+
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace context_eval
 {
+
+inline constexpr std::string_view kDuressSalt = "duress-scenarios";
+static_assert(kDuressSalt.size() == secret_phrase::kSaltBytes);
+
+[[nodiscard]] std::optional<std::string> sealedDuressPhrase(std::string_view phrase);
 
 struct ScenarioFact
 {
