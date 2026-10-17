@@ -340,6 +340,18 @@ SESSION_KILLERS = {
 }
 
 VOLATILE_FIELDS = {
+    ("camera", "/camera/recording"): {
+        "keys": ("paused", "freeGb", "freeBytes"),
+        "reason": "the recording state is the answering host's own: paused is "
+                  "the disk floor's verdict against that host's free space "
+                  "(recording.min_free_gb defaults to 20, and a sandbox's tmpfs "
+                  "sits below it, so a sandbox camera answers paused true while "
+                  "a roomy host answers false), and freeGb and freeBytes move "
+                  "with every clip the fleet writes; the keys and their JSON "
+                  "types stay compared, minFreeGb is config and stays pinned, "
+                  "and the floor's behaviour is pinned by the camera's own "
+                  "tests and the integration pass's live run",
+    },
     ("sync", "/sync/heartbeat"): {
         "keys": ("at", "presenceSince"),
         "reason": "a heartbeat stamps the second it answers and the presence "

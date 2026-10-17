@@ -44,7 +44,7 @@
       "errors"
     ]
   },
-  "probes": 860,
+  "probes": 865,
   "sessions": "scripts/seed-golden.py --roles (owner, resident, guest)",
   "sources": "scripts/lib/route-baseline.txt (the route census)",
   "units": [
@@ -69,6 +69,16 @@
       ],
       "reason": "a camera's health is the stream supervisor's last observation, unknown until its first probe and unreachable after it for the fixture camera; the rest of each row stays pinned",
       "route": "/camera/overview",
+      "unit": "camera"
+    },
+    {
+      "keys": [
+        "paused",
+        "freeGb",
+        "freeBytes"
+      ],
+      "reason": "the recording state is the answering host's own: paused is the disk floor's verdict against that host's free space (recording.min_free_gb defaults to 20, and a sandbox's tmpfs sits below it, so a sandbox camera answers paused true while a roomy host answers false), and freeGb and freeBytes move with every clip the fleet writes; the keys and their JSON types stay compared, minFreeGb is config and stays pinned, and the floor's behaviour is pinned by the camera's own tests and the integration pass's live run",
+      "route": "/camera/recording",
       "unit": "camera"
     },
     {

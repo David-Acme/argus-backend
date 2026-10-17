@@ -7338,6 +7338,138 @@
       },
       "route": "/clip/{1}/content",
       "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/recording",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/recording",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/recording",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/recording",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/recording",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/recording",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/recording",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/recording",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/recording",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "freeBytes": "<VOLATILE:number>",
+            "freeGb": "<VOLATILE:number>",
+            "minFreeGb": 20,
+            "paused": "<VOLATILE:boolean>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/recording",
+      "unit": "camera"
     }
   ],
   "unit": "camera"
