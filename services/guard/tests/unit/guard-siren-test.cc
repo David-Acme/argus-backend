@@ -4,6 +4,9 @@
 #include <doctest/doctest.h>
 #include <errors/response-exception.hxx>
 #include <feature/guard/infra/resource-change-outbox.hxx>
+#include <feature/guard/vocabulary/safety-reach.hxx>
+#include <feature/safety/dtos/response-siren-dto.hxx>
+#include <feature/safety/dtos/response-safety-dto.hxx>
 #include <feature/safety/services/siren-service.hxx>
 #include <nats/nats-bus.hxx>
 #include <sync/user-action-event.hxx>
@@ -204,6 +207,39 @@ TEST_CASE("the app siren is off until the owner turns it on")
                                      .expiresMarginSeconds = 60});
   CHECK(rig.activate(3, 2).enabled);
   CHECK(rig.camera.calls().size() == 1);
+}
+
+TEST_CASE("the switch the safety status serves is the one the route obeys")
+{
+  boot();
+  SirenRig rig(GuardSirenConfig{.enabled = false,
+                                .leaseSeconds = 20,
+                                .expiresMarginSeconds = 60});
+  CHECK_FALSE(rig.siren.enabled());
+  CHECK(refusalOf([&] { rig.activate(); }).status == 403);
+
+  rig.siren.refresh(GuardSirenConfig{.enabled = true,
+                                     .leaseSeconds = 20,
+                                     .expiresMarginSeconds = 60});
+  CHECK(rig.siren.enabled());
+  CHECK(rig.activate(3, 2).enabled);
+}
+
+TEST_CASE("the safety status carries the app siren switch and the siren answer")
+{
+  const ResponseSafetyStatusDto status{.duressEnabled = false,
+                                       .hasPin = false,
+                                       .hasPhrase = false,
+                                       .alertsReach = SafetyReach::Others,
+                                       .appSirenEnabled = true};
+  CHECK(status.toJson()["appSirenEnabled"].asBool());
+  CHECK_FALSE(ResponseSafetyStatusDto{}.toJson()["appSirenEnabled"].asBool());
+
+  const Json::Value answer =
+      ResponseSirenDto{.cameraId = 3, .enabled = true, .until = 1'700'000'020}.toJson();
+  CHECK(answer["cameraId"].asInt64() == 3);
+  CHECK(answer["enabled"].asBool());
+  CHECK(answer["until"].asInt64() == 1'700'000'020);
 }
 
 TEST_CASE("an activation arms the camera siren for the configured lease")

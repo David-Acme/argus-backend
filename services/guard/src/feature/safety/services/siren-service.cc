@@ -52,6 +52,11 @@ GuardSirenConfig SirenService::config() const
   return config_;
 }
 
+bool SirenService::enabled() const
+{
+  return config().enabled;
+}
+
 drogon::Task<AppSirenResult> SirenService::apply(const AppSirenInput& input) const
 {
   const GuardSirenConfig current = config();

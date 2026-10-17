@@ -7,6 +7,7 @@ Json::Value ResponseSafetyStatusDto::toJson() const
   json["hasPin"] = hasPin;
   json["hasPhrase"] = hasPhrase;
   json["alertsReach"] = safetyReachToString(alertsReach);
+  json["appSirenEnabled"] = appSirenEnabled;
   return json;
 }
 

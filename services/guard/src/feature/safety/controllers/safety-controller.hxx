@@ -1,6 +1,7 @@
 #pragma once
 
 #include <feature/safety/services/safety-service.hxx>
+#include <feature/safety/services/siren-service.hxx>
 
 #include <drogon/HttpController.h>
 #include <drogon/HttpRequest.h>
@@ -11,7 +12,8 @@
 class SafetyController : public drogon::HttpController<SafetyController, false>
 {
 public:
-  explicit SafetyController(std::shared_ptr<const SafetyService> service);
+  SafetyController(std::shared_ptr<const SafetyService> service,
+                   std::shared_ptr<const SirenService> siren);
 
   METHOD_LIST_BEGIN
   ADD_METHOD_TO(SafetyController::panic, "/guard/panic", drogon::Post, "DeviceFilter",
@@ -34,4 +36,5 @@ public:
 
 private:
   std::shared_ptr<const SafetyService> service_;
+  std::shared_ptr<const SirenService> siren_;
 };

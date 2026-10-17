@@ -11,6 +11,7 @@ struct ResponseSafetyStatusDto
   bool hasPin{false};
   bool hasPhrase{false};
   SafetyReach alertsReach{SafetyReach::Unknown};
+  bool appSirenEnabled{false};
 
   [[nodiscard]] Json::Value toJson() const;
 };

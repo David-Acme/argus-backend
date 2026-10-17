@@ -455,6 +455,7 @@ TEST_CASE("hasHttpAccess applies kGuardAccess route by route")
     CHECK_FALSE(allows(UserRole::Resident, "/guard/mode/extra", drogon::Get));
     CHECK_FALSE(allows(UserRole::Resident, "/guardian", drogon::Get));
 
+    CHECK(allows(UserRole::Owner, "/guard/siren", drogon::Post));
     CHECK(allows(UserRole::Resident, "/guard/siren", drogon::Post));
     CHECK(allows(UserRole::Guard, "/guard/siren", drogon::Post));
     CHECK_FALSE(allows(UserRole::Guest, "/guard/siren", drogon::Post));

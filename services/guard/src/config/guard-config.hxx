@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 struct GuardDbConfig
@@ -147,6 +148,8 @@ struct GuardPresenceConfig
   int64_t sweepSeconds{60};
   int64_t consentRefreshSeconds{600};
 };
+
+inline constexpr std::string_view kAppSirenEnabledKey = "guard.app_siren_enabled";
 
 struct GuardSirenConfig
 {

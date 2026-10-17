@@ -371,7 +371,7 @@ BeliefConfig GuardConfig::resolveBelief(int64_t cameraId)
 GuardSirenConfig GuardConfig::resolveSiren()
 {
   GuardSirenConfig config;
-  config.enabled = configBoolOr("guard.app_siren_enabled", false);
+  config.enabled = configBoolOr(std::string(kAppSirenEnabledKey), false);
   config.leaseSeconds = configIntOr("guard.siren_seconds", 20);
   return config;
 }

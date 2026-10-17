@@ -24,20 +24,23 @@ const JwtContext& callerOf(const drogon::HttpRequestPtr& req)
   return req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
 }
 
-Json::Value statusJson(const SafetyStatus& status, const JwtContext& caller)
+Json::Value statusJson(const SafetyStatus& status, const JwtContext& caller,
+                      bool appSirenEnabled)
 {
   const bool phraseHolder = role_access::hasCapability(
       {.role = caller.role, .modules = moduleGate().snapshot(), .capability = "safety.duress"});
   return ResponseSafetyStatusDto{.duressEnabled = status.duressEnabled,
                                  .hasPin = status.hasPin,
                                  .hasPhrase = phraseHolder && status.hasPhrase,
-                                 .alertsReach = status.reach}
+                                 .alertsReach = status.reach,
+                                 .appSirenEnabled = appSirenEnabled}
       .toJson();
 }
 }
 
-SafetyController::SafetyController(std::shared_ptr<const SafetyService> service)
-    : service_(std::move(service))
+SafetyController::SafetyController(std::shared_ptr<const SafetyService> service,
+                                   std::shared_ptr<const SirenService> siren)
+    : service_(std::move(service)), siren_(std::move(siren))
 {
   auth_filters::requireLinked<DeviceFilter>();
   auth_filters::requireLinked<ValidJsonFilter>();
@@ -59,7 +62,8 @@ drogon::Task<drogon::HttpResponsePtr> SafetyController::panic(drogon::HttpReques
 drogon::Task<drogon::HttpResponsePtr> SafetyController::status(drogon::HttpRequestPtr req)
 {
   const auto& caller = callerOf(req);
-  co_return ApiResponse::ok(statusJson(co_await service_->status(caller.sub), caller));
+  co_return ApiResponse::ok(
+      statusJson(co_await service_->status(caller.sub), caller, siren_->enabled()));
 }
 
 drogon::Task<drogon::HttpResponsePtr> SafetyController::toggle(drogon::HttpRequestPtr req)
@@ -72,7 +76,8 @@ drogon::Task<drogon::HttpResponsePtr> SafetyController::toggle(drogon::HttpReque
                                         .currentPin = body.currentPin},
                              .phraseChange = body.phraseChange,
                              .phrase = body.duressPhrase});
-  co_return ApiResponse::ok(statusJson(co_await service_->status(caller.sub), caller));
+  co_return ApiResponse::ok(
+      statusJson(co_await service_->status(caller.sub), caller, siren_->enabled()));
 }
 
 drogon::Task<drogon::HttpResponsePtr> SafetyController::setPin(drogon::HttpRequestPtr req)
@@ -84,14 +89,18 @@ drogon::Task<drogon::HttpResponsePtr> SafetyController::setPin(drogon::HttpReque
                                                                   .disarmPin = body.disarmPin,
                                                                   .duressPin = body.duressPin,
                                                                   .currentPin = body.currentPin}),
-                                       caller));
+                                       caller,
+                                       siren_->enabled()));
 }
 
 drogon::Task<drogon::HttpResponsePtr> SafetyController::removePin(drogon::HttpRequestPtr req)
 {
   const auto body = RemovePinDto::fromRequest(req);
   const auto& caller = callerOf(req);
-  co_return ApiResponse::ok(statusJson(co_await service_->removePin(
-                                           {.userId = caller.sub, .userName = caller.name, .currentPin = body.currentPin}),
-                                       caller));
+  co_return ApiResponse::ok(
+      statusJson(co_await service_->removePin({.userId = caller.sub,
+                                               .userName = caller.name,
+                                               .currentPin = body.currentPin}),
+                 caller,
+                 siren_->enabled()));
 }

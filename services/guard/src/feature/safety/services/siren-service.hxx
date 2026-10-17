@@ -44,6 +44,8 @@ public:
 
   void refresh(GuardSirenConfig config);
 
+  [[nodiscard]] bool enabled() const;
+
   [[nodiscard]] drogon::Task<AppSirenResult>
   apply(const AppSirenInput& input) const;
 

@@ -62,6 +62,7 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <memory>
@@ -409,10 +410,24 @@ int main()
       GuardConfig::resolvePresence());
 
   SettingsRegistry settings(guardSettingsCatalog());
-  settings.onChange([&guardService, &presence, &siren](const std::vector<std::string>&) {
+  settings.onChange([&guardService, &presence, &siren,
+                     &resourceChanges](const std::vector<std::string>& changed) {
     guardService.refresh(GuardConfig::resolveService());
     presence.refresh(GuardConfig::resolvePresence());
     siren->refresh(GuardConfig::resolveSiren());
+    if (std::ranges::find(changed, kAppSirenEnabledKey) == changed.end())
+      return;
+    drogon::app().getLoop()->queueInLoop([&resourceChanges] {
+      drogon::async_run([&resourceChanges]() -> drogon::Task<void> {
+        co_await resourceChanges.record(
+            {.scope = ResourceScope::Duress,
+             .ids = {},
+             .user = 0,
+             .client = nullptr,
+             .domain = ResourceDomain::Guard});
+        co_return;
+      });
+    });
   });
   PostureWatch postureWatch(
       {.changes = &resourceChanges},
@@ -450,7 +465,7 @@ int main()
       GuardFeatureDependencies{.identity = identity.get(),
                                .disarm = safety.get(),
                                .changes = &resourceChanges}));
-  drogon::app().registerController(std::make_shared<SafetyController>(safety));
+  drogon::app().registerController(std::make_shared<SafetyController>(safety, siren));
   drogon::app().registerController(std::make_shared<SirenController>(siren));
   drogon::app().registerController(
       std::make_shared<PresenceController>(&presence));
