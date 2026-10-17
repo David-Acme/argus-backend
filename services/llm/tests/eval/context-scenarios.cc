@@ -135,7 +135,11 @@ bool appendFile(const std::string& path, LoadedScenarios& loaded)
     std::string errors;
     std::istringstream stream(line);
     if (!Json::parseFromStream(builder, stream, &node, &errors)) {
-      loaded.error = path + ":" + std::to_string(lineNumber) + ": " + errors;
+      loaded.error = path;
+      loaded.error += ':';
+      loaded.error += std::to_string(lineNumber);
+      loaded.error += ": ";
+      loaded.error += errors;
       return false;
     }
     loaded.cases.push_back(parseCase(node));

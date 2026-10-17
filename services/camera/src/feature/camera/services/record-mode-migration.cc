@@ -31,7 +31,7 @@ std::optional<std::string> withWidenedCheck(std::string_view definition)
     return std::nullopt;
   const std::string widened =
       " CHECK (record_mode IN ('off', 'motion', 'continuous', 'events'))";
-  const std::string rewritten =
+  std::string rewritten =
       std::regex_replace(text, kRecordCheck, widened, std::regex_constants::format_first_only);
   if (rewritten == text)
     return std::nullopt;

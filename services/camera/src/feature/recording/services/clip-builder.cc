@@ -1,12 +1,13 @@
 #include "clip-builder.hxx"
 
 #include <algorithm>
+#include <string_view>
 
 namespace
 {
 constexpr int64_t kRingSlackMs = 2000;
 
-std::string codecOfInit(const std::string& init)
+std::string_view codecOfInit(const std::string& init)
 {
   if (init.find("avc1") != std::string::npos ||
       init.find("avc3") != std::string::npos)
@@ -68,23 +69,26 @@ bool ClipBuilder::request(CameraClipTrigger trigger, int64_t atMs,
         std::max(active_->postRollUntilMs, atMs + config_.postRollMs);
     return true;
   }
-  begin(trigger, atMs, epochMs, config_.preRollMs);
+  begin({.trigger = trigger,
+         .atMs = atMs,
+         .epochMs = epochMs,
+         .preRollMs = config_.preRollMs});
   return true;
 }
 
-void ClipBuilder::begin(CameraClipTrigger trigger, int64_t atMs, int64_t epochMs,
-                        int64_t preRollMs)
+void ClipBuilder::begin(const BeginInput& input)
 {
   Active clip;
-  clip.trigger = trigger;
-  clip.anchorSteadyMs = atMs;
-  clip.anchorEpochMs = epochMs;
+  clip.trigger = input.trigger;
+  clip.anchorSteadyMs = input.atMs;
+  clip.anchorEpochMs = input.epochMs;
   clip.postRollUntilMs =
-      trigger == CameraClipTrigger::Continuous ? atMs + config_.segmentMs
-                                                : atMs + config_.postRollMs;
+      input.trigger == CameraClipTrigger::Continuous
+          ? input.atMs + config_.segmentMs
+          : input.atMs + config_.postRollMs;
   clip.awaitingKeyframe = true;
 
-  const int64_t windowStartMs = atMs - preRollMs;
+  const int64_t windowStartMs = input.atMs - input.preRollMs;
   auto start = ring_.end();
   for (auto it = ring_.begin(); it != ring_.end(); ++it) {
     if (it->keyframe && it->atMs >= windowStartMs) {
@@ -162,8 +166,10 @@ void ClipBuilder::close()
     ready_ = std::move(ready);
   }
   if (continuous) {
-    begin(CameraClipTrigger::Continuous, clip.lastAtMs,
-          clip.anchorEpochMs + (clip.lastAtMs - clip.anchorSteadyMs), 0);
+    begin({.trigger = CameraClipTrigger::Continuous,
+           .atMs = clip.lastAtMs,
+           .epochMs = clip.anchorEpochMs + (clip.lastAtMs - clip.anchorSteadyMs),
+           .preRollMs = 0});
   }
 }
 

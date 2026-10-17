@@ -1096,11 +1096,11 @@ int main(int argc, char** argv)
     if (options.verbose) {
       const CaseRun& run = runs.back();
       std::cout << std::format("{} [{} {}] {} turns\n", run.item.id, run.item.locale, run.item.axis, run.turns.size());
-      for (std::size_t index = 0; index < run.turns.size(); ++index)
+      for (const auto& entry : run.turns)
         std::cout << std::format("  {}ms | {} | {}\n",
-                                 run.turns[index].ms,
-                                 context_checks::violationsOf(run.turns[index].verdict),
-                                 run.turns[index].reply);
+                                 entry.ms,
+                                 context_checks::violationsOf(entry.verdict),
+                                 entry.reply);
     }
   }
   if (duress)

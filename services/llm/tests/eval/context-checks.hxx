@@ -292,7 +292,7 @@ inline std::vector<std::string> ungroundedNumbers(const NumberSpeech& input)
     }
     return numbers;
   };
-  const auto trimmed = [](std::string digits) {
+  const auto trimmed = [](const std::string& digits) {
     const std::size_t first = digits.find_first_not_of('0');
     return first == std::string::npos ? std::string("0") : digits.substr(first);
   };

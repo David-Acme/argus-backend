@@ -10,7 +10,10 @@
 
 namespace
 {
-const std::string kInit = "moov" + std::string(20, 'x') + "avc1";
+std::string initBytes()
+{
+  return "moov" + std::string(20, 'x') + "avc1";
+}
 
 std::string chunkOf(std::size_t index)
 {
@@ -60,7 +63,7 @@ TEST_CASE("a clip opens at a keyframe covering the pre-roll and closes after the
 {
   ClipBuilder builder;
   builder.configure(testConfig());
-  builder.setInit(kInit);
+  builder.setInit(initBytes());
   CHECK(builder.hasInit());
   CHECK(builder.codec() == "h264");
 
@@ -83,8 +86,8 @@ TEST_CASE("a clip opens at a keyframe covering the pre-roll and closes after the
   REQUIRE(ready.has_value());
   CHECK(ready->trigger == CameraClipTrigger::Event);
   CHECK(ready->codec == "h264");
-  CHECK(ready->body.starts_with(kInit));
-  CHECK(ready->body == kInit + chunkOf(9) + chunkOf(10) + chunkOf(11) +
+  CHECK(ready->body.starts_with(initBytes()));
+  CHECK(ready->body == initBytes() + chunkOf(9) + chunkOf(10) + chunkOf(11) +
                            chunkOf(12) + chunkOf(13) + chunkOf(14) +
                            chunkOf(15) + chunkOf(16) + chunkOf(17) +
                            chunkOf(18) + chunkOf(19) + chunkOf(20) +
@@ -99,7 +102,7 @@ TEST_CASE("a request with no keyframe in the ring waits for the next one")
 {
   ClipBuilder builder;
   builder.configure(testConfig());
-  builder.setInit(kInit);
+  builder.setInit(initBytes());
 
   pushChunk(builder, chunkOf(1), false, 5000);
   CHECK(builder.request(CameraClipTrigger::Event, 6000, 1700000000000));
@@ -112,7 +115,7 @@ TEST_CASE("a request with no keyframe in the ring waits for the next one")
 
   const auto ready = builder.takeReady();
   REQUIRE(ready.has_value());
-  CHECK(ready->body == kInit + chunkOf(3) + chunkOf(4));
+  CHECK(ready->body == initBytes() + chunkOf(3) + chunkOf(4));
   CHECK(ready->startedAtMs == 1700000002000);
   CHECK(ready->durationMs == 8000);
 }
@@ -121,7 +124,7 @@ TEST_CASE("motion reports extend the same clip instead of opening a second one")
 {
   ClipBuilder builder;
   builder.configure(testConfig());
-  builder.setInit(kInit);
+  builder.setInit(initBytes());
 
   const int64_t epochMs = 1700000000000;
   pushChunk(builder, chunkOf(1), true, 1000);
@@ -137,7 +140,7 @@ TEST_CASE("motion reports extend the same clip instead of opening a second one")
   const auto ready = builder.takeReady();
   REQUIRE(ready.has_value());
   CHECK(ready->trigger == CameraClipTrigger::Motion);
-  CHECK(ready->body == kInit + chunkOf(1) + chunkOf(2) + chunkOf(3) + chunkOf(4));
+  CHECK(ready->body == initBytes() + chunkOf(1) + chunkOf(2) + chunkOf(3) + chunkOf(4));
   CHECK(ready->durationMs == 21000);
   CHECK(ready->startedAtMs == epochMs - 1000);
 }
@@ -150,7 +153,7 @@ TEST_CASE("continuous recording closes one segment and opens the next at its key
                      .segmentMs = 5000,
                      .preRollBytes = size_t{1024} * 1024,
                      .maxClipBytes = size_t{1024} * 1024});
-  builder.setInit(kInit);
+  builder.setInit(initBytes());
   const int64_t epochMs = 1700000000000;
   CHECK(builder.request(CameraClipTrigger::Continuous, 1000, epochMs));
   pushChunk(builder, chunkOf(1), true, 2000);
@@ -160,7 +163,7 @@ TEST_CASE("continuous recording closes one segment and opens the next at its key
   const auto first = builder.takeReady();
   REQUIRE(first.has_value());
   CHECK(first->trigger == CameraClipTrigger::Continuous);
-  CHECK(first->body == kInit + chunkOf(1) + chunkOf(2));
+  CHECK(first->body == initBytes() + chunkOf(1) + chunkOf(2));
   CHECK(first->durationMs == 4000);
   CHECK(first->startedAtMs == epochMs + 1000);
   CHECK(builder.active());
@@ -173,7 +176,7 @@ TEST_CASE("continuous recording closes one segment and opens the next at its key
   const auto second = builder.takeReady();
   REQUIRE(second.has_value());
   CHECK(second->trigger == CameraClipTrigger::Continuous);
-  CHECK(second->body == kInit + chunkOf(4) + chunkOf(5));
+  CHECK(second->body == initBytes() + chunkOf(4) + chunkOf(5));
   CHECK(second->durationMs == 3500);
   CHECK(second->startedAtMs == epochMs + 7000);
   CHECK(builder.active());
@@ -187,7 +190,7 @@ TEST_CASE("the ring keeps only the pre-roll window and the clip stays under its 
                      .segmentMs = 120000,
                      .preRollBytes = 64,
                      .maxClipBytes = 40});
-  builder.setInit(kInit);
+  builder.setInit(initBytes());
 
   for (int64_t index = 0; index < 10; ++index)
     pushChunk(builder, chunkOf(static_cast<std::size_t>(index)), true,
@@ -197,7 +200,7 @@ TEST_CASE("the ring keeps only the pre-roll window and the clip stays under its 
 
   const auto ready = builder.takeReady();
   REQUIRE(ready.has_value());
-  CHECK(ready->body == kInit + chunkOf(7) + chunkOf(8) + chunkOf(9));
+  CHECK(ready->body == initBytes() + chunkOf(7) + chunkOf(8) + chunkOf(9));
   CHECK(ready->durationMs == 2000);
   pushChunk(builder, chunkOf(101), false, 10600);
   CHECK_FALSE(builder.takeReady().has_value());

@@ -49,7 +49,7 @@ DbHandle openFile(const std::string& path)
 {
   sqlite3* raw = nullptr;
   REQUIRE(sqlite3_open(path.c_str(), &raw) == SQLITE_OK);
-  return DbHandle(raw, sqlite3_close_v2);
+  return {raw, sqlite3_close_v2};
 }
 
 void exec(sqlite3* db, const std::string& sql)
@@ -117,7 +117,7 @@ struct TempDb
     std::filesystem::remove(path, ignored);
     for (const auto& entry :
          std::filesystem::directory_iterator(testDirectory(), ignored)) {
-      if (entry.path().filename().string().rfind(backupPrefix, 0) == 0)
+      if (entry.path().filename().string().starts_with(backupPrefix))
         std::filesystem::remove(entry.path(), ignored);
     }
   }
@@ -127,7 +127,7 @@ struct TempDb
     std::error_code ignored;
     for (const auto& entry :
          std::filesystem::directory_iterator(testDirectory(), ignored)) {
-      if (entry.path().filename().string().rfind(backupPrefix, 0) == 0)
+      if (entry.path().filename().string().starts_with(backupPrefix))
         return entry.path().string();
     }
     return {};

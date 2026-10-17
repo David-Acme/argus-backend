@@ -75,8 +75,15 @@ private:
     std::string body;
   };
 
-  void begin(CameraClipTrigger trigger, int64_t atMs, int64_t epochMs,
-             int64_t preRollMs);
+  struct BeginInput
+  {
+    CameraClipTrigger trigger{CameraClipTrigger::Event};
+    int64_t atMs{0};
+    int64_t epochMs{0};
+    int64_t preRollMs{0};
+  };
+
+  void begin(const BeginInput& input);
   void close();
 
   ClipBuilderConfig config_;

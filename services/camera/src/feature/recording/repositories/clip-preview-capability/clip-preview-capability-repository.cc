@@ -12,7 +12,7 @@ ClipPreviewCapabilityRepository::create(
 {
   const auto pooled = DbService::cameraClient();
   auto* client = input.client != nullptr ? input.client : pooled.get();
-  const auto result = co_await client->execSqlCoro(INSERT.data(), input.tokenHash,
+  const auto result = co_await client->execSqlCoro(std::string(INSERT), input.tokenHash,
                                                    input.clipId,
                                                    input.requesterUserId,
                                                    input.expiresAt);
@@ -33,7 +33,7 @@ ClipPreviewCapabilityRepository::findByTokenHash(const std::string& tokenHash,
   const auto pooled = DbService::cameraClient();
   auto* target = client != nullptr ? client : pooled.get();
   const auto rows =
-      co_await target->execSqlCoro(FIND_BY_TOKEN_HASH.data(), tokenHash);
+      co_await target->execSqlCoro(std::string(FIND_BY_TOKEN_HASH), tokenHash);
   if (rows.empty())
     co_return std::nullopt;
   co_return ClipPreviewCapabilitySchema(rows.front());
@@ -45,13 +45,13 @@ drogon::Task<bool> ClipPreviewCapabilityRepository::tryConsume(
   const auto pooled = DbService::cameraClient();
   auto* client = input.client != nullptr ? input.client : pooled.get();
   const auto rows = co_await client->execSqlCoro(
-      TRY_CONSUME.data(), input.id, input.requesterUserId, input.now);
+      std::string(TRY_CONSUME), input.id, input.requesterUserId, input.now);
   co_return !rows.empty();
 }
 
 drogon::Task<void> ClipPreviewCapabilityRepository::purgeSpent(int64_t now) const
 {
   static_cast<void>(
-      co_await DbService::cameraClient()->execSqlCoro(PURGE_SPENT.data(), now));
+      co_await DbService::cameraClient()->execSqlCoro(std::string(PURGE_SPENT), now));
   co_return;
 }

@@ -83,7 +83,7 @@ class PolicySet
 {
 public:
   PolicySet() = default;
-  explicit PolicySet(const DecisionPolicy& fallback) : fallback_(fallback) {}
+  explicit PolicySet(DecisionPolicy fallback) : fallback_(std::move(fallback)) {}
 
   void set(std::string id, const DecisionPolicy& policy) { byDecider_[std::move(id)] = policy; }
 

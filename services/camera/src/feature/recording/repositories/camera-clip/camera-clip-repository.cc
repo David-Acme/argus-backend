@@ -14,7 +14,7 @@ CameraClipRepository::create(const CameraClipCreateInput& input) const
   const auto pooled = DbService::cameraClient();
   auto* client = input.client != nullptr ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
-      INSERT.data(), input.cameraId, cameraClipTriggerToString(input.trigger),
+      std::string(INSERT), input.cameraId, cameraClipTriggerToString(input.trigger),
       input.objectKey, input.contentType, input.codec, input.startedAt,
       input.durationMs, input.byteSize, input.expiresAt);
 
@@ -38,7 +38,7 @@ CameraClipRepository::findById(int64_t id, drogon::orm::DbClient* client) const
 {
   const auto pooled = DbService::cameraClient();
   auto* target = client != nullptr ? client : pooled.get();
-  const auto rows = co_await target->execSqlCoro(FIND_BY_ID.data(), id);
+  const auto rows = co_await target->execSqlCoro(std::string(FIND_BY_ID), id);
   if (rows.empty())
     co_return std::nullopt;
   co_return CameraClipSchema(rows.front());
@@ -48,7 +48,7 @@ drogon::Task<std::vector<CameraClipSchema>>
 CameraClipRepository::findByCamera(const CameraClipPageInput& input) const
 {
   const auto rows = co_await DbService::cameraClient()->execSqlCoro(
-      FIND_BY_CAMERA.data(), input.cameraId, input.beforeCreatedAt,
+      std::string(FIND_BY_CAMERA), input.cameraId, input.beforeCreatedAt,
       input.beforeCreatedAt, input.beforeId, input.limit);
   std::vector<CameraClipSchema> clips;
   clips.reserve(rows.size());
@@ -61,7 +61,7 @@ drogon::Task<std::vector<CameraClipSchema>>
 CameraClipRepository::findByCameraAfter(const CameraClipAfterInput& input) const
 {
   const auto rows = co_await DbService::cameraClient()->execSqlCoro(
-      FIND_BY_CAMERA_AFTER.data(), input.cameraId, input.sinceCreatedAt,
+      std::string(FIND_BY_CAMERA_AFTER), input.cameraId, input.sinceCreatedAt,
       input.limit);
   std::vector<CameraClipSchema> clips;
   clips.reserve(rows.size());
@@ -76,7 +76,7 @@ CameraClipRepository::markDeleted(const CameraClipDeleteInput& input) const
   const auto pooled = DbService::cameraClient();
   auto* client = input.client != nullptr ? input.client : pooled.get();
   const auto rows =
-      co_await client->execSqlCoro(MARK_DELETED.data(), input.deletedAt, input.id);
+      co_await client->execSqlCoro(std::string(MARK_DELETED), input.deletedAt, input.id);
   co_return !rows.empty();
 }
 
@@ -84,7 +84,7 @@ drogon::Task<std::vector<CameraClipSchema>>
 CameraClipRepository::findExpired(const CameraClipSweepInput& input) const
 {
   const auto rows = co_await DbService::cameraClient()->execSqlCoro(
-      EXPIRED_CLIPS.data(), input.afterId, input.now, input.now,
+      std::string(EXPIRED_CLIPS), input.afterId, input.now, input.now,
       input.maxRetentionDays, input.batch);
   std::vector<CameraClipSchema> clips;
   clips.reserve(rows.size());
@@ -97,7 +97,7 @@ drogon::Task<int64_t>
 CameraClipRepository::countExpired(int64_t now, int64_t maxRetentionDays) const
 {
   const auto rows = co_await DbService::cameraClient()->execSqlCoro(
-      COUNT_EXPIRED_CLIPS.data(), now, now, maxRetentionDays);
+      std::string(COUNT_EXPIRED_CLIPS), now, now, maxRetentionDays);
   co_return rows.empty()
                 ? 0
                 : static_cast<int64_t>(rows.front()["total"].as<int64_t>());
@@ -110,7 +110,7 @@ CameraClipRepository::retentionDaysOf(int64_t cameraId,
   const auto pooled = DbService::cameraClient();
   auto* target = client != nullptr ? client : pooled.get();
   const auto rows =
-      co_await target->execSqlCoro(CAMERA_CLIP_RETENTION.data(), cameraId);
+      co_await target->execSqlCoro(std::string(CAMERA_CLIP_RETENTION), cameraId);
   if (rows.empty() || rows.front()["retention_days"].isNull())
     co_return std::nullopt;
   co_return static_cast<int64_t>(rows.front()["retention_days"].as<int64_t>());
@@ -119,6 +119,6 @@ CameraClipRepository::retentionDaysOf(int64_t cameraId,
 drogon::Task<void> CameraClipRepository::purgeDeleted(int64_t before) const
 {
   static_cast<void>(
-      co_await DbService::cameraClient()->execSqlCoro(PURGE_DELETED.data(), before));
+      co_await DbService::cameraClient()->execSqlCoro(std::string(PURGE_DELETED), before));
   co_return;
 }
