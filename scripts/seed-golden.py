@@ -246,6 +246,12 @@ def seed(stack: Path, device_ip: str, token_out: Path,
         "'tapo','video','events',7,'[]','{}',1,0,?)", (now,))
     camera_id = camera.execute("SELECT last_insert_rowid()").fetchone()[0]
     camera.execute(
+        "INSERT INTO camera(name,manufacturer,model,ip,port,username,password,"
+        "cloud_username,cloud_password,driver,icon,record_mode,retention_days,"
+        "capabilities,config,is_enabled,is_online,created_at)"
+        " VALUES('Golden Bell','tapo','D130','127.0.0.1',2,'admin','','','',"
+        "'tapo','video','events',7,'[]','{}',1,0,?)", (now,))
+    camera.execute(
         "INSERT INTO zone(camera_id,name,points,zone_type,color,is_enabled,"
         "created_at) VALUES(?,'Golden Zone','[]','monitor','#00FF00',1,?)",
         (camera_id, now))

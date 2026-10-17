@@ -9,6 +9,8 @@
   ],
   "expectations": {
     "bad-json": 400,
+    "doorbell-privacy-off": 422,
+    "doorbell-privacy-on": 422,
     "no-token": 401,
     "other-device": 401
   },
@@ -44,7 +46,7 @@
       "errors"
     ]
   },
-  "probes": 865,
+  "probes": 869,
   "sessions": "scripts/seed-golden.py --roles (owner, resident, guest)",
   "sources": "scripts/lib/route-baseline.txt (the route census)",
   "units": [

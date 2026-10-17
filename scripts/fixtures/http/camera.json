@@ -3555,6 +3555,28 @@
                 "lastEvent": null,
                 "lastSeenAt": "<masked:number>",
                 "mainActive": false,
+                "privacyState": "unknown",
+                "sampledAt": "<masked:number>",
+                "stream": null,
+                "viewers": 0,
+                "width": 0
+              },
+              {
+                "control": {
+                  "code": 0,
+                  "credential": "",
+                  "message": "No camera account or cloud password is saved",
+                  "retryAfterSeconds": 0,
+                  "retryAt": "<masked:number>",
+                  "state": "no_credentials"
+                },
+                "health": "<VOLATILE:string>",
+                "height": 0,
+                "id": 2,
+                "lastEvent": null,
+                "lastSeenAt": "<masked:number>",
+                "mainActive": false,
+                "privacyState": "unknown",
                 "sampledAt": "<masked:number>",
                 "stream": null,
                 "viewers": 0,
@@ -3602,6 +3624,28 @@
                 "lastEvent": null,
                 "lastSeenAt": "<masked:number>",
                 "mainActive": false,
+                "privacyState": "unknown",
+                "sampledAt": "<masked:number>",
+                "stream": null,
+                "viewers": 0,
+                "width": 0
+              },
+              {
+                "control": {
+                  "code": 0,
+                  "credential": "",
+                  "message": "No camera account or cloud password is saved",
+                  "retryAfterSeconds": 0,
+                  "retryAt": "<masked:number>",
+                  "state": "no_credentials"
+                },
+                "health": "<VOLATILE:string>",
+                "height": 0,
+                "id": 2,
+                "lastEvent": null,
+                "lastSeenAt": "<masked:number>",
+                "mainActive": false,
+                "privacyState": "unknown",
                 "sampledAt": "<masked:number>",
                 "stream": null,
                 "viewers": 0,
@@ -3649,6 +3693,28 @@
                 "lastEvent": null,
                 "lastSeenAt": "<masked:number>",
                 "mainActive": false,
+                "privacyState": "unknown",
+                "sampledAt": "<masked:number>",
+                "stream": null,
+                "viewers": 0,
+                "width": 0
+              },
+              {
+                "control": {
+                  "code": 0,
+                  "credential": "",
+                  "message": "No camera account or cloud password is saved",
+                  "retryAfterSeconds": 0,
+                  "retryAt": "<masked:number>",
+                  "state": "no_credentials"
+                },
+                "health": "<VOLATILE:string>",
+                "height": 0,
+                "id": 2,
+                "lastEvent": null,
+                "lastSeenAt": "<masked:number>",
+                "mainActive": false,
+                "privacyState": "unknown",
                 "sampledAt": "<masked:number>",
                 "stream": null,
                 "viewers": 0,
@@ -4137,6 +4203,7 @@
             "model": "C200",
             "name": "Golden Cam",
             "port": 1,
+            "privacyState": "unknown",
             "recordMode": "events",
             "retentionDays": 7,
             "updatedAt": "<masked:number>",
@@ -4206,6 +4273,7 @@
             "model": "C200",
             "name": "Golden Cam",
             "port": 1,
+            "privacyState": "unknown",
             "recordMode": "events",
             "retentionDays": 7,
             "updatedAt": "<masked:number>",
@@ -7469,6 +7537,58 @@
         "status": 200
       },
       "route": "/camera/recording",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/2/settings",
+      "probe": "doorbell-privacy-on",
+      "request": {
+        "auth": "owner",
+        "body": "{\"privacy\": true}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "message": "This camera model does not support the privacy lens mask"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/{1}/settings",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/2/settings",
+      "probe": "doorbell-privacy-off",
+      "request": {
+        "auth": "owner",
+        "body": "{\"privacy\": false}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "message": "This camera model does not support the privacy lens mask"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/{1}/settings",
       "unit": "camera"
     }
   ],

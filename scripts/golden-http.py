@@ -33,8 +33,8 @@ EXPECTATIONS = {
     "no-token": 401,
     "other-device": 401,
     "bad-json": 400,
-    "privacy-unclaimed-on": 422,
-    "privacy-unclaimed-off": 422,
+    "doorbell-privacy-on": 422,
+    "doorbell-privacy-off": 422,
 }
 
 MASKED_KEYS = (
@@ -172,11 +172,11 @@ EXTRA_PROBES = {
          "modulesOff": ("surveillance",)},
     ),
     ("camera", "PATCH", "/camera/{1}/settings"): (
-        {"name": "privacy-unclaimed-on", "auth": "owner",
-         "path": "/camera/1/settings",
+        {"name": "doorbell-privacy-on", "auth": "owner",
+         "path": "/camera/2/settings",
          "body": json.dumps({"privacy": True})},
-        {"name": "privacy-unclaimed-off", "auth": "owner",
-         "path": "/camera/1/settings",
+        {"name": "doorbell-privacy-off", "auth": "owner",
+         "path": "/camera/2/settings",
          "body": json.dumps({"privacy": False})},
     ),
     ("identity", "GET", "/invitation"): (
@@ -885,9 +885,30 @@ def probe_plan(route, ids, roles):
                 continue
             add(f"role-{role}", auth=role, body=body)
 
+    def add_extras():
+        for extra in EXTRA_PROBES.get((route["unit"], method, route["path"]), ()):
+            if extra["auth"] in roles and all(
+                    role in roles for role in SESSION_SLOT_RE.findall(extra["path"])):
+                resolved = fill_users(extra["path"], ids)
+                after = extra.get("after") or ()
+                if isinstance(after, dict):
+                    after = (after,)
+                hooks = lambda items: [
+                    {**hook, "path": fill_users(hook.get("path", resolved), ids),
+                     "body": fill_users(hook.get("body"), ids)}
+                    for hook in items]
+                extra_body = extra.get("body", body)
+                add(extra["name"], auth=extra["auth"],
+                    body=fill_users(extra_body, ids), path=resolved,
+                    modules_off=extra.get("modulesOff", ()),
+                    after=hooks(after), before=hooks(extra.get("before") or ()),
+                    remember=extra.get("remember"),
+                    settle=extra.get("settle", False))
+
     if is_control(route["unit"], route["path"]):
         add("owner", auth="owner", body=body)
         add("owner-missing", auth="owner", body=body, missing=True)
+        add_extras()
         return probes
 
     if guarded:
@@ -899,24 +920,7 @@ def probe_plan(route, ids, roles):
     if "{1}" in route["path"] and slot_id(route, ids) != MISSING_ID:
         add("owner-missing", auth="owner" if guarded else None, body=body,
             missing=True)
-    for extra in EXTRA_PROBES.get((route["unit"], method, route["path"]), ()):
-        if extra["auth"] in roles and all(
-                role in roles for role in SESSION_SLOT_RE.findall(extra["path"])):
-            resolved = fill_users(extra["path"], ids)
-            after = extra.get("after") or ()
-            if isinstance(after, dict):
-                after = (after,)
-            hooks = lambda items: [
-                {**hook, "path": fill_users(hook.get("path", resolved), ids),
-                 "body": fill_users(hook.get("body"), ids)}
-                for hook in items]
-            extra_body = extra.get("body", body)
-            add(extra["name"], auth=extra["auth"],
-                body=fill_users(extra_body, ids), path=resolved,
-                modules_off=extra.get("modulesOff", ()),
-                after=hooks(after), before=hooks(extra.get("before") or ()),
-                remember=extra.get("remember"),
-                settle=extra.get("settle", False))
+    add_extras()
     return probes
 
 
