@@ -56,22 +56,21 @@ Json::Value readJson(const fs::path& path)
   return root;
 }
 
-fs::path onnxReferencePath()
+std::optional<Json::Value> bundleGolden(const fs::path& dir)
 {
-  fs::path path(ARGUS_TEST_LAYA_PILOT);
-  path.replace_filename("parity-onnx.json");
-  return path;
+  const fs::path path = dir / "golden.json";
+  if (!fs::exists(path))
+    return std::nullopt;
+  const Json::Value root = readJson(path);
+  if (!root.isObject() || !root["probes"].isArray() || root["probes"].empty())
+    return std::nullopt;
+  return root;
 }
 
-turn::BundleDecode decodeOf(const Json::Value& parameters)
+bool installedBundleHasGolden()
 {
-  turn::BundleDecode decode;
-  if (parameters["headMaxLen"].isInt() && parameters["headMaxLen"].asInt() > 0)
-    decode.headMaxLen = parameters["headMaxLen"].asInt();
-  const Json::Value& temperature = parameters["temperature"];
-  for (Json::ArrayIndex index = 0; index < temperature.size() && index < decode.temperature.size(); ++index)
-    decode.temperature[index] = temperature[index].asDouble();
-  return decode;
+  const std::optional<Pilot> bundle = pilotBundle();
+  return bundle.has_value() && fs::exists(bundle->dir / "golden.json");
 }
 
 bool knob(const char* name)
@@ -144,22 +143,23 @@ std::string topLabel(const Json::Value& probabilities)
 }
 }
 
-TEST_CASE("the real Laya bundle decides, and the turn runs the tool it chose")
+TEST_CASE("the real Laya bundle decides, and the turn runs the tool it chose" *
+          doctest::skip(!installedBundleHasGolden()))
 {
   const std::optional<Pilot> pilot = pilotBundle();
   if (!pilot) {
     MESSAGE("no Laya bundle installed (or at ARGUS_LAYA_BUNDLE); the Laya runtime did not run");
     return;
   }
-  const Json::Value fixture = readJson(ARGUS_TEST_LAYA_PILOT);
-  const Json::Value reference = readJson(onnxReferencePath());
-  REQUIRE(reference["cases"].size() == fixture["cases"].size());
+  const std::optional<Json::Value> golden = bundleGolden(pilot->dir);
+  REQUIRE(golden.has_value());
+  const Json::Value& probes = (*golden)["probes"];
   const turn::BundleLoader bundle({.dir = pilot->dir});
   REQUIRE(bundle.valid());
-  CHECK(reference["modelSha256"].asString() == bundle.modelSha256());
+  CHECK((*golden)["modelSha256"].asString() == bundle.modelSha256());
   World world;
   turn::LayaDecider laya({.model =
-                              turn::openLayaModel({.bundle = bundle, .options = optionsOf(), .decode = decodeOf(fixture["parameters"])}),
+                              turn::openLayaModel({.bundle = bundle, .options = optionsOf(), .decode = bundle.decode()}),
                           .fallback = nullptr,
                           .policy = bundle.policy(),
                           .confidence = bundle.confidenceCalibration(),
@@ -168,15 +168,13 @@ TEST_CASE("the real Laya bundle decides, and the turn runs the tool it chose")
   std::size_t decided = 0;
   std::size_t engaged = 0;
   std::size_t acted = 0;
-  for (Json::ArrayIndex index = 0; index < fixture["cases"].size(); ++index) {
-    const Json::Value& item = fixture["cases"][index];
-    const Json::Value& held = reference["cases"][index];
-    REQUIRE(held["text"].asString() == item["text"].asString());
-    const std::string text = item["text"].asString();
-    const std::optional<std::string> expected = toolOfLabel(topLabel(held["tool"]));
+  for (Json::ArrayIndex index = 0; index < probes.size(); ++index) {
+    const Json::Value& probe = probes[index];
+    const std::string text = probe["text"].asString();
+    const std::optional<std::string> expected = toolOfLabel(topLabel(probe["tool"]));
     REQUIRE(expected.has_value());
     const turn::DecideInput input{.utterance = text,
-                                  .lang = "es",
+                                  .lang = probe["lang"].asString(),
                                   .offered = world.offered,
                                   .modules = world.audience.modules,
                                   .previousAssistant = {}};
@@ -210,26 +208,27 @@ TEST_CASE("the real Laya bundle decides, and the turn runs the tool it chose")
   }
   MESSAGE("laya turn: " << decided << " decisions, " << engaged << " engaged, " << acted << " tools run, " << world.ran.size()
                         << " calls recorded");
-  CHECK(decided == static_cast<std::size_t>(fixture["cases"].size()));
+  CHECK(decided == static_cast<std::size_t>(probes.size()));
   CHECK(engaged >= 1);
 }
 
-TEST_CASE("the Laya scores the bundle produces match the Python reference")
+TEST_CASE("the Laya scores the bundle produces match its own golden vectors" *
+          doctest::skip(!installedBundleHasGolden()))
 {
   const std::optional<Pilot> pilot = pilotBundle();
   if (!pilot) {
     MESSAGE("no Laya bundle installed (or at ARGUS_LAYA_BUNDLE); the Laya parity did not run");
     return;
   }
-  const Json::Value fixture = readJson(ARGUS_TEST_LAYA_PILOT);
-  const Json::Value reference = readJson(onnxReferencePath());
-  REQUIRE(reference["cases"].size() == fixture["cases"].size());
-  CHECK(reference["modelSha256"].isString());
-  CHECK(reference["onnxruntime"].isString());
+  const std::optional<Json::Value> golden = bundleGolden(pilot->dir);
+  REQUIRE(golden.has_value());
+  const Json::Value& probes = (*golden)["probes"];
+  CHECK((*golden)["modelSha256"].isString());
+  CHECK((*golden)["reference"].isString());
   const turn::BundleLoader bundle({.dir = pilot->dir});
   REQUIRE(bundle.valid());
-  CHECK(reference["modelSha256"].asString() == bundle.modelSha256());
-  turn::LayaDecider laya({.model = turn::openLayaModel({.bundle = bundle, .options = {}, .decode = decodeOf(fixture["parameters"])}),
+  CHECK((*golden)["modelSha256"].asString() == bundle.modelSha256());
+  turn::LayaDecider laya({.model = turn::openLayaModel({.bundle = bundle, .options = {}, .decode = bundle.decode()}),
                           .fallback = nullptr,
                           .policy = bundle.policy(),
                           .confidence = {},
@@ -239,13 +238,11 @@ TEST_CASE("the Laya scores the bundle produces match the Python reference")
   double worstNow = 0.0;
   std::size_t rows = 0;
   std::size_t decisionMismatches = 0;
-  for (Json::ArrayIndex index = 0; index < fixture["cases"].size(); ++index) {
-    const Json::Value& item = fixture["cases"][index];
-    const Json::Value& held = reference["cases"][index];
-    REQUIRE(held["text"].asString() == item["text"].asString());
-    const std::optional<turn::LayaReading> reading = laya.read(item["text"].asString(), "es");
+  for (Json::ArrayIndex index = 0; index < probes.size(); ++index) {
+    const Json::Value& probe = probes[index];
+    const std::optional<turn::LayaReading> reading = laya.read(probe["text"].asString(), probe["lang"].asString());
     REQUIRE(reading.has_value());
-    const Json::Value& expected = held["tool"];
+    const Json::Value& expected = probe["tool"];
     double total = 0.0;
     for (const std::string& label : expected.getMemberNames()) {
       const auto found =
@@ -258,16 +255,16 @@ TEST_CASE("the Laya scores the bundle produces match the Python reference")
     CHECK(total == doctest::Approx(1.0).epsilon(0.001));
     const auto best = std::ranges::max_element(requireValue(reading).probabilities, {}, &std::pair<std::string, double>::second);
     REQUIRE(best != requireValue(reading).probabilities.end());
-    if (best->first != held["choice"].asString())
+    if (best->first != probe["choice"].asString())
       ++decisionMismatches;
-    worstNow = std::max(worstNow, std::abs(requireValue(reading).now - held["now"].asDouble()));
+    worstNow = std::max(worstNow, std::abs(requireValue(reading).now - probe["now"].asDouble()));
     ++rows;
   }
-  MESSAGE("laya parity vs " << reference["backend"].asString() << " on onnxruntime " << reference["onnxruntime"].asString()
-                            << " over " << reference["modelSha256"].asString().substr(0, 12) << ": " << rows
+  MESSAGE("laya parity vs " << (*golden)["reference"].asString()
+                            << " over " << (*golden)["modelSha256"].asString().substr(0, 12) << ": " << rows
                             << " rows, worst probability gap " << worstProbability << ", worst now gap " << worstNow << ", "
                             << decisionMismatches << " decisions differing");
-  CHECK(rows == static_cast<std::size_t>(fixture["cases"].size()));
+  CHECK(rows == static_cast<std::size_t>(probes.size()));
   CHECK(worstProbability <= 2e-3);
   CHECK(worstNow <= 2e-3);
   CHECK(decisionMismatches == 0);

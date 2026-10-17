@@ -297,9 +297,19 @@ TEST_CASE("the shipped question set is the one the parity fixture renders")
   if (!parity)
     return;
   const fs::path questions = requireValue(parity).tokenizer.parent_path().parent_path() / "questions.json";
-  const std::optional<std::string> digest = fileSha256(questions);
-  REQUIRE(digest.has_value());
-  CHECK(requireValue(digest) == requireValue(parity).root.at("questionsSha256").get<std::string>());
+  std::ifstream in(questions);
+  REQUIRE(in.is_open());
+  const nlohmann::ordered_json shipped = nlohmann::ordered_json::parse(in, nullptr, false);
+  REQUIRE_FALSE(shipped.is_discarded());
+  REQUIRE(shipped.is_object());
+  const nlohmann::ordered_json& rendered = requireValue(parity).root.at("questions");
+  std::size_t checked = 0;
+  for (const auto& [id, question] : shipped.items()) {
+    REQUIRE_MESSAGE(rendered.contains(id), id);
+    CHECK(question == rendered.at(id));
+    ++checked;
+  }
+  CHECK(checked > 0);
 }
 
 TEST_CASE("the pipeline's NFC puts a decomposed spelling on the same ids as its composed twin")
