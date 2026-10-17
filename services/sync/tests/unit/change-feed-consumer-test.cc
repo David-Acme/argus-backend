@@ -190,7 +190,7 @@ Json::Value cameraEmit()
 TEST_CASE("every producer stream carries the durable the change feed holds")
 {
   const auto& feeds = change_feed::defaults();
-  REQUIRE(feeds.size() == 13);
+  REQUIRE(feeds.size() == 14);
 
   CHECK(feeds[0].stream == std::string(nats_subject::kCameraStream));
   CHECK(feeds[0].subject == std::string(nats_subject::kCameraChange));
@@ -466,7 +466,7 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
              .msgId = "auth-session:2",
              .body = R"({"operation":7,"option":"user","info":{},"user":42,"action":"disconnect_session"})"})) ==
         DurableDisposition::Term);
-  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "3");
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "4");
 
   CHECK(drogon::sync_wait(consumer.handle(
             {.subject = nats_subject::kIdentityUserAction,
@@ -498,14 +498,14 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
              .msgId = "camera-change:forged-module",
              .body = R"({"operation":12,"option":"user","info":{"modules":[]}})"})) ==
         DurableDisposition::Term);
-  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "3");
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "4");
 
   CHECK(drogon::sync_wait(consumer.handle(
             {.subject = nats_subject::kSettingsUserAction,
              .msgId = "settings-action:11",
              .body = R"({"user_id":42,"record_id":0,"table_name":"module","module":"surveillance","action":"update","old_data":{},"new_data":{"event":"disabled","lifecycle":"disabled"},"ip_address":""})"})) ==
         DurableDisposition::Ack);
-  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "4");
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "5");
   CHECK(scalar("SELECT table_name FROM user_action_log WHERE msg_id = 'settings-action:11'") == "module");
   CHECK(scalar("SELECT module FROM user_action_log WHERE msg_id = 'settings-action:11'") == "surveillance");
   CHECK(scalar("SELECT user_id FROM user_action_log WHERE msg_id = 'settings-action:11'") == "42");
@@ -514,13 +514,13 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
              .msgId = "settings-action:11",
              .body = R"({"user_id":42,"record_id":0,"table_name":"module","module":"surveillance","action":"update","old_data":{},"new_data":{"event":"disabled"},"ip_address":""})"})) ==
         DurableDisposition::Ack);
-  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "4");
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "5");
   CHECK(drogon::sync_wait(consumer.handle(
             {.subject = nats_subject::kSettingsUserAction,
              .msgId = "settings-action:12",
              .body = R"({"user_id":42,"record_id":0,"table_name":"not_a_table","action":"update"})"})) ==
         DurableDisposition::Term);
-  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "4");
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "5");
   DbService::client()->execSqlSync("DELETE FROM user_action_log WHERE msg_id = 'settings-action:11'");
 
   CHECK(drogon::sync_wait(consumer.handle(
