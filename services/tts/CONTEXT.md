@@ -21,7 +21,9 @@ and instead call it over the internal wire.
   legacy denoising-steps ceiling on GPU hosts.
 - **The internal wire (Ruling BH)**:
   - `POST /tts/v1/synthesize` → binary float32 PCM,
-    `audio/x-argus-pcm-f32` + `X-Argus-Sample-Rate`.
+    `audio/x-argus-pcm-f32` + `X-Argus-Sample-Rate`; it holds the same
+    `StreamSlots` admission as the stream route, so both refuse alike when
+    the pool is full.
   - `POST /tts/v1/synthesize-stream` → chunked float32 PCM with the same
     headers, one HTTP chunk per engine chunk; synthesis runs on a worker
     of the Heavy blocking lane admitted by `StreamSlots`

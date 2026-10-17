@@ -377,6 +377,14 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
                                .closeConnection = false});
     CHECK(busy.status == 429);
     CHECK(envelope(busy)["errors"]["code"] == "TOO_MANY_REQUESTS");
+
+    const auto busyUnary = request({.port = port,
+                                    .method = "POST",
+                                    .path = "/tts/v1/synthesize",
+                                    .body = R"({"text":"Hola argus","lang":"es"})",
+                                    .closeConnection = true});
+    CHECK(busyUnary.status == 429);
+    CHECK(envelope(busyUnary)["errors"]["code"] == "TOO_MANY_REQUESTS");
   }
   const auto freed = request({.port = port,
                               .method = "POST",

@@ -101,6 +101,10 @@ TtsController::synthesize(drogon::HttpRequestPtr req)
   if (!tts.isLoaded())
     throw ResponseException(503, TtsErrors::TtsNotLoaded);
 
+  auto lease = streams_.tryAcquire();
+  if (!lease)
+    throw ResponseException(streams_.stopping() ? TtsErrors::Unavailable : TtsErrors::Busy);
+
   const auto t0 = std::chrono::steady_clock::now();
   auto pcm = co_await tts.synthesizeAsync(body.request());
   const double ms =
