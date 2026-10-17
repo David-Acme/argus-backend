@@ -2,9 +2,6 @@
 host = "127.0.0.1"
 port = 7032
 
-[rpc]
-address = ""
-
 [internal_tls]
 dir = ""
 address = "127.0.0.1:7332"

@@ -342,7 +342,7 @@ int main()
                 "identity its callers declare";
   std::unique_ptr<LlmRpcServer> rpc;
   std::unique_ptr<SettingsRpcService> settingsRpc;
-  if (!rpcConfig.address.empty() && !rpcConfig.credentials.empty()) {
+  if (!internalTlsConfig.address.empty() && !rpcConfig.credentials.empty()) {
     std::vector<grpc::Service*> services;
     if (!rpcConfig.settingsCredentials.empty()) {
       settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
@@ -377,7 +377,8 @@ int main()
         .services = std::move(services),
         .tlsAddress = internalTlsConfig.address,
         .tls = internalTls});
-    LOG_INFO << "argus-llm gRPC chat listening on " << rpcConfig.address;
+    if (!rpcConfig.address.empty())
+      LOG_INFO << "argus-llm gRPC chat listening on " << rpcConfig.address;
     if (rpc->tlsPort() > 0)
       LOG_INFO << "argus-llm gRPC chat with mutual TLS on " << internalTlsConfig.address;
   }

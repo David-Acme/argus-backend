@@ -406,16 +406,23 @@ loopback_publishes() {
 }
 
 internal_tls_wiring() {
-  local service="$1" template="$2" native_template="$3" compose="$4" plain tls published
-  plain="$(toml_value "$template" server grpc_port)"
-  [ -n "$plain" ] || plain="$(toml_value "$template" rpc address)"
-  plain="${plain##*:}"
-  if [ -z "$plain" ]; then
-    echo "config.$service.toml.example declares [internal_tls] without a plaintext gRPC port"
+  local service="$1" template="$2" native_template="$3" compose="$4" tls
+  tls="$(toml_value "$template" internal_tls address)"
+  tls="${tls##*:}"
+  if [ -z "$tls" ]; then
+    echo "config.$service.toml.example declares no [internal_tls] address"
     return
   fi
-  tls=$(( plain + 200 ))
-  published="$(loopback_publishes "$compose" "argus-$service")"
+  for key in grpc_port rpc_port; do
+    [ -z "$(toml_value "$template" server "$key")" ] \
+      || echo "config.$service.toml.example still declares the plaintext gRPC listener server.$key"
+  done
+  [ -z "$(toml_value "$template" rpc address)" ] \
+    || echo "config.$service.toml.example still declares the plaintext gRPC listener rpc.address"
+  [ -z "$(toml_value "$native_template" server grpc_port)" ] \
+    || echo "services/$service/config.toml.example still declares the plaintext gRPC listener server.grpc_port"
+  [ -z "$(toml_value "$native_template" rpc address)" ] \
+    || echo "services/$service/config.toml.example still declares the plaintext gRPC listener rpc.address"
   [ "$(toml_value "$template" internal_tls dir)" = /run/secrets/internal-tls ] \
     || echo "config.$service.toml.example does not read its certificates where its mount puts them"
   [ "$(toml_value "$template" internal_tls address)" = "0.0.0.0:$tls" ] \
@@ -424,13 +431,6 @@ internal_tls_wiring() {
     || echo "services/$service/config.toml.example names the certificate directory setup.sh writes"
   [ "$(toml_value "$native_template" internal_tls address)" = "127.0.0.1:$tls" ] \
     || echo "services/$service/config.toml.example does not listen for mutual TLS on 127.0.0.1:$tls"
-  if grep -qx "$plain" <<<"$published"; then
-    grep -qx "$tls" <<<"$published" \
-      || echo "argus-$service publishes its plaintext gRPC port $plain on 127.0.0.1 but not $tls"
-  else
-    ! grep -qx "$tls" <<<"$published" \
-      || echo "argus-$service publishes $tls although its plaintext gRPC port $plain is not published"
-  fi
 }
 
 [ -n "$(internal_tls_services)" ] || fail "no deploy template declares [internal_tls]"
@@ -451,17 +451,21 @@ awk '/^  argus-tts:$/ { tts = 1 } tts && /certs\/internal\/tts$/ { seen = 1 } se
   "$COMPOSE" > "$TEST_TMP/compose-writable-tls.yml"
 [ "$(misplaced_internal_tls "$TEST_TMP/compose-writable-tls.yml")" = "argus-tts" ] \
   || fail "a certificate directory mounted writable was not reported"
-sed 's/^address = "0.0.0.0:7329"$/address = "0.0.0.0:7330"/' "$ROOT/argus-deploy/config.tts.toml.example" \
-  > "$TEST_TMP/tts-off-port.toml"
-[ "$(internal_tls_wiring tts "$TEST_TMP/tts-off-port.toml" "$ROOT/services/tts/config.toml.example" "$COMPOSE")" \
-    = "config.tts.toml.example does not listen for mutual TLS on 0.0.0.0:7329" ] \
-  || fail "a mutual TLS port that is not the plaintext gRPC port plus 200 was not reported"
-awk '{ print } /^  argus-tts:$/ { tts = 1 } tts && /^    ports:$/ { print "      - \"127.0.0.1:${TTS_TLS_PORT:-7329}:7329\""; tts = 0 }' \
-  "$COMPOSE" > "$TEST_TMP/compose-published-tls.yml"
-[ "$(internal_tls_wiring tts "$ROOT/argus-deploy/config.tts.toml.example" "$ROOT/services/tts/config.toml.example" \
-    "$TEST_TMP/compose-published-tls.yml")" \
-    = "argus-tts publishes 7329 although its plaintext gRPC port 7129 is not published" ] \
-  || fail "a mutual TLS port published where the plaintext gRPC port is not was not reported"
+awk '{ print } /^\[server\]$/ { print "grpc_port = 7129" }' \
+  "$ROOT/argus-deploy/config.tts.toml.example" > "$TEST_TMP/tts-plain-server.toml"
+[ "$(internal_tls_wiring tts "$TEST_TMP/tts-plain-server.toml" "$ROOT/services/tts/config.toml.example" "$COMPOSE")" \
+    = "config.tts.toml.example still declares the plaintext gRPC listener server.grpc_port" ] \
+  || fail "a deploy template that kept server.grpc_port was not reported"
+awk '{ print } /^\[internal_tls\]$/ { print "address = \"127.0.0.1:7330\"" }' \
+  "$ROOT/services/tts/config.toml.example" > "$TEST_TMP/tts-native-off-port.toml"
+awk '/^\[rpc\.callers\]$/ { print "[rpc]"; print "address = \"0.0.0.0:7129\"" } { print }' \
+  "$ROOT/argus-deploy/config.tts.toml.example" > "$TEST_TMP/tts-plain-listener.toml"
+[ "$(internal_tls_wiring tts "$TEST_TMP/tts-plain-listener.toml" "$ROOT/services/tts/config.toml.example" "$COMPOSE")" \
+    = "config.tts.toml.example still declares the plaintext gRPC listener rpc.address" ] \
+  || fail "a template that kept the plaintext gRPC listener was not reported"
+[ "$(internal_tls_wiring tts "$ROOT/argus-deploy/config.tts.toml.example" "$TEST_TMP/tts-native-off-port.toml" "$COMPOSE")" \
+    = "services/tts/config.toml.example does not listen for mutual TLS on 127.0.0.1:7329" ] \
+  || fail "a native template whose mutual TLS port differs from its deploy template was not reported"
 
 sandbox="$TEST_TMP/provision"
 mkdir -p "$sandbox/root/scripts" "$sandbox/root/argus-deploy" "$sandbox/bin"

@@ -402,7 +402,7 @@ int main()
     controlServices.push_back(settingsRpc.get());
   }
   const SyncControlRpcListenInput controlInput{
-      .address = control.listener.host + ":" + std::to_string(control.listener.port),
+      .address = control.listener.address(),
       .tlsAddress = internalTlsConfig.address,
       .tls = internalTls,
       .services = std::move(controlServices)};
@@ -414,8 +414,9 @@ int main()
   std::unique_ptr<grpc::Server> controlServer = std::move(controlListener.server);
   if (controlListener.tlsPort > 0)
     LOG_INFO << "Sync control RPC with mutual TLS on " << internalTlsConfig.address;
-  LOG_INFO << "Sync control RPC listening on " << control.listener.host << ":"
-           << control.listener.port << " (cleartext, "
+  if (control.listener.port > 0)
+    LOG_INFO << "Sync control RPC listening on " << control.listener.host << ":"
+             << control.listener.port << " (cleartext, "
            << (controlGate->open()
                    ? "loopback only, no caller credential"
                    : std::to_string(controlGate->pairedCount()) +

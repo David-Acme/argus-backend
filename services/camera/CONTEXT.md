@@ -20,7 +20,7 @@ sibling service: own binary, own CMake preset, own `camera.db`.
 - **Wiring**: Drogon boot with the camera domain only — an app-facing TLS
   listener (`[camera] host/port`, 7026, the instance certificate from
   `[cert]`) announced per logical route over mDNS, a plain gRPC listener
-  (`[server] grpc_port`, 7036) for the sync pulls and the guard's action
+  (`[internal_tls] address`, 7236, mutual TLS) for the sync pulls and the guard's action
   surface, `DbService` default
   client on `[camera] db` (default `database/camera.db`), `[drogon.app]`
   mirror, CORS/exception/404/405 plumbing from the shared `lib/http` handlers
@@ -254,7 +254,7 @@ sibling service: own binary, own CMake preset, own `camera.db`.
 ## Camera sync gRPC leg (F6-5 step 1)
 
 - **`argus.camera.v1.SyncService.PullTable`** (port 7036, `[server]
-  grpc_port`): serves the camera-domain sync tables (camera, camera_stream,
+  internal_tls] address`): serves the camera-domain sync tables (camera, camera_stream,
   zone) to `argus-sync` with the frozen /sync semantics typed into
   `packages/contracts/proto/argus/camera/v1/sync.proto` — per-table
   required_create/required_deleted/find_last legs, (createdAt, id) cursor
@@ -563,7 +563,8 @@ the two repositories are the feature's own (the notification-token family is
 the same shape).
 
 The gRPC listener left `main.cc`: `src/app/rpc/camera-rpc-server.{hxx,cc}`
-resolves `GrpcListenerConfig` (the `server.grpc_port` key, 7036 by default),
+resolves `GrpcListenerConfig` (the `server.grpc_port` key; no template sets it
+since 2026-10-16, so the service opens the mutual TLS listener alone),
 registers the services it is handed and owns the shutdown, so `main.cc` no
 longer resolves a listener or names a port. The three gRPC services
 themselves stay where their domain is — `argus.camera.v1` in `feature/sync`,

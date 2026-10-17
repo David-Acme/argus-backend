@@ -55,12 +55,16 @@ InternalTlsConfig InternalTlsConfig::resolve()
           .address = ConfigService::getString("internal_tls.address")};
 }
 
-GrpcListenerConfig GrpcListenerConfig::resolve(uint16_t defaultPort,
-                                               std::string_view portKey)
+std::string GrpcListenerConfig::address() const
+{
+  return port > 0 ? host + ":" + std::to_string(port) : std::string{};
+}
+
+GrpcListenerConfig GrpcListenerConfig::resolve(std::string_view portKey)
 {
   GrpcListenerConfig config;
   config.host = configString("server.host", kDefaultHost);
-  config.port = resolvePort(std::string(portKey), defaultPort);
+  config.port = resolvePort(std::string(portKey), 0);
   return config;
 }
 

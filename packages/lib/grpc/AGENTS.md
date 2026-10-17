@@ -140,7 +140,12 @@ is installed, and the install refuses a second call, a call after
 `tests/support/grpc-test-support/mutual-tls-endpoint.hxx` — `MutualTlsEndpoint`,
 the one test fixture every client's mutual TLS case uses: a loopback
 `startListening` with a plaintext port and a mutual TLS port, serving the given
-services with the named service's material. It exposes the plain target, the
+services with the named service's material. The plaintext port exists only
+where a caller asks for one: `listenPorts` opens it when `ListenInput.address`
+is set (the services' own tests do) and the mutual TLS port whenever the
+process has internal material and a `tlsAddress`, independently of it, so a
+config that names no plaintext port opens none and still serves its internal
+callers over mutual TLS. It exposes the plain target, the
 `tls:` target and the plaintext dial to the TLS port. Its test,
 `tests/unit/mutual-tls-endpoint-test.cc`, runs through the same script: a
 `makeChannel` `tls:` channel reaches the TLS port with the internal certificate,

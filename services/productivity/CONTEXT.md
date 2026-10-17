@@ -103,7 +103,8 @@ own `productivity.db`.
   the RPC cannot resolve degrades to the same `UserNotFound` answer a
   missing row always produced.
 - **Sync RPC owner (rule 27)**: `feature/sync/productivity-sync-rpc-service.cc`
-  serves `argus.productivity.v1.SyncService` on `server.grpc_port` (7037).
+  serves `argus.productivity.v1.SyncService` on `[internal_tls] address`
+  (7237, mutual TLS; `server.grpc_port` is unset since 2026-10-16).
   `PullTable` carries one of the 7 tables with the required-create/
   required-delete/find-last legs; the caller identity rides the
   x-argus-user/role/device metadata and scopes the personal tables

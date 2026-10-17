@@ -197,7 +197,8 @@ RpcListener startRpcListener(const RpcListenerInput& input)
     _exit(1);
   }
   listener.server = std::move(started.server);
-  LOG_INFO << "Guard RPC listener on " << rpc.address;
+  if (!rpc.address.empty())
+    LOG_INFO << "Guard RPC listener on " << rpc.address;
   if (started.tlsPort > 0)
     LOG_INFO << "Guard RPC with mutual TLS on " << input.tlsAddress;
   return listener;

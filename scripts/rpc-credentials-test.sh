@@ -43,6 +43,23 @@ DATA_OWNERS="identity:rpc.callers:settings:7240
 productivity:grpc:caller_settings:7237
 sync:rpc.callers:settings:7241"
 
+check_deploy_vlm_pair() {
+  local deploy_dir="$1"
+  local client_value server_value
+  client_value="$(toml_value "$deploy_dir/config.guard.toml" vlm grpc_credential)"
+  server_value="$(toml_value "$deploy_dir/config.vlm.toml" rpc.callers guard)"
+  [ "${#client_value}" -eq 64 ] || fail "deploy: guard has no credential for the vlm"
+  case "$client_value" in *CHANGE_ME*) fail "deploy: guard [vlm] grpc_credential is a placeholder" ;; esac
+  [ "$client_value" = "$server_value" ] ||
+    fail "deploy: guard [vlm] grpc_credential differs from vlm [rpc.callers] guard"
+  [ "$(toml_value "$deploy_dir/config.guard.toml" vlm grpc_target)" = "tls:argus-vlm:7331" ] ||
+    fail "deploy: guard does not reach the vlm over tls:argus-vlm:7331"
+  if grep -Fxq "$client_value" "$TEST_TMP/seen-deploy"; then
+    fail "deploy: the guard -> vlm pair reuses another pair's credential"
+  fi
+  printf '%s\n' "$client_value" >> "$TEST_TMP/seen-deploy"
+}
+
 check_data_owners() {
   local deploy_dir="$1"
   local owner table key port credential served
@@ -91,6 +108,7 @@ cp "$ROOT"/argus-deploy/config.*.toml.example "$deploy"/
 ensure_deploy_configs "$deploy" > "$TEST_TMP/deploy-first.log" 2>&1 || fail "ensure_deploy_configs failed"
 check_pairs deploy "$deploy"
 check_data_owners "$deploy"
+check_deploy_vlm_pair "$deploy"
 for service in camera guard identity llm notification productivity sync; do
   [ "$(toml_value "$deploy/config.$service.toml" modules target)" = "tls:argus-settings:7247" ] ||
     fail "deploy: $service does not read the enabled set from tls:argus-settings:7247"
@@ -135,6 +153,7 @@ replace_toml_value identity rpc_secret "$legacy" "$upgrade/config.camera.toml"
 actions="$(toml_value "$upgrade/config.guard.toml" camera actions_credential)"
 ensure_deploy_configs "$upgrade" > /dev/null 2>&1 || fail "upgrading an existing deploy failed"
 check_pairs deploy "$upgrade"
+check_deploy_vlm_pair "$upgrade"
 [ "$(toml_value "$upgrade/config.identity.toml" identity rpc_secret)" = "$legacy" ] ||
   fail "the upgrade rotated the legacy fleet secret"
 [ "$(toml_value "$upgrade/config.camera.toml" identity rpc_secret)" = "$legacy" ] ||

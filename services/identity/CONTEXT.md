@@ -26,7 +26,7 @@ The extraction is a process, not a folder: `src/app/main.cc` loads
 `config.toml`, opens `database/identity.db`, applies
 `database/schema.sql` from its beginning advice, installs the four filters,
 registers the four controllers, connects the NATS bus and installs the change
-sink, builds the gRPC server on `[server] grpc_port` (7040), and runs Drogon on
+sink, builds the mutual TLS gRPC server on `[internal_tls] address` (7240), and runs Drogon on
 `[identity] port` (7044) with the instance certificate.
 
 Before step 1 the gateway HOSTED both surfaces: it constructed the RPC service

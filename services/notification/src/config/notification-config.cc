@@ -24,7 +24,7 @@ ListenerConfig NotificationConfig::resolveListener()
 
 GrpcListenerConfig NotificationConfig::resolveRpcListener()
 {
-  return GrpcListenerConfig::resolve(7038);
+  return GrpcListenerConfig::resolve();
 }
 
 NotificationIdentityConfig NotificationConfig::resolveIdentity()

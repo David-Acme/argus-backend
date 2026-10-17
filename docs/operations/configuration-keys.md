@@ -71,7 +71,7 @@ argus-deploy argus-identity configuration. Copy to config.identity.toml (gitigno
 | Key | Notes |
 |---|---|
 | `identity.port` | The TLS HTTP surface (7044). The compose publishes it on every interface, so the app dials the `/user`, `/invitation`, `/portrait-preview`, `/voiceprint` and `/pairing` prefixes directly. It is also the port the pairing and invitation answers publish, and the one the app writes into every later invitation QR. |
-| `identity.rpc_secret` | Gates the cleartext `argus.identity.v1` gRPC listener on `[server] grpc_port` (7040). Same value in every service's [identity] rpc_secret, or every call fails. Empty means loopback-only and ungated, and the service refuses to start when the listener is reachable beyond loopback without it. |
+| `identity.rpc_secret` | The legacy fleet secret `FleetCallerGate` still admits while a caller of the mutual TLS `argus.identity.v1` listener is unpaired: same value in every service's [identity] rpc_secret, or every call fails; the per-caller `[rpc.callers]` pairs are the paired form. Empty means loopback-only and ungated, and the service refuses to start when a plaintext listener would be reachable beyond loopback without it. |
 | `identity.db` | `database/identity.db`, this owner's only database (rule 27). |
 | `face.enabled` | Face detection + recognition in this process; the engine never leaves it and argus-camera only ships crops. |
 | `voiceprint.enabled` / `voiceprint.model` | Speaker identification in this process (3D-Speaker ERes2Net through sherpa-onnx, provisioned into the read-only `models/speaker/` mount by `services/identity/scripts/provision.sh`). Argus learns each holder's voice passively from their own calls; nobody enrolls. Disabled or missing, every voiceprint call answers *unavailable*, nothing is learned and nothing else changes. See `services/identity/CONTEXT.md` for the gates and the measurements behind them. |
@@ -243,7 +243,7 @@ argus-deploy argus-voice configuration. Copy to config.voice.toml (gitignored) n
 
 argus-identity configuration. Copy to config.toml (gitignored) to run.
 
-- **`[server]`** — The gRPC listener: `host` is loopback by default. `grpc_port` is the plaintext port; the peers' `identity.target` names its mutual TLS port (`grpc_port` + 200 under `[internal_tls] address`), `tls:argus-identity:<port>` in deploy and `tls:127.0.0.1:<port>` natively.
+- **`[server]`** — the wire listener of stt, tts, vlm and llm (`host`, `port`) and voice's `/health` (`server.health_port`). The plaintext internal gRPC listener these services and the Drogon ones used to open beside it (`server.grpc_port`, `[rpc] address`) is gone from every template on 2026-10-16: with the key unset the port is 0 and no plaintext listener opens, while the peers dial the mutual TLS listener `[internal_tls] address` names — `tls:argus-identity:<port>` in deploy, `tls:127.0.0.1:<port>` natively.
 - **`[drogon.app]`** — The HTTP listener and db_clients are built by the service itself.
 - **`[cert]`** — The instance CA and server certificate; the HTTPS surface needs both.
 - **`[face]`** — The face engine runs in this process: the vec0 index lives in identity.db and no crop leaves the host.

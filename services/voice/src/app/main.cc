@@ -185,7 +185,7 @@ int main()
   if (settingsRpc)
     grpcServices.push_back(settingsRpc.get());
   const VoiceRpcListenInput grpcInput{
-      .address = hostPort(grpcListener.host, grpcListener.port),
+      .address = grpcListener.address(),
       .tlsAddress = internalTlsConfig.address,
       .tls = internalTls,
       .services = std::move(grpcServices)};
@@ -217,10 +217,10 @@ int main()
         return ErrorHandler::unmatchedRoute(code);
       });
 
-  LOG_INFO << "gRPC VoiceService on " << hostPort(grpcListener.host,
-                                                  grpcListener.port)
-           << "; /health on " << hostPort(healthListener.host,
-                                          healthListener.port);
+  if (grpcListener.port > 0)
+    LOG_INFO << "gRPC VoiceService on " << grpcListener.address();
+  LOG_INFO << "/health on " << hostPort(healthListener.host,
+                                        healthListener.port);
 
   ServerDrain serverDrain({.server = server.get(), .rtc = rtc.get(), .streams = &voiceRpc});
   shutdown_signal::onStop(shutdown_signal::drainOf(serverDrain, "voice-grpc"));

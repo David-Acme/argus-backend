@@ -19,9 +19,6 @@ idle_refresh_s = 30
 health_timeout_s = 180
 seed_wait_s = 300
 
-[rpc]
-address = "0.0.0.0:7047"
-
 [rpc.callers]
 auth = ""
 camera = ""

@@ -9,7 +9,6 @@
 namespace
 {
 constexpr uint16_t kDefaultIdentityPort = 7044;
-constexpr uint16_t kDefaultRpcPort = 7040;
 constexpr int kMinLinkOccasions = 2;
 constexpr int kMaxLinkOccasions = 20;
 constexpr int kMinProfileSamples = 5;
@@ -75,7 +74,7 @@ uint16_t IdentityConfig::resolveAnnouncedPort()
 IdentityRpcConfig IdentityConfig::resolveRpc()
 {
   IdentityRpcConfig config;
-  config.listener = GrpcListenerConfig::resolve(kDefaultRpcPort);
+  config.listener = GrpcListenerConfig::resolve();
   config.secret = ConfigService::getString("identity.rpc_secret");
   config.callers = ConfigService::getStringPairs("rpc.callers");
   return config;
@@ -83,8 +82,8 @@ IdentityRpcConfig IdentityConfig::resolveRpc()
 
 bool IdentityRpcConfig::reachableBeyondLoopback() const
 {
-  return listener.host != "127.0.0.1" && listener.host != "::1" &&
-         listener.host != "localhost";
+  return listener.port > 0 && listener.host != "127.0.0.1" &&
+         listener.host != "::1" && listener.host != "localhost";
 }
 
 IdentitySyncControlConfig IdentityConfig::resolveSyncControl()

@@ -25,7 +25,8 @@ identity-service code; when in doubt, the root file wins.
    never from another owner's database, and the five sync tables left this
    file for argus-sync's own `sync.db` in Phase 3c-2.
 3. **Two listeners, one process** — TLS HTTP on `7044` (`[identity] port`) and
-   the `argus.identity.v1` gRPC surface on `7040` (`[server] grpc_port`). The
+   the `argus.identity.v1` gRPC surface on its mutual TLS listener
+   (`[internal_tls] address`, 7240). The
    RPC listener is cleartext and gated per caller: `[rpc.callers]` holds one
    credential per peer (auth, camera, guard, llm, notification, productivity,
    sync, voice), each paired with that peer's `[identity] credential`, and

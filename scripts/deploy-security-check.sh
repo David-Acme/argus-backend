@@ -14,8 +14,10 @@ deploy: every service boots with [internal_tls] and no plaintext internal
 listener, every internal caller dials a tls: target, every NATS client
 connects with its own nkey and none with the shared "argus" user, and every
 object-store reader uses its own bucket-scoped credentials instead of the
-shared key pair. One line per check per service, starting green or red; the
-exit status is the number of red lines. It changes nothing: it reads the
+shared key pair. One line per check per service, starting green or red; a line
+starting with "expected" names a gap only a provisioning pass on the deployed
+configs can close (the check counts it apart from the reds and never changes
+anything). The exit status is the number of red lines. It changes nothing: it reads the
 deploy configs and the host state, opens read-only probes (a mutual TLS
 handshake, a bucket listing), and asks the broker's monitor what is connected.
 
@@ -31,6 +33,10 @@ Options:
                        broker monitor (default: $COMPOSE_PROJECT_NAME, else the
                        compose file's name:, else argus-cutover)
   --services "a b"     only these services (default: every deploy config)
+  --template-dir DIR   the templates the deployed configs came from, the
+                       config.<service>.toml.example files whose listeners and
+                       credentials the check compares a deployed config
+                       against (default: <repo>/argus-deploy)
   --monitor URL        broker monitor base URL (default: the nats container's
                        own http://127.0.0.1:8222 through docker compose exec)
   --rustfs-endpoint URL  object store to probe (default: the storage.s3
@@ -47,6 +53,7 @@ USAGE
 }
 
 DEPLOY_DIR="${ARGUS_DEPLOY_DIR:-$ROOT/argus-deploy}"
+TEMPLATE_DIR="${ARGUS_TEMPLATE_DIR:-$ROOT/argus-deploy}"
 DATA_DIR="${ARGUS_DATA_DIR:-}"
 COMPOSE_FILE=""
 PROJECT="${COMPOSE_PROJECT_NAME:-}"
@@ -65,6 +72,7 @@ while [ "$#" -gt 0 ]; do
     --compose-file) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; COMPOSE_FILE="$2"; shift 2 ;;
     --project) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; PROJECT="$2"; shift 2 ;;
     --services) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; SERVICES_GIVEN="$2"; shift 2 ;;
+    --template-dir) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; TEMPLATE_DIR="$2"; shift 2 ;;
     --monitor) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; MONITOR="$2"; shift 2 ;;
     --rustfs-endpoint) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; RUSTFS_ENDPOINT="$2"; shift 2 ;;
     --timeout) [ "$#" -ge 2 ] || { usage >&2; exit 2; }; TIMEOUT="$2"; shift 2 ;;
@@ -105,15 +113,16 @@ trap 'rm -rf "$WORK"' EXIT
 
 GREEN=0
 RED=0
+EXPECTED=0
 
 report() {
   local service="$1" leg="$2" state="$3" detail="$4"
-  if [ "$state" = green ]; then
-    GREEN=$(( GREEN + 1 ))
-  else
-    RED=$(( RED + 1 ))
-  fi
-  printf '%-13s %-12s %-5s %s\n' "$service" "$leg" "$state" "$detail"
+  case "$state" in
+    green) GREEN=$(( GREEN + 1 )) ;;
+    expected) EXPECTED=$(( EXPECTED + 1 )) ;;
+    *) RED=$(( RED + 1 )) ;;
+  esac
+  printf '%-13s %-12s %-8s %s\n' "$service" "$leg" "$state" "$detail"
 }
 
 config_of() {
@@ -256,12 +265,22 @@ plain_targets_of() {
       section = ""
       if (match(line, /^\[[^]]*\]/))
         section = substr(line, RSTART, RLENGTH)
-      print name " = " value (section == "" ? "" : " (" section ")")
+      print name "\t" value "\t" section
     }' "$config"
 }
 
+leg_expected_internal_tls() {
+  local service="$1" config="$2"
+  local template="$TEMPLATE_DIR/config.$service.toml.example" address
+
+  [ -f "$template" ] || return 0
+  address="$(toml_value "$template" internal_tls address)"
+  [ -n "$address" ] || return 0
+  report "$service" internal-tls expected "the deployed config has no [internal_tls], while $template declares $address: enable [internal_tls] in $(config_of "$service") and pair its caller credentials by re-running scripts/provision-host.sh, then restart argus-$service"
+}
+
 leg_internal_tls() {
-  local service="$1" config="$2" dir address host port container detail plain
+  local service="$1" config="$2" dir address host port container detail plain template
 
   dir="$(internal_dir_of "$service")"
   if detail="$(certificate_problem "$service" "$dir")"; then
@@ -270,7 +289,12 @@ leg_internal_tls() {
   fi
   plain="$(plain_listener_of "$config")"
   if [ -n "$plain" ]; then
-    report "$service" internal-tls red "$dir is valid, but the config also declares the plaintext listener $plain"
+    template="$TEMPLATE_DIR/config.$service.toml.example"
+    if [ -f "$template" ] && [ -n "$(plain_listener_of "$template")" ]; then
+      report "$service" internal-tls red "$dir is valid, but the config declares the plaintext listener $plain, and so does $template"
+    else
+      report "$service" internal-tls expected "$dir is valid and the config also declares the plaintext listener $plain, which its template no longer does: re-run scripts/provision-host.sh, which retires it from $(config_of "$service"), then restart argus-$service"
+    fi
     return
   fi
   address="$(toml_value "$config" internal_tls address)"
@@ -304,17 +328,62 @@ leg_internal_tls() {
   report "$service" internal-tls green "certificate of $service in $dir, mutual TLS on $host:$container, a client without a certificate refused"
 }
 
+caller_target_service() {
+  local value="$1" host part
+
+  host="$value"
+  case "$value" in
+    *://*) host="${value#*://}" ;;
+    tls:*) host="${value#tls:}" ;;
+  esac
+  part="${host%%:*}"
+  printf '%s' "${part#argus-}"
+}
+
+target_service_template_has_tls() {
+  local service="$1"
+  local template="$TEMPLATE_DIR/config.$service.toml.example"
+
+  [ -f "$template" ] || return 1
+  [ -n "$(toml_value "$template" internal_tls address)" ]
+}
+
 leg_callers() {
-  local service="$1" config="$2" offenders count
+  local service="$1" config="$2" offenders count template placeholders caller
+  local name value section target moves=""
 
   offenders="$(plain_targets_of "$config")"
   count="$(grep -c 'target[[:space:]]*=' "$config" 2>/dev/null || true)"
   if [ -n "$offenders" ]; then
-    report "$service" callers red "not on tls: $(tr '\n' ';' <<<"$offenders")"
+    while IFS=$'\t' read -r name value section; do
+      [ -n "$name" ] || continue
+      target="$(caller_target_service "$value")"
+      if target_service_template_has_tls "$target"; then
+        moves="$moves $name=$value"
+        continue
+      fi
+      report "$service" callers red "not on tls: $name = $value"
+      return
+    done <<<"$offenders"
+    report "$service" callers expected "the deployed config dials$moves on plaintext, while the templates declare the mutual TLS listener of the target: set each target to its tls: form and pair the caller credential by re-running scripts/provision-host.sh, then restart the caller(s)"
     return
   fi
   if [ "${count:-0}" -eq 0 ]; then
     return
+  fi
+  template="$TEMPLATE_DIR/config.$service.toml.example"
+  [ -f "$template" ] || { report "$service" callers green "$count internal dial target(s), all on tls:"; return; }
+  if [ -f "$template" ]; then
+    placeholders=""
+    for caller in $(awk '/^\[rpc\.callers\]$/ { in_table = 1; next } /^\[/ { in_table = 0 } in_table && /=/ { sub(/[[:space:]]*=.*$/, ""); print }' "$template"); do
+      case "$(toml_value "$config" rpc.callers "$caller")" in
+        "" | *CHANGE_ME*) placeholders="$placeholders $caller" ;;
+      esac
+    done
+    if [ -n "$placeholders" ]; then
+      report "$service" callers expected "the deployed config pairs no caller credential for$placeholders; re-run scripts/provision-host.sh, which brings the paired credentials of $template into $(config_of "$service"), then restart argus-$service"
+      return
+    fi
   fi
   report "$service" callers green "$count internal dial target(s), all on tls:"
 }
@@ -492,6 +561,8 @@ for service in $services; do
   config="$(config_of "$service")"
   if toml_key_exists "$config" internal_tls address; then
     leg_internal_tls "$service" "$config"
+  else
+    leg_expected_internal_tls "$service" "$config"
   fi
   leg_callers "$service" "$config"
   if toml_key_exists "$config" nats url || toml_key_exists "$config" nats nkey; then
@@ -517,5 +588,5 @@ if [ "$PROBE" -eq 1 ] && [ -n "$monitor_answer" ]; then
   done <<<"$connected_keys"
 fi
 
-printf 'deploy-security-check: %s green, %s red\n' "$GREEN" "$RED"
+printf 'deploy-security-check: %s green, %s expected, %s red\n' "$GREEN" "$EXPECTED" "$RED"
 exit "$RED"

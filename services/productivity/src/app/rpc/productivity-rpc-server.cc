@@ -12,14 +12,11 @@
 
 namespace
 {
-constexpr uint16_t kDefaultGrpcPort = 7037;
 constexpr std::chrono::milliseconds kDrainDeadline{2000};
 
 std::string listenerAddress()
 {
-  const GrpcListenerConfig listener =
-      GrpcListenerConfig::resolve(kDefaultGrpcPort);
-  return listener.host + ":" + std::to_string(listener.port);
+  return GrpcListenerConfig::resolve().address();
 }
 
 argus::client::ListenInput

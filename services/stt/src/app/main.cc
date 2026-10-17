@@ -81,7 +81,7 @@ int main()
   std::unique_ptr<SettingsRpcService> settingsRpc;
   std::unique_ptr<SttRpcServer> rpc;
   const SttRpcConfig rpcConfig = SttConfig::resolveRpc();
-  if (!rpcConfig.address.empty() && !rpcConfig.credentials.empty()) {
+  if (!internalTlsConfig.address.empty() && !rpcConfig.credentials.empty()) {
     auto& stt = SttService::instance();
     std::vector<grpc::Service*> services;
     if (!rpcConfig.settingsCredentials.empty()) {
@@ -114,7 +114,7 @@ int main()
         .tls = internalTls});
   }
 
-  if (rpc)
+  if (rpc && !rpcConfig.address.empty())
     LOG_INFO << "argus-stt gRPC transcription listening on "
              << rpcConfig.address;
   if (rpc && rpc->tlsPort() > 0)

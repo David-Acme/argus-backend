@@ -1229,7 +1229,9 @@ cannot change settings. An empty `caller_settings`, or one equal to
 
 ## Wiring decisions
 
-- `[server].grpc_port` (7034) carries VoiceService + `grpc.health.v1.Health`;
+- `[internal_tls].address` (7234) carries VoiceService + `grpc.health.v1.Health`
+  under mutual TLS, and `[server].grpc_port` (7034) is unset since 2026-10-16,
+  so no plaintext listener opens;
   `[server].health_port` (7035) carries the minimal `/health` HTTP listener
   for the compose healthcheck. No filters, no `/sync`, no db clients.
 - `[identity].target` points at argus-identity's gRPC listener

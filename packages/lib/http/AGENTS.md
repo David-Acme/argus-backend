@@ -57,8 +57,12 @@ declare errors and this package formats them.
   is what an app-facing service boots from: it reads the service's own section
   (`host`, `port`, `plain`, `min_protocol`) plus `cert.server_cert` and
   `cert.server_key`, so TLS is on unless `plain = true` says otherwise.
-  `ListenerConfig::resolve` is the internal/plain form the AI services use, and
-  `GrpcListenerConfig::resolve` keeps reading `server.host` + `server.grpc_port`.
+  `ListenerConfig::resolve` is the internal/plain form the AI services use (the
+  wire listener of stt, tts, vlm and llm, voice's `/health`), and
+  `GrpcListenerConfig::resolve` reads `server.host` + `server.grpc_port` for the
+  plaintext internal gRPC listener: an unset port is 0, and `address()` then
+  answers nothing, so a service opens no plaintext listener unless its config
+  asks for one. No template does since 2026-10-16.
 - `src/http/logical-routes.hxx` — `logicalRoutes()`: the leading path segment of
   every route the app has registered, deduplicated and sorted, which is the set
   a service announces. `/health` and non-`/` patterns are skipped.

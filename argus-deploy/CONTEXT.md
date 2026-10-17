@@ -1046,7 +1046,8 @@ voice, stt, vlm, llm, camera and identity.
   through startCameraRpc, and a port that cannot be bound stops the start
   (services/camera/CONTEXT.md, "Mutual TLS (S1 step 4)").
 - identity publishes its plaintext RPC 7040 on 127.0.0.1, so 7240 is published
-  there too (IDENTITY_RPC_PORT is not in .env.example, so no TLS variable either).
+  there too (the plaintext RPC publishes and their `.env` variables left with
+  the listeners on 2026-10-16; only the `*_TLS_PORT` ones remain).
   Its main used to build the RPC server inline and now calls startIdentityRpc
   (services/identity/src/app/rpc/identity-rpc-server), which carries the 12 MiB
   cap on both ports. If the RPC cannot listen on either port, identity does not
@@ -1130,32 +1131,36 @@ any config names a `tls:` target ("The internal CA"), and the owner cleanup
 checks of S3 ("One NATS user per service") and of S4
 (the S4 line of `docs/history/plans/realtime-and-backlog-plan.md`).
 
-## Deferred hardening (plan, not done in this branch)
+## Deferred hardening
 
-The owner decided to keep this pass bounded. These four are the next steps,
-in order:
+The owner decided to keep this pass bounded. Items 1, 3 and 4 landed with the
+S1/S3/S4 unit on 2026-10-16; item 2 is the next step. The list stays in the
+order it was written:
 
 1. **mTLS on the internal gRPC legs.** In progress as S1 (see "The internal
    CA" above): the CA and one certificate per service are issued under
-   `${ARGUS_DATA_DIR}/certs/internal`. Next, `packages/lib/grpc` loads them,
-   servers listen with mutual TLS beside their plaintext port, clients present
-   their certificate, each service's health warns when a certificate has fewer
-   than 30 days left, and each service mounts its own directory read-only. The
-   per-caller secrets stay as the authorisation on top of mutual TLS; the
-   plaintext listeners go only after the owner's deploy check.
+   `${ARGUS_DATA_DIR}/certs/internal`. `packages/lib/grpc` loads them, servers
+   listen with mutual TLS, clients present their certificate, each service's
+   health warns when a certificate has fewer than 30 days left, and each
+   service mounts its own directory read-only. The per-caller secrets stay as
+   the authorisation on top of mutual TLS. The plaintext internal listener
+   beside it went on 2026-10-16: no template declares `[server] grpc_port` or
+   `[rpc] address`, so no service opens one, and provisioning retires both keys
+   from an existing config. `scripts/deploy-security-check.sh` is what tells
+   the owner whether a given stack has finished that move.
 2. **TLS on the tunnel home link.** TLS 1.3 on the relay's home port with a
    relay leaf the client pins by SPKI hash (`[tunnel] relay_pin`), the HMAC
    challenge kept inside as the second factor. PUSH bodies then stop
    travelling in clear, and frames after AUTH are integrity-protected. The
    OPEN frame gains a target byte at the same time, so one client can reach
    auth's and identity's remote listeners.
-3. **Per-service NATS users.** In progress as users inside the one account,
+3. **Per-service NATS users.** Done 2026-10-16: users inside the one account,
    not accounts (see "One NATS user per service" above): one nkey per service
    in `auth.conf`, each with the publish and subscribe allow-lists and the
    `$JS.API` subjects of its row in the permission table. argus-sync then also
    refuses the control actions (`disconnect`, `replace_role_rooms`) from any
    feed but auth's session feed (a services/sync change, not done).
-4. **Per-service S3 credentials.** `rustfs-init` creates one service account
+4. **Per-service S3 credentials.** Done 2026-10-16 for the configs: `rustfs-init` creates one service account
    per writer with a prefix-scoped policy (identity: `portraits/` and `faces/`,
    camera: `cameras/`, guard: `guard/incidents/`, the prefixes their code
    writes), and each writer reads only its own pair: its account directory is
@@ -1189,9 +1194,9 @@ in order:
 | 7024 TLS | — | gone: the gateway's public port, deleted with the service in Phase 3d step 1c |
 | 7025 TLS | 0.0.0.0 (compose publish) | argus-sync `/sync` WebSocket — the app-facing sync transport, on all interfaces since Phase 3a |
 | 7042 TLS | 0.0.0.0 (compose publish) | argus-auth HTTP surface (`/auth`, `/invitation*`, `/pairing`) — LAN since Phase 3d step 1c |
-| 7043 gRPC | 127.0.0.1 (compose publish) | argus-auth session verdict — the auth filters' `[auth] target` upstream, gated per caller by `[rpc.callers]` |
+| 7043 gRPC | — | gone: argus-auth's plaintext session-verdict listener, removed from the configs on 2026-10-16; its callers dial the mutual TLS port 7243 |
 | 7044 TLS | 0.0.0.0 (compose publish) | argus-identity HTTP surface (`/user*`, `/portrait-preview/*`) — LAN since Phase 3d step 1c |
-| 7040 gRPC | 127.0.0.1 (compose publish) | argus-identity people wire — argus-sync's `[identity] target` pull, gated per caller by `[rpc.callers]` |
+| 7040 gRPC | — | gone: argus-identity's plaintext people wire, removed from the configs on 2026-10-16; its callers dial the mutual TLS port 7240 |
 | 7026 TLS | 0.0.0.0 (compose publish) | argus-camera (`/camera`, `/zone`, the `/media` socket) |
 | 7027 TLS | 0.0.0.0 (compose publish) | argus-productivity |
 | 7028 TLS | 0.0.0.0 (compose publish) | argus-notification |

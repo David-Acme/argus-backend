@@ -96,7 +96,7 @@ int main()
   std::unique_ptr<SettingsRpcService> settingsRpc;
   std::unique_ptr<VlmRpcServer> rpc;
   const VlmRpcConfig rpcConfig = VlmConfig::resolveRpc();
-  if (!rpcConfig.address.empty() && !rpcConfig.credentials.empty()) {
+  if (!internalTlsConfig.address.empty() && !rpcConfig.credentials.empty()) {
     std::vector<grpc::Service*> services;
     if (!rpcConfig.settingsCredentials.empty()) {
       settingsRpc = std::make_unique<SettingsRpcService>(SettingsRpcInput{
@@ -123,7 +123,8 @@ int main()
   }
 
   if (rpc)
-    LOG_INFO << "argus-vlm gRPC vision listening on " << rpcConfig.address;
+    if (!rpcConfig.address.empty())
+      LOG_INFO << "argus-vlm gRPC vision listening on " << rpcConfig.address;
   if (rpc && rpc->tlsPort() > 0)
     LOG_INFO << "argus-vlm gRPC vision with mutual TLS on " << internalTlsConfig.address;
 

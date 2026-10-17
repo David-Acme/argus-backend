@@ -13,7 +13,7 @@ ListenerConfig VoiceConfig::resolveHealthListener()
 
 GrpcListenerConfig VoiceConfig::resolveGrpcListener()
 {
-  return GrpcListenerConfig::resolve(7034);
+  return GrpcListenerConfig::resolve();
 }
 
 std::string VoiceConfig::resolveSyncCallerSecret()

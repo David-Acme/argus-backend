@@ -147,11 +147,10 @@ ChannelPlan openChannel(const std::string& target)
 std::vector<ListenPort> listenPorts(const ListenInput& input)
 {
   std::vector<ListenPort> ports;
-  if (input.address.empty())
-    return ports;
-  ports.push_back({.address = input.address,
-                   .credentials = grpc::InsecureServerCredentials(),
-                   .mutualTls = false});
+  if (!input.address.empty())
+    ports.push_back({.address = input.address,
+                     .credentials = grpc::InsecureServerCredentials(),
+                     .mutualTls = false});
   if (input.tls && !input.tlsAddress.empty())
     ports.push_back({.address = input.tlsAddress,
                      .credentials = internalServerCredentials(*input.tls),
@@ -165,6 +164,8 @@ Listener startListening(const ListenInput& input)
   const auto ports = listenPorts(input);
   if (ports.empty())
     return listener;
+  const bool plainRequested = !input.address.empty();
+  const bool tlsRequested = std::ranges::any_of(ports, &ListenPort::mutualTls);
   grpc::ServerBuilder builder;
   if (input.maxReceiveBytes)
     builder.SetMaxReceiveMessageSize(*input.maxReceiveBytes);
@@ -175,9 +176,9 @@ Listener startListening(const ListenInput& input)
   for (grpc::Service* service : input.services)
     builder.RegisterService(service);
   listener.server = builder.BuildAndStart();
-  const bool tlsRequested = std::ranges::any_of(ports, &ListenPort::mutualTls);
   if (listener.server &&
-      (listener.port == 0 || (tlsRequested && listener.tlsPort == 0))) {
+      ((plainRequested && listener.port == 0) ||
+       (tlsRequested && listener.tlsPort == 0))) {
     listener.server->Shutdown();
     listener.server.reset();
   }
@@ -193,7 +194,8 @@ std::optional<std::string> listenFailure(const ListenFailureInput& failure)
   if (failure.listener.server)
     return std::nullopt;
   std::string message = std::string(failure.name) + " failed to listen on " +
-                        failure.input.address;
+                        (failure.input.address.empty() ? "the internal TLS address"
+                                                       : failure.input.address);
   if (opensMutualTls(failure.input))
     message += " and " + failure.input.tlsAddress;
   if (!failure.consequence.empty())

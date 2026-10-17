@@ -84,7 +84,9 @@ binary, own CMake preset, own `notification.db`.
   registered but nothing routes to them any more (Ruling AS — quiet,
   not stripped).
 - **RPC owner (rule 27)**: `app/rpc/notification-rpc-service.cc` serves
-  `argus.notification.v1.NotificationService` on `server.grpc_port` (7038):
+  `argus.notification.v1.NotificationService` on the mutual TLS listener
+  (`[internal_tls] address`, 7238; `server.grpc_port` is unset since
+  2026-10-16):
   `CreateNotifications` fans one row per user id and reuses the shared
   create+emit path (the whole fan-out is one multi-row INSERT with
   `RETURNING id`, so the emit mirrors strictly persisted rows), and

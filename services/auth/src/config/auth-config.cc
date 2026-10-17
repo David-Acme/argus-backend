@@ -10,7 +10,6 @@ namespace
 constexpr int64_t kDefaultContextCacheSeconds = 30;
 constexpr int64_t kDefaultRefreshReuseGraceSeconds = 30;
 constexpr uint16_t kDefaultAuthPort = 7042;
-constexpr uint16_t kDefaultRpcPort = 7043;
 constexpr int kDefaultRateLimitWindowSeconds = 60;
 constexpr int kDefaultRateLimitMaxRequests = 10;
 constexpr int kDefaultRateLimitLockoutThreshold = 5;
@@ -42,7 +41,7 @@ ListenerConfig AuthConfig::resolveListener()
 AuthRpcConfig AuthConfig::resolveRpc()
 {
   AuthRpcConfig config;
-  config.listener = GrpcListenerConfig::resolve(kDefaultRpcPort);
+  config.listener = GrpcListenerConfig::resolve();
   config.secret = ConfigService::getString("auth.rpc_secret");
   config.callers = ConfigService::getStringPairs("rpc.callers");
   return config;
@@ -50,8 +49,8 @@ AuthRpcConfig AuthConfig::resolveRpc()
 
 bool AuthRpcConfig::reachableBeyondLoopback() const
 {
-  return listener.host != "127.0.0.1" && listener.host != "::1" &&
-         listener.host != "localhost";
+  return listener.port > 0 && listener.host != "127.0.0.1" &&
+         listener.host != "::1" && listener.host != "localhost";
 }
 
 std::optional<std::string> AuthRpcConfig::secretProblem() const

@@ -1,6 +1,3 @@
-[server]
-host = "127.0.0.1"
-grpc_port = 7034
 health_port = 7035
 
 [internal_tls]

@@ -97,7 +97,7 @@ int main()
   std::unique_ptr<TtsRpcServer> rpc;
   std::unique_ptr<SettingsRpcService> settingsRpc;
   const TtsRpcConfig rpcConfig = TtsConfig::resolveRpc();
-  if (!rpcConfig.address.empty() && !rpcConfig.credentials.empty()) {
+  if (!internalTlsConfig.address.empty() && !rpcConfig.credentials.empty()) {
     auto& synthesis = TtsService::instance();
     std::vector<grpc::Service*> services;
     if (!rpcConfig.settingsCredentials.empty()) {
@@ -125,7 +125,8 @@ int main()
   }
 
   if (rpc)
-    LOG_INFO << "argus-tts gRPC synthesis listening on " << rpcConfig.address;
+    if (!rpcConfig.address.empty())
+      LOG_INFO << "argus-tts gRPC synthesis listening on " << rpcConfig.address;
   if (rpc && rpc->tlsPort() > 0)
     LOG_INFO << "argus-tts gRPC synthesis with mutual TLS on " << internalTlsConfig.address;
 

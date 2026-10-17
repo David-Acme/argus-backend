@@ -535,7 +535,6 @@ nats url
 nats nkey
 nats seed_file
 nats inbox_prefix
-rpc address
 internal_tls dir
 internal_tls address
 owners.llm target
@@ -725,24 +724,6 @@ llm guard credential guard
 CALLERS
 }
 
-settings_owner_port() {
-  local config="$1"
-  local listener="$2"
-  local address
-
-  case "$listener" in
-    rpc)
-      address="$(toml_value "$config" rpc address)"
-      case "$address" in
-        *:*) printf '%s' "${address##*:}" ;;
-      esac
-      ;;
-    grpc)
-      toml_value "$config" server grpc_port
-      ;;
-  esac
-}
-
 settings_owner_tls_port() {
   local config="$1"
   local address
@@ -769,10 +750,10 @@ ensure_settings_owners() {
   local settings_config="$1"
   local mode="$2"
   local base="$3"
-  local owner table key listener owner_config host port plain template address
+  local owner table key owner_config host port template
 
   [ -f "$settings_config" ] || return 0
-  while read -r owner table key listener; do
+  while read -r owner table key; do
     case "$mode" in
       deploy)
         owner_config="$base/config.$owner.toml"
@@ -797,17 +778,7 @@ ensure_settings_owners() {
       replace_toml_value "owners.$owner" config_file "$owner_config" "$settings_config"
     fi
     template="$(settings_owner_template "$mode" "$base" "$owner")"
-    if [ "$listener" = rpc ] && [ -f "$template" ] &&
-      [ -z "$(toml_value "$owner_config" rpc address)" ]; then
-      address="$(toml_value "$template" rpc address)"
-      [ -z "$address" ] || replace_toml_value rpc address "$address" "$owner_config"
-    fi
     [ -z "$(toml_value "$settings_config" "owners.$owner" target)" ] || continue
-    plain="$(settings_owner_port "$owner_config" "$listener")"
-    if [ -z "$plain" ] && [ -f "$template" ]; then
-      plain="$(settings_owner_port "$template" "$listener")"
-    fi
-    [ -n "$plain" ] || continue
     port="$(settings_owner_tls_port "$owner_config")"
     if [ -z "$port" ] && [ -f "$template" ]; then
       port="$(settings_owner_tls_port "$template")"
@@ -815,17 +786,17 @@ ensure_settings_owners() {
     [ -n "$port" ] || continue
     replace_toml_value "owners.$owner" target "tls:$host:$port" "$settings_config"
   done <<'OWNERS'
-llm rpc.callers settings rpc
-voice grpc caller_settings grpc
-tts rpc.callers settings rpc
-stt rpc.callers settings rpc
-vlm rpc.callers settings rpc
-guard rpc.callers settings rpc
-camera grpc caller_settings grpc
-notification grpc caller_settings grpc
-identity rpc.callers settings grpc
-productivity grpc caller_settings grpc
-sync rpc.callers settings grpc
+llm rpc.callers settings
+voice grpc caller_settings
+tts rpc.callers settings
+stt rpc.callers settings
+vlm rpc.callers settings
+guard rpc.callers settings
+camera grpc caller_settings
+notification grpc caller_settings
+identity rpc.callers settings
+productivity grpc caller_settings
+sync rpc.callers settings
 OWNERS
 }
 
@@ -868,6 +839,8 @@ retire_obsolete_deploy_keys() {
     done <<'RETIRED'
 nats user
 nats password
+server grpc_port
+rpc address
 RETIRED
   done
 }

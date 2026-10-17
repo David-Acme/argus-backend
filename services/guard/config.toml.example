@@ -15,9 +15,6 @@ enable_request_stream = false
 handle_sig_term = true
 relaunch_on_error = false
 
-[rpc]
-address = "127.0.0.1:7139"
-
 [internal_tls]
 dir = ""
 address = "127.0.0.1:7339"

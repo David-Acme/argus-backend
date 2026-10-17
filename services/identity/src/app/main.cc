@@ -374,7 +374,7 @@ int main()
     rpcServices.push_back(settingsRpc.get());
   }
   const IdentityRpcListenInput rpcInput{
-      .address = rpc.listener.host + ":" + std::to_string(rpc.listener.port),
+      .address = rpc.listener.address(),
       .tlsAddress = internalTlsConfig.address,
       .tls = internalTls,
       .services = std::move(rpcServices)};
@@ -388,16 +388,17 @@ int main()
   argus::client::GrpcServerDrain rpcDrain(std::move(rpcListener.server),
                                           kRpcDrainDeadline);
   shutdown_signal::onStop(shutdown_signal::drainOf(rpcDrain, "identity-rpc"));
-  LOG_INFO << "Identity RPC listening on " << rpc.listener.host << ":"
-           << rpc.listener.port << " (cleartext, "
-           << (rpcGate->open() ? "loopback only, no caller credential"
-                               : std::to_string(rpcGate->pairedCount()) +
-                                     " paired callers" +
-                                     (rpcGate->acceptsLegacy()
-                                          ? ", legacy fleet secret for the "
-                                            "unpaired ones"
-                                          : ""))
-           << ")";
+  if (rpc.listener.port > 0)
+    LOG_INFO << "Identity RPC listening on " << rpc.listener.host << ":"
+             << rpc.listener.port << " (cleartext, "
+             << (rpcGate->open() ? "loopback only, no caller credential"
+                                 : std::to_string(rpcGate->pairedCount()) +
+                                       " paired callers" +
+                                       (rpcGate->acceptsLegacy()
+                                            ? ", legacy fleet secret for the "
+                                              "unpaired ones"
+                                            : ""))
+             << ")";
 
   LOG_INFO << "Listening on " << listener.host << ":" << listener.port
            << (listener.tls ? " (TLS" : " (plain") << ", cert "

@@ -224,7 +224,7 @@ int main()
         .gate = rpcGate,
         .callers = {std::string(argus::mcp::kToolCaller)}});
   std::unique_ptr<argus::client::GrpcServerDrain> rpcDrain;
-  if (!rpc.address.empty()) {
+  if (!internalTlsConfig.address.empty() || !rpc.address.empty()) {
     std::vector<grpc::Service*> rpcServices{&modulesRpc};
     if (moduleTools)
       rpcServices.push_back(moduleTools.get());
@@ -237,10 +237,11 @@ int main()
       LOG_FATAL << *failure;
       return 1;
     }
-    LOG_INFO << "Modules RPC listening on " << rpc.address << " ("
-             << (rpcGate->open() ? std::string("no caller paired")
-                                 : std::to_string(rpcGate->pairedCount()) + " paired callers")
-             << ")";
+    if (!rpc.address.empty())
+      LOG_INFO << "Modules RPC listening on " << rpc.address << " ("
+               << (rpcGate->open() ? std::string("no caller paired")
+                                   : std::to_string(rpcGate->pairedCount()) + " paired callers")
+               << ")";
     if (rpcListener.tlsPort > 0)
       LOG_INFO << "Modules RPC with mutual TLS on " << internalTlsConfig.address;
     rpcDrain = std::make_unique<argus::client::GrpcServerDrain>(std::move(rpcListener.server), kGrpcDrainDeadline);

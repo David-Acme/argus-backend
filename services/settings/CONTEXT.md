@@ -337,14 +337,14 @@ Each owner has its own 32-byte credential, minted by `scripts/setup.sh`
 (native) and `scripts/provision-host.sh` (deploy) through
 `ensure_settings_owners` in `scripts/lib/common.sh`. It is written to the
 owner's caller slot (`[rpc.callers] settings` in tts, stt, vlm, llm and
-guard; `[grpc] caller_settings` in voice, camera and notification) and to `[owners.<owner>] credential` here; the target comes from the
-owner's own gRPC listener (`[rpc] address` for the `rpc` owners, `[server]
-grpc_port` for voice, camera and notification). When the owner's config
-lacks the listener (a config older than its template: an empty guard `[rpc]
-address`, a notification file without `grpc_port`), the template's value is
-used, and an empty guard address is written from the template. An owner
-with no caller slot stays unconfigured. Existing secrets and targets are
-never overwritten.
+guard; `[grpc] caller_settings` in voice, camera and notification) and to
+`[owners.<owner>] credential` here; the target is `tls:<host>:<port>` with the
+port from the owner's own `[internal_tls] address`, in the owner's config when
+it names one and in its template otherwise. An owner whose template declares
+no mutual TLS listener is left with an empty target, so an owner with no
+caller slot stays unconfigured. Existing secrets and targets are never
+overwritten. The plaintext `[rpc] address` and `[server] grpc_port` this used to
+read left the templates on 2026-10-16.
 
 The native sandbox (`scripts/native-stack.sh`) empties the target of every
 owner it does not boot, so the golden replay never depends on processes

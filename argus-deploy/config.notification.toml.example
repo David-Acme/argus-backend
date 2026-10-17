@@ -1,6 +1,3 @@
-[server]
-host = "0.0.0.0"
-grpc_port = 7038
 
 [internal_tls]
 dir = "/run/secrets/internal-tls"

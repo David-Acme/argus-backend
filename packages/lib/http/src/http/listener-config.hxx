@@ -27,7 +27,9 @@ struct GrpcListenerConfig
   uint16_t port{0};
 
   static GrpcListenerConfig resolve(
-      uint16_t defaultPort, std::string_view portKey = "server.grpc_port");
+      std::string_view portKey = "server.grpc_port");
+
+  [[nodiscard]] std::string address() const;
 };
 
 struct InternalTlsConfig

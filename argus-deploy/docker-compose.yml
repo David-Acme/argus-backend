@@ -33,7 +33,6 @@ services:
           - argus-auth
     ports:
       - "${AUTH_PORT:-7042}:7042"
-      - "127.0.0.1:${AUTH_RPC_PORT:-7043}:7043"
       - "127.0.0.1:${AUTH_RPC_TLS_PORT:-7243}:7243"
       - "127.0.0.1:${AUTH_TUNNEL_PORT:-7142}:7142"
     entrypoint: ["/opt/argus/argus-auth"]
@@ -104,7 +103,6 @@ services:
           - argus-identity
     ports:
       - "${IDENTITY_PORT:-7044}:7044"
-      - "127.0.0.1:${IDENTITY_RPC_PORT:-7040}:7040"
       - "127.0.0.1:${IDENTITY_RPC_TLS_PORT:-7240}:7240"
       - "127.0.0.1:${IDENTITY_TUNNEL_PORT:-7144}:7144"
     entrypoint: ["/opt/argus/argus-identity"]
@@ -192,7 +190,6 @@ services:
           - argus-camera
     ports:
       - "${CAMERA_PORT:-7026}:7026"
-      - "127.0.0.1:${CAMERA_GRPC_PORT:-7036}:7036"
       - "127.0.0.1:${CAMERA_GRPC_TLS_PORT:-7236}:7236"
       - "${CAMERA_WEBRTC_PORT:-8555}:8555/tcp"
       - "${CAMERA_WEBRTC_PORT:-8555}:8555/udp"
@@ -282,7 +279,6 @@ services:
           - argus-productivity
     ports:
       - "${PRODUCTIVITY_PORT:-7027}:7027"
-      - "127.0.0.1:${PRODUCTIVITY_GRPC_PORT:-7037}:7037"
       - "127.0.0.1:${PRODUCTIVITY_GRPC_TLS_PORT:-7237}:7237"
     entrypoint: ["/opt/argus/argus-productivity"]
     volumes:
@@ -348,7 +344,6 @@ services:
           - argus-notification
     ports:
       - "${NOTIFICATION_PORT:-7028}:7028"
-      - "127.0.0.1:${NOTIFICATION_GRPC_PORT:-7038}:7038"
       - "127.0.0.1:${NOTIFICATION_GRPC_TLS_PORT:-7238}:7238"
     entrypoint: ["/opt/argus/argus-notification"]
     volumes:
@@ -413,7 +408,6 @@ services:
           - argus-sync
     ports:
       - "${SYNC_PORT:-7025}:7025"
-      - "127.0.0.1:${SYNC_CONTROL_PORT:-7041}:7041"
       - "127.0.0.1:${SYNC_CONTROL_TLS_PORT:-7241}:7241"
     entrypoint: ["/opt/argus/argus-sync"]
     volumes:
@@ -861,7 +855,6 @@ services:
           - argus-voice
         ipv4_address: 172.19.0.34
     ports:
-      - "127.0.0.1:${VOICE_PORT:-7034}:7034"
       - "127.0.0.1:${VOICE_TLS_PORT:-7234}:7234"
       - "127.0.0.1:${VOICE_HEALTH_PORT:-7035}:7035"
     entrypoint: ["/opt/argus/argus-voice"]

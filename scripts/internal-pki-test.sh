@@ -66,11 +66,10 @@ grpc_services_in_templates() {
     name="${template##*/config.}"
     name="${name%.toml.example}"
     if awk '
+      /^\[internal_tls\]/ { tls = 1 }
       /^\[rpc\.callers\]/ { found = 1 }
       /^caller_[a-z]+[[:space:]]*=/ { found = 1 }
-      /^(grpc_port|rpc_port)[[:space:]]*=/ { found = 1 }
-      /^[a-z_]*target[[:space:]]*=[[:space:]]*"argus-[a-z]+:[0-9]+"/ { found = 1 }
-      END { exit !found }' "$template"; then
+      END { exit !(tls && found) }' "$template"; then
       printf '%s\n' "$name"
     fi
   done | sort

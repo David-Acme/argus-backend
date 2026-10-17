@@ -25,7 +25,7 @@ ListenerConfig SyncConfig::resolveListener()
 SyncControlConfig SyncConfig::resolveControl()
 {
   SyncControlConfig config;
-  config.listener = GrpcListenerConfig::resolve(7041);
+  config.listener = GrpcListenerConfig::resolve();
   config.secret = ConfigService::getString("sync.control_secret");
   config.callers = ConfigService::getStringPairs("rpc.callers");
   return config;
@@ -33,8 +33,8 @@ SyncControlConfig SyncConfig::resolveControl()
 
 bool SyncControlConfig::reachableBeyondLoopback() const
 {
-  return listener.host != "127.0.0.1" && listener.host != "::1" &&
-         listener.host != "localhost";
+  return listener.port > 0 && listener.host != "127.0.0.1" &&
+         listener.host != "::1" && listener.host != "localhost";
 }
 
 SyncUpstreams SyncConfig::resolveUpstreams()

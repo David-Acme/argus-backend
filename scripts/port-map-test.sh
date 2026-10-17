@@ -10,7 +10,7 @@ usage: scripts/port-map-test.sh [--list]
 
 Reads every listener port the stack declares and fails when two services
 declare the same one. It reads the config templates (argus-deploy/config.*.toml.example
-and services/*/config.toml.example): [server] port, grpc_port, health_port,
+and services/*/config.toml.example): [server] port, health_port,
 device_port and home_port, the app-facing [<service>] port, [remote]
 tunnel_port, [rpc] address, [internal_tls] address and [streaming]
 webrtc_listen; the compose publishes (host and container side) and listen
@@ -177,7 +177,7 @@ inventory "$ROOT" | sed 's#'"$ROOT"'/##g' | sort -n -k1,1 -k2,2 > "$TEST_TMP/por
 declared() {
   awk -F '\t' -v port="$1" -v owner="$2" '$1 == port && $2 == owner { found = 1 } END { exit !found }' "$TEST_TMP/ports.tsv"
 }
-for expected in "7042 auth" "7043 auth" "7129 tts" "7880 livekit" "7046 livekit-tls" "4222 nats" \
+for expected in "7042 auth" "7880 livekit" "7046 livekit-tls" "4222 nats" \
     "9000 rustfs" "7100 relay" "7104 tunnel" "8555 camera" "7035 voice" \
     "7234 voice" "7236 camera" "7237 productivity" "7238 notification" "7240 identity" \
     "7241 sync" "7243 auth" "7247 settings" "7329 tts" "7330 stt" "7331 vlm" "7332 llm" \

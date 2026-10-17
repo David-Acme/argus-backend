@@ -218,7 +218,8 @@ int main()
            << (listener.tls ? " (TLS" : " (plain") << ", cert "
            << listener.certPath << "); notification database "
            << notificationDb.dbPath << "; gRPC NotificationService on "
-           << grpcListener.host << ":" << grpcListener.port;
+           << (grpcListener.port > 0 ? grpcListener.address()
+                                     : std::string("mutual TLS only"));
 
   const auto tasks = std::make_shared<TaskGate>();
 
@@ -463,8 +464,7 @@ int main()
     settingsRpc->attachModuleRequest(moduleRequest);
   }
 
-  const std::string grpcAddress =
-      grpcListener.host + ":" + std::to_string(grpcListener.port);
+  const std::string grpcAddress = grpcListener.address();
   std::vector<grpc::Service*> grpcServices{&notificationRpc, &callRpc};
   if (settingsRpc)
     grpcServices.push_back(settingsRpc.get());

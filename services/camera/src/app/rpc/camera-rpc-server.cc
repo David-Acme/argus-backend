@@ -12,7 +12,6 @@
 
 namespace
 {
-constexpr uint16_t kDefaultGrpcPort = 7036;
 constexpr auto kShutdownGrace = std::chrono::seconds(2);
 
 argus::client::ListenInput listenInputOf(const CameraRpcListenInput& input)
@@ -55,9 +54,7 @@ struct CameraRpcServer::Impl
 {
   explicit Impl(const CameraRpcInput& input)
   {
-    const GrpcListenerConfig listener =
-        GrpcListenerConfig::resolve(kDefaultGrpcPort);
-    address_ = listener.host + ":" + std::to_string(listener.port);
+    address_ = GrpcListenerConfig::resolve().address();
     const CameraRpcListenInput listen{.address = address_,
                                       .tlsAddress = input.tlsAddress,
                                       .tls = input.tls,

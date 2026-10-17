@@ -291,6 +291,17 @@ expect_green() {
   printf '%s: green, %s line(s)\n' "$name" "$greens"
 }
 
+expect_expected() {
+  local name="$1" reason="$2"
+  shift 2
+  local output
+  output="$(check "$@")" || true
+  grep -q '^exit=0$' <<<"$output" || fail "$name: the expected finding failed the check: $(awk '$3 == "red"' <<<"$output" | tr '\n' ';')"
+  awk '$3 == "expected"' <<<"$output" | grep -Fq "$reason" \
+    || fail "$name: no expected line naming '$reason': $(awk '$3 == "expected"' <<<"$output")"
+  printf '%s: expected, exit 0\n' "$name"
+}
+
 expect_red() {
   local name="$1" reason="$2"
   shift 2
@@ -312,15 +323,27 @@ expect_green "static" --no-probe
 expect_green "probed" --monitor "http://127.0.0.1:$MONITOR_PORT"
 
 write_config identity "${tls_port[identity]}" plain
-expect_red "a plaintext listener" 'declares the plaintext listener' --no-probe
+expect_expected "a plaintext listener its template retired" 'which its template no longer does' --no-probe
+mkdir -p "$TEST_TMP/templates"
+{
+  printf '[server]\nhost = "127.0.0.1"\ngrpc_port = 7240\n\n[internal_tls]\ndir = ""\naddress = "0.0.0.0:7240"\n'
+} > "$TEST_TMP/templates/config.identity.toml.example"
+expect_red "a plaintext listener its template still declares" 'and so does' --no-probe --template-dir "$TEST_TMP/templates"
+rm -rf "$TEST_TMP/templates"
 write_config identity "${tls_port[identity]}" green
 
 write_config llm "${tls_port[llm]}" plain
-expect_red "a plaintext rpc address" 'declares the plaintext listener' --no-probe
+expect_expected "a plaintext rpc address its template retired" 'which its template no longer does' --no-probe
 write_config llm "${tls_port[llm]}" green
 
 write_config auth "${tls_port[auth]}" plain_target
 expect_red "a plain target" 'not on tls:' --no-probe
+write_config auth "${tls_port[auth]}" green
+
+write_config auth "${tls_port[auth]}" green
+
+printf '[identity]\ntarget = "argus-vlm:7031"\ncredential = "x"\n' > "$DEPLOY/config.auth.toml"
+expect_expected "a plain target whose target template declares mutual TLS" 'on plaintext' --no-probe
 write_config auth "${tls_port[auth]}" green
 
 write_config camera "${tls_port[camera]}" shared_user
@@ -348,6 +371,12 @@ mv "$TEST_TMP/camera.json" "$DATA/rustfs/accounts/camera/credentials.json"
 printf 'cameras/\nportraits/\n' > "$TEST_TMP/allowed-camera"
 expect_red "unscoped credentials" 'not scoped to' --monitor "http://127.0.0.1:$MONITOR_PORT"
 printf 'cameras/\n' > "$TEST_TMP/allowed-camera"
+
+mv "$DEPLOY/config.identity.toml" "$TEST_TMP/identity.toml"
+write_config identity "${tls_port[identity]}" green
+awk '! /^\[internal_tls\]$/ && ! /^dir = / && ! /^address = "127.0.0.1:/' "$TEST_TMP/identity.toml" > "$DEPLOY/config.identity.toml"
+expect_expected "a config from before [internal_tls]" 'the deployed config has no [internal_tls]' --no-probe
+mv "$TEST_TMP/identity.toml" "$DEPLOY/config.identity.toml"
 
 cp "$DATA/certs/internal/auth/cert.pem" "$TEST_TMP/auth.pem"
 cp "$DATA/certs/internal/auth/key.pem" "$TEST_TMP/auth.key"
