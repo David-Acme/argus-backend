@@ -76,8 +76,6 @@ credential = "CHANGE_ME_NOTIFICATION_VOICE"
 
 [nats]
 url = "nats://nats:4222"
-user = "argus"
-password = "CHANGE_ME_NATS"
 nkey = ""
 seed_file = "/run/secrets/nats.seed"
 inbox_prefix = "_INBOX.notification"

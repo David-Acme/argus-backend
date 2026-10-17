@@ -230,17 +230,16 @@ printf 'SUAMK2FG4MI6UE3ACF3FK3OIQBCEIEZV7NSWFFEW63UXMRLFM2XLAXK4AA\n' > "$TEST_T
 
 permissions="$ROOT/argus-deploy/nats-permissions.conf"
 mkdir -p "$TEST_TMP/seeds"
-legacy="$TEST_TMP/legacy.toml"
-printf '[nats]\npassword = "legacy"\n' > "$legacy"
-nats_auth_conf "$permissions" "$TEST_TMP/seeds" "$legacy" > "$TEST_TMP/auth.conf" \
+nats_auth_conf "$permissions" "$TEST_TMP/seeds" > "$TEST_TMP/auth.conf" \
   || fail "the NATS users could not be rendered"
-nats_auth_conf "$permissions" "$TEST_TMP/seeds" "$legacy" > "$TEST_TMP/auth-again.conf" \
+nats_auth_conf "$permissions" "$TEST_TMP/seeds" > "$TEST_TMP/auth-again.conf" \
   || fail "the NATS users could not be rendered a second time"
 cmp -s "$TEST_TMP/auth.conf" "$TEST_TMP/auth-again.conf" || fail "a second provisioning run changed the NATS users"
 grep -qx 'include ./nats-permissions.conf' "$TEST_TMP/auth.conf" || fail "auth.conf does not include the permission config"
 grep -qx 'authorization {' "$TEST_TMP/auth.conf" && ! grep -q 'no_auth_user' "$TEST_TMP/auth.conf" \
   || fail "auth.conf admits a client without credentials"
-grep -qx '    {user: "argus", password: "legacy"}' "$TEST_TMP/auth.conf" || fail "the shared NATS user is gone before every service switched"
+! grep -Eq '\{user:' "$TEST_TMP/auth.conf" || fail "auth.conf still admits a password user beside the nkeys"
+! grep -q 'argus' "$TEST_TMP/auth.conf" || fail "auth.conf still names the shared argus user"
 ! grep -Eq 'SU[A-Z2-7]{56}' "$TEST_TMP/auth.conf" || fail "auth.conf carries a seed"
 for variable in $(sed -n 's/^\(ARGUS_NATS_[A-Z0-9_]*\): {$/\1/p' "$permissions"); do
   [ "$(grep -Ec "^    \{nkey: \"U[A-Z2-7]{55}\", permissions: \\\$$variable\}$" "$TEST_TMP/auth.conf")" = 1 ] \
@@ -253,15 +252,21 @@ for seed in "$TEST_TMP"/seeds/*.seed; do
   [ "$(grep -c "\"$(nkey_public_of "$seed")\"" "$TEST_TMP/auth.conf")" = 1 ] \
     || fail "the seed $seed does not match its user in auth.conf"
 done
-printf '[nats]\npassword = "not-alphanumeric"\n' > "$TEST_TMP/bad-legacy.toml"
-! nats_auth_conf "$permissions" "$TEST_TMP/seeds" "$TEST_TMP/bad-legacy.toml" >/dev/null 2>&1 \
-  || fail "a NATS password that is not alphanumeric was rendered"
 cp "$TEST_TMP/corrupt.seed" "$TEST_TMP/seeds/sync.seed"
-! nats_auth_conf "$permissions" "$TEST_TMP/seeds" "$legacy" >/dev/null 2>&1 \
+! nats_auth_conf "$permissions" "$TEST_TMP/seeds" >/dev/null 2>&1 \
   || fail "a corrupt NATS seed was accepted"
+[ -z "$(find "$TEST_TMP/seeds" -name '*.seed' ! -perm 600)" ] || fail "a NATS seed is not 0600"
 
-grep -Eq '^  if ! nats_auth_conf "\$permissions" "\$seeds" "\$config" > "\$temp"; then$' "$ROOT/scripts/provision-host.sh" \
+grep -Eq '^  if ! nats_auth_conf "\$permissions" "\$seeds" > "\$temp"; then$' "$ROOT/scripts/provision-host.sh" \
   || fail "provision-host.sh does not render the NATS users from the permission config"
+! grep -q 'nats password' "$ROOT/scripts/provision-host.sh" \
+  || fail "provision-host.sh still asks the auth config for the shared NATS password"
+retired="$(awk '/^retire_obsolete_deploy_keys\(\) \{$/ { on = 1 } on && /^RETIRED$/ { on = 0 } on { print }' \
+  "$ROOT/scripts/lib/common.sh")"
+grep -qx 'nats user' <<<"$retired" \
+  || fail "lib/common.sh does not retire the shared NATS user from an existing config"
+grep -qx 'nats password' <<<"$retired" \
+  || fail "lib/common.sh does not retire the shared NATS password from an existing config"
 
 source "$ROOT/scripts/lib/common.sh"
 for service in $(nats_clients); do
@@ -273,15 +278,19 @@ for service in $(nats_clients); do
 done
 [ "$(toml_value "$ROOT/argus-deploy/config.tunnel.toml.example" nats url)" = "nats://127.0.0.1:4222" ] \
   || fail "the host-networked tunnel client does not reach the broker through its loopback publish"
-! toml_key_exists "$ROOT/argus-deploy/config.tunnel.toml.example" nats password \
-  || fail "the tunnel client carries the shared NATS password; it connects with its own key alone"
+for service in $(nats_clients); do
+  ! toml_key_exists "$ROOT/argus-deploy/config.$service.toml.example" nats user \
+    || fail "config.$service.toml.example still carries the shared NATS user"
+  ! toml_key_exists "$ROOT/argus-deploy/config.$service.toml.example" nats password \
+    || fail "config.$service.toml.example still carries the shared NATS password"
+done
 
 mkdir -p "$TEST_TMP/users/deploy" "$TEST_TMP/users/data/nats/seeds"
 for service in $(nats_clients); do
   cp "$ROOT/argus-deploy/config.$service.toml.example" "$TEST_TMP/users/deploy/config.$service.toml"
 done
 cp "$ROOT/argus-deploy/config.tts.toml.example" "$TEST_TMP/users/deploy/config.tts.toml"
-nats_auth_conf "$permissions" "$TEST_TMP/users/data/nats/seeds" "$legacy" >/dev/null \
+nats_auth_conf "$permissions" "$TEST_TMP/users/data/nats/seeds" >/dev/null \
   || fail "the NATS users could not be rendered for the key check"
 {
   printf 'source %q\nsource %q\n' "$ROOT/scripts/lib/common.sh" "$ROOT/scripts/lib/nats-users.sh"
@@ -566,6 +575,19 @@ provision_dry_run first
 first_state="$(provisioned_state)"
 provision_dry_run second
 [ "$(provisioned_state)" = "$first_state" ] || fail "a second provisioning run changed a config or a secret"
+awk '
+  { print }
+  /^\[nats\]$/ { print "user = \"argus\""; print "password = \"CHANGE_ME_NATS\"" }
+' "$sandbox/root/argus-deploy/config.camera.toml" > "$sandbox/root/argus-deploy/config.camera.toml.planted"
+mv "$sandbox/root/argus-deploy/config.camera.toml.planted" "$sandbox/root/argus-deploy/config.camera.toml"
+toml_key_exists "$sandbox/root/argus-deploy/config.camera.toml" nats user \
+  || fail "the sandbox could not plant the retired shared NATS user"
+provision_dry_run third
+! toml_key_exists "$sandbox/root/argus-deploy/config.camera.toml" nats user \
+  || fail "provisioning left the shared NATS user in an existing config"
+! toml_key_exists "$sandbox/root/argus-deploy/config.camera.toml" nats password \
+  || fail "provisioning left the shared NATS password in an existing config"
+[ "$(provisioned_state)" = "$first_state" ] || fail "provisioning changed more than the retired NATS keys"
 for name in rustfs_access_key rustfs_secret_key rustfs_rpc_secret argus_s3_access_key argus_s3_secret_key; do
   secret_file="$sandbox/data/rustfs/secrets/$name"
   [ -s "$secret_file" ] || fail "the provisioning dry run wrote no $name"
@@ -575,7 +597,6 @@ provisioned_secrets > "$sandbox/secrets.tsv"
 for name in "provision/root/argus-deploy/config.auth.toml [jwt] secret" \
     "provision/root/argus-deploy/config.auth.toml [jwt] refresh_secret" \
     "provision/root/argus-deploy/config.auth.toml [device] fingerprint_secret" \
-    "provision/root/argus-deploy/config.auth.toml [nats] password" \
     "provision/root/argus-deploy/config.sync.toml [rtc] api_secret" \
     "provision/root/argus-deploy/config.tunnel.toml [tunnel] secret" \
     "provision/root/argus-deploy/config.identity.toml [rpc.callers] settings" \
@@ -658,7 +679,7 @@ check_trace "$sandbox/secret-files.tsv" "$sandbox/trace-first" "the first provis
 check_trace "$sandbox/secret-files.tsv" "$sandbox/trace-second" "a second provisioning run (secret files)"
 {
   cat "$sandbox/trace-first"
-  printf '+ replace_toml_value nats password %s\n' "$(awk -F '\t' '$1 ~ /\[nats\] password$/ { print $2; exit }' "$sandbox/secrets.tsv")"
+  printf '+ replace_toml_value jwt secret %s\n' "$(awk -F '\t' '$1 ~ /\[jwt\] secret$/ { print $2; exit }' "$sandbox/secrets.tsv")"
 } > "$TEST_TMP/planted-trace"
 ! (check_trace "$sandbox/secrets.tsv" "$TEST_TMP/planted-trace" "a planted trace") 2>/dev/null \
   || fail "a secret planted in a trace was not reported"
@@ -767,7 +788,7 @@ nats_check_skip=""
 if nats_server_binary_find; then
   mkdir -p "$TEST_TMP/broker/js"
   cp "$permissions" "$TEST_TMP/broker/"
-  nats_auth_conf "$permissions" "$TEST_TMP/broker" "$legacy" > "$TEST_TMP/broker/auth.conf"
+  nats_auth_conf "$permissions" "$TEST_TMP/broker" > "$TEST_TMP/broker/auth.conf"
   sed -e "s#\"/data\"#\"$TEST_TMP/broker/js\"#" "$ROOT/argus-deploy/nats.conf" > "$TEST_TMP/broker/nats.conf"
   "$NATS_SERVER_BIN" -c "$TEST_TMP/broker/nats.conf" -t > "$TEST_TMP/broker/check.out" 2>&1 \
     || fail "nats-server refuses the provisioned configuration: $(tail -n 1 "$TEST_TMP/broker/check.out")"

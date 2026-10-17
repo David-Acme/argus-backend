@@ -66,12 +66,12 @@ NatsBus::Options optionsFor(std::string_view service)
   return options;
 }
 
-NatsBus::Options sharedOptions()
+NatsBus::Options probeOptions()
 {
   NatsBus::Options options;
   options.url = env("ARGUS_NATS_PERMISSIONS_URL");
-  options.user = "argus";
-  options.password = env("ARGUS_NATS_PERMISSIONS_LEGACY");
+  options.user = "probe";
+  options.password = env("ARGUS_NATS_PERMISSIONS_PROBE");
   options.reconnectWaitMs = 200;
   options.maxReconnects = 3;
   return options;
@@ -300,9 +300,9 @@ TEST_CASE("a service is refused outside its row and outside its own inbox" *
           doctest::skip(unconfigured()))
 {
   captureLogs();
-  NatsBus shared;
-  REQUIRE(shared.connect(sharedOptions()));
-  REQUIRE(shared.ensureStream(streamInput(nats_subject::kCameraStream, 60)));
+  NatsBus probe;
+  REQUIRE(probe.connect(probeOptions()));
+  REQUIRE(probe.ensureStream(streamInput(nats_subject::kCameraStream, 60)));
 
   Fleet fleet = connectFleet();
   const auto& table = nats_permissions::table();
@@ -353,34 +353,34 @@ TEST_CASE("a service is refused outside its row and outside its own inbox" *
 
   for (auto& [service, bus] : fleet)
     bus->drain();
-  shared.drain();
+  probe.drain();
 }
 
-TEST_CASE("the shared user keeps working until every service has switched" *
+TEST_CASE("a client the broker admits without a row keeps its full access" *
           doctest::skip(unconfigured()))
 {
   captureLogs();
-  NatsBus shared;
-  REQUIRE(shared.connect(sharedOptions()));
-  CHECK(shared.publish("argus.anything.v1.probe", "{}"));
-  CHECK(shared.ensureStream(
+  NatsBus probe;
+  REQUIRE(probe.connect(probeOptions()));
+  CHECK(probe.publish("argus.anything.v1.probe", "{}"));
+  CHECK(probe.ensureStream(
       streamInput(nats_subject::kSettingsModuleStream, 60)));
   settle();
   CHECK(logLinesWith("Permissions Violation for Publish to \"argus.anything") ==
         0);
-  shared.drain();
+  probe.drain();
 }
 
 TEST_CASE(
-    "a durable the shared user bound moves under the service's inbox when "
-    "the service switches" *
+    "a durable an unrestricted client bound moves under the service's "
+    "inbox when the service takes it over" *
     doctest::skip(unconfigured()))
 {
   captureLogs();
   const int violationsBefore = logLinesWith("Permissions Violation");
-  NatsBus shared;
-  REQUIRE(shared.connect(sharedOptions()));
-  REQUIRE(shared.ensureStream(streamInput(nats_subject::kCameraStream, 60)));
+  NatsBus probe;
+  REQUIRE(probe.connect(probeOptions()));
+  REQUIRE(probe.ensureStream(streamInput(nats_subject::kCameraStream, 60)));
   const nats_permissions::Consumer consumer{.stream =
                                                 nats_subject::kCameraStream,
                                             .name = "argus-sync-camera",
@@ -390,14 +390,14 @@ TEST_CASE(
   auto legacyDeliveries = std::make_shared<Counter>();
   std::optional<uint64_t> legacy;
   for (int attempt = 0; attempt < 40 && !legacy; ++attempt) {
-    legacy = shared.subscribeDurable(durableFor(consumer, legacyDeliveries));
+    legacy = probe.subscribeDurable(durableFor(consumer, legacyDeliveries));
     if (!legacy)
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
   REQUIRE(legacy.has_value());
-  shared.unsubscribe(legacy.value_or(0));
+  probe.unsubscribe(legacy.value_or(0));
   settle();
-  REQUIRE(shared.publishWithMsgId({.subject = nats_subject::kCameraChange,
+  REQUIRE(probe.publishWithMsgId({.subject = nats_subject::kCameraChange,
                                    .payload = "{}",
                                    .msgId = "switch-probe"}));
 
@@ -416,7 +416,7 @@ TEST_CASE(
   CHECK(logLinesWith("Permissions Violation") == violationsBefore);
   sync.unsubscribe(switched.value_or(0));
   sync.drain();
-  shared.drain();
+  probe.drain();
 }
 
 TEST_CASE("a service cannot re-create its own durable with another filter, nor "
@@ -424,9 +424,9 @@ TEST_CASE("a service cannot re-create its own durable with another filter, nor "
           doctest::skip(unconfigured()))
 {
   captureLogs();
-  NatsBus shared;
-  REQUIRE(shared.connect(sharedOptions()));
-  REQUIRE(shared.ensureStream(streamInput(nats_subject::kCameraStream, 60)));
+  NatsBus probe;
+  REQUIRE(probe.connect(probeOptions()));
+  REQUIRE(probe.ensureStream(streamInput(nats_subject::kCameraStream, 60)));
   NatsBus sync;
   REQUIRE(sync.connect(optionsFor("sync")));
 
@@ -471,7 +471,7 @@ TEST_CASE("a service cannot re-create its own durable with another filter, nor "
                 "sync could not bind its own durable with its own filter");
   sync.unsubscribe(bound.value_or(0));
   sync.drain();
-  shared.drain();
+  probe.drain();
 }
 
 TEST_CASE("a durable an older client created with DURABLE.CREATE is taken over "
@@ -480,18 +480,18 @@ TEST_CASE("a durable an older client created with DURABLE.CREATE is taken over "
 {
   captureLogs();
   const int violationsBefore = logLinesWith("Permissions Violation");
-  NatsBus shared;
-  REQUIRE(shared.connect(sharedOptions()));
-  REQUIRE(shared.ensureStream(streamInput(nats_subject::kCameraStream, 60)));
+  NatsBus probe;
+  REQUIRE(probe.connect(probeOptions()));
+  REQUIRE(probe.ensureStream(streamInput(nats_subject::kCameraStream, 60)));
 
   natsOptions* rawOptions = nullptr;
   REQUIRE(natsOptions_Create(&rawOptions) == NATS_OK);
   const std::unique_ptr<natsOptions, decltype(&natsOptions_Destroy)>
       options(rawOptions, &natsOptions_Destroy);
   const std::string url = env("ARGUS_NATS_PERMISSIONS_URL");
-  const std::string password = env("ARGUS_NATS_PERMISSIONS_LEGACY");
+  const std::string password = env("ARGUS_NATS_PERMISSIONS_PROBE");
   REQUIRE(natsOptions_SetURL(options.get(), url.c_str()) == NATS_OK);
-  REQUIRE(natsOptions_SetUserInfo(options.get(), "argus", password.c_str()) ==
+  REQUIRE(natsOptions_SetUserInfo(options.get(), "probe", password.c_str()) ==
           NATS_OK);
   natsConnection* rawConnection = nullptr;
   REQUIRE(natsConnection_Connect(&rawConnection, options.get()) == NATS_OK);
@@ -520,7 +520,7 @@ TEST_CASE("a durable an older client created with DURABLE.CREATE is taken over "
   REQUIRE(js_AddConsumer(&rawInfo, js.get(), stream.c_str(), &config, nullptr,
                          &errorCode) == NATS_OK);
   jsConsumerInfo_Destroy(rawInfo);
-  REQUIRE(shared.publishWithMsgId(
+  REQUIRE(probe.publishWithMsgId(
       {.subject = filter, .payload = "{}", .msgId = "older-client-probe"}));
 
   NatsBus llm;
@@ -543,5 +543,5 @@ TEST_CASE("a durable an older client created with DURABLE.CREATE is taken over "
   CHECK(logLinesWith("Permissions Violation") == violationsBefore);
   llm.unsubscribe(bound.value_or(0));
   llm.drain();
-  shared.drain();
+  probe.drain();
 }

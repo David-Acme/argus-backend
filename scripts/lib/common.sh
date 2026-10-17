@@ -532,8 +532,6 @@ guard presence_credential
 modules target
 modules credential
 nats url
-nats user
-nats password
 nats nkey
 nats seed_file
 nats inbox_prefix
@@ -858,11 +856,28 @@ write_livekit_keys() {
   chmod 600 "$keys"
 }
 
+retire_obsolete_deploy_keys() {
+  local deploy_dir="$1"
+  local config table key
+
+  for config in "$deploy_dir"/config.*.toml; do
+    [ -f "$config" ] || continue
+    while read -r table key; do
+      [ -n "$key" ] || continue
+      remove_toml_key "$table" "$key" "$config"
+    done <<'RETIRED'
+nats user
+nats password
+RETIRED
+  done
+}
+
 ensure_deploy_configs() {
   local deploy_dir="$1"
   local template config
 
   [ -d "$deploy_dir" ] || { err "missing deploy dir: $deploy_dir"; return 1; }
+  retire_obsolete_deploy_keys "$deploy_dir"
 
   for template in "$deploy_dir"/config.*.toml.example; do
     [ -f "$template" ] || continue
@@ -885,7 +900,6 @@ device fingerprint_secret 48
 identity rpc_secret 32
 auth rpc_secret 32
 sync control_secret 32
-nats password 32
 SECRETS
 
   for config in "$deploy_dir"/config.*.toml; do

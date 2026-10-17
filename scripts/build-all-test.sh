@@ -596,7 +596,6 @@ run_script_test native-tls-migrate-test.sh
 run_script_test ../services/llm/scripts/install-bundle-test.sh
 run_script_test deploy-mounts-test.sh
 run_script_test port-map-test.sh
-run_script_test nats-users-check-test.sh
 run_script_test golden-http-test.py
 run_script_test boot-proof-test.sh
 

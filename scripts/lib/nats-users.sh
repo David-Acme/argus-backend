@@ -168,34 +168,9 @@ nats_service_seed() {
   fi
 }
 
-nats_legacy_user() {
-  awk '
-    /^[[:space:]]*\[/ {
-      in_table = ($0 ~ /^\[nats\][[:space:]]*$/)
-    }
-    in_table && /^[[:space:]]*password[[:space:]]*=/ {
-      value = $0
-      sub(/^[[:space:]]*password[[:space:]]*=[[:space:]]*/, "", value)
-      sub(/[[:space:]]+#.*$/, "", value)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", value)
-      if (value ~ /^".*"$/)
-        value = substr(value, 2, length(value) - 2)
-      password = value
-      exit
-    }
-    END {
-      if (password !~ /^[A-Za-z0-9]+$/)
-        exit 1
-      printf "    {user: \"argus\", password: \"%s\"}\n", password
-    }' "$1"
-}
-
 nats_auth_conf() {
-  local permissions="$1" seeds="$2" legacy_config="${3:-}" service public
+  local permissions="$1" seeds="$2" service public
   printf 'include ./%s\n\nauthorization {\n  users: [\n' "${permissions##*/}"
-  if [ -n "$legacy_config" ]; then
-    nats_legacy_user "$legacy_config" || return 1
-  fi
   for service in $(nats_permission_services "$permissions"); do
     public="$(nats_service_seed "$seeds" "$service")" || return 1
     printf '    {nkey: "%s", permissions: $%s}\n' "$public" "$(nats_permission_variable "$service")"

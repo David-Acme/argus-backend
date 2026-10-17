@@ -425,7 +425,7 @@ The `tunnel` profile carries the byte-transparent remote transport:
   `nats://127.0.0.1:4222`, the broker's loopback publish. It connects there
   with its own nkey (`seeds/tunnel.seed`, mounted read-only at
   `/run/secrets/nats.seed`) on the same listener and the same `auth.conf` as
-  every other client, and never with the shared user. It waits for a healthy
+  every other client, and with no other credential. It waits for a healthy
   `nats`. If an owner moves `NATS_CLIENT_PORT`, this url has to follow.
 - Both binaries refuse to start with an empty `[tunnel] secret`, which is
   what keeps the pair inert until the instance configs are filled — that, and
@@ -693,18 +693,21 @@ templates now:
 `rpc.callers` table). The pairs are distinct per caller, so a compromised
 caller cannot impersonate another.
 
-## NATS requires a password (2026-10)
+## NATS authorization (2026-10)
 
-Since the hardening pass the password no longer travels on the command line
-(where `ps` and `docker inspect` showed it): the broker starts with
-`-c /etc/nats/argus.conf` (the committed `nats.conf`: client port, monitor on
-the container's loopback, JetStream store) which includes `auth.conf`, a file
-`provision-host.sh` writes from `config.auth.toml`'s `[nats] password` into
-`${ARGUS_DATA_DIR}/nats/auth.conf` (0644 inside the 0700 data tree; the
-broker runs as root with every capability dropped, so it reads by mode, not by
-`DAC_OVERRIDE`). `NATS_PASSWORD` is no longer written to `.env`; an existing
-line there is inert. Re-run provisioning before the first `up -d` after this
-change, or nats fails to start on the missing include.
+The broker starts with `-c /etc/nats/argus.conf` (the committed `nats.conf`:
+client port, monitor on the container's loopback, JetStream store) which
+includes `auth.conf`, a file `provision-host.sh` writes into
+`${ARGUS_DATA_DIR}/nats/auth.conf` (0644 inside the 0700 data tree; the broker
+runs as root with every capability dropped, so it reads by mode, not by
+`DAC_OVERRIDE`). `auth.conf` renders one `{nkey: …}` user per row of
+`nats-permissions.conf` and nothing else: since 2026-10-16 the shared `argus`
+user with the password `config.auth.toml` used to carry is gone from the
+rendering, from the templates and from the provisioning pass, together with
+the `[nats] password` secret it was generated from. `NATS_PASSWORD` is not
+written to `.env` either; an existing line there is inert. Re-run provisioning
+before the first `up -d` after this change, or nats fails to start on the
+missing include.
 
 
 The broker ran with no authorization, so any container on the internal
@@ -713,13 +716,15 @@ could publish forged identity changes (signing users out), change-feed
 events, encounter summaries for the LLM's memory or push intents. The first
 fix was one shared user, `argus`, with a password every service's `[nats]`
 carried as `user`/`password` (passed with `natsOptions_SetUserInfo`, never
-in the URL, so it never reached a log). That password is in `auth.conf` now,
-as the paragraph above says, and no longer on the command line or in `.env`.
-Each service now connects with its own nkey and the grants of its row ("One
-NATS user per service" below). A service uses the shared user's password
-only when its config lacks its key. The tunnel client never had the
-password. The shared user stays in `auth.conf` only until the owner's gate
-passes and the cleanup removes it.
+in the URL, so it never reached a log); the password travelled in `auth.conf`,
+never on the command line or in `.env`. That user was a step, not the target:
+it carried the whole account, so any one service's copy leaked every grant.
+Since 2026-10-16 every service connects with its own nkey and the grants of
+its row ("One NATS user per service" below), and the shared user is removed
+from the rendering, the templates and the provisioning pass rather than kept
+as a fallback. `NatsBus` still authenticates with `user`/`password` when a
+config carries both, which is what the live permission tests' own throwaway
+probe user uses; no template, no image and no provisioned config does.
 
 ## One NATS user per service (S3, 2026-10)
 
@@ -730,13 +735,12 @@ streams belong to an account (ruling of 2026-10-12, `realtime-and-backlog-plan`
 section 5). The table is rendered into the committed `nats-permissions.conf`,
 one `ARGUS_NATS_<SERVICE>` variable per row, and `provision-host.sh` writes
 `${ARGUS_DATA_DIR}/nats/auth.conf` as an include of that file plus one
-`{nkey: "U…", permissions: $ARGUS_NATS_<SERVICE>}` user per variable. The shared
-`argus` user stays in the same `users` list until every service connects with
-its own key; removing it is the last step.
+`{nkey: "U…", permissions: $ARGUS_NATS_<SERVICE>}` user per variable, and
+nothing else: the users list holds no shared `argus` user.
 
 - **Keys.** Users authenticate with an nkey, so the broker holds public keys
-  only: `auth.conf` stays 0644 inside the 0700 data tree, as before, and after
-  the shared user goes it holds no secret at all. Each service's seed is
+  only: `auth.conf` stays 0644 inside the 0700 data tree and holds no secret at
+  all. Each service's seed is
   `${ARGUS_DATA_DIR}/nats/seeds/<service>.seed` (0600, the directory 0700),
   issued once and reused on every re-run, and mounted read-only into that
   service alone at `/run/secrets/nats.seed`; the broker never sees it.
@@ -756,45 +760,32 @@ its own key; removing it is the last step.
 - **Every row gets a user.** nats-server refuses a config variable nothing
   uses ("unknown field"), so the rendering iterates the variables of
   `nats-permissions.conf` and issues a seed and a user for each of them.
-- **Services switch by configuration.** Each NATS client's template carries
+- **Services connect by configuration.** Each NATS client's template carries
   `seed_file = "/run/secrets/nats.seed"` (its compose mount),
   `inbox_prefix = "_INBOX.<service>"` and an empty `nkey`; provisioning adopts
   those keys into the existing `config.<service>.toml` and writes the public key
   of that service's own seed into `nkey`. `NatsBus` connects with the key when
-  `nkey` and `seed_file` are both set and with the shared user otherwise, so a
-  service switches at its first start with an image that carries the client and
-  a config that carries its key; the shared user is removed only after every
-  service has.
+  `nkey` and `seed_file` are both set; the shared `user`/`password` pair the
+  templates used to carry is retired from an existing config by the same
+  provisioning pass (`retire_obsolete_deploy_keys`).
 - **Reloading the broker.** Compose does not see a change in the content of a
   mounted file, so a later change to `nats-permissions.conf` (a new grant, a
   new row) reaches the running broker only through a reload: re-run
   `provision-host.sh`, then `docker compose kill -s HUP nats` (nats-server
   re-reads `auth.conf` and its include and keeps its connections), and only then
   start the services that need the new grants.
-- **Removing the shared user.** `scripts/nats-users-check.sh` is the gate.
-  It reads the monitor from inside the nats container and changes nothing.
-  It names every broker connection by the key it presented: `own` (a key
-  `auth.conf` records for a row), `SHARED` (the shared user) or `unknown` (a
-  key `auth.conf` does not record, or none). It names every service the
-  stack deploys as `own` (at least one connection of its own) or `missing`.
-  It exits 0 only when every deployed service has a connection of its own
-  and no connection is `SHARED` or `unknown`. A service that is stopped or
-  crash-looping during the check is `missing` and fails the gate.
-  `scripts/nats-users-check-test.sh` replays recorded broker answers through
-  it. With `--live` it also checks, on a throwaway broker, that the monitor
-  reports an nkey user by the key's public key, which the matching relies
-  on.
-  The services it expects are the rows of `nats-permissions.conf` that
-  `docker compose config --services` lists under the stack's active
-  profiles. Compose reads those profiles from `COMPOSE_PROFILES` or from
-  `.env`, where `provision-host.sh --with-tunnel` writes `tunnel`. So `relay`
-  and `tunnel` are expected only when the tunnel profile is on, and are
-  listed as not deployed, without failing, when it is off. Run the gate with
-  the profiles the stack runs with. A stack that turns the tunnel profile on
-  after the shared user is gone runs the gate again with it on: the relay
-  and the tunnel client connect with their own keys, which provisioning
-  issues for every row whatever the profiles. The shared user is removed
-  only after the gate exits 0 on the running stack.
+- **Checking it.** `scripts/deploy-security-check.sh` is the read-only check
+  of a deployed stack: per service it proves the config carries its own key,
+  that the key is the one its seed holds, that `auth.conf` admits it and no
+  shared `argus` user, and, through the broker's monitor, that a connection of
+  that service is present with it while no connection presents a key no config
+  names. It is the owner's check on his server, not a gate that blocks a
+  deploy.
+  The gate that sequenced this removal - `scripts/nats-users-check.sh`, with
+  `scripts/nats-users-check-test.sh` and their recorded broker answers - was
+  deleted with it on 2026-10-16: it existed to answer "does every deployed
+  service already connect with its own key, so the shared user can go", and
+  that question is answered.
 - **Deploying this change.** The broker now includes `nats-permissions.conf`
   and every NATS client mounts its seed with `create_host_path: false`, so
   re-run `scripts/provision-host.sh` before `docker compose up -d`: without the
@@ -1136,7 +1127,7 @@ each pass of a CA rotation ("The internal CA"), re-running
 service", and item 4 of "Deferred hardening"), the RustFS prefix proof before
 any RustFS upgrade (the `rustfs` row of "Services"), building the images before
 any config names a `tls:` target ("The internal CA"), and the owner cleanup
-checks of S3 ("One NATS user per service", removing the shared user) and of S4
+checks of S3 ("One NATS user per service") and of S4
 (the S4 line of `docs/history/plans/realtime-and-backlog-plan.md`).
 
 ## Deferred hardening (plan, not done in this branch)

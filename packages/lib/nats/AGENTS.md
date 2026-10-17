@@ -225,7 +225,8 @@ and acks a message on it and recreates its module feed, and no permission
 violation is logged; every row is refused inside another service's inbox and
 outside its row, the relay is refused an inbox, a stream and a durable of
 another service are refused, an unknown nkey is refused at connect, and the
-shared user still works. `scripts/nats-permissions-live-test.sh <binary>` builds
+broker's probe user - one the harness grants no row, never a product
+credential - still works. `scripts/nats-permissions-live-test.sh <binary>` builds
 that broker from the nats-server binary `ARGUS_NATS_SERVER_BIN` names (a
 loopback port that is never 4222, JetStream in a temporary directory) and runs
 the binary against it; without a usable nats-server the script exits 77
@@ -246,8 +247,10 @@ and fails in CI. Since 2026-10-13 it no longer looks for a `nats-server` on
 `PATH`.
 
 `[nats] user` and `[nats] password`, when both are set, are passed to the
-broker with `natsOptions_SetUserInfo`; credentials never go into the URL,
-which services log. `[nats] nkey` and `[nats] seed_file`, when both are set,
+broker with `natsOptions_SetUserInfo`, which is what the live permission
+tests' throwaway probe user uses; no template and no provisioned config
+carries the pair since 2026-10-16, when the shared `argus` user left the
+rendering. Credentials never go into the URL, which services log. `[nats] nkey` and `[nats] seed_file`, when both are set,
 take their place: `natsOptions_SetNKeyFromSeed` reads the seed from the file
 at every connect and signs the broker's nonce with it, so no signing code of
 ours exists and the seed never enters a config value. `[nats] inbox_prefix`
