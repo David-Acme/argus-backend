@@ -475,6 +475,61 @@ Time to first token is flat (p50 727 vs 734 ms, one run). Ablation confirms each
 used: dropping the camera facts costs a case, the agenda facts three, the guard facts one.
 Details and the per-seed table: `docs/history/project-log.md` and the unit's report.
 
+## The context scenarios (Phase 4d)
+
+`context-scenarios-eval` measures the PRODUCTION context build over the situations where context matters
+most, as a scenario x metric table. Two packs hold it: `fixtures/eval/context-scenarios.jsonl` (33 cases:
+the plan's ten scenarios in Spanish, Peruvian Spanish and English, 3-5 turns each) and
+`fixtures/eval/context-axis.jsonl` (30 cases: the conversational axis A and the data-handling axis B,
+each bullet in the three locales). Every case carries the constraint data the reply is measured against —
+the facts it must keep, the first sentence it must carry them in, the tokens it must never invent, the
+refusals, the module-off and role-inactive expectations, the conflict and partial-data acknowledgements,
+the no-delivery rule for errands, the leak tokens, and the call trigger with its opening line where the
+scenario is call-shaped. `context-checks-test` validates the pack model-free: the ten scenarios and the
+axis bullets all exist in the three locales, every id is unique, every oracle fact is a subset of the
+production facts, no turn is left unconstrained, and the gates files carry the section with its pin.
+
+```
+services/llm/build/prod/tests/eval/context-scenarios-eval \
+  --cases services/llm/tests/fixtures/eval/context-scenarios.jsonl \
+  --cases services/llm/tests/fixtures/eval/context-axis.jsonl \
+  --gates services/llm/tests/eval/gates.json \
+  --llm-model models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf \
+  --prompt-es services/voice/tests/fixtures/call-prompt-es.txt \
+  --prompt-en services/voice/tests/fixtures/call-prompt-en.txt \
+  --regionalism-markers services/llm/tests/fixtures/eval/peruvian-markers.txt \
+  --temperature 0.3 --seed 42 \
+  --report <report.json> --table <table.json> --trace <rows.jsonl> [--ttft <ttft.jsonl>]
+```
+
+Each case runs through `LlmController::chatSync` with its facts as the per-turn gated context, so the
+production selector, the speech guard and the claim checks are the ones measured. `--variant oracle`
+feeds only the case's oracle facts, clean and minimal, to isolate the context build: a case that passes
+there and fails in production is a context bug. The larger-model variant is the same binary with another
+`--llm-model` on the vendored runtime; it is diagnostic and never adopted. `--scenario`, `--locale`,
+`--route`, `--filter` and `--limit` select a subset (`gates-smoke.json` runs `panic` and `errand` in `es`
+and `es-PE`, eight turns), and `--route relay` reports the relay cases' latency without gating it.
+Scenario 8 runs the production `DuressScreen` in front of the model with a scripted guard link: the
+harness refuses to continue unless the raise fired, the model was handed the withheld placeholder and
+the turn shipped the `unheard` marker.
+
+The metrics are the plan's: `reasonFirst` (the reason in the first sentence), `missedFacts`, `invented`,
+`falseClaims` (the product's own claim gate on the shipped reply), `falseRelays`, `privacyLeaks`,
+`language`, `length`, `echo`, `greeting`, `repeated`, `ungroundedNumbers`, `noRefusal`,
+`moduleOffUnspoken`, `fakeAnswer`, `conflictUnspoken`, `partialUnspoken`, `questionMissing`,
+`questionUnasked`, `actWrong`, `duressMissing` and `regionalism` (no Peruvian marker in a reply to a
+Peruvian register). Two of them are hard gates, pinned at zero in both gates files: **privacy leaks** and
+**false relays**; `falseClaims`, `duressMissing`, `language`, `echo`, `fakeAnswer` and `regionalism`
+follow, and the corpus floors (`cases` 63, `turns` 168) keep a shrunk pack from passing vacuously. The
+soft dimensions get their baselines from the first post-cutover run; until then they are reported and not
+gated. TTFT is measured by the `--ttft` pass through `chatStreamSync` and reported per route, never gated.
+
+The blind sample for the reviewer's 1-5 rubric is written by the harness and merged by `context-blind.py`:
+each run appends `<model>.<variant>.sample.jsonl` (bare replies, no variant labels) and its key file under
+`--blind <dir>`; the tool samples `--per-variant` replies evenly from every variant, shuffles them with
+`--seed` into ONE file and writes a separate key that maps each line to its variant, case and turn. Both
+output paths stay outside the repository.
+
 ## Candidate models (measured 2026-10-16)
 
 Ternary Bonsai 2 2B was compared with the shipped LFM2.5-1.2B and LFM2.5-VL-450M on one llama.cpp

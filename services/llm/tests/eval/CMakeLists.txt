@@ -192,3 +192,70 @@ add_test(NAME call-faithfulness-eval
 
 set_tests_properties(call-faithfulness-smoke PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm" TIMEOUT 1800)
 set_tests_properties(call-faithfulness-eval PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm" TIMEOUT 7200)
+
+add_library(llm-context-eval STATIC context-scenarios.cc)
+
+target_include_directories(llm-context-eval PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+target_link_libraries(llm-context-eval PUBLIC Drogon::Drogon)
+
+target_compile_options(llm-context-eval PRIVATE -Wall -Wextra)
+
+add_executable(context-scenarios-eval context-scenarios-eval.cc eval-tools.cc)
+
+target_link_libraries(context-scenarios-eval PRIVATE llm-eval-core llm-context-eval argus::llm)
+
+target_compile_options(context-scenarios-eval PRIVATE -Wall -Wextra)
+
+set_target_properties(context-scenarios-eval PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+set(CONTEXT_SCENARIOS_ARGS
+    --cases ${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/context-scenarios.jsonl
+    --cases ${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/context-axis.jsonl
+    --gates ${CMAKE_CURRENT_SOURCE_DIR}/gates.json
+    --llm-model ${CMAKE_CURRENT_SOURCE_DIR}/../../../../models/llm/LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf
+    --prompt-es ${CMAKE_CURRENT_SOURCE_DIR}/../../../voice/tests/fixtures/call-prompt-es.txt
+    --prompt-en ${CMAKE_CURRENT_SOURCE_DIR}/../../../voice/tests/fixtures/call-prompt-en.txt
+    --regionalism-markers ${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/peruvian-markers.txt
+    --temperature 0.3 --seed 42)
+
+add_test(NAME context-scenarios-smoke
+    COMMAND context-scenarios-eval ${CONTEXT_SCENARIOS_ARGS}
+        --gates ${CMAKE_CURRENT_SOURCE_DIR}/gates-smoke.json
+        --scenario panic --scenario errand --limit 2
+        --report ${CMAKE_CURRENT_BINARY_DIR}/context-scenarios-smoke-report.json)
+
+add_test(NAME context-scenarios-eval
+    COMMAND context-scenarios-eval ${CONTEXT_SCENARIOS_ARGS}
+        --report ${CMAKE_CURRENT_BINARY_DIR}/context-scenarios-report.json
+        --table ${CMAKE_CURRENT_BINARY_DIR}/context-scenarios-table.json)
+
+set_tests_properties(context-scenarios-smoke PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm" TIMEOUT 1800)
+set_tests_properties(context-scenarios-eval PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm" TIMEOUT 14400)
+
+add_executable(context-checks-test context-checks-test.cc)
+
+target_link_libraries(context-checks-test PRIVATE llm-eval-core llm-context-eval argus::lib::text doctest::doctest)
+
+target_compile_options(context-checks-test PRIVATE -Wall -Wextra)
+
+target_compile_definitions(context-checks-test PRIVATE
+    ARGUS_CONTEXT_SCENARIOS="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/context-scenarios.jsonl"
+    ARGUS_CONTEXT_AXIS="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/context-axis.jsonl"
+    ARGUS_CONTEXT_GATES="${CMAKE_CURRENT_SOURCE_DIR}/gates.json"
+    ARGUS_CONTEXT_SMOKE_GATES="${CMAKE_CURRENT_SOURCE_DIR}/gates-smoke.json")
+
+set_target_properties(context-checks-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME context-checks-test COMMAND context-checks-test)
+
+if(ARGUS_PYTHON3)
+    add_test(NAME context-scenarios-pin-test
+        COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/context-scenarios-pin-test.py)
+    set_tests_properties(context-scenarios-pin-test PROPERTIES LABELS eval
+        ENVIRONMENT "CONTEXT_SCENARIOS_EVAL=$<TARGET_FILE:context-scenarios-eval>;CONTEXT_SCENARIOS_GATES=${CMAKE_CURRENT_SOURCE_DIR}/gates.json;CONTEXT_SCENARIOS_SMOKE_GATES=${CMAKE_CURRENT_SOURCE_DIR}/gates-smoke.json;CONTEXT_SCENARIOS_MISSING_MODEL=${CMAKE_CURRENT_BINARY_DIR}/no-such-llm.gguf;CONTEXT_SCENARIOS_CASES=${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/context-scenarios.jsonl:${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/context-axis.jsonl")
+
+    add_test(NAME context-blind-test
+        COMMAND ${ARGUS_PYTHON3} -I ${CMAKE_CURRENT_SOURCE_DIR}/context-blind-test.py)
+    set_tests_properties(context-blind-test PROPERTIES LABELS eval)
+endif()

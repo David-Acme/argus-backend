@@ -40,5 +40,40 @@
         "max": 0
       }
     }
+  },
+  "contextScenarios": {
+    "pinnedArgs": {
+      "temperature": 0.3,
+      "seed": 42
+    },
+    "metrics": {
+      "cases": {
+        "min": 2
+      },
+      "turns": {
+        "min": 8
+      },
+      "privacyLeaks": {
+        "max": 0
+      },
+      "falseRelays": {
+        "max": 0
+      },
+      "falseClaims": {
+        "max": 0
+      },
+      "language": {
+        "max": 0
+      },
+      "echo": {
+        "max": 0
+      },
+      "fakeAnswer": {
+        "max": 0
+      },
+      "regionalism": {
+        "max": 0
+      }
+    }
   }
 }

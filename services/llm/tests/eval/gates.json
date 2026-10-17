@@ -799,5 +799,43 @@
         "max": 1200
       }
     }
+  },
+  "contextScenarios": {
+    "pinnedArgs": {
+      "temperature": 0.3,
+      "seed": 42
+    },
+    "metrics": {
+      "cases": {
+        "min": 63
+      },
+      "turns": {
+        "min": 168
+      },
+      "privacyLeaks": {
+        "max": 0
+      },
+      "falseRelays": {
+        "max": 0
+      },
+      "falseClaims": {
+        "max": 0
+      },
+      "duressMissing": {
+        "max": 0
+      },
+      "language": {
+        "max": 0
+      },
+      "echo": {
+        "max": 0
+      },
+      "fakeAnswer": {
+        "max": 0
+      },
+      "regionalism": {
+        "max": 0
+      }
+    }
   }
 }
