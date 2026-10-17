@@ -203,7 +203,7 @@ target_compile_options(llm-context-eval PRIVATE -Wall -Wextra)
 
 add_executable(context-scenarios-eval context-scenarios-eval.cc eval-tools.cc)
 
-target_link_libraries(context-scenarios-eval PRIVATE llm-eval-core llm-context-eval argus::llm)
+target_link_libraries(context-scenarios-eval PRIVATE llm-eval-core llm-context-eval argus::duress argus::llm)
 
 target_compile_options(context-scenarios-eval PRIVATE -Wall -Wextra)
 

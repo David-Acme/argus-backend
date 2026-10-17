@@ -450,14 +450,6 @@ TurnEngines installEngines(LlmController& controller, const Options& options)
   return engines;
 }
 
-std::vector<std::string> offeredFacts(const context_eval::ScenarioCase& item)
-{
-  std::vector<std::string> out;
-  for (const context_eval::ScenarioFact& fact : item.facts)
-    out.push_back(fact.text);
-  return out;
-}
-
 const std::vector<context_eval::ScenarioFact>& factsFor(const context_eval::ScenarioCase& item,
                                                          std::string_view variant)
 {
