@@ -1032,10 +1032,11 @@ voice, stt, vlm, llm, camera and identity.
   `/health` handler, outside the shared envelope, carries `internalTls` at the
   top level beside `status` and `service`.
 - voice publishes its plaintext gRPC 7034 on 127.0.0.1, so 7234 is published
-  there too (`VOICE_TLS_PORT`). Voice has no `src/app/`, so its delegate,
-  startVoiceRpc, sits in `services/voice/src/feature/voice/voice-rpc-server`,
-  beside the gRPC services it serves (reviewer ruling, 2026-10-13). A port that
-  cannot be bound stops the start, as it already did.
+  there too (`VOICE_TLS_PORT`). Its delegate, startVoiceRpc, sits in
+  `services/voice/src/app/rpc/voice-rpc-server` (`argus::voice-rpc`) since D4
+  gave voice the `src/app/` the reviewer ruling of 2026-10-13 found missing,
+  the ruling under which it had sat in `feature/voice` beside the gRPC services
+  it serves. A port that cannot be bound stops the start, as it already did.
 - stt publishes no RPC port, so 7330 is not published either. Its
   SttRpcServer opens the plaintext 7130 and the mutual TLS port through
   startListening and mounts the internal certificate read-only.

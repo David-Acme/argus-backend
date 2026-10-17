@@ -57,9 +57,12 @@ that apply to voice-service code; when in doubt, the root file wins.
 ```
 argus-voice/
   CMakeLists.txt        argus_module(voice-core) + argus_service(argus-voice),
-                        the latter naming argus::voice-config and
-                        argus::voice-core
-  src/main.cc           config load, listener boot, minimal /health, app run
+                        the latter naming argus::voice-config,
+                        argus::voice-rpc and argus::voice-core
+  src/app/main.cc       config load, listener boot, minimal /health, app run
+  src/app/rpc/          argus::voice-rpc — startVoiceRpc and voiceRpcFailure,
+                        the gRPC listener bootstrap: the plaintext port and the
+                        mutual TLS port, and the refusal that stops the start
   src/config/           argus::voice-config — the health (7035) and gRPC
                         (7034) listeners
   src/feature/voice/    voice session, the call's history (call-history),

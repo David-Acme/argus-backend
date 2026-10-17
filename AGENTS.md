@@ -841,14 +841,14 @@ Every service follows the same layout inside its own folder:
 `docs/history/plans/architecture-plan.md` lands it): `services/auth`,
 `services/camera`, `services/guard`, `services/identity`,
 `services/notification`, `services/productivity`, `services/settings`,
-`services/stt`, `services/sync`, `services/tts`, `services/vlm` and
-`services/llm` are the services with `src/app/`, and the
+`services/stt`, `services/sync`, `services/tts`, `services/vlm`,
+`services/llm` and `services/voice` are the services with `src/app/`, and the
 `feature/api/<resource>/` spelling is gone from the tree — Phase 4 step 4
 flattened the last two owners that had it; step 5 gave `stt`, `vlm` and `llm`
 the reference interior (`app/` composition, `feature/<feature>/` vertical
-slices, the folder as the module). One service keeps a single `main.cc` at
-its `src/` root — `voice` — beside `tunnel`, exempt by design (D19), which
-has two entry points there, `main-client.cc` and `main-relay.cc`.
+slices, the folder as the module) and D4 of the closing plan gave `voice` the
+same interior. `tunnel` alone keeps its entry points at its `src/` root,
+exempt by design (D19): `main-client.cc` and `main-relay.cc`.
 
 One service has no `feature/` at all today — `tunnel` — and keeps its code at
 `src/` level instead (`client/`, `core/`, `net/`, `protocol/`, `relay/`,
@@ -858,11 +858,11 @@ still keeps code beside it — `voice` (`src/test-support/`) — because step 9
 moved the last three strays into the home the rules give them: `camera`'s
 `src/camera/`, `notification`'s `src/notification/` and `productivity`'s
 `src/productivity/` are gone. `auth`, `settings`, `stt`, `tts` and `vlm` keep
-nothing at `src/` level but `app/`, `config/` and `feature/`; seven keep a
+nothing at `src/` level but `app/`, `config/` and `feature/`; eight keep a
 `src/shared/`
 beside them — `camera`, `guard`, `identity`, `llm`, `notification`,
-`productivity` and `sync` — and `voice` carries `shared/` and
-`test-support/` without an `app/`.
+`productivity`, `sync` and `voice` — and `voice` alone also carries
+`test-support/` there.
 
 Every service with a source tree has `src/config/` since Phase 4 step 9,
 `tunnel` excepted by D19 (it keeps `src/server/service-config.{hxx,cc}`):

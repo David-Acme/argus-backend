@@ -1239,11 +1239,12 @@ cannot change settings. An empty `caller_settings`, or one equal to
 - The same gRPC services also listen with mutual TLS on 7234
   (`[internal_tls] address`, S1 step 4), from the internal certificate in
   `[internal_tls] dir`; the cleartext 7034 stays until the owner's deploy
-  check. `startVoiceRpc` (`src/feature/voice/voice-rpc-server`) opens both
-  through lib/grpc's `startListening`. It sits in `feature/voice`, beside the
-  gRPC services it serves, because voice has no `src/app/` (reviewer ruling,
-  2026-10-13), and it moves to `app/rpc/` unchanged when voice gets one. When
-  either port cannot be bound, `voiceRpcFailure` names both addresses and
+  check. `startVoiceRpc` (`src/app/rpc/voice-rpc-server`, `argus::voice-rpc`)
+  opens both through lib/grpc's `startListening`. It sat in `feature/voice`
+  while voice had no `src/app/` (reviewer ruling, 2026-10-13) and moved to
+  `app/rpc/` unchanged in D4, when the service got the reference interior
+  (`src/app/main.cc` beside it, and `argus_service` naming `argus::voice-rpc`).
+  When either port cannot be bound, `voiceRpcFailure` names both addresses and
   voice does not start.
 - The canonical build is the service's standalone graph. From the repository
   root use `scripts/build-all.sh dev --only voice`; its CTest graph
