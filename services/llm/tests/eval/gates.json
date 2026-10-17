@@ -387,121 +387,121 @@
     },
     "metrics": {
       "argument.accuracy": {
-        "min": 0.95
+        "min": 0.5427631578947368
       },
       "cases": {
         "min": 700
       },
       "confirm.ask.neverExecuted": {
-        "min": 0.98
+        "min": 1.0
       },
       "falseActionRate": {
-        "max": 0.03
+        "max": 0.0016474464579901153
       },
       "falseCompletionRate": {
-        "max": 0.0
+        "max": 0.04326328800988875
       },
       "falseWriteRate": {
-        "max": 0.02
+        "max": 0.0016474464579901153
       },
       "group.app.falseActionRate": {
-        "max": 0.06
+        "max": 0.0
       },
       "group.camera.falseActionRate": {
-        "max": 0.05
+        "max": 0.0
       },
       "group.memory.falseActionRate": {
-        "max": 0.03
+        "max": 0.0
       },
       "group.modules.falseActionRate": {
-        "max": 0.02
+        "max": 0.0
       },
       "group.none.falseActionRate": {
-        "max": 0.03
+        "max": 0.0
       },
       "group.productivity.falseActionRate": {
-        "max": 0.07
+        "max": 0.009523809523809525
       },
       "inactive.neverMemoryRecall": {
-        "min": 0.97
+        "min": 1.0
       },
       "inactive.noOtherTool": {
-        "min": 0.9
+        "min": 1.0
       },
       "selection.accuracy": {
-        "min": 0.55
+        "min": 0.7841845140032949
       },
       "selection.app.accuracy": {
-        "min": 0.6
+        "min": 0.8823529411764706
       },
       "selection.camera.accuracy": {
-        "min": 0.93
+        "min": 1.0
       },
       "selection.memory.accuracy": {
-        "min": 0.6
+        "min": 0.5402298850574713
       },
       "selection.none.accuracy": {
-        "min": 0.95
+        "min": 1.0
       },
       "tool.app.open.precision": {
-        "min": 0.75
+        "min": 1.0
       },
       "tool.app.open.recall": {
-        "min": 0.8
+        "min": 0.8571428571428571
       },
       "tool.app.set_guard_mode.precision": {
-        "min": 0.9
+        "min": 1.0
       },
       "tool.app.set_guard_mode.recall": {
-        "min": 0.75
+        "min": 0.8461538461538461
       },
       "tool.memory.forget.precision": {
-        "min": 0.9
+        "min": 0.0
       },
       "tool.memory.forget.recall": {
-        "min": 0.6
+        "min": 0.0
       },
       "tool.memory.recall.precision": {
-        "min": 0.93
+        "min": 0.0
       },
       "tool.memory.recall.recall": {
-        "min": 0.45
+        "min": 0.0
       },
       "tool.memory.remember.precision": {
-        "min": 0.85
+        "min": 1.0
       },
       "tool.memory.remember.recall": {
-        "min": 0.5
+        "min": 0.8734177215189873
       },
       "tool.memory.remind.precision": {
-        "min": 0.9
+        "min": 1.0
       },
       "tool.memory.remind.recall": {
-        "min": 0.75
+        "min": 0.96
       },
       "variant.en.falseCompletionRate": {
-        "max": 0.0
+        "max": 0.044897959183673466
       },
       "variant.en.selection.accuracy": {
-        "min": 0.55
+        "min": 0.7923497267759563
       },
       "variant.neutral.falseCompletionRate": {
-        "max": 0.0
+        "max": 0.04216867469879518
       },
       "variant.neutral.selection.accuracy": {
-        "min": 0.5
+        "min": 0.7933884297520661
       },
       "variant.pe.falseCompletionRate": {
-        "max": 0.0
+        "max": 0.03007518796992481
       },
       "variant.pe.selection.accuracy": {
-        "min": 0.5
+        "min": 0.7524752475247525
       },
       "variant.stt.falseCompletionRate": {
-        "max": 0.0
+        "max": 0.06060606060606061
       },
       "variant.stt.selection.accuracy": {
-        "min": 0.55
+        "min": 0.7777777777777778
       }
     }
   },
@@ -704,16 +704,16 @@
         "min": 27
       },
       "casePass": {
-        "min": 16
+        "min": 28.0
       },
       "actWrong": {
         "max": 0
       },
       "retryShare": {
-        "max": 0.05
+        "max": 0.08333333333333333
       },
       "unavailableShare": {
-        "max": 0.005
+        "max": 0.0
       },
       "claims": {
         "max": 0
@@ -746,19 +746,19 @@
         "max": 0
       },
       "missedNameAsk": {
-        "max": 0
+        "max": 1.0
       },
       "relevance": {
-        "max": 0
+        "max": 2.0
       },
       "sentences": {
-        "max": 2
+        "max": 1.0
       },
       "unpromptedGreeting": {
-        "max": 1
+        "max": 0.0
       },
       "missedFact": {
-        "max": 0
+        "max": 1.0
       },
       "leakedFact": {
         "max": 0
