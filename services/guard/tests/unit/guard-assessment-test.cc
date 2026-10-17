@@ -20,6 +20,19 @@ TEST_CASE("a vision tool call without a prompt falls back to the default")
   CHECK_FALSE(decision.tool.prompt.empty());
 }
 
+TEST_CASE("the default vision prompt forbids guessing and never names a weapon")
+{
+  const auto decision =
+      guard_assessment::parseDecision(R"({"tool":"vision.describe"})");
+  REQUIRE(decision.kind == GuardDecisionKind::ToolCall);
+  CHECK(decision.tool.prompt.find("actually visible") != std::string::npos);
+  CHECK(decision.tool.prompt.find("unclear or not visible") !=
+        std::string::npos);
+  CHECK(decision.tool.prompt.find("knife") == std::string::npos);
+  CHECK(decision.tool.prompt.find("gun") == std::string::npos);
+  CHECK(decision.tool.prompt.find("weapon") == std::string::npos);
+}
+
 TEST_CASE("listening carries its duration and physical tools are rejected")
 {
   const auto listen =

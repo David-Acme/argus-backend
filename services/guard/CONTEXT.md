@@ -112,6 +112,19 @@ enumerates them) and `weapon` (also `knife`, `gun`, `firearm`,
 expected guest: a guest who carries a knife is not a guest. `carrying_box`
 no longer raises anything; a delivery is not a threat.
 
+**Vision caption.** Because a weapon tag is that decisive, the default
+caption prompt never names a weapon and asks only for what is actually
+visible, saying so when something is not visible. Measured 2026-10-16 on
+LFM2.5-VL-450M over the 8 owner frames × 3 seeds (the Bonsai report's own
+harness): with the old prompt ("say clearly if it is a knife, a gun or
+another weapon") the model invented a weapon in 4 of 24 captions, and
+naming the nouns in imperative form ("name a knife … only if clearly
+visible") made it worse at 6 of 24 — the 450M model obeys the noun, not the
+condition. A prompt that asks what is visible in the hands, demands posture
+exactly as seen and offers "say so instead of guessing" measured 0 of 24
+with person recall unchanged, so it is the default; `vision.describe`
+callers may still ask their own question.
+
 **Deterrence ladder.** Voice needs `High`; the siren needs `Critical`.
 - Public present or staff only: silent always - never talk to or sound a
   siren at customers or staff.

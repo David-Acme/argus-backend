@@ -23,9 +23,11 @@ namespace
 {
 
 constexpr const char* kDefaultVisionPrompt =
-    "Describe the person in one short paragraph: clothing, what they carry "
-    "in their hands (say clearly if it is a knife, a gun or another weapon), "
-    "posture and whether they look aggressive, masked or suspicious.";
+    "Describe the person in one short paragraph: clothing, what is visible "
+    "in their hands, posture exactly as seen, and whether they look "
+    "aggressive, masked or suspicious. Only say what is actually visible in "
+    "the image; if something is unclear or not visible, say so instead of "
+    "guessing.";
 
 constexpr const char* kGuardGrammar = R"GBNF(root ::= final | vision | listen
 final ::= "{" ws "\"tool\":" ws "\"final\"" "," ws threat "," ws veto "," ws tags "," ws summary "," ws announce "," ws reason "}" ws
