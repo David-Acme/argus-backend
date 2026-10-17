@@ -88,18 +88,24 @@ struct SpeakerLineInput
 inline std::string speakerLine(const SpeakerLineInput& input)
 {
   const bool english = input.lang == "en";
-  std::string who(input.name);
   const std::string_view phrase = rolePhrase(input.role, english);
+  std::string who(input.name);
   if (!phrase.empty()) {
-    if (!who.empty())
-      who += ", ";
-    who += phrase;
+    if (who.empty())
+      who = std::string(phrase);
+    else
+      who += " (" + std::string(phrase) + ")";
   }
-  std::string out = english ? (input.voiceCall ? "You are on a voice call" : "You are in a text chat")
-                            : (input.voiceCall ? "Estás en una llamada de voz" : "Estás en un chat de texto");
-  if (!who.empty())
-    out += (english ? " with " : " con ") + who;
-  return out + ".";
+  if (who.empty()) {
+    if (english)
+      return input.voiceCall ? "You are on a voice call." : "You are in a text chat.";
+    return input.voiceCall ? "Estás en una llamada de voz." : "Estás en un chat de texto.";
+  }
+  const std::string channel =
+      english ? (input.voiceCall ? " a voice call." : " a text chat.")
+              : (input.voiceCall ? " una llamada de voz." : " un chat de texto.");
+  return std::string(english ? "You are talking to " : "Hablas con ") + who +
+         (english ? (input.voiceCall ? " on" : " in") : " en") + channel;
 }
 
 }

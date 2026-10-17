@@ -1,6 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <auth/capability-speech.hxx>
 #include <auth/capability.hxx>
 #include <auth/role-access.hxx>
 #include <auth/user-role.hxx>
@@ -496,4 +497,23 @@ TEST_CASE("a raised alert stays answerable with surveillance off: the safety sta
                                    .path = "/guard/environments/1/duty",
                                    .method = drogon::Post,
                                    .modules = off}) == role_access::RouteVerdict::ModuleDisabled);
+}
+
+TEST_CASE("the speaker line says who Argus is talking to, never who the speaker is")
+{
+  using role_access::speakerLine;
+  CHECK(speakerLine({.lang = "es", .role = UserRole::Owner, .name = "David", .voiceCall = true}) ==
+        "Hablas con David (el propietario de la casa) en una llamada de voz.");
+  CHECK(speakerLine({.lang = "es", .role = UserRole::Resident, .name = "María", .voiceCall = false}) ==
+        "Hablas con María (un residente de la casa) en un chat de texto.");
+  CHECK(speakerLine({.lang = "en", .role = UserRole::Owner, .name = "David", .voiceCall = true}) ==
+        "You are talking to David (the home's owner) on a voice call.");
+  CHECK(speakerLine({.lang = "es", .role = UserRole::Owner, .name = "David", .voiceCall = true}) !=
+        "Estás en una llamada de voz con David, el propietario de la casa.");
+  CHECK(speakerLine({.lang = "es", .role = UserRole::Owner, .name = {}, .voiceCall = true}) ==
+        "Hablas con el propietario de la casa en una llamada de voz.");
+  CHECK(speakerLine({.lang = "es", .role = UserRole::Unknown, .name = {}, .voiceCall = true}) ==
+        "Estás en una llamada de voz.");
+  CHECK(speakerLine({.lang = "en", .role = UserRole::Unknown, .name = {}, .voiceCall = false}) ==
+        "You are in a text chat.");
 }
