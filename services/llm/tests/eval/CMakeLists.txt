@@ -193,6 +193,13 @@ add_test(NAME call-faithfulness-eval
 set_tests_properties(call-faithfulness-smoke PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm" TIMEOUT 1800)
 set_tests_properties(call-faithfulness-eval PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm" TIMEOUT 7200)
 
+add_test(NAME call-faithfulness-render-acts
+    COMMAND call-faithfulness-eval ${CALL_FAITHFULNESS_ARGS} --render-acts
+        --reject-sample ${CMAKE_CURRENT_BINARY_DIR}/call-faithfulness-render-acts-rejects.jsonl
+        --report ${CMAKE_CURRENT_BINARY_DIR}/call-faithfulness-render-acts-report.json)
+
+set_tests_properties(call-faithfulness-render-acts PROPERTIES SKIP_RETURN_CODE 77 LABELS "eval;eval-llm" TIMEOUT 3600)
+
 add_library(llm-context-eval STATIC context-scenarios.cc)
 
 target_include_directories(llm-context-eval PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})

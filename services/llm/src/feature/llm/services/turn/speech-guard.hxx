@@ -19,7 +19,8 @@ enum class GuardVerdict : unsigned char
   ArgumentMissing,
   NotYesOrNo,
   ClaimedWithoutTool,
-  IdentifierLeaked
+  IdentifierLeaked,
+  Impersonated
 };
 
 struct GuardInput
@@ -48,5 +49,27 @@ struct ReleaseWindow
 [[nodiscard]] ReleaseWindow releaseWindowOf(std::string_view text);
 
 [[nodiscard]] bool hardFailure(GuardVerdict verdict, const Speech& speech);
+
+[[nodiscard]] bool impersonates(std::string_view reply, std::string_view lang);
+
+struct ScrubInput
+{
+  std::string reply;
+  std::string_view lang;
+  std::string_view grounding;
+};
+
+[[nodiscard]] std::string withoutUngroundedClaims(const ScrubInput& input);
+
+struct SentenceProbe
+{
+  std::string_view sentence;
+  std::string_view lang;
+  std::string_view grounding;
+};
+
+[[nodiscard]] bool ungroundedSentence(const SentenceProbe& probe);
+
+[[nodiscard]] std::string claimReplacement(std::string_view lang);
 
 }

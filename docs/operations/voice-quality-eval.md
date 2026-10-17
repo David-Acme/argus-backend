@@ -46,6 +46,12 @@ scripts/measure-guard.sh --build services/llm/build/dev --profile dev \
     -- services/llm/build/dev/tests/eval/call-faithfulness-eval <args>
 ```
 
+The act rendering is a gate of its own and runs in ctest as `call-faithfulness-render-acts`
+(31 cases, `gates.json` -> `speechActs`, `retryShare` ceiling 0.05, `unavailableShare` 0.005,
+`regionalism` 0): it renders every act through `LfmAdapter::speakAct` under the speech guard and
+counts the turns whose first attempt the guard rejected. It writes its rejections to
+`call-faithfulness-render-acts-rejects.jsonl` beside its report in the build tree.
+
 A decider, a filler and a speaker are processes that read one JSON request per line on stdin and
 write one JSON answer per line on stdout, so the rule tier, a fine-tuned model and the pipeline's own
 stages are scored by the same code and the same numbers. A command that

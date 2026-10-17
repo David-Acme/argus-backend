@@ -254,9 +254,9 @@ TEST_CASE("an offer names the module it is about and asks")
 
 TEST_CASE("a refusal is kept and a claim of work that never ran is not, on every act")
 {
-  CHECK(guarded(Refused{.tool = "task.create", .reason = "project_create_unavailable"}, "es",
+  CHECK(guarded(Refused{.tool = "task.create", .reason = "project_create_unavailable", .name = {}}, "es",
                 "No puedo crear proyectos, así que la tarea no se anotó.") == GuardVerdict::Pass);
-  CHECK(guarded(Refused{.tool = "task.create", .reason = "project_create_unavailable"}, "es",
+  CHECK(guarded(Refused{.tool = "task.create", .reason = "project_create_unavailable", .name = {}}, "es",
                 "Anoté la tarea en un proyecto nuevo.") == GuardVerdict::ClaimedWithoutTool);
   CHECK(guarded(Declined{}, "es", "Vale, no lo hago.") == GuardVerdict::Pass);
   CHECK(guarded(Declined{}, "es", "Ya lo agendé.") == GuardVerdict::ClaimedWithoutTool);
@@ -458,4 +458,49 @@ TEST_CASE("a choose whose options are incomplete is released on its last attempt
   CHECK(output.reply == output.attempts.back().reply);
   CHECK(output.attempts.back().verdict == "options_incomplete");
   CHECK_FALSE(output.attempts.back().prompt.empty());
+}
+
+TEST_CASE("speaking as another person fails the guard")
+{
+  CHECK(impersonates("María, I'm on my way!", "en"));
+  CHECK(impersonates("Hola María, estoy en el camino.", "es"));
+  CHECK(impersonates("¡Hola María! Estoy aquí.", "es"));
+  CHECK(impersonates("Soy María, ya llegué.", "es"));
+  CHECK(impersonates("This is David, tell her I left.", "en"));
+  CHECK_FALSE(impersonates("Le aviso a María que estás en camino.", "es"));
+  CHECK_FALSE(impersonates("David, tu dentista es a las 18:00.", "es"));
+  CHECK_FALSE(impersonates("Soy Argus, tu asistente.", "es"));
+  const Speech relay{.acts = {Refused{.tool = {}, .reason = std::string(refusal_reason::kNoRelay), .name = "María"}},
+                     .lang = "en",
+                     .now = kNow};
+  CHECK(check({.speech = relay,
+               .reply = "María, I'm on my way!",
+               .wrote = false,
+               .asked = false,
+               .callsConfirmed = false}) == GuardVerdict::Impersonated);
+}
+
+TEST_CASE("a person location no fact grounds is dropped and replaced")
+{
+  const std::string grounded = "Botón de pánico: Tomás, en la cocina, hoy a las 21:14.";
+  CHECK(withoutUngroundedClaims({.reply = "Tomás está en la cocina.", .lang = "es", .grounding = grounded}) ==
+        "Tomás está en la cocina.");
+  CHECK(withoutUngroundedClaims({.reply = "Tomás está en el garaje.", .lang = "es", .grounding = grounded}) ==
+        "No puedo decirte eso: es información de otra persona.");
+  CHECK(withoutUngroundedClaims({.reply = "Tomás está en el patio.", .lang = "es", .grounding = grounded}) ==
+        "No puedo decirte eso: es información de otra persona.");
+  CHECK(withoutUngroundedClaims({.reply = "El contexto proporcionado no lo dice.", .lang = "es", .grounding = {}}) ==
+        "No tengo ese dato.");
+  CHECK_FALSE(ungroundedSentence({.sentence = "Está en la cocina.", .lang = "es", .grounding = grounded}));
+  CHECK(ungroundedSentence({.sentence = "David está en el garaje.", .lang = "es", .grounding = grounded}));
+}
+
+TEST_CASE("an ask turn may not report done")
+{
+  const AskSlot ask = ::ask("starts_at");
+  CHECK(check({.speech = {.acts = {ask}, .lang = "es", .now = kNow},
+               .reply = "Listo, quedó agendado.",
+               .wrote = false,
+               .asked = false,
+               .callsConfirmed = false}) == GuardVerdict::ClaimedWithoutTool);
 }

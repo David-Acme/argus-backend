@@ -1198,7 +1198,7 @@ std::vector<RenderCase> renderCases(int64_t now)
     addDone("en-command-done", "en", "en", en);
   }
   {
-    Refused refused{.tool = "calendar.cancel_event", .reason = "not_found"};
+    Refused refused{.tool = "calendar.cancel_event", .reason = "not_found", .name = {}};
     add("es-command-refused", "es", "neutral", "cancela la reunión del dentista", refused);
     add("en-command-refused", "en", "en", "cancel the dentist meeting", refused);
   }

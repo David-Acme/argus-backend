@@ -112,10 +112,14 @@ GuardVerdict checkAsk(const AskSlot& ask, const Words& words, std::string_view l
   const std::span<const std::string_view> cues = cuesFor({.slot = ask.slot, .lang = lang});
   if (!cues.empty() && !carriesSlot(words, ask.slot, lang))
     return GuardVerdict::SlotNotAsked;
-  for (const std::string& known : ask.knownArgs.getMemberNames())
-    if (std::ranges::any_of(cuesFor({.slot = known, .lang = lang}),
-                            [&words](std::string_view cue) { return phraseIn(words, cue); }))
+  for (const std::string& known : ask.knownArgs.getMemberNames()) {
+    const std::span<const std::string_view> knownCues = cuesFor({.slot = known, .lang = lang});
+    const bool reasked = std::ranges::any_of(knownCues, [&words, &cues](std::string_view cue) {
+      return std::ranges::find(cues, cue) == cues.end() && phraseIn(words, cue);
+    });
+    if (reasked)
       return GuardVerdict::SlotReasked;
+  }
   if (!ask.dates.empty() &&
       !std::ranges::any_of(ask.dates, [&](const DatePart& part) { return phraseIn(words, dateSurface(part, lang, now)); }))
     return GuardVerdict::SlotNotAsked;
@@ -214,6 +218,76 @@ bool identifierShaped(std::string_view token)
   return false;
 }
 
+constexpr std::array<std::string_view, 7> kGreetings{
+    "hola", "hey", "hi", "hello", "oye", "buenas", "buenos"};
+constexpr std::array<std::string_view, 6> kSelfNameEs{"soy", "llamo", "habla", "aqui", "hablando", "saluda"};
+constexpr std::array<std::string_view, 5> kSelfNameEn{"am", "m", "this", "speaking", "here"};
+constexpr std::array<std::string_view, 4> kNotPeople{"argus", "asistente", "assistant", "sistema"};
+constexpr std::array<std::string_view, 8> kFirstPersonEs{"estoy", "soy", "voy", "vengo", "salgo", "llego", "ando",
+                                                         "acabo"};
+constexpr std::array<std::string_view, 6> kFirstPersonEn{"am", "m", "will", "ve", "just", "here"};
+
+std::vector<std::string_view> rawWords(std::string_view text, std::vector<std::size_t>& ends)
+{
+  std::vector<std::string_view> out;
+  ends.clear();
+  std::size_t at = 0;
+  while (at < text.size()) {
+    if (std::isalnum(static_cast<unsigned char>(text[at])) == 0) {
+      ++at;
+      continue;
+    }
+    const std::size_t start = at;
+    while (at < text.size() && std::isalnum(static_cast<unsigned char>(text[at])) != 0)
+      ++at;
+    out.push_back(text.substr(start, at - start));
+    ends.push_back(at);
+  }
+  return out;
+}
+
+bool capitalizedName(std::string_view word)
+{
+  if (word.size() < 3)
+    return false;
+  if (std::isupper(static_cast<unsigned char>(word.front())) == 0)
+    return false;
+  const std::string folded = text_norm::folded(std::string(word));
+  return !std::ranges::any_of(kNotPeople, [&folded](std::string_view blocked) { return folded == blocked; });
+}
+
+bool speaksAsSomeone(std::string_view sentence, std::string_view lang)
+{
+  std::vector<std::size_t> ends;
+  const std::vector<std::string_view> raws = rawWords(sentence, ends);
+  if (raws.empty())
+    return false;
+  const std::span<const std::string_view> leads =
+      lang == "en" ? std::span<const std::string_view>(kSelfNameEn) : std::span<const std::string_view>(kSelfNameEs);
+  const std::span<const std::string_view> cues =
+      lang == "en" ? std::span<const std::string_view>(kFirstPersonEn) : std::span<const std::string_view>(kFirstPersonEs);
+  const std::string first = text_norm::folded(std::string(raws.front()));
+  const std::size_t start = std::ranges::find(kGreetings, std::string_view(first)) != kGreetings.end() ? 1 : 0;
+  for (std::size_t at = start; at < raws.size(); ++at) {
+    const std::string word = text_norm::folded(std::string(raws.at(at)));
+    if (std::ranges::find(leads, std::string_view(word)) == leads.end())
+      continue;
+    if (at + 1 < raws.size() && capitalizedName(raws.at(at + 1)))
+      return true;
+    if (at + 2 < raws.size() && !capitalizedName(raws.at(at + 1)) && capitalizedName(raws.at(at + 2)))
+      return true;
+  }
+  if (start < raws.size() && capitalizedName(raws.at(start))) {
+    const std::size_t after = ends.at(start);
+    if (after < sentence.size() && (sentence[after] == ',' || sentence[after] == '!' || sentence[after] == ':')) {
+      const Words rest = wordsOf(text_norm::folded(std::string(sentence.substr(after))));
+      if (std::ranges::any_of(cues, [&rest](std::string_view cue) { return phraseIn(rest, cue); }))
+        return true;
+    }
+  }
+  return false;
+}
+
 bool leakedIdentifier(std::string_view reply, const Speech& speech)
 {
   const Words words = wordsOf(reply);
@@ -227,6 +301,150 @@ bool leakedIdentifier(std::string_view reply, const Speech& speech)
   return false;
 }
 
+std::string_view firstSentenceOf(std::string_view text)
+{
+  std::size_t start = 0;
+  while (start < text.size() && std::isspace(static_cast<unsigned char>(text[start])) != 0)
+    ++start;
+  std::size_t at = start;
+  while (at < text.size()) {
+    const char c = text[at];
+    if (c == '.' || c == '!' || c == '?' || c == '\n')
+      return text.substr(start, at + 1 - start);
+    ++at;
+  }
+  return text.substr(start);
+}
+
+constexpr std::array<std::string_view, 6> kMetaEs{
+    "el contexto", "la informacion proporcionada", "los datos proporcionados", "segun el contexto",
+    "la nota de la app", "el prompt"};
+constexpr std::array<std::string_view, 6> kMetaEn{
+    "the provided context", "the context provided", "according to the context", "app note",
+    "the information provided", "the prompt"};
+
+constexpr std::array<std::string_view, 6> kLocationPhraseEs{
+    "esta en", "estan en", "se encuentra en", "se encuentra", "anda por", "esta fuera"};
+constexpr std::array<std::string_view, 7> kLocationPhraseEn{
+    "is in", "is at", "are in", "are at", "is outside", "is currently in", "is home"};
+constexpr std::array<std::string_view, 3> kPersonCueEs{"ella", "ellos", "ellas"};
+constexpr std::array<std::string_view, 8> kPlaceBreak{
+    "que", "y", "o", "pero", "con", "para", "por", "cuando"};
+
+bool metaTalk(const Words& words, std::string_view lang)
+{
+  const std::span<const std::string_view> markers =
+      lang == "en" ? std::span<const std::string_view>(kMetaEn) : std::span<const std::string_view>(kMetaEs);
+  return std::ranges::any_of(markers, [&words](std::string_view marker) { return phraseIn(words, marker); });
+}
+
+bool namesPerson(const std::string& sentence, const Words& words, std::string_view lang)
+{
+  std::vector<std::size_t> ends;
+  const std::vector<std::string_view> raws = rawWords(sentence, ends);
+  for (std::size_t at = 1; at < raws.size(); ++at)
+    if (capitalizedName(raws.at(at)))
+      return true;
+  if (lang == "en")
+    return false;
+  return std::ranges::any_of(kPersonCueEs, [&words](std::string_view cue) { return phraseIn(words, cue); });
+}
+
+std::string placeOf(const Words& words, std::span<const std::string_view> phrases, std::size_t span)
+{
+  for (const std::string_view phrase : phrases) {
+    const std::vector<std::string> needle = wordsOf(phrase);
+    if (needle.empty() || needle.size() > words.size())
+      continue;
+    for (std::size_t at = 0; at + needle.size() <= words.size(); ++at) {
+      bool hit = true;
+      for (std::size_t index = 0; index < needle.size() && hit; ++index)
+        hit = words.at(at + index) == needle.at(index);
+      if (!hit)
+        continue;
+      std::string place;
+      for (std::size_t index = 0; index < span && at + needle.size() + index < words.size(); ++index) {
+        const std::string& word = words.at(at + needle.size() + index);
+        if (std::ranges::find(kPlaceBreak, std::string_view(word)) != kPlaceBreak.end())
+          break;
+        if (!place.empty())
+          place += ' ';
+        place += word;
+      }
+      if (!place.empty())
+        return place;
+    }
+  }
+  return {};
+}
+
+}
+
+bool impersonates(std::string_view reply, std::string_view lang)
+{
+  if (reply.empty())
+    return false;
+  return speaksAsSomeone(firstSentenceOf(reply), lang);
+}
+
+std::string withoutUngroundedClaims(const ScrubInput& input)
+{
+  if (input.reply.empty())
+    return input.reply;
+  const std::span<const std::string_view> phrases =
+      input.lang == "en" ? std::span<const std::string_view>(kLocationPhraseEn)
+                         : std::span<const std::string_view>(kLocationPhraseEs);
+  const std::string grounding = text_norm::folded(std::string(input.grounding));
+  const Words grounded = wordsOf(grounding);
+  std::string kept;
+  bool droppedLocation = false;
+  std::size_t at = 0;
+  while (at < input.reply.size()) {
+    std::size_t end = at;
+    while (end < input.reply.size() && input.reply[end] != '.' && input.reply[end] != '!' && input.reply[end] != '?' &&
+           input.reply[end] != '\n')
+      ++end;
+    if (end < input.reply.size())
+      ++end;
+    const std::string sentence = input.reply.substr(at, end - at);
+    at = end;
+    const std::string folded = text_norm::folded(sentence);
+    const Words words = wordsOf(folded);
+    if (words.empty())
+      continue;
+    if (metaTalk(words, input.lang))
+      continue;
+    const std::string place = placeOf(words, phrases, 2);
+    if (!place.empty() && namesPerson(sentence, words, input.lang) && !phraseIn(grounded, place)) {
+      droppedLocation = true;
+      continue;
+    }
+    kept += sentence;
+  }
+  if (!kept.empty())
+    return kept;
+  if (droppedLocation) {
+    const Refused refusal{.tool = {}, .reason = std::string(refusal_reason::kPrivatePerson), .name = {}};
+    if (const auto line = refusalLine({.refused = refusal, .lang = input.lang}))
+      return *line;
+  }
+  return ungroundedLine(input.lang);
+}
+
+bool ungroundedSentence(const SentenceProbe& probe)
+{
+  if (probe.sentence.empty())
+    return false;
+  const std::string cleaned = withoutUngroundedClaims(
+      {.reply = std::string(probe.sentence), .lang = probe.lang, .grounding = probe.grounding});
+  return cleaned != probe.sentence;
+}
+
+std::string claimReplacement(std::string_view lang)
+{
+  const Refused refusal{.tool = {}, .reason = std::string(refusal_reason::kPrivatePerson), .name = {}};
+  const auto line = refusalLine({.refused = refusal, .lang = lang});
+  return line ? *line : ungroundedLine(lang);
 }
 
 ReleaseWindow releaseWindowOf(std::string_view text)
@@ -265,6 +483,7 @@ bool hardFailure(GuardVerdict verdict, const Speech& speech)
   switch (verdict) {
     case GuardVerdict::ClaimedWithoutTool:
     case GuardVerdict::IdentifierLeaked:
+    case GuardVerdict::Impersonated:
       return true;
     case GuardVerdict::NotYesOrNo:
       return std::ranges::any_of(speech.acts, [](const Act& act) {
@@ -278,11 +497,18 @@ bool hardFailure(GuardVerdict verdict, const Speech& speech)
 
 GuardVerdict check(const GuardInput& input)
 {
+  if (impersonates(input.reply, input.speech.lang))
+    return GuardVerdict::Impersonated;
   if (!input.callsConfirmed && reply_claims::claimsCall({.text = input.reply, .lang = input.speech.lang}))
     return GuardVerdict::ClaimedWithoutTool;
   if (!input.wrote &&
       reply_claims::claimsDone(
           {.text = input.reply, .asked = input.asked, .appOnly = input.opened, .lang = input.speech.lang}))
+    return GuardVerdict::ClaimedWithoutTool;
+  const bool asking = std::ranges::any_of(input.speech.acts, [](const Act& act) {
+    return isQuestion(act) || std::holds_alternative<Offer>(act);
+  });
+  if (!input.wrote && asking && reply_claims::claimsCompletion({.text = input.reply, .lang = input.speech.lang}))
     return GuardVerdict::ClaimedWithoutTool;
   if (leakedIdentifier(input.reply, input.speech))
     return GuardVerdict::IdentifierLeaked;
@@ -343,6 +569,8 @@ std::string_view verdictName(GuardVerdict verdict)
       return "claimed_without_tool";
     case GuardVerdict::IdentifierLeaked:
       return "identifier_leaked";
+    case GuardVerdict::Impersonated:
+      return "impersonated";
   }
   return "pass";
 }
@@ -378,6 +606,9 @@ std::string_view feedback(GuardVerdict verdict, std::string_view lang)
     case GuardVerdict::IdentifierLeaked:
       return english ? "You used internal technical words. Say it again in plain words only."
                      : "Usaste palabras técnicas internas. Dilo otra vez solo con palabras normales.";
+    case GuardVerdict::Impersonated:
+      return english ? "You spoke as another person. Say only what you did, as Argus, never as them."
+                     : "Hablaste como otra persona. Di solo lo que hiciste tú, como Argus, nunca como ella.";
     case GuardVerdict::Pass:
       break;
   }

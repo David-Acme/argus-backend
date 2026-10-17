@@ -246,7 +246,9 @@ TEST_CASE("the gate lets clean sentences through whole and in order")
                                 },
                                 .lang = "es",
                                 .asked = true,
-                                .legitimate = [&legitimate] { return legitimate; }});
+                                .legitimate = [&legitimate] { return legitimate; },
+                                     .scrub = {},
+                                     .replacement = {}});
   const std::string spoken = run(gate, {"Tienes ", "tres eventos", " mañana.", " El primero ", "es a las diez."});
   CHECK(spoken == "Tienes tres eventos mañana. El primero es a las diez.");
   CHECK(heard == spoken);
@@ -265,7 +267,9 @@ TEST_CASE("the gate holds a sentence until it ends and cuts a claim nobody earne
                                 },
                                 .lang = "es",
                                 .asked = true,
-                                .legitimate = [] { return false; }});
+                                .legitimate = [] { return false; },
+                                     .scrub = {},
+                                     .replacement = {}});
   const TokenCallback callback = gate.callback();
   callback("Claro", false);
   callback(" que sí.", false);
@@ -288,7 +292,9 @@ TEST_CASE("the gate judges the last sentence when the stream ends without a full
   reply_claims::ClaimGate gate({.sink = [&](const std::string& token, bool) { heard += token; },
                                 .lang = "en",
                                 .asked = true,
-                                .legitimate = [] { return false; }});
+                                .legitimate = [] { return false; },
+                                     .scrub = {},
+                                     .replacement = {}});
   const std::string spoken = run(gate, {"I've scheduled it for Thursday"});
   CHECK(spoken == "I could not do it. Shall I try again?");
   CHECK(heard == spoken);
@@ -302,7 +308,9 @@ TEST_CASE("a claim is spoken whole once a write tool has succeeded")
   reply_claims::ClaimGate gate({.sink = [&](const std::string& token, bool) { heard += token; },
                                 .lang = "es",
                                 .asked = true,
-                                .legitimate = [&legitimate] { return legitimate; }});
+                                .legitimate = [&legitimate] { return legitimate; },
+                                     .scrub = {},
+                                     .replacement = {}});
   legitimate = true;
   const std::string spoken = run(gate, {"Agendé la reunión con Andrea.", " Confirmado."});
   CHECK(spoken == "Agendé la reunión con Andrea. Confirmado.");
@@ -311,7 +319,8 @@ TEST_CASE("a claim is spoken whole once a write tool has succeeded")
 
 TEST_CASE("a gate with no sink and no way to be legitimate still judges")
 {
-  reply_claims::ClaimGate gate({.sink = {}, .lang = "es", .asked = false, .legitimate = {}});
+  reply_claims::ClaimGate gate(
+      {.sink = {}, .lang = "es", .asked = false, .legitimate = {}, .scrub = {}, .replacement = {}});
   const std::string spoken = run(gate, {"Guardé tu nota."});
   CHECK(spoken == "No pude hacerlo. ¿Lo intento de nuevo?");
 }
@@ -479,7 +488,9 @@ TEST_CASE("the gate cuts a call promise until the schedule is confirmed, and let
                                        .asked = true,
                                        .legitimate = [] { return true; },
                                        .appOnly = false,
-                                       .callsConfirmed = false});
+                                       .callsConfirmed = false,
+                                       .scrub = {},
+                                       .replacement = {}});
   CHECK(run(unconfirmed, {"Lo anoté. ", "Te llamaré a las tres."}) == "Lo anoté. No pude hacerlo. ¿Lo intento de nuevo?");
   CHECK(unconfirmed.cut());
 
@@ -489,7 +500,9 @@ TEST_CASE("the gate cuts a call promise until the schedule is confirmed, and let
                                      .asked = true,
                                      .legitimate = [] { return true; },
                                      .appOnly = false,
-                                     .callsConfirmed = true});
+                                     .callsConfirmed = true,
+                                     .scrub = {},
+                                     .replacement = {}});
   CHECK(run(confirmed, {"Lo anoté. ", "Te llamaré a las tres."}) == "Lo anoté. Te llamaré a las tres.");
   CHECK_FALSE(confirmed.cut());
 }

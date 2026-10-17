@@ -81,6 +81,23 @@ std::string contextTail(const ContextTailInput& args)
   return turn::contextBlock({.lang = args.input.lang, .facts = texts});
 }
 
+struct ScrubHook
+{
+  std::string_view lang;
+  std::string_view grounding;
+};
+
+reply_claims::GateInput withScrub(reply_claims::GateInput input, const ScrubHook& probe)
+{
+  input.scrub = [lang = std::string(probe.lang), grounding = std::string(probe.grounding)](std::string_view sentence) {
+    return turn::speech::ungroundedSentence({.sentence = sentence, .lang = lang, .grounding = grounding})
+               ? std::string()
+               : std::string(sentence);
+  };
+  input.replacement = turn::speech::claimReplacement(probe.lang);
+  return input;
+}
+
 }
 
 LfmAdapter::LfmAdapter(LlmService& llm)
@@ -185,6 +202,28 @@ std::vector<ChatMessage> LfmAdapter::speakMessages(const SpeakInput& args, const
 void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
 {
   const std::string& lang = input.speech.lang;
+  const auto fixed = [&]() -> std::optional<std::string> {
+    const turn::speech::Act& act = input.speech.acts.back();
+    if (const auto* refused = std::get_if<turn::speech::Refused>(&act))
+      return turn::speech::refusalLine({.refused = *refused, .lang = lang});
+    if (const auto* ask = std::get_if<turn::speech::AskSlot>(&act))
+      return turn::speech::slotQuestion({.ask = *ask, .lang = lang});
+    return std::nullopt;
+  }();
+  if (fixed) {
+    output.reply = *fixed;
+    output.rawReply = *fixed;
+    output.guardVerdict = std::string(turn::speech::verdictName(turn::speech::GuardVerdict::Pass));
+    output.firstGuardVerdict = output.guardVerdict;
+    output.attempts.push_back({.prompt = {}, .reply = *fixed, .verdict = output.guardVerdict});
+    if (input.onToken != nullptr) {
+      (*input.onToken)(*fixed, false);
+      (*input.onToken)("", true);
+      output.emitted = true;
+    }
+    input.history.push_back({.role = "assistant", .content = *fixed});
+    return;
+  }
   const SpeakInput args{.input = input.input, .history = input.history, .onToken = input.onToken};
   const bool streaming = input.onToken != nullptr;
   const bool question = turn::speech::isQuestion(input.speech.acts.back());
@@ -220,12 +259,15 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
       }
       else {
         const TokenCallback sink = *input.onToken;
-        reply_claims::ClaimGate rest({.sink = sink,
-                                      .lang = lang,
-                                      .asked = input.asked,
-                                      .legitimate = [&input] { return input.wrote; },
-                                      .appOnly = input.opened,
-                                      .callsConfirmed = input.callsConfirmed});
+        reply_claims::ClaimGate rest(withScrub({.sink = sink,
+                           .lang = lang,
+                           .asked = input.asked,
+                           .legitimate = [&input] { return input.wrote; },
+                           .appOnly = input.opened,
+                            .callsConfirmed = input.callsConfirmed,
+                           .scrub = {},
+                           .replacement = {}},
+                          {.lang = lang, .grounding = input.contextBlock}));
         std::size_t forwarded = 0;
         bool failed = false;
         engine_.chatStream(req, [&](const std::string& token, bool done) {
@@ -287,7 +329,8 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
 
     reply_claims::StrippedReply stripped =
         reply_claims::withoutTrailingOffer(std::move(raw), {.lang = lang, .asked = input.asked});
-    const std::string reply = std::move(stripped.text);
+    const std::string reply =
+        turn::speech::withoutUngroundedClaims({.reply = stripped.text, .lang = lang, .grounding = input.contextBlock});
     verdict = turn::speech::check({.speech = input.speech,
                                    .reply = reply,
                                    .wrote = input.wrote,
@@ -431,12 +474,15 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
   if (args.onToken != nullptr) {
     reply_claims::OfferStripGate offers(
         {.sink = *args.onToken, .lang = input.context.lang, .asked = state.asked});
-    reply_claims::ClaimGate gate({.sink = offers.callback(),
-                                  .lang = input.context.lang,
-                                  .asked = state.asked,
-                                  .legitimate = [&state] { return state.wrote; },
-                                  .appOnly = state.opened,
-                                  .callsConfirmed = state.called});
+    reply_claims::ClaimGate gate(withScrub({.sink = offers.callback(),
+                                            .lang = input.context.lang,
+                                            .asked = state.asked,
+                                            .legitimate = [&state] { return state.wrote; },
+                                            .appOnly = state.opened,
+                                            .callsConfirmed = state.called,
+                                            .scrub = {},
+                                            .replacement = {}},
+                                           {.lang = input.context.lang, .grounding = context}));
     const TokenCallback guarded = gate.callback();
     std::string raw;
     engine_.chatStream(req, [&](const std::string& token, bool done) {
@@ -452,8 +498,10 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
       LOG_INFO << "LfmAdapter: a trailing generic offer was dropped from the streamed reply";
   }
   else {
-    output.reply = engine_.chat(req);
-    output.rawReply = output.reply;
+    const std::string raw = engine_.chat(req);
+    output.reply = turn::speech::withoutUngroundedClaims(
+        {.reply = raw, .lang = input.context.lang, .grounding = output.contextBlock});
+    output.rawReply = raw;
     if (claimedWithoutTool(output.reply, state)) {
       LOG_WARN << "LfmAdapter: the reply claims something no tool did; answering honestly";
       output.reply = reply_claims::honest(input.context.lang);
@@ -502,12 +550,15 @@ ToolChatOutput LfmAdapter::chatPlainTurn(const PlainChatInput& input)
 
   if (input.onToken != nullptr) {
     reply_claims::OfferStripGate offers({.sink = *input.onToken, .lang = lang, .asked = asked});
-    reply_claims::ClaimGate gate({.sink = offers.callback(),
-                                  .lang = lang,
-                                  .asked = asked,
-                                  .legitimate = [] { return false; },
-                                  .appOnly = false,
-                                  .callsConfirmed = false});
+    reply_claims::ClaimGate gate(withScrub({.sink = offers.callback(),
+                                            .lang = lang,
+                                            .asked = asked,
+                                            .legitimate = [] { return false; },
+                                            .appOnly = false,
+                                            .callsConfirmed = false,
+                                            .scrub = {},
+                                            .replacement = {}},
+                                           {.lang = lang, .grounding = output.contextBlock}));
     const TokenCallback sink = request.toolsEnabled ? gate.callback() : offers.callback();
     std::string raw;
     engine_.chatStream(req, [&](const std::string& token, bool done) {

@@ -62,7 +62,7 @@ Act done()
 
 Act refused()
 {
-  return Refused{.tool = "task.create", .reason = "project_create_unavailable"};
+  return Refused{.tool = "task.create", .reason = "project_create_unavailable", .name = {}};
 }
 
 Act offer()

@@ -27,6 +27,14 @@ struct CallReply
 
 [[nodiscard]] bool claimsCall(const CallReply& reply);
 
+struct CompletionReply
+{
+  std::string_view text;
+  std::string_view lang{};
+};
+
+[[nodiscard]] bool claimsCompletion(const CompletionReply& reply);
+
 [[nodiscard]] bool asksForAction(std::string_view utterance);
 
 [[nodiscard]] bool asksCapabilities(std::string_view utterance);
@@ -108,6 +116,8 @@ struct GateInput
   std::function<bool()> legitimate;
   bool appOnly{false};
   bool callsConfirmed{false};
+  std::function<std::string(std::string_view)> scrub;
+  std::string replacement;
 };
 
 class ClaimGate
@@ -124,6 +134,8 @@ public:
 
   [[nodiscard]] const std::string& spoken() const noexcept { return spoken_; }
 
+  [[nodiscard]] std::size_t dropped() const noexcept { return dropped_; }
+
 private:
   void accept(const std::string& token, bool done);
   void release(const std::string& sentence);
@@ -134,6 +146,8 @@ private:
   std::string spoken_;
   bool cut_{false};
   bool finished_{false};
+  bool withheld_{false};
+  std::size_t dropped_{0};
 };
 
 }

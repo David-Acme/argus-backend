@@ -300,6 +300,17 @@ bool claimsDone(const Reply& reply)
   });
 }
 
+bool claimsCompletion(const CompletionReply& reply)
+{
+  const std::vector<Sentence> sentences = sentencesOf(reply.text);
+  return std::ranges::any_of(sentences, [&](const Sentence& sentence) {
+    return std::ranges::any_of(lexicons(), [&](const Lexicon& lexicon) {
+      return (reply.lang.empty() || lexicon.language == reply.lang) &&
+             claimedIn(sentence, lexicon, {.asked = true, .appOnly = false});
+    });
+  });
+}
+
 bool claimsCall(const CallReply& reply)
 {
   const std::vector<Sentence> sentences = sentencesOf(reply.text);
@@ -355,6 +366,11 @@ void ClaimGate::finish()
   if (finished_)
     return;
   finished_ = true;
+  if (spoken_.empty() && withheld_) {
+    spoken_ = input_.replacement.empty() ? honest(input_.lang) : input_.replacement;
+    if (input_.sink)
+      input_.sink(spoken_, false);
+  }
   if (input_.sink)
     input_.sink("", true);
 }
@@ -363,6 +379,11 @@ void ClaimGate::release(const std::string& sentence)
 {
   if (cut_ || sentence.empty())
     return;
+  if (input_.scrub && input_.scrub(sentence).empty()) {
+    withheld_ = true;
+    ++dropped_;
+    return;
+  }
   const bool legitimate = input_.legitimate && input_.legitimate();
   const bool unconfirmedCall = !input_.callsConfirmed && claimsCall({.text = sentence, .lang = input_.lang});
   if (!unconfirmedCall && (legitimate || !claimsDone({.text = sentence, .asked = input_.asked, .appOnly = input_.appOnly, .lang = input_.lang}))) {

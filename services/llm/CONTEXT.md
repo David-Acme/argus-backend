@@ -893,6 +893,53 @@ streamed), the claim guard after a failed tool, a preview and a read, and the pr
 `llm-module-command-test.cc` pins the rule tier (tuning numbers, not a held-out result); the sealed
 set is judged by `tests/eval/decider-eval.py`.
 
+## The refusal leg (2026-10-17, RF)
+
+A request that targets data the caller cannot read, or an action that does not
+exist, never reaches generation as a subject to talk about: it is decided by
+rules and rendered from a fixed line, so the model can neither invent a state
+nor answer for someone else. `turn/refusal-rules.{hxx,cc}` is that rule tier,
+consulted by `TurnFlow::run` before any decider, and the decision comes from the
+utterance, the caller's role and the module snapshot alone — never from the LLM.
+
+Four reasons, one per surface: `no_relay` (a message to pass to somebody: the
+messenger of F8/F9 does not exist yet, so the turn says it cannot pass it and
+offers a reminder instead), `private_person` (another person's location,
+presence or private rows for a caller who is not the Owner; presence stays the
+Owner's alone), `module_off` (a security question while `surveillance` is off)
+and `no_action` (a reminder to postpone, which no tool can do). The person named
+in the utterance travels with the act, so the line names them and never repeats
+what was to be said ("dile a María que estoy en camino" cannot become "voy en
+camino" in Argus's mouth). `speech-render.cc::refusalLine` holds the four lines
+per language (es, es-PE and en share one Spanish set) and `LfmAdapter::speakAct`
+returns them before it touches the engine: a deterministic refusal costs no
+generation, and a refusal a tool really produced (`not_found`,
+`project_create_unavailable`) still goes through the model as before.
+
+**The verbless polarity ask.** "la privacidad de la cámara del garaje" names a
+target with no verb and no on/off word: the turn asks instead of guessing, with
+one fixed question (`slotQuestion`, `privacy` slot, "¿La activo o la quito?"),
+and no pending is held for it. The false-state guard is the net behind it.
+
+**The belts.** `speech::impersonates` is a `GuardVerdict::Impersonated`, a hard
+failure: a first-person claim of being somebody of the house, whether it
+identifies itself ("soy María", "this is David") or opens with a vocative
+("María, I'm on my way!"). `speech::withoutUngroundedClaims` drops sentences
+that talk about the app's own instructions or notes, and any person-location
+claim whose place is not in the turn's context block, replacing a dropped
+location with the refusal line and an otherwise emptied reply with the honest
+"no data" line; the streaming gate (`reply_claims::ClaimGate`, `scrub` and
+`replacement`) applies the same sentence by sentence. An ask turn may not report
+done: `reply_claims::claimsCompletion` reads completion markers as a claim on a
+turn whose act is a question, whatever the user asked for, which is what
+`call-faithfulness-eval --render-acts` measures (its `retryShare` ceiling of
+0.05 is now wired into ctest as `call-faithfulness-render-acts`).
+
+`tests/unit/llm-refusal-rules-test.cc` pins the rules and the lines; the guard
+tests pin impersonation, the location scrub and the ask turn. The pack that
+scores it end to end is `context-scenarios-eval` (`noRefusal`, `privacyLeaks`,
+`falseRelays` — the last one now counts an impersonation reply too).
+
 ## The duress screen (2026-10-13, F4)
 
 The household can set a duress phrase in guard (`services/guard/CONTEXT.md`,

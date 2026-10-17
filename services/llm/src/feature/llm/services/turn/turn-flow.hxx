@@ -4,6 +4,7 @@
 #include "decision-policy.hxx"
 #include "decision-tally.hxx"
 #include "pending-turn.hxx"
+#include "refusal-rules.hxx"
 #include "slots.hxx"
 #include "speech-acts.hxx"
 
@@ -95,6 +96,8 @@ private:
   [[nodiscard]] std::optional<Outcome> followUpOffer(const TurnRequest& request, const Deciding& deciding, const PendingOffer& offer);
   [[nodiscard]] Outcome decided(const TurnRequest& request, const Deciding& deciding);
   [[nodiscard]] Outcome capability(const TurnRequest& request);
+  [[nodiscard]] Outcome refused(const TurnRequest& request, const refusal::Refusal& refusal);
+  [[nodiscard]] Outcome polarityAsk(const TurnRequest& request, const refusal::PolarityAsk& ask);
   [[nodiscard]] Outcome confirm(const TurnRequest& request, const Candidate& candidate);
   [[nodiscard]] Outcome choose(const TurnRequest& request, const Candidate& candidate);
   [[nodiscard]] bool corroborated(const SecondOpinion& opinion) const;

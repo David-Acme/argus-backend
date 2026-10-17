@@ -135,7 +135,7 @@ std::optional<speech::Act> actOf(const tools::ToolResult& result,
                         .fact = result.output,
                         .readback = result.data["readback"].isString() ? result.data["readback"].asString()
                                                                        : std::string()};
-  return speech::Refused{.tool = result.tool, .reason = result.output};
+  return speech::Refused{.tool = result.tool, .reason = result.output, .name = {}};
 }
 
 speech::DateKind relativeKind(int relative)
@@ -563,7 +563,7 @@ Outcome TurnFlow::offerProject(const TurnRequest& request, const Pending& pendin
   outcome.source = pending.candidate.source;
   if (handleOf(request.offered, kCreateProjectTool) == nullptr) {
     outcome.acts.emplace_back(
-        speech::Refused{.tool = std::string(kCreateProjectTool), .reason = "project_create_unavailable"});
+        speech::Refused{.tool = std::string(kCreateProjectTool), .reason = "project_create_unavailable", .name = {}});
     return outcome;
   }
   Candidate create{.tool = std::string(kCreateProjectTool),
@@ -928,12 +928,46 @@ Outcome TurnFlow::decided(const TurnRequest& request, const Deciding& deciding)
   return outcome;
 }
 
+Outcome TurnFlow::polarityAsk(const TurnRequest& request, const refusal::PolarityAsk& ask)
+{
+  if (request.context.userId > 0)
+    clearAll(request.context.userId);
+  Outcome outcome;
+  outcome.source = "polarity ask";
+  outcome.acts.emplace_back(speech::AskSlot{.slot = ask.slot,
+                                            .tool = ask.tool,
+                                            .knownArgs = Json::Value(Json::objectValue),
+                                            .reason = speech::AskReason::Missing,
+                                            .dates = {},
+                                            .options = {}});
+  return outcome;
+}
+
+Outcome TurnFlow::refused(const TurnRequest& request, const refusal::Refusal& refusal)
+{
+  if (request.context.userId > 0)
+    clearAll(request.context.userId);
+  Outcome outcome;
+  outcome.source = "refusal";
+  outcome.acts.emplace_back(speech::Refused{.tool = {},
+                                            .reason = refusal.reason,
+                                            .name = refusal.name});
+  return outcome;
+}
+
 Outcome TurnFlow::run(const TurnRequest& request)
 {
   if (request.utterance.empty())
     return {};
   if (reply_claims::asksCapabilities(request.utterance))
     return capability(request);
+  const refusal::Ask asking{.utterance = request.utterance,
+                           .audience = request.audience,
+                           .lang = request.context.lang};
+  if (const auto refusal = refusal::refusalFor(asking))
+    return refused(request, *refusal);
+  if (const auto polarity = refusal::polarityAskFor(asking))
+    return polarityAsk(request, *polarity);
   const Deciding deciding(*decider_, {.utterance = request.utterance,
                                       .lang = request.context.lang,
                                       .offered = request.offered,

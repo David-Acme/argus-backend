@@ -71,6 +71,7 @@ argus_module(NAME llm
         services/turn/laya-sequence.cc
         services/turn/onnx-session.cc
         services/turn/pending-turn.cc
+        services/turn/refusal-rules.cc
         services/turn/slot-lexicon.cc
         services/turn/slots.cc
         services/turn/sp-tokenizer.cc

@@ -94,9 +94,23 @@ struct Refused
 {
   std::string tool;
   std::string reason;
+  std::string name;
 
-  bool operator==(const Refused& other) const { return tool == other.tool && reason == other.reason; }
+  bool operator==(const Refused& other) const
+  {
+    return tool == other.tool && reason == other.reason && name == other.name;
+  }
 };
+
+namespace refusal_reason
+{
+
+inline constexpr std::string_view kPrivatePerson = "private_person";
+inline constexpr std::string_view kNoRelay = "no_relay";
+inline constexpr std::string_view kModuleOff = "module_off";
+inline constexpr std::string_view kNoAction = "no_action";
+
+}
 
 struct Offer
 {

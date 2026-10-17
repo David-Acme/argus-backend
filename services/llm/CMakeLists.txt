@@ -312,6 +312,16 @@ set_target_properties(llm-speech-guard-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-speech-guard-test COMMAND llm-speech-guard-test)
 
+add_executable(llm-refusal-rules-test tests/unit/llm-refusal-rules-test.cc)
+
+target_link_libraries(llm-refusal-rules-test PRIVATE argus::llm doctest::doctest)
+
+target_compile_options(llm-refusal-rules-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-refusal-rules-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-refusal-rules-test COMMAND llm-refusal-rules-test)
+
 add_executable(llm-context-selector-test tests/unit/llm-context-selector-test.cc)
 
 target_link_libraries(llm-context-selector-test PRIVATE argus::llm argus::lib::doctest-main)

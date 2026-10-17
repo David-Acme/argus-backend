@@ -234,13 +234,25 @@ std::string askSituation(const AskSlot& ask, std::string_view lang, int64_t now)
 {
   const bool english = lang == "en";
   std::string line = english ? "missing " : "falta ";
-  line += slotLabelOf(ask.slot, lang);
+  const std::string label = slotLabelOf(ask.slot, lang);
+  line += label;
   if (!ask.options.empty())
     line += (english ? " (one of: " : " (uno de: ") + joinNamed(ask.options, lang, ", ") + ")";
   else if (ask.reason != AskReason::Missing)
     line += " (" + std::string(reasonText(ask.reason, lang)) + ")";
+  line += ". ";
+  line += english ? "Nothing was done and nothing is set. Answer with the question only: one short "
+                    "sentence, no greeting, no preamble, never the words \"done\" or \"all set\". "
+                  : "No se hizo nada y nada quedó listo. Responde solo con la pregunta: una frase "
+                    "corta, sin saludo, sin preámbulo, nunca las palabras \"listo\" ni \"hecho\". ";
+  if (!ask.options.empty()) {
+    line += english ? "Name every choice in it: " : "Nombra en ella cada opción: ";
+    line += joinNamed(ask.options, lang, english ? " or " : " o ");
+    line += '.';
+    return line;
+  }
   if (!ask.dates.empty()) {
-    line += english ? ", it could be " : ", puede ser ";
+    line += english ? "Name the possibilities in it: " : "Nombra en ella las posibilidades: ";
     bool first = true;
     for (const DatePart& part : ask.dates) {
       if (!first)
@@ -248,17 +260,10 @@ std::string askSituation(const AskSlot& ask, std::string_view lang, int64_t now)
       line += dateSurface(part, lang, now);
       first = false;
     }
+    line += '.';
+    return line;
   }
-  line += "; ";
-  if (!ask.options.empty()) {
-    line += english ? "ask which one, naming: " : "pregunta cuál quiere, nombrando: ";
-    line += joinNamed(ask.options, lang, english ? " or " : " o ");
-  } else {
-    const std::string label = slotLabelOf(ask.slot, lang);
-    line += english ? "ask for " + label + " in one short question"
-                    : "pregunta solo por " + label + ", en una sola pregunta corta";
-  }
-  line += '.';
+  line += english ? "Ask for " + label + " only." : "Pide solo " + label + ".";
   return line;
 }
 
@@ -296,7 +301,7 @@ std::string confirmSituation(const Confirm& confirm, std::string_view lang, int6
     line += " " + extra + ".";
   if (!confirm.module.empty())
     line += (english ? " Module: " : " Módulo: ") + confirm.module + ".";
-  line += english ? " Ask whether to " : " Pregunta si ";
+  line += english ? " Nothing was done yet: ask whether to " : " Todavía no se hizo nada: pregunta si ";
   line += actionPhrase(confirm.action, lang);
   line += english ? ", yes or no." : ", sí o no.";
   return line;
@@ -305,8 +310,11 @@ std::string confirmSituation(const Confirm& confirm, std::string_view lang, int6
 std::string chooseSituation(const Choose& choose, std::string_view lang)
 {
   const bool english = lang == "en";
-  std::string line = english ? "the user must still choose; ask which one, naming: "
-                             : "falta que el usuario elija; pregunta cuál quiere, nombrando: ";
+  std::string line = english
+                         ? "The user must still choose and nothing was done. Answer with the question "
+                           "only: one short sentence, no greeting, naming: "
+                         : "Falta que el usuario elija y no se hizo nada. Responde solo con la pregunta: "
+                           "una frase corta, sin saludo, nombrando: ";
   line += joinNamed(choose.options, lang, english ? " or " : " o ");
   line += '.';
   return line;
@@ -383,8 +391,10 @@ std::string offerSituation(const Offer& offer, std::string_view lang)
     line += " " + offer.facts;
   if (!offer.pendingIntent.empty())
     line += (english ? " Pending: " : " Pendiente: ") + offer.pendingIntent + ".";
-  line += english ? " Offer to turn it on and wait for their answer."
-                  : " Ofrécele activarlo y espera su respuesta.";
+  line += english ? " Nothing was done. Answer with the question only: one short sentence, no greeting, "
+                    "offering to turn it on and waiting for their answer."
+                  : " Nada se hizo. Responde solo con la pregunta: una frase corta, sin saludo, "
+                    "ofreciéndole activarlo y esperando su respuesta.";
   return line;
 }
 
@@ -408,7 +418,10 @@ std::string situationFor(const Act& act, std::string_view lang, int64_t now)
         else if constexpr (std::is_same_v<T, Capability>)
           return value.fact;
         else if constexpr (std::is_same_v<T, Declined>)
-          return lang == "en" ? "the user said no." : "el usuario dijo que no.";
+          return lang == "en" ? "The user said no and nothing was done. Answer in one short sentence, "
+                                "without saying that anything was done."
+                              : "El usuario dijo que no y nada se hizo. Responde en una frase corta, "
+                                "sin decir que se hizo algo.";
         else if constexpr (std::is_same_v<T, Unactionable>)
           return lang == "en" ? "no Argus action applies." : "no hay una acción de Argus que corresponda.";
         else
@@ -472,6 +485,43 @@ std::span<const ExampleLine> exampleLines(const Act& act, std::string_view lang)
 {
   const ExampleSet& set = examplesOf(act);
   return lang == "en" ? std::span<const ExampleLine>(set.en) : std::span<const ExampleLine>(set.es);
+}
+
+std::optional<std::string> slotQuestion(const SlotQuestion& input)
+{
+  if (input.ask.slot != "privacy")
+    return std::nullopt;
+  return input.lang == "en" ? std::string("Do you want me to turn it on or remove it?")
+                            : std::string("¿La activo o la quito?");
+}
+
+std::string ungroundedLine(std::string_view lang)
+{
+  return lang == "en" ? "I do not have that information." : "No tengo ese dato.";
+}
+
+std::optional<std::string> refusalLine(const RefusalSpeech& input)
+{
+  const bool english = input.lang == "en";
+  const std::string& name = input.refused.name;
+  const std::string_view reason = input.refused.reason;
+  if (reason == refusal_reason::kPrivatePerson)
+    return english ? (name.empty() ? std::string("I cannot tell you that: it is somebody else's information.")
+                                   : "I cannot tell you that about " + name + ".")
+                   : (name.empty() ? std::string("No puedo decirte eso: es información de otra persona.")
+                                   : "No puedo decirte eso de " + name + ".");
+  if (reason == refusal_reason::kNoRelay)
+    return english ? (name.empty() ? std::string("I cannot pass messages on yet. Do you want me to set a reminder instead?")
+                                   : "I cannot pass a message on to " + name + " yet. Do you want me to set a reminder instead?")
+                   : (name.empty() ? std::string("Todavía no puedo pasar mensajes. ¿Quieres que te ponga un recordatorio?")
+                                   : "Todavía no puedo pasarle un mensaje a " + name + ". ¿Quieres que te ponga un recordatorio?");
+  if (reason == refusal_reason::kModuleOff)
+    return english ? std::string("Surveillance is off, so I cannot tell you that.")
+                   : std::string("La vigilancia está apagada, así que no puedo decirte eso.");
+  if (reason == refusal_reason::kNoAction)
+    return english ? std::string("I cannot postpone that. Do you want me to set a reminder for another time?")
+                   : std::string("No puedo posponerlo. ¿Quieres que te ponga un recordatorio para otro momento?");
+  return std::nullopt;
 }
 
 }
