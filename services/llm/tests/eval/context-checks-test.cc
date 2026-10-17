@@ -379,6 +379,10 @@ TEST_CASE("every case carries its constraints, its oracle and a unique id")
                              turn.duressHold || !turn.noRepeat.empty();
       CHECK_MESSAGE(constrained, item->id << " has an unconstrained turn: " << turn.user);
       duressTurns += turn.duressHold ? 1 : 0;
+      for (const auto& fact : turn.facts) {
+        CHECK_MESSAGE(!fact.text.empty(), item->id << " has an empty turn fact");
+        CHECK_MESSAGE(!fact.facet.empty(), item->id << " has a turn fact with no facet");
+      }
     }
     if (item->duress)
       CHECK_MESSAGE(duressTurns == 1, item->id << " does not mark its duress turn");

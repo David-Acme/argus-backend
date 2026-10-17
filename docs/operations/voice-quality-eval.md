@@ -502,8 +502,13 @@ services/llm/build/prod/tests/eval/context-scenarios-eval \
   --report <report.json> --table <table.json> --trace <rows.jsonl> [--ttft <ttft.jsonl>]
 ```
 
-Each case runs through `LlmController::chatSync` with its facts as the per-turn gated context, so the
-production selector, the speech guard and the claim checks are the ones measured. `--variant oracle`
+The pipeline is the shipped one: `installTurnEngines` puts rules, explicit triggers and Laya in front of
+the turn and GLiNER (or the rule text) behind it, and a bundle that is not on the disk is a warning whose
+pipeline the harness prints, never a refusal. Each case runs through `LlmController::chatSync` with its
+facts as the per-turn gated context, so the production selector, the speech guard and the claim checks are
+the ones measured. A turn may carry its own projection facts (the module-off case does, after it turns
+the module on) and the harness flips the module gate when `modules.enable` executes, so the turns after it
+see the state the product would. `--variant oracle`
 feeds only the case's oracle facts, clean and minimal, to isolate the context build: a case that passes
 there and fails in production is a context bug. The larger-model variant is the same binary with another
 `--llm-model` on the vendored runtime; it is diagnostic and never adopted. `--scenario`, `--locale`,

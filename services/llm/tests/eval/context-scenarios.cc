@@ -50,6 +50,7 @@ ScenarioTurn parseTurn(const Json::Value& node)
 {
   ScenarioTurn turn;
   turn.user = node.get("user", "").asString();
+  turn.facts = factList(node["facts"]);
   turn.keep = groupList(node["keep"]);
   turn.first = groupList(node["first"]);
   turn.never = stringList(node["never"]);

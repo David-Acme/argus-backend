@@ -14,11 +14,8 @@
 #include <feature/llm/services/tools/claim-check.hxx>
 #include <feature/llm/services/tools/reply-claims.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
-#include <feature/llm/services/turn/bundle-loader.hxx>
-#include <feature/llm/services/turn/deciders.hxx>
-#include <feature/llm/services/turn/gliner-extractor.hxx>
-#include <feature/llm/services/turn/laya-decider.hxx>
-#include <feature/llm/services/turn/onnx-session.hxx>
+#include <feature/llm/services/turn-engines.hxx>
+#include <feature/llm/services/turn/decision-policy.hxx>
 #include <feature/llm/services/turn/tool-effects.hxx>
 
 #include <json/reader.h>
@@ -27,7 +24,6 @@
 #include <llm/llm-service.hxx>
 #include <llm/llm-speech.hxx>
 #include <text/secret-phrase.hxx>
-#include <text/sha256.hxx>
 #include <text/text-norm.hxx>
 
 #include <llama.h>
@@ -78,10 +74,7 @@ struct Options
   std::string blind;
   std::string filter;
   std::string regionalismMarkers;
-  std::string decide;
   std::string decideBundle;
-  std::string layaAgentConfig;
-  std::string extract;
   std::string extractBundle;
   std::string variant{"production"};
   std::string label;
@@ -130,14 +123,8 @@ Options parseOptions(int argc, char** argv)
       options.regionalismMarkers = argv[++i];
     else if (arg == "--filter" && hasValue)
       options.filter = argv[++i];
-    else if (arg == "--decide" && hasValue)
-      options.decide = argv[++i];
     else if (arg == "--decide-bundle" && hasValue)
       options.decideBundle = argv[++i];
-    else if (arg == "--laya-agent-config" && hasValue)
-      options.layaAgentConfig = argv[++i];
-    else if (arg == "--extract" && hasValue)
-      options.extract = argv[++i];
     else if (arg == "--extract-bundle" && hasValue)
       options.extractBundle = argv[++i];
     else if (arg == "--print-config")
@@ -163,6 +150,11 @@ Options parseOptions(int argc, char** argv)
     else if (arg == "--force")
       options.force = true;
   }
+  const std::filesystem::path models = std::filesystem::path(options.llmModel).parent_path().parent_path();
+  if (options.decideBundle.empty())
+    options.decideBundle = (models / "decide" / "bundle-laya-mvp").string();
+  if (options.extractBundle.empty())
+    options.extractBundle = (models / "extract" / "bundle-gliner-pilot").string();
   return options;
 }
 
@@ -437,82 +429,24 @@ std::optional<DuressRig> openDuressRig()
   return rig;
 }
 
-struct Engines
+TurnEngines installEngines(LlmController& controller, const Options& options)
 {
-  std::unique_ptr<turn::FirstOf> stack;
-  std::unique_ptr<turn::LayaDecider> laya;
-  std::unique_ptr<turn::GlinerExtractor> gliner;
-  std::string active;
-};
-
-std::string bundlePin(const std::string& dir)
-{
-  if (dir.empty())
-    return {};
-  const FileBytes bytes = readFile((std::filesystem::path(dir) / "sha256").string());
-  return bytes.error.empty() ? argus::hash::sha256Hex(bytes.bytes) : std::string{};
-}
-
-Engines installEngines(LlmController& controller, const Options& options)
-{
-  Engines engines;
-  if (!options.decide.empty())
-    ConfigService::setRuntimeString("decide.engine", options.decide);
-  if (!options.decideBundle.empty())
-    ConfigService::setRuntimeString("decide.laya.bundle_dir", options.decideBundle);
-  if (!options.extract.empty())
-    ConfigService::setRuntimeString("extract.engine", options.extract);
-  if (!options.extractBundle.empty())
-    ConfigService::setRuntimeString("extract.gliner.bundle_dir", options.extractBundle);
-  if (!options.layaAgentConfig.empty())
-    ConfigService::setRuntimeString("decide.laya.agent_config", options.layaAgentConfig);
-  if (options.decide == "laya") {
-    const turn::BundleLoader bundle({.dir = options.decideBundle, .pin = bundlePin(options.decideBundle)});
-    if (bundle.valid()) {
-      engines.laya = std::make_unique<turn::LayaDecider>(turn::LayaDeciderInput{
-          .model = turn::openLayaModel(
-              {.bundle = bundle,
-               .options = {},
-               .decode = turn::layaDecodeFromAgentConfig(ConfigService::getString("decide.laya.agent_config"))
-                             .value_or(bundle.decode())}),
-          .fallback = &controller.adapter().routerDecider(),
-          .policy = bundle.policy(),
-          .confidence = bundle.confidenceCalibration(),
-          .now = bundle.nowCalibration()});
-      engines.stack = std::make_unique<turn::FirstOf>(
-          std::vector<const turn::Decider*>{&controller.adapter().ruleDecider(), engines.laya.get()});
-      controller.adapter().flow().useDecider(*engines.stack);
-      turn::PolicySet policies;
-      policies.set(std::string(turn::kDeciderIds[2]),
-                   turn::DecisionPolicy{.act = bundle.policy().act,
-                                        .ask = bundle.policy().ask,
-                                        .margin = bundle.policy().margin,
-                                        .nowMin = bundle.policy().now});
-      controller.adapter().flow().usePolicies(std::move(policies));
-      engines.active = "laya";
-    }
-    else {
-      std::cout << std::format("[WARN] the Laya bundle is off: {}\n", bundle.error());
-    }
+  TurnEngines engines = installTurnEngines({.adapter = controller.adapter(),
+                                            .decide = {.dir = options.decideBundle, .options = {}},
+                                            .extract = {.dir = options.extractBundle, .options = {}}});
+  if (engines.laya != nullptr) {
+    turn::PolicySet policies;
+    policies.set(std::string(turn::kDeciderIds[2]),
+                 turn::DecisionPolicy{.act = engines.laya->policy().act,
+                                      .ask = engines.laya->policy().ask,
+                                      .margin = engines.laya->policy().margin,
+                                      .nowMin = engines.laya->policy().now});
+    controller.adapter().flow().usePolicies(std::move(policies));
   }
-  if (options.extract == "gliner") {
-    const turn::BundleLoader bundle({.dir = options.extractBundle,
-                                     .pin = bundlePin(options.extractBundle),
-                                     .kind = turn::BundleKind::Extractor});
-    if (bundle.valid()) {
-      engines.gliner = std::make_unique<turn::GlinerExtractor>(
-          turn::GlinerExtractorInput{.model = turn::openGlinerModel(bundle, {}), .fallback = nullptr,
-                                     .thresholds = bundle.thresholds()});
-      controller.adapter().flow().useText(*engines.gliner);
-      engines.active += (engines.active.empty() ? "" : "+");
-      engines.active += "gliner";
-    }
-    else {
-      std::cout << std::format("[WARN] the GLiNER bundle is off: {}\n", bundle.error());
-    }
-  }
-  if (engines.active.empty())
-    engines.active = "rules+router";
+  if (!engines.decideError.empty())
+    std::cout << std::format("[WARN] the Laya decider is off: {}\n", engines.decideError);
+  if (!engines.extractError.empty())
+    std::cout << std::format("[WARN] the GLiNER extractor is off: {}\n", engines.extractError);
   return engines;
 }
 
@@ -560,6 +494,13 @@ TurnState stateFor(const TurnStateInput& input)
   return state;
 }
 
+const std::vector<context_eval::ScenarioFact>& factsForTurn(const context_eval::ScenarioCase& item,
+                                                              const context_eval::ScenarioTurn& turn,
+                                                              std::string_view variant)
+{
+  return turn.facts.empty() ? factsFor(item, variant) : turn.facts;
+}
+
 struct TurnRun
 {
   std::string reply;
@@ -604,8 +545,11 @@ std::string poolFor(const context_eval::ScenarioCase& item, std::string_view var
   std::string pool = item.person;
   if (item.call)
     pool += " " + item.call->opening;
-  for (const context_eval::ScenarioTurn& turn : item.turns)
+  for (const context_eval::ScenarioTurn& turn : item.turns) {
     pool += " " + turn.user;
+    for (const context_eval::ScenarioFact& fact : turn.facts)
+      pool += " " + fact.text;
+  }
   for (const context_eval::ScenarioFact& fact : item.facts)
     pool += " " + fact.text;
   for (const context_eval::ScenarioFact& fact : factsFor(item, variant))
@@ -613,8 +557,26 @@ std::string poolFor(const context_eval::ScenarioCase& item, std::string_view var
   return pool;
 }
 
+void enableExecutedModules(const std::vector<eval::RecordedCall>& executed)
+{
+  std::vector<std::string> enabled;
+  for (const eval::RecordedCall& call : executed) {
+    const Json::Value& module = call.arguments["module"];
+    if (call.tool == "modules.enable" && module.isString() && !module.asString().empty())
+      enabled.push_back(module.asString());
+  }
+  if (enabled.empty())
+    return;
+  ModuleFlags flags = moduleGate().known();
+  for (ModuleFlag& flag : flags)
+    if (std::ranges::find(enabled, flag.id) != enabled.end())
+      flag.enabled = true;
+  std::ignore = moduleGate().apply(flags);
+}
+
 struct CaseInput
 {
+
   LlmController& controller;
   const context_eval::ScenarioCase& item;
   const eval::StubInput& stubs;
@@ -635,8 +597,6 @@ CaseRun runCase(const CaseInput& input)
     if (std::ranges::find(input.item.modulesOff, flag.id) != input.item.modulesOff.end())
       flag.enabled = false;
   std::ignore = moduleGate().apply(flags);
-  const std::vector<tools::ToolHandle> offered =
-      input.controller.adapter().executor().offered({.role = role, .modules = moduleGate().snapshot()});
   run.staticPrefix = call_checks::staticPrompt({.roles = std::nullopt,
                                                 .rolesDefault = input.roles,
                                                 .prompt = withSpeaker(input.prompt, input.item.lang, role, input.item.name),
@@ -657,7 +617,7 @@ CaseRun runCase(const CaseInput& input)
     request.messages = history;
     request.messages.push_back({.role = "user", .content = turn.user});
     request.contextFacts = {};
-    for (const context_eval::ScenarioFact& fact : factsFor(input.item, input.variant))
+    for (const context_eval::ScenarioFact& fact : factsForTurn(input.item, turn, input.variant))
       request.contextFacts.push_back({.facet = fact.facet, .text = fact.text});
     request.maxTokens = kMaxTokens;
     request.temperature = input.temperature;
@@ -683,6 +643,8 @@ CaseRun runCase(const CaseInput& input)
     recorded.promptTokens = prefill.promptTokens;
     recorded.decodedTokens = prefill.decodedTokens;
     recorded.duressHeld = duressTurn && outcome.text.empty() && outcome.speech == llm_speech::kUnheard;
+    const std::vector<tools::ToolHandle> offered = input.controller.adapter().executor().offered(
+        {.role = role, .modules = moduleGate().snapshot()});
     const TurnState state =
         stateFor({.utterance = turn.user, .offered = offered, .executed = recorded.executed, .lang = input.item.lang});
     const bool productionClaim = claimedWithoutTool(recorded.reply, state);
@@ -701,8 +663,10 @@ CaseRun runCase(const CaseInput& input)
          .callClaim = callClaim});
     recorded.verdict.regionalism =
         input.item.locale == "es-PE" && call_checks::speaksRegionalism(recorded.reply, input.markers);
-    if (!duressTurn)
+    if (!duressTurn) {
       history.push_back({.role = "assistant", .content = outcome.text});
+      enableExecutedModules(recorded.executed);
+    }
     run.turns.push_back(std::move(recorded));
     firstTurn = false;
   }
@@ -1082,18 +1046,11 @@ int main(int argc, char** argv)
   for (auto& descriptor : eval::stubTools(stubs))
     ToolRegistry::instance().registerTool(std::move(descriptor));
   std::ignore = moduleGate().apply(catalog);
-  const Engines engines = installEngines(controller, options);
+  const TurnEngines engines = installEngines(controller, options);
   std::cout << std::format("pipeline: {} context={} model={}\n",
-                           engines.active,
+                           engines.pipeline(),
                            options.variant,
                            std::filesystem::path(options.llmModel).filename().string());
-  if ((options.decide == "laya" && engines.laya == nullptr) ||
-      (options.extract == "gliner" && engines.gliner == nullptr)) {
-    std::cout << "[REFUSED] an engine the run asked for is not up; no gate is reported\n";
-    controller.shutdownEngine();
-    llama_backend_free();
-    return 1;
-  }
   const std::vector<context_eval::ScenarioCase> cases = selected(loaded.cases, options);
   std::cout << std::format("context scenarios: {} cases of {}\n", cases.size(), loaded.cases.size());
   const bool needsDuress = std::ranges::any_of(cases, [](const context_eval::ScenarioCase& item) {
@@ -1153,7 +1110,7 @@ int main(int argc, char** argv)
   std::ignore = moduleGate().apply(catalog);
   std::cout << std::format("consumption: process_rss_mb={} pipeline={}\n",
                            static_cast<double>(turn::residentBytes()) / (1024.0 * 1024.0),
-                           engines.active);
+                           engines.pipeline());
   if (!options.trace.empty() && !writeTrace(options.trace, runs, options)) {
     std::cout << "[ERROR] cannot write " << options.trace << "\n";
     controller.shutdownEngine();

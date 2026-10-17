@@ -17,6 +17,7 @@ struct ScenarioFact
 struct ScenarioTurn
 {
   std::string user;
+  std::vector<ScenarioFact> facts;
   std::vector<std::vector<std::string>> keep;
   std::vector<std::vector<std::string>> first;
   std::vector<std::string> never;
