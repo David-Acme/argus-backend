@@ -199,6 +199,7 @@ set(CAMERA_UNIT_TESTS
     camera-schema-test
     camera-migration-test
     camera-config-test
+    record-mode-migration-test
     camera-controller-test
     camera-operator-test
     camera-motion-board-test
@@ -308,6 +309,9 @@ target_link_libraries(camera-change-transaction-test PRIVATE
 target_link_libraries(camera-clip-recorder-test PRIVATE
     argus::camera-recording
     argus::contracts::camera)
+
+target_link_libraries(record-mode-migration-test PRIVATE
+    argus::camera-feature)
 
 target_compile_definitions(camera-change-transaction-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")

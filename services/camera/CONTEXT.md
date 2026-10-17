@@ -1282,9 +1282,8 @@ Not done yet, in the order they pay off:
    "The SD card's timeline"); playback is still to come: the 8800 media stream in `sdvod` mode
    with encrypted parts (pytapo's `Downloader`), a second media client, and it uses one of the
    camera's three connection slots while it runs.
-3. **Argus-side recording** (`record_mode` is stored but nothing records): go2rtc can write MP4
-   segments per camera; retention would follow `retention_days`, the evidence uploader's manifest
-   shows the shape.
+3. **Argus-side recording**: landed (2026-10-16, "Argus-side recording"); the app's player for it
+   is the same pass's clips list.
 4. **Patrol and preset delete/rename**: `setCruise` (pytapo) and the preset delete the driver
    already sends; needs owner-only UI and a device test, which this pass was not allowed to do.
 5. **Siren from the app**: the driver arms and sounds it, but only argus-guard may (rule 10);
@@ -2346,3 +2345,47 @@ version.
 - `camera-motion-board-test` (the guardrail, with a fake clock) and
   `camera-operator-test` (an onset raises the cadence, the hold brings it
   back).
+
+## Argus-side recording (2026-10-16, F1)
+
+`record_mode` used to be a stored preference nothing read. It now drives a recorder that writes
+clips of the stream the hub already serves, so there is no second pull point on the camera and no
+transcode: a clip is the init segment plus the fragments between the two cuts, byte for byte, and
+an H.264 camera stays H.264 (the codec is read off the moov and stored on the row).
+
+**The modes.** `off` records nothing; `motion` opens a clip when the ONVIF motion board reports
+motion and keeps extending it while reports keep arriving; `events` does the same plus one clip per
+object event the operator publishes — the events the guard's episodes are built from; `continuous`
+closes a segment every `recording.segment_s` (2 min default) and opens the next at the following
+keyframe. A new camera is `events`. **Cameras that already existed store `events` and therefore
+start recording after this update** — the recorder logs one line per camera at boot,
+`Camera recording: camera <id> recording on: events`, and the disk the owner's cameras will spend
+is reported by the integration pass's measurement, not here.
+
+**The clips.** `ClipBuilder` keeps a ring of the last `recording.pre_roll_s` seconds (10, bounded
+by `recording.pre_roll_bytes`, 12 MB) and a clip opens at the newest keyframe inside the window, so
+its first byte is a `moof` and a player can start on it; it closes `recording.post_roll_s` (10)
+after the last trigger, and a runaway body stops at `recording.max_clip_bytes` (96 MB). The
+recorder is the sink: one subscriber per recording camera, marked `recorder` so the hub's viewer
+budget (4 per camera, 8 total) never counts it and never refuses it — the four viewers of a
+recording camera are still four, and the recorder keeps the upstream alive between them.
+
+**The objects.** Clips go to the service's S3 through `S3StorageService` at
+`cameras/<cameraId>/clips/<startedAt>-<durationMs>.mp4`, private like the portraits, and a read
+mints a requester-bound one-use capability at `GET /camera/{id}/clips/{clipId}/preview` that
+`GET /clip/{token}/content` consumes atomically before the object is fetched. A view writes a
+`UserAction::Read` journal row and a deletion a `UserAction::Delete` one, both with safe metadata
+(no key, no token), beside the camera's other actions; a clip creation and a deletion publish
+`ResourceScope::Clips` so a clips screen reloads.
+
+**Retention.** A daily sweep removes the objects past `camera.retention_days` (default 7, a
+per-camera 0 keeps none) or the `recording.retention_days` setting (1–90, the owner's knob), then
+marks the row deleted and purges it a week later, in bounded batches, the shape the evidence
+sweep has.
+
+**Tests, with no camera.** `camera-clip-recorder-test` drives `ClipBuilder` directly: the
+byte-exact body, the pre-roll window, the wait for the first keyframe, the continuous seam, the
+size cap and the mode gate. `camera-stream-test` holds the viewer budgets, including four viewers
+and the recorder on one camera. `record-mode-migration-test` covers the rebuild that widens the
+old `record_mode` CHECK on an existing database: the rewrite, the idempotent no-op (no backup),
+and the row-preserving apply with its backup.

@@ -74,6 +74,7 @@ private:
     int64_t cameraId{0};
     std::atomic<uint16_t> subId{0};
     CameraRecordMode mode{CameraRecordMode::Events};
+    bool announced{false};
     ClipBuilder builder;
   };
 

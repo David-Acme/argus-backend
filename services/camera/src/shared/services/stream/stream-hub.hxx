@@ -60,6 +60,7 @@ public:
     CameraStream stream{camera_stream_role::streamFor(CameraStreamRole::LiveView)};
     bool fastStart{false};
     bool priority{true};
+    bool recorder{false};
   };
 
   static constexpr size_t kDefaultGopCacheBytes = size_t{2} * 1024 * 1024;
@@ -94,6 +95,7 @@ private:
     std::shared_ptr<ISink> sink;
     bool sentInit{false};
     bool skipUntilKeyframe{true};
+    bool recorder{false};
     uint32_t seq{0};
   };
 

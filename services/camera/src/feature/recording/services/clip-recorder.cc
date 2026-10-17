@@ -173,7 +173,7 @@ void ClipRecorder::attach(const std::shared_ptr<CameraSlot>& slot,
 {
   const uint16_t subId = StreamHub::instance().subscribe(
       {.sink = self(), .cameraId = slot->cameraId, .fastStart = true,
-       .priority = false},
+       .priority = false, .recorder = true},
       error);
   if (subId == 0)
     return;
@@ -284,7 +284,17 @@ drogon::Task<void> ClipRecorder::reconcile()
         continue;
       }
     }
-    if (camera.recordMode == CameraRecordMode::Continuous)
+    bool recording = false;
+    {
+      std::scoped_lock lock(slot->mtx);
+      recording = slot->builder.active();
+      if (!slot->announced) {
+        slot->announced = true;
+        LOG_INFO << "Camera recording: camera " << camera.id << " recording on: "
+                 << cameraRecordModeToString(camera.recordMode);
+      }
+    }
+    if (camera.recordMode == CameraRecordMode::Continuous && !recording)
       static_cast<void>(requestClip({.cameraId = camera.id,
                                      .trigger = CameraClipTrigger::Continuous,
                                      .atEpochMs = 0}));

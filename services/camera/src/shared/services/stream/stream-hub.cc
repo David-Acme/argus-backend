@@ -9,6 +9,7 @@
 #include <config/config-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/upstream-http.hxx>
+#include <shared/services/stream/viewer-slots.hxx>
 #include <shared/services/stream/ws-frame.hxx>
 #include <shared/services/privacy/camera-audio-policy.hxx>
 #include <sys/socket.h>
@@ -372,28 +373,23 @@ void StreamHub::pruneLocked()
 
 StreamHub::ViewerCount StreamHub::countViewers(int64_t cameraId)
 {
-  ViewerCount count;
+  std::vector<viewer_slots::Viewer> viewers;
   for (const auto& [name, up] : upstreams_) {
     std::scoped_lock upLock(up->mtx);
-    const int viewers = static_cast<int>(up->subs.size());
-    count.total += viewers;
-    if (up->cameraId == cameraId)
-      count.perCamera += viewers;
+    for (const auto& sub : up->subs)
+      viewers.push_back({.cameraId = up->cameraId, .recorder = sub->recorder});
   }
-  return count;
+  const viewer_slots::Occupancy occupancy =
+      viewer_slots::occupancyOf(viewers, cameraId);
+  return {.perCamera = occupancy.perCamera, .total = occupancy.total};
 }
 
 const char* StreamHub::viewerRefusal(const SubscribeInput& input)
 {
-  const auto ceiling = [&input](int limit) {
-    return input.priority || limit <= 1 ? limit : limit - 1;
-  };
-  const ViewerCount count = countViewers(input.cameraId);
-  if (maxTotalViewers_ > 0 && count.total >= ceiling(maxTotalViewers_))
-    return "too_many_viewers";
-  if (maxViewersPerCamera_ > 0 && count.perCamera >= ceiling(maxViewersPerCamera_))
-    return "too_many_viewers_for_camera";
-  return nullptr;
+  return viewer_slots::refusalMessage(viewer_slots::refusalOf(
+      {.perCamera = maxViewersPerCamera_, .total = maxTotalViewers_},
+      countViewers(input.cameraId),
+      {.recorder = input.recorder, .priority = input.priority}));
 }
 
 uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
@@ -442,6 +438,7 @@ uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
     }
     sub->subId = subId;
     sub->sink = input.sink;
+    sub->recorder = input.recorder;
     {
       std::scoped_lock upLock(up->mtx);
       up->subs.push_back(sub);
@@ -542,7 +539,9 @@ std::unordered_map<int64_t, int> StreamHub::viewersByCamera()
   std::unordered_map<int64_t, int> viewers;
   for (const auto& [name, up] : upstreams_) {
     std::scoped_lock upLock(up->mtx);
-    viewers[up->cameraId] += static_cast<int>(up->subs.size());
+    const auto counted = std::ranges::count_if(
+        up->subs, [](const auto& sub) { return !sub->recorder; });
+    viewers[up->cameraId] += static_cast<int>(counted);
   }
   return viewers;
 }

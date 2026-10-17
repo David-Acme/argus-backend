@@ -4,6 +4,7 @@
 #include <shared/services/stream/gop-cache.hxx>
 #include <shared/services/stream/grab-backoff.hxx>
 #include <shared/services/stream/upstream-http.hxx>
+#include <shared/services/stream/viewer-slots.hxx>
 
 #include <algorithm>
 #include <atomic>
@@ -346,4 +347,88 @@ TEST_CASE("the camera backoff doubles to half a minute")
     backoff.noteFailure({.cameraId = 3, .nowMs = now});
     now += expected;
   }
+}
+
+TEST_CASE("a recorder rides beside the four viewers of its camera")
+{
+  const viewer_slots::Limits limits{.perCamera = 4, .total = 8};
+  const std::vector<viewer_slots::Viewer> viewers{
+      {.cameraId = 4, .recorder = false},
+      {.cameraId = 4, .recorder = false},
+      {.cameraId = 4, .recorder = false},
+      {.cameraId = 4, .recorder = false},
+      {.cameraId = 4, .recorder = true},
+  };
+
+  const viewer_slots::Occupancy occupancy = viewer_slots::occupancyOf(viewers, 4);
+  CHECK(occupancy.perCamera == 4);
+  CHECK(occupancy.total == 4);
+
+  CHECK(viewer_slots::refusalOf(limits, occupancy,
+                                {.recorder = true, .priority = false}) ==
+        viewer_slots::Refusal::None);
+  CHECK(viewer_slots::refusalOf(limits, occupancy,
+                                {.recorder = true, .priority = true}) ==
+        viewer_slots::Refusal::None);
+  CHECK(viewer_slots::refusalOf(limits, occupancy,
+                                {.recorder = false, .priority = false}) ==
+        viewer_slots::Refusal::Camera);
+  CHECK(viewer_slots::refusalOf(limits, occupancy,
+                                {.recorder = false, .priority = true}) ==
+        viewer_slots::Refusal::Camera);
+  CHECK(std::string(viewer_slots::refusalMessage(viewer_slots::Refusal::Camera)) ==
+        "too_many_viewers_for_camera");
+  CHECK(viewer_slots::refusalMessage(viewer_slots::Refusal::None) == nullptr);
+}
+
+TEST_CASE("the total budget refuses a viewer before the camera budget does")
+{
+  const viewer_slots::Limits limits{.perCamera = 4, .total = 8};
+  const std::vector<viewer_slots::Viewer> viewers{
+      {.cameraId = 1, .recorder = true},
+      {.cameraId = 2, .recorder = true},
+      {.cameraId = 3, .recorder = false},
+      {.cameraId = 4, .recorder = false},
+      {.cameraId = 5, .recorder = false},
+      {.cameraId = 6, .recorder = false},
+      {.cameraId = 7, .recorder = false},
+      {.cameraId = 8, .recorder = false},
+      {.cameraId = 9, .recorder = false},
+  };
+
+  const viewer_slots::Occupancy occupancy = viewer_slots::occupancyOf(viewers, 3);
+  CHECK(occupancy.perCamera == 1);
+  CHECK(occupancy.total == 7);
+
+  CHECK(viewer_slots::refusalOf(limits, occupancy,
+                                {.recorder = false, .priority = true}) ==
+        viewer_slots::Refusal::Total);
+  CHECK(viewer_slots::refusalOf(limits, occupancy,
+                                {.recorder = true, .priority = false}) ==
+        viewer_slots::Refusal::None);
+}
+
+TEST_CASE("the per-camera budget keeps a priority slot free and holds at one")
+{
+  const std::vector<viewer_slots::Viewer> three{
+      {.cameraId = 2, .recorder = false},
+      {.cameraId = 2, .recorder = false},
+      {.cameraId = 2, .recorder = false},
+  };
+  const viewer_slots::Occupancy occupancy = viewer_slots::occupancyOf(three, 2);
+  CHECK(occupancy.perCamera == 3);
+
+  CHECK(viewer_slots::refusalOf({.perCamera = 4, .total = 8}, occupancy,
+                                {.recorder = false, .priority = false}) ==
+        viewer_slots::Refusal::Camera);
+  CHECK(viewer_slots::refusalOf({.perCamera = 4, .total = 8}, occupancy,
+                                {.recorder = false, .priority = true}) ==
+        viewer_slots::Refusal::None);
+  CHECK(viewer_slots::refusalOf({.perCamera = 1, .total = 8}, occupancy,
+                                {.recorder = false, .priority = false}) ==
+        viewer_slots::Refusal::Camera);
+  CHECK(viewer_slots::refusalOf({.perCamera = 1, .total = 8},
+                                viewer_slots::Occupancy{}, {.recorder = false,
+                                                            .priority = false}) ==
+        viewer_slots::Refusal::None);
 }

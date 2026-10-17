@@ -10,6 +10,7 @@ argus_module(NAME camera-stream
         snapshot-store.cc
         stream-hub.cc
         upstream-http.cc
+        viewer-slots.cc
         ws-frame.cc
     INCLUDES
         ../../..
