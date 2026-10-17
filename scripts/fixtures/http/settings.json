@@ -2753,6 +2753,21 @@
                   {
                     "apply": "live",
                     "choices": [],
+                    "fallback": "false",
+                    "group": "alarm",
+                    "key": "guard.app_siren_enabled",
+                    "level": "basic",
+                    "max": 0.0,
+                    "min": 0.0,
+                    "pendingRestart": false,
+                    "step": 0.0,
+                    "type": "toggle",
+                    "unit": "",
+                    "value": "false"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
                     "fallback": "true",
                     "group": "visitors",
                     "key": "guard.greet_enabled",
@@ -3460,6 +3475,111 @@
                   {
                     "apply": "live",
                     "choices": [],
+                    "fallback": "true",
+                    "group": "recording",
+                    "key": "recording.enabled",
+                    "level": "basic",
+                    "max": 0.0,
+                    "min": 0.0,
+                    "pendingRestart": false,
+                    "step": 0.0,
+                    "type": "toggle",
+                    "unit": "",
+                    "value": "true"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
+                    "fallback": "7",
+                    "group": "recording",
+                    "key": "recording.retention_days",
+                    "level": "basic",
+                    "max": 90.0,
+                    "min": 1.0,
+                    "pendingRestart": false,
+                    "step": 1.0,
+                    "type": "integer",
+                    "unit": "days",
+                    "value": "7"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
+                    "fallback": "10",
+                    "group": "recording",
+                    "key": "recording.pre_roll_s",
+                    "level": "advanced",
+                    "max": 30.0,
+                    "min": 1.0,
+                    "pendingRestart": false,
+                    "step": 1.0,
+                    "type": "integer",
+                    "unit": "s",
+                    "value": "10"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
+                    "fallback": "10",
+                    "group": "recording",
+                    "key": "recording.post_roll_s",
+                    "level": "advanced",
+                    "max": 30.0,
+                    "min": 1.0,
+                    "pendingRestart": false,
+                    "step": 1.0,
+                    "type": "integer",
+                    "unit": "s",
+                    "value": "10"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
+                    "fallback": "120",
+                    "group": "recording",
+                    "key": "recording.segment_s",
+                    "level": "advanced",
+                    "max": 1800.0,
+                    "min": 30.0,
+                    "pendingRestart": false,
+                    "step": 30.0,
+                    "type": "integer",
+                    "unit": "s",
+                    "value": "120"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
+                    "fallback": "12582912",
+                    "group": "recording",
+                    "key": "recording.pre_roll_bytes",
+                    "level": "advanced",
+                    "max": 268435456.0,
+                    "min": 1048576.0,
+                    "pendingRestart": false,
+                    "step": 1048576.0,
+                    "type": "integer",
+                    "unit": "bytes",
+                    "value": "12582912"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
+                    "fallback": "100663296",
+                    "group": "recording",
+                    "key": "recording.max_clip_bytes",
+                    "level": "advanced",
+                    "max": 536870912.0,
+                    "min": 4194304.0,
+                    "pendingRestart": false,
+                    "step": 4194304.0,
+                    "type": "integer",
+                    "unit": "bytes",
+                    "value": "100663296"
+                  },
+                  {
+                    "apply": "live",
+                    "choices": [],
                     "fallback": "4",
                     "group": "streaming",
                     "key": "streaming.max_viewers_per_camera",
@@ -3970,6 +4090,18 @@
                       {
                         "changed": true,
                         "from": null,
+                        "key": "llm.gpu_layers",
+                        "to": "0"
+                      }
+                    ],
+                    "reachable": false,
+                    "service": "llm"
+                  },
+                  {
+                    "changes": [
+                      {
+                        "changed": true,
+                        "from": null,
                         "key": "tts.engine_en",
                         "to": "pocket"
                       },
@@ -3991,6 +4123,12 @@
                   },
                   {
                     "changes": [
+                      {
+                        "changed": true,
+                        "from": null,
+                        "key": "vision.gpu_layers",
+                        "to": "0"
+                      },
                       {
                         "changed": true,
                         "from": null,
@@ -4013,6 +4151,18 @@
                       {
                         "changed": true,
                         "from": null,
+                        "key": "llm.gpu_layers",
+                        "to": "0"
+                      }
+                    ],
+                    "reachable": false,
+                    "service": "llm"
+                  },
+                  {
+                    "changes": [
+                      {
+                        "changed": true,
+                        "from": null,
                         "key": "tts.engine_en",
                         "to": "pocket"
                       },
@@ -4037,6 +4187,12 @@
                       {
                         "changed": true,
                         "from": null,
+                        "key": "vision.gpu_layers",
+                        "to": "0"
+                      },
+                      {
+                        "changed": true,
+                        "from": null,
                         "key": "vision.max_input_px",
                         "to": "384"
                       }
@@ -4051,6 +4207,18 @@
                 "id": "quality",
                 "labelKey": "quality",
                 "owners": [
+                  {
+                    "changes": [
+                      {
+                        "changed": true,
+                        "from": null,
+                        "key": "llm.gpu_layers",
+                        "to": "0"
+                      }
+                    ],
+                    "reachable": false,
+                    "service": "llm"
+                  },
                   {
                     "changes": [
                       {
@@ -4083,6 +4251,12 @@
                   },
                   {
                     "changes": [
+                      {
+                        "changed": true,
+                        "from": null,
+                        "key": "vision.gpu_layers",
+                        "to": "0"
+                      },
                       {
                         "changed": true,
                         "from": null,
