@@ -119,8 +119,9 @@ constexpr auto kEnglishHedges = std::to_array<Phrase>({
 
 constexpr auto kEnglishRequests = std::to_array<Phrase>({
     "schedule", "book", "create", "add", "set", "remind", "save", "note", "enable", "activate", "disable",
-    "deactivate", "cancel", "delete", "remove", "mark", "complete", "turn", "switch", "put", "arrange",
-    "reschedule", "move", "change", "register", "reserve", "notify", "make", "update", "organize", "plan", "track", "record", "pin", "store"});
+    "deactivate", "cancel", "delete", "remove", "erase", "mark", "complete", "turn", "switch", "put",
+    "arrange", "reschedule", "move", "change", "register", "reserve", "notify", "make", "update",
+    "organize", "plan", "track", "record", "pin", "store"});
 
 constexpr auto kSpanishCalls = std::to_array<Phrase>({
     "te llamare", "te voy a llamar", "te estare llamando", "te marcare", "te hare una llamada", "te llamo a las",
