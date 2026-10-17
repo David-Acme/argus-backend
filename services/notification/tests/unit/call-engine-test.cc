@@ -1955,6 +1955,7 @@ TEST_CASE("the notification kinds of a module name that module and nothing else 
   CHECK(notification_kind::moduleOf("guard_arrival") == notification_kind::kSurveillance);
   CHECK(notification_kind::moduleOf("camera_fallback") == notification_kind::kSurveillance);
   CHECK(notification_kind::moduleOf("camera_fallback_digest") == notification_kind::kSurveillance);
+  CHECK(notification_kind::moduleOf("camera_privacy_coverage") == notification_kind::kSurveillance);
   CHECK(notification_kind::moduleOf("agenda_event") == notification_kind::kProductivity);
   for (const char* core : {"guard_panic", "guard_duress", "guard_panic_sent", "guard_response", "agenda_reminder",
                            "assistant_reminder", "call", "module_request", "system", ""})

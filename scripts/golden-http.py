@@ -33,6 +33,8 @@ EXPECTATIONS = {
     "no-token": 401,
     "other-device": 401,
     "bad-json": 400,
+    "privacy-unclaimed-on": 422,
+    "privacy-unclaimed-off": 422,
 }
 
 MASKED_KEYS = (
@@ -168,6 +170,14 @@ EXTRA_PROBES = {
          "path": "/invitation",
          "body": json.dumps({"role": "guard"}),
          "modulesOff": ("surveillance",)},
+    ),
+    ("camera", "PATCH", "/camera/{1}/settings"): (
+        {"name": "privacy-unclaimed-on", "auth": "owner",
+         "path": "/camera/1/settings",
+         "body": json.dumps({"privacy": True})},
+        {"name": "privacy-unclaimed-off", "auth": "owner",
+         "path": "/camera/1/settings",
+         "body": json.dumps({"privacy": False})},
     ),
     ("identity", "GET", "/invitation"): (
         {"name": "owner-module-revoked", "auth": "owner",

@@ -65,6 +65,19 @@ TEST_CASE("explicit app commands become app calls and questions do not")
   CHECK_FALSE(appCommandFor("quiero comprar una cámara nueva").has_value());
   CHECK_FALSE(appCommandFor("¿qué se ve en la cámara del patio?").has_value());
 
+  const auto masked = commandOf("Activa la privacidad de la cámara del garaje");
+  CHECK(masked.name == "camera.set_privacy");
+  CHECK(masked.arguments["camera"].asString() == "garaje");
+  CHECK(masked.arguments["privacy"].asString() == "on");
+  const auto unmasked = commandOf("quita el modo privacidad del garaje");
+  CHECK(unmasked.name == "camera.set_privacy");
+  CHECK(unmasked.arguments["camera"].asString() == "garaje");
+  CHECK(unmasked.arguments["privacy"].asString() == "off");
+  CHECK(commandOf("turn off the privacy of the garage camera").arguments["privacy"].asString() == "off");
+  CHECK(commandOf("pon la privacidad en la cámara 3").arguments["camera"].asString() == "3");
+  CHECK_FALSE(appCommandFor("activa la privacidad").has_value());
+  CHECK_FALSE(appCommandFor("¿está la privacidad de la cámara puesta?").has_value());
+
   const auto agenda = commandOf("Abre la agenda");
   CHECK(agenda.name == "app.open");
   CHECK(agenda.arguments["screen"].asString() == "agenda");

@@ -181,6 +181,23 @@ TEST_CASE("the ids of a resource payload stay under the scoped-pull bound")
   CHECK_FALSE(sync_fan_out::parseResourcePayload(json_util::fromString(over)).has_value());
 }
 
+TEST_CASE("a privacy transition announces the status and the overview to the same roles")
+{
+  const ResourceRoute* status =
+      resourceRouteOf(ResourceDomain::Camera, ResourceScope::Status);
+  const ResourceRoute* overview =
+      resourceRouteOf(ResourceDomain::Camera, ResourceScope::Overview);
+  REQUIRE(status != nullptr);
+  REQUIRE(overview != nullptr);
+  const ModuleSnapshot modules = everyModuleEnabled();
+  const std::string expected = "owner,resident,guard,guest";
+  CHECK(roomNames(sync_fan_out::resourceAudience(*status, modules)) == expected);
+  CHECK(roomNames(sync_fan_out::resourceAudience(*overview, modules)) == expected);
+  const ModuleSnapshot off = surveillanceDisabled();
+  CHECK(sync_fan_out::resourceAudience(*status, off).empty());
+  CHECK(sync_fan_out::resourceAudience(*overview, off).empty());
+}
+
 TEST_CASE("a user-targeted resource frame answers for the role this process knows")
 {
   const ResourceRoute* pin =

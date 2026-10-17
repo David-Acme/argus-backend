@@ -278,7 +278,7 @@ constexpr std::array<LabelRow, 19> kSlotLabels{{
     {.key = "task_id", .labelEs = "la tarea", .labelEn = "the task"},
 }};
 
-constexpr std::array<LabelRow, 20> kOptionLabels{{
+constexpr std::array<LabelRow, 21> kOptionLabels{{
     {.key = "calendar.create_event", .labelEs = "un evento en el calendario", .labelEn = "an event on the calendar"},
     {.key = "calendar.list_events", .labelEs = "ver la agenda", .labelEn = "see the agenda"},
     {.key = "calendar.cancel_event", .labelEs = "cancelar un evento", .labelEn = "cancel an event"},
@@ -299,6 +299,7 @@ constexpr std::array<LabelRow, 20> kOptionLabels{{
     {.key = "memory.forget", .labelEs = "olvidarlo", .labelEn = "forget it"},
     {.key = "app.show_camera", .labelEs = "mostrar una cámara", .labelEn = "show a camera"},
     {.key = "app.set_guard_mode", .labelEs = "cambiar la vigilancia", .labelEn = "change the guard mode"},
+    {.key = "camera.set_privacy", .labelEs = "tapar o destapar una cámara", .labelEn = "mask or unmask a camera"},
 }};
 
 constexpr std::array<std::string_view, 9> kAllRequestsEs{

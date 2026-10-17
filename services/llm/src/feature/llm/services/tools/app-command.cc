@@ -50,6 +50,15 @@ constexpr std::array<std::string_view, 33> kClaims{
 constexpr std::array<std::string_view, 2> kSeeVerbs{"ver", "see"};
 constexpr std::array<std::string_view, 9> kNameFillers{"de", "del", "la", "el", "los", "las", "en", "the", "a"};
 constexpr std::array<std::string_view, 6> kNameTails{"por", "favor", "ahora", "please", "now", "ya"};
+constexpr std::array<std::string_view, 4> kPrivacyContext{"privacidad", "privacy", "lente", "lens"};
+constexpr std::array<std::string_view, 12> kPrivacyOn{
+    "activa",     "activar", "activala", "activame", "enciende",
+    "enciendela", "pon",     "ponla",    "poner",    "turn",
+    "enable",     "on"};
+constexpr std::array<std::string_view, 14> kPrivacyOff{
+    "quita",   "quitar",    "quitala", "quitarle", "apaga",
+    "apagala", "desactiva", "desactivala", "saca", "off",
+    "disable", "remove",    "unmask",   "destapa"};
 constexpr std::array<std::string_view, 24> kPlaceNoise{
     "a",   "al",  "para", "to",  "in",  "on",  "of", "for", "y",     "and",   "me",    "voy",
     "nos", "vamos", "ya", "que", "porfa", "todo", "toda", "todos", "todas", "everything", "all", "it"};
@@ -243,6 +252,41 @@ std::optional<tools::ToolCall> openScreen(const Words& words)
   return std::nullopt;
 }
 
+std::string privacyCameraName(const Words& words)
+{
+  std::string name;
+  for (const auto& word : words) {
+    if (isAny(word, kPrivacyContext) || isAny(word, kPrivacyOff) ||
+        isAny(word, kPrivacyOn) || isAny(word, kNameFillers) ||
+        isAny(word, kNameTails) || isAny(word, kPlaceNoise) || word == "modo" ||
+        word == "mode")
+      continue;
+    name += name.empty() ? word : " " + word;
+  }
+  return name;
+}
+
+std::optional<tools::ToolCall> privacyToggle(const Words& words)
+{
+  if (!hasAny(words, kPrivacyContext))
+    return std::nullopt;
+  const bool off = hasAny(words, kPrivacyOff);
+  if (!off && !hasAny(words, kPrivacyOn))
+    return std::nullopt;
+  const auto camera = std::ranges::find_if(words, [](const std::string& word) {
+    return word == "camara" || word == "camera";
+  });
+  const std::string name =
+      camera == words.end()
+          ? privacyCameraName(words)
+          : cameraName(words, static_cast<size_t>(camera - words.begin()));
+  if (name.empty())
+    return std::nullopt;
+  tools::ToolCall call =
+      callOf({.name = "camera.set_privacy", .argument = "camera", .value = name});
+  call.arguments["privacy"] = off ? "off" : "on";
+  return call;
+}
 }
 
 std::vector<std::string> spokenWords(const std::string& utterance)
@@ -291,6 +335,8 @@ std::optional<tools::ToolCall> appCommandFor(const std::string& utterance)
   if (words.empty())
     return std::nullopt;
   if (auto call = guardMode(words))
+    return call;
+  if (auto call = privacyToggle(words))
     return call;
   if (auto call = showCamera(words))
     return call;

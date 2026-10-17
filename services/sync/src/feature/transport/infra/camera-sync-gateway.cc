@@ -60,6 +60,7 @@ Json::Value cameraRowToJson(const argus::camera::v1::CameraRow& row)
   json["driver"] = row.driver();
   json["icon"] = row.icon();
   json["recordMode"] = row.record_mode();
+  json["privacyState"] = row.privacy_state();
   json["retentionDays"] = row.has_retention_days()
                               ? Json::Value(Json::Int64(row.retention_days()))
                               : Json::Value();
