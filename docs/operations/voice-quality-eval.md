@@ -181,7 +181,9 @@ confidence, the runner-up and `now`. The coverage bar the harness prints beside 
 `gates.json` (`decider.metrics`). The engines the pipeline shipped before the 2026-10 cutover were
 replaced by Laya and GLiNER; what they were, the numbers they measured (their coverage and precision,
 the sealed readings, the real-traffic shares and the round-0 comparison) and why the swap happened are
-in the retirement record (`docs/history/reports/`, 2026-10-17).
+in the retirement record
+([docs/history/reports/legacy-router-extractor-retired.md](../history/reports/legacy-router-extractor-retired.md),
+2026-10-17).
 
 ## Performance and consumption
 

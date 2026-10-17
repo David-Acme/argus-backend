@@ -125,6 +125,29 @@ arbitration and the retrained classifier took to 1.4% (0.9%); and the tool handl
 extractor had measured 23 s of `tool_ms` inside a call's turn on a loaded machine, the reason the
 lexicon tier is the only extractor the handlers use.
 
+### Superseded merge-gate bars (2026-10-12)
+
+The gate as it stood on 2026-10-12, kept here because it is what the two engines measured on
+`llm-tier-eval` in a prod build (789 cases) and what the cutover branch had to beat beside the
+pilots; the owner's 2026-10-16 ruling dropped it — no comparison against master, no
+`selection.accuracy` floor, no sealed-set re-scoring. Master `ef85ad81` was the tree whose decider
+was the router and whose extractor was the off-turn one:
+
+| metric | gate | master (the bar) | branch, pilots |
+|---|---|---|---|
+| `selection.accuracy` | ≥ 0.55 | 0.643 | 0.544 |
+| `selection.memory.accuracy` | ≥ 0.60 | 0.241 | 0.008 |
+| `tool.memory.remember.recall` | ≥ 0.50 | 0.228 | 0.025 |
+| `tool.memory.recall.recall` | ≥ 0.45 | 0.520 | 0 |
+| `tool.memory.forget.recall` | ≥ 0.60 | 0.156 | 0 |
+| `tool.memory.remind.recall` | ≥ 0.75 | 0.013 | 0 |
+| `tool.memory.remember.precision` | ≥ 0.85 | 0.947 | 1.0 |
+| `tool.memory.recall.precision` | ≥ 0.93 | 1.0 | 0 |
+| `tool.memory.forget.precision` | ≥ 0.90 | 1.0 | 0 |
+| `tool.memory.remind.precision` | ≥ 0.90 | 1.0 | 0 |
+| `falseCompletionRate` | ≤ 0 | 0.046 | 0.051 |
+| app / camera / modules / productivity / none accuracy | | 0.68 / 1.0 / 0.92 / 0.96 / 0.99 | same (none 1.0) |
+
 ## Why they were replaced
 
 Both engines were replaced by Laya and GLiNER on the owner's rulings, and the swap is
@@ -173,8 +196,9 @@ MVP ships with".
 - This unit (2026-10-17) removed the last live mentions: the `gateObeyingFastText` key and its prints,
   the fastText-era tables and sealed-set notes in `docs/operations/voice-quality-eval.md` (their home
   is this record), the history paragraphs in `services/llm/CONTEXT.md` and `argus-deploy/CONTEXT.md`
-  (replaced by one sentence each, pointing here), and the `RouterDecider` reference in the 2026-10-16
-  working-pass note.
+  (replaced by one sentence each, pointing here), the superseded merge-gate bar table from
+  `services/llm/CONTEXT.md` (the "Superseded merge-gate bars" section above), and the `RouterDecider`
+  reference in the 2026-10-16 working-pass note.
 - The models cleanup and the submodule's local git data stay with the owner, as the steps after he
   redeploys the new build; the git data under `.git/modules/` is shared by every worktree, so removing
   it while a tree still has the submodule checked out breaks that tree. The commands are in the unit's

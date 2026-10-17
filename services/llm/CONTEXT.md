@@ -1748,9 +1748,10 @@ specs; a snapshot of every provider's `tools/list` that both sides test against 
 The owner's decision of 2026-10-12: Laya decides and GLiNER extracts, by
 default, with the pilot bundles, and no configuration chooses another engine.
 The engines the pilots were swapped in for are removed and no longer installed
-— replaced by Laya and GLiNER, see the retirement record in
-`docs/history/reports/` (2026-10-17). Swapping in a newly trained model is
-replacing the bundle's files.
+— replaced by Laya and GLiNER, see the retirement record
+[docs/history/reports/legacy-router-extractor-retired.md](../../docs/history/reports/legacy-router-extractor-retired.md)
+(2026-10-17). Swapping in a newly trained model is replacing the bundle's
+files.
 
 Both engines ride the turn's own seams; nothing in the MCP path, the tool
 runtime, the pendings or the audit knows they exist. `installTurnEngines`
@@ -2259,22 +2260,10 @@ questions below its 0.77 operating point and only explicit triggers still route
 them.
 
 **The bar** — master `ef85ad81` as it stood before the cutover, `llm-tier-eval`
-in a prod build, 789 cases, beside the branch on the pilots:
-
-| metric | gate | master (the bar) | branch, pilots |
-|---|---|---|---|
-| `selection.accuracy` | ≥ 0.55 | 0.643 | 0.544 |
-| `selection.memory.accuracy` | ≥ 0.60 | 0.241 | 0.008 |
-| `tool.memory.remember.recall` | ≥ 0.50 | 0.228 | 0.025 |
-| `tool.memory.recall.recall` | ≥ 0.45 | 0.520 | 0 |
-| `tool.memory.forget.recall` | ≥ 0.60 | 0.156 | 0 |
-| `tool.memory.remind.recall` | ≥ 0.75 | 0.013 | 0 |
-| `tool.memory.remember.precision` | ≥ 0.85 | 0.947 | 1.0 |
-| `tool.memory.recall.precision` | ≥ 0.93 | 1.0 | 0 |
-| `tool.memory.forget.precision` | ≥ 0.90 | 1.0 | 0 |
-| `tool.memory.remind.precision` | ≥ 0.90 | 1.0 | 0 |
-| `falseCompletionRate` | ≤ 0 | 0.046 | 0.051 |
-| app / camera / modules / productivity / none accuracy | | 0.68 / 1.0 / 0.92 / 0.96 / 0.99 | same (none 1.0) |
+in a prod build, 789 cases, beside the branch on the pilots; its readings are
+in the retirement record
+([docs/history/reports/legacy-router-extractor-retired.md](../../docs/history/reports/legacy-router-extractor-retired.md),
+"Superseded merge-gate bars").
 
 `call-faithfulness-eval` (prod, 32 cases, temperature 0.3, seed 42) is the same
 on master and on the branch: casePass 29/32, and four gates fail on both
@@ -2283,7 +2272,7 @@ on master and on the branch: casePass 29/32, and four gates fail on both
 
 **The gate.** The new bundles install through `install-bundle.sh` with their
 golden vectors checked, and in prod `selection.accuracy` ≥ 0.55, every memory
-metric above ≥ master's value, and `call-faithfulness-eval` unchanged
+metric at least master's value, and `call-faithfulness-eval` unchanged
 (casePass ≥ 29, no gate failing that does not fail on master). Then the series
 is merged and pushed in one go.
 
@@ -2308,7 +2297,7 @@ is merged and pushed in one go.
    `services/llm/scripts/install-bundle.sh extract <gliner>`. Each verifies the
    bundle, runs `llm-bundle-check` on its golden vectors before the swap, and
    keeps the pilot as `<slot>.previous` (`--rollback` restores it).
-5. Measure in prod, against the bar above:
+5. Measure in prod:
    `ctest --test-dir services/llm/build/prod -R '^(llm-bundle-check-decide|llm-bundle-check-extract|llm-tier-eval|call-faithfulness-eval)$' --output-on-failure`
    (both bundle checks must pass, not skip), then the decider on real traffic:
    `python3 -I services/llm/tests/eval/decider-eval.py --decider

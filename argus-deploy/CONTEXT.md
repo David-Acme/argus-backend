@@ -591,8 +591,9 @@ the matching `*-init` profile is the only migration path onto a volume.
   pins, and (from f8-b4) the `[memory]`/`[extract]` blocks config.llm.toml
   gains with the hosted memory feature; `[decide]` and `[extract]` name the
   Laya and GLiNER bundles and select no engine (the engines of the earlier
-  cutover, replaced by Laya and GLiNER; see the retirement record in
-  `docs/history/reports/`, 2026-10-17).
+  cutover, replaced by Laya and GLiNER; see the retirement record
+  [docs/history/reports/legacy-router-extractor-retired.md](../docs/history/reports/legacy-router-extractor-retired.md),
+  2026-10-17).
 - No docker secrets for the services: nothing is baked into images and
   instance secrets live only in the gitignored config files (rustfs and its
   init job read theirs from compose secret files).
