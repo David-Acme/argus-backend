@@ -754,7 +754,8 @@ first three without a generation (decide, which includes the judgement of the de
    the utterance, the tools this turn offers and the module snapshot and answers with at most one
    `Candidate`: the tool, the arguments it already knows, the slots it wants filled (`fill`), a
    `confidence`, its own `id()` (`rules`, `router`), the `runnerUp` (another tool and its own
-   confidence), `exact` (the decision came from words that name the tool, not from a score) and
+   confidence), `exact` (the decision came from words that name the tool, not from a score; the
+   router counts its own arbitration deciding as exact, see the write guard below) and
    `confident` (the decider's own gate said act). `RuleDecider` is `appCommandFor` and the module
    command rules (`tools/module-command.cc`); `RouterDecider` wraps the fastText `IntentRouter` and
    names the four memory tools, with the argument being the user's own words and the runner-up class
@@ -768,6 +769,18 @@ first three without a generation (decide, which includes the judgement of the de
    runner-up is itself above `ask` and closer than `margin`, **Act** at or above `act`, **Ask**
    between. A decider that does not trust its own decision (`confident = false`) never reaches Act.
    A tool that writes or destroys acts only when the candidate is `exact` or a second signal agrees.
+   The router's four memory tools earn that exactness from the arbitration itself: the rules read
+   the words, the model reads them, and the arbitration decides which reading stands (a trigger, an
+   agreement at `kAgreeFloor`, or a confident score that outranks the rules), so a decision it
+   reaches is the tier's own second answer and the family's precision is what `fast.metrics` gates
+   per class. Before 2026-10-16 the router left every model-decided memory write to the witnesses,
+   which never name one, so the turn asked instead of saving and only the rule tier executed:
+   `tool.memory.remember.recall` 0.227848 (18 of 79), `memory.remind` 0.013333 (1 of 75),
+   `memory.forget` 0.156250 (5 of 32), `selection.memory.accuracy` 0.241379, while the read-only
+   `memory.recall` (no second signal needed) passed at 0.520. With the arbitration as the second
+   answer the same prod build measures 0.569620, 0.773333, 0.625000 and 0.620690, every memory
+   precision at 0.90 or above, `group.memory.falseActionRate` 0.007663 and `selection.accuracy`
+   0.642504 to 0.802306.
    What is a write is data: the read-only tools are the list in `turn/tool-effects.json` (compiled
    into `tool-effects.hxx` by CMake; `calendar.list_events`, `task.list`, `project.list`,
    `modules.list`, `modules.explain`, `reminder.list`, `memory.recall`, `app.open`,

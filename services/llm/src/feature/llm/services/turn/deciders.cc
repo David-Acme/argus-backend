@@ -90,7 +90,7 @@ std::optional<Candidate> RouterDecider::decide(const DecideInput& input) const
                    .source = std::string(intent::toolIntentToString(decision.intent)) +
                              (decision.fromRules ? ", rules" : ", model"),
                    .decider = std::string(id()),
-                   .exact = decision.fromRules,
+                   .exact = decision.confident,
                    .confident = decision.confident,
                    .runnerUp = std::move(second)};
 }
