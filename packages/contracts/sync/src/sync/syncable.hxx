@@ -12,15 +12,15 @@ class Syncable
 public:
   virtual ~Syncable() = default;
 
-  virtual drogon::Task<std::vector<Json::Value>>
+  [[nodiscard]] virtual drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const = 0;
 
-  virtual drogon::Task<std::vector<Json::Value>>
+  [[nodiscard]] virtual drogon::Task<std::vector<Json::Value>>
   findDeleted(const SyncFilter& filter) const = 0;
 
-  virtual drogon::Task<std::optional<Json::Value>>
+  [[nodiscard]] virtual drogon::Task<std::optional<Json::Value>>
   findLast(const SyncFilter& filter) const = 0;
 
-  virtual drogon::Task<std::optional<Json::Value>>
+  [[nodiscard]] virtual drogon::Task<std::optional<Json::Value>>
   findLastDeleted(const SyncFilter& filter) const = 0;
 };

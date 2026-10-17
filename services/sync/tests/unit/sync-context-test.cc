@@ -133,22 +133,26 @@ private:
   public:
     explicit Rows(int64_t userId) : userId_(userId) {}
 
-    drogon::Task<std::vector<Json::Value>> find(const SyncFilter&) const override
+    [[nodiscard]] drogon::Task<std::vector<Json::Value>>
+    find(const SyncFilter&) const override
     {
       Json::Value row(Json::objectValue);
       row["id"] = 1;
       row["userId"] = static_cast<Json::Int64>(userId_);
       co_return std::vector<Json::Value>{row};
     }
-    drogon::Task<std::vector<Json::Value>> findDeleted(const SyncFilter&) const override
+    [[nodiscard]] drogon::Task<std::vector<Json::Value>>
+    findDeleted(const SyncFilter&) const override
     {
       co_return std::vector<Json::Value>{};
     }
-    drogon::Task<std::optional<Json::Value>> findLast(const SyncFilter&) const override
+    [[nodiscard]] drogon::Task<std::optional<Json::Value>>
+    findLast(const SyncFilter&) const override
     {
       co_return std::nullopt;
     }
-    drogon::Task<std::optional<Json::Value>> findLastDeleted(const SyncFilter&) const override
+    [[nodiscard]] drogon::Task<std::optional<Json::Value>>
+    findLastDeleted(const SyncFilter&) const override
     {
       co_return std::nullopt;
     }

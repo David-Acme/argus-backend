@@ -221,7 +221,7 @@ private:
     {
     }
 
-    drogon::Task<std::vector<Json::Value>>
+    [[nodiscard]] drogon::Task<std::vector<Json::Value>>
     find(const SyncFilter& filter) const override
     {
       *scope_ = filter.scopeIds;
@@ -239,19 +239,19 @@ private:
       co_return rows;
     }
 
-    drogon::Task<std::vector<Json::Value>>
+    [[nodiscard]] drogon::Task<std::vector<Json::Value>>
     findDeleted(const SyncFilter&) const override
     {
       co_return std::vector<Json::Value>{};
     }
 
-    drogon::Task<std::optional<Json::Value>>
+    [[nodiscard]] drogon::Task<std::optional<Json::Value>>
     findLast(const SyncFilter&) const override
     {
       co_return std::nullopt;
     }
 
-    drogon::Task<std::optional<Json::Value>>
+    [[nodiscard]] drogon::Task<std::optional<Json::Value>>
     findLastDeleted(const SyncFilter&) const override
     {
       co_return std::nullopt;

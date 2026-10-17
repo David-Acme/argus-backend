@@ -34,12 +34,12 @@ public:
   drogon::Task<bool>
   recordRedemption(const InvitationRedemptionCreateInput& input) const;
 
-  drogon::Task<std::vector<Json::Value>>
+  [[nodiscard]] drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;
-  drogon::Task<std::vector<Json::Value>>
+  [[nodiscard]] drogon::Task<std::vector<Json::Value>>
   findDeleted(const SyncFilter& filter) const override;
-  drogon::Task<std::optional<Json::Value>>
+  [[nodiscard]] drogon::Task<std::optional<Json::Value>>
   findLast(const SyncFilter& filter) const override;
-  drogon::Task<std::optional<Json::Value>>
+  [[nodiscard]] drogon::Task<std::optional<Json::Value>>
   findLastDeleted(const SyncFilter& filter) const override;
 };

@@ -148,7 +148,7 @@ public:
   {
   }
 
-  drogon::Task<std::vector<Json::Value>>
+  [[nodiscard]] drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override
   {
     const auto response =
@@ -156,7 +156,7 @@ public:
     co_return createdRows(response);
   }
 
-  drogon::Task<std::vector<Json::Value>>
+  [[nodiscard]] drogon::Task<std::vector<Json::Value>>
   findDeleted(const SyncFilter& filter) const override
   {
     const auto response =
@@ -164,7 +164,7 @@ public:
     co_return deletedRows(response);
   }
 
-  drogon::Task<std::optional<Json::Value>>
+  [[nodiscard]] drogon::Task<std::optional<Json::Value>>
   findLast(const SyncFilter&) const override
   {
     const auto response = co_await pull(
@@ -189,7 +189,7 @@ public:
     co_return row;
   }
 
-  drogon::Task<std::optional<Json::Value>>
+  [[nodiscard]] drogon::Task<std::optional<Json::Value>>
   findLastDeleted(const SyncFilter&) const override
   {
     const auto response = co_await pull(
