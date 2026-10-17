@@ -127,7 +127,7 @@ TEST_CASE("a complete bundle loads its labels and its policy")
   CHECK(loader.tokenizerJson() == bundle.dir / "tokenizer" / "tokenizer.json");
 }
 
-TEST_CASE("a bundle's tiers give a tool class its own thresholds and the rest the default one")
+TEST_CASE("a bundle's tiers may only make a tool class stricter, and the rest keep the default one")
 {
   const Built bundle = built("tiers");
   write(bundle.dir / "decision.json",
@@ -137,6 +137,7 @@ TEST_CASE("a bundle's tiers give a tool class its own thresholds and the rest th
             "source": {"fitOn": "calibration"},
             "tiers": {"destructive": {"actAtOrAbove": 0.829932, "rawActAtOrAbove": 0.975,
                                        "tools": ["app.set_guard_mode", "memory.forget", "modules.purge"]},
+                      "strict": {"actAtOrAbove": 0.90, "tools": ["modules.open_purge_screen"]},
                       "low_risk": {"actAtOrAbove": 0.838439, "rawActAtOrAbove": 0.9771}}})");
   seal(bundle.dir);
   const turn::BundleLoader loader({.dir = bundle.dir});
@@ -144,12 +145,16 @@ TEST_CASE("a bundle's tiers give a tool class its own thresholds and the rest th
   CHECK(loader.error().empty());
   CHECK(loader.policy().present);
   CHECK(loader.policy().act == doctest::Approx(0.838439));
-  CHECK(loader.policy().toolClasses.size() == 1);
-  CHECK(loader.policy().thresholdsFor("memory.forget").act == doctest::Approx(0.829932));
-  CHECK(loader.policy().thresholdsFor("memory.forget").ask == doctest::Approx(0.829932));
-  CHECK(loader.policy().thresholdsFor("modules.purge").act == doctest::Approx(0.829932));
+  CHECK(loader.policy().toolClasses.size() == 2);
+  CHECK(loader.policy().thresholdsFor("memory.forget").act == doctest::Approx(0.838439));
+  CHECK(loader.policy().thresholdsFor("memory.forget").ask == doctest::Approx(0.838439));
+  CHECK(loader.policy().thresholdsFor("modules.purge").act == doctest::Approx(0.838439));
+  CHECK(loader.policy().thresholdsFor("modules.open_purge_screen").act == doctest::Approx(0.90));
   CHECK(loader.policy().thresholdsFor("task.create").act == doctest::Approx(0.838439));
   CHECK(loader.policy().thresholdsFor("task.create").ask == doctest::Approx(0.838439));
+  CHECK(turn::classNamesTool(loader.policy().toolClasses, "memory.forget"));
+  CHECK(turn::classNamesTool(loader.policy().toolClasses, "modules.open_purge_screen"));
+  CHECK_FALSE(turn::classNamesTool(loader.policy().toolClasses, "task.create"));
 
   const Built plain = built("tiers-absent");
   const turn::BundleLoader withoutTiers({.dir = plain.dir});

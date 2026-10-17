@@ -8,6 +8,8 @@
 #include <algorithm>
 
 #include <optional>
+#include <span>
+#include <string>
 #include <vector>
 
 namespace
@@ -28,6 +30,24 @@ void installDecider(const TurnEngineInput& input, TurnEngines& engines)
     LOG_WARN << "argus-llm: " << engines.decideError << "; the turn runs on rules and explicit triggers";
     return;
   }
+  std::string unnamed;
+  for (const turn::LayaLabel& entry : turn::layaLabels()) {
+    if (std::ranges::find(bundle.labels(), entry.label) == bundle.labels().end() ||
+        turn::classNamesTool(bundle.policy().toolClasses, entry.tool))
+      continue;
+    unnamed += unnamed.empty() ? "" : ", ";
+    unnamed += entry.tool;
+  }
+  if (!unnamed.empty())
+    LOG_WARN << "argus-llm: the Laya bundle's decision.json names no tool class for " << unnamed
+             << "; those tools act at the decider's own thresholds";
+  for (const auto& [tools, thresholds] : bundle.policy().toolClasses)
+    if (thresholds.act < bundle.policy().act || thresholds.ask < bundle.policy().ask) {
+      LOG_WARN << "argus-llm: the Laya bundle declares the tool class " << tools.front() << " (and "
+               << tools.size() - 1 << " more) at " << thresholds.act << ", below the decider's own "
+               << bundle.policy().act << "; a class may only be stricter, so it is floored to it";
+      break;
+    }
   LfmAdapter& adapter = input.adapter;
   turn::OnnxOptions options = input.decide.options;
   options.threads = layaSessionThreads(options.threads);

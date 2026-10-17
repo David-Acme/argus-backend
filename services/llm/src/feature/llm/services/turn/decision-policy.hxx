@@ -20,13 +20,25 @@ struct DecisionThresholds
 
 using DecisionToolClasses = std::vector<std::pair<std::vector<std::string>, DecisionThresholds>>;
 
+[[nodiscard]] inline bool classNamesTool(const DecisionToolClasses& classes, std::string_view tool)
+{
+  return std::ranges::any_of(classes, [tool](const auto& entry) {
+    return std::ranges::find(entry.first, tool) != entry.first.end();
+  });
+}
+
 [[nodiscard]] inline DecisionThresholds thresholdsFor(const DecisionToolClasses& classes,
                                                      const DecisionThresholds& fallback, std::string_view tool)
 {
   const auto found = std::ranges::find_if(classes, [tool](const auto& entry) {
     return std::ranges::find(entry.first, tool) != entry.first.end();
   });
-  return found == classes.end() ? fallback : found->second;
+  if (found == classes.end())
+    return fallback;
+  const DecisionThresholds& declared = found->second;
+  return {.act = std::max(declared.act, fallback.act),
+          .ask = std::max(declared.ask, fallback.ask),
+          .margin = std::max(declared.margin, fallback.margin)};
 }
 
 struct DecisionPolicy

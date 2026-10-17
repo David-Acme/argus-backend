@@ -1960,6 +1960,25 @@ are only the fallback for a bundle that declares none. The pilot declares
 `act` 0.77, `ask` 0.77, `margin` 0.0, `now` 0.5 on Platt-calibrated
 confidence, so 0.77 is what runs; a new bundle sets its own the same way.
 
+**A tool class acts at its own tier, and it may only be stricter.** `decision.json`
+may carry `tiers`: a class names the tools it covers and the `actAtOrAbove` they
+act at, in the calibrated space like every other threshold, and a class that names
+no tool is the default the other tools keep. `thresholdsFor` resolves a tool to
+`max(class, default)` per threshold — act, ask and margin — so a class can raise
+the bar on its tools and never lower it, which is what precision first means here:
+a destructive tool is never easier to trigger than the tools beside it. The read is
+one function, so `judge` (`turn-flow.cc`), `LayaDecider::confident`
+(`laya-decider.cc`) and the policy the composition installs all answer the same
+class for the same tool. On the shipped MVP bundle that floors the destructive
+class's 0.829932 up to the decider's 0.838439, and the two values are the release's
+own — one from each tier's budget — never invented here.
+
+Two lines at load say what the data did not cover (`turn-engines.cc`): one lists
+every tool the bundle's labels can reach that no class names — a renamed tool falls
+to the default tier and must be visible in the log, not only in the data — and one
+names a class the rule floored, with the value it declared and the decider's own.
+Both are warnings about the bundle, not about the turn: the turn runs either way.
+
 ### The bundles, and how they arrive
 
 Two local artefacts, exported by the sibling `intent-training/` project and packed

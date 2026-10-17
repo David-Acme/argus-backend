@@ -453,23 +453,35 @@ TEST_CASE("a confidence is judged against two thresholds and a margin, all of th
   CHECK(turn::judge(fallback, {.confidence = 0.9, .runnerUp = 0.89}) == turn::Verdict::Act);
 }
 
-TEST_CASE("a tool class carries its own thresholds and every other tool keeps the decider's")
+TEST_CASE("a tool class may make its tools stricter and never looser")
 {
   turn::DecisionPolicy policy{.act = 0.838439, .ask = 0.838439, .margin = 0.0};
-  policy.toolClasses.push_back(
-      {{"app.set_guard_mode", "calendar.cancel_event", "memory.forget", "modules.disable", "modules.open_purge_screen",
-        "modules.purge"},
-       {.act = 0.829932, .ask = 0.829932, .margin = 0.0}});
-  CHECK(policy.thresholdsFor("memory.forget").act == doctest::Approx(0.829932));
-  CHECK(policy.thresholdsFor("calendar.cancel_event").act == doctest::Approx(0.829932));
+  policy.toolClasses.push_back({{"memory.forget", "modules.purge"},
+                                 {.act = 0.829932, .ask = 0.829932, .margin = 0.0}});
+  policy.toolClasses.push_back({{"calendar.cancel_event"},
+                                 {.act = 0.90, .ask = 0.88, .margin = 0.10}});
+  CHECK(policy.thresholdsFor("memory.forget").act == doctest::Approx(0.838439));
+  CHECK(policy.thresholdsFor("memory.forget").ask == doctest::Approx(0.838439));
+  CHECK(policy.thresholdsFor("modules.purge").act == doctest::Approx(0.838439));
+  CHECK(policy.thresholdsFor("calendar.cancel_event").act == doctest::Approx(0.90));
+  CHECK(policy.thresholdsFor("calendar.cancel_event").ask == doctest::Approx(0.88));
+  CHECK(policy.thresholdsFor("calendar.cancel_event").margin == doctest::Approx(0.10));
   CHECK(policy.thresholdsFor("task.create").act == doctest::Approx(0.838439));
   CHECK(policy.thresholdsFor("memory.recall").act == doctest::Approx(0.838439));
   CHECK(turn::judge(policy.thresholdsFor("memory.forget"), {.confidence = 0.831, .runnerUp = std::nullopt}) ==
-        turn::Verdict::Act);
-  CHECK(turn::judge(policy.thresholdsFor("task.create"), {.confidence = 0.831, .runnerUp = std::nullopt}) ==
         turn::Verdict::Pass);
+  CHECK(turn::judge(policy.thresholdsFor("calendar.cancel_event"), {.confidence = 0.87, .runnerUp = std::nullopt}) ==
+        turn::Verdict::Pass);
+  CHECK(turn::judge(policy.thresholdsFor("calendar.cancel_event"), {.confidence = 0.89, .runnerUp = std::nullopt}) ==
+        turn::Verdict::Ask);
+  CHECK(turn::judge(policy.thresholdsFor("calendar.cancel_event"), {.confidence = 0.90, .runnerUp = std::nullopt}) ==
+        turn::Verdict::Act);
   CHECK(turn::judge(policy.thresholdsFor("task.create"), {.confidence = 0.839, .runnerUp = std::nullopt}) ==
         turn::Verdict::Act);
+  CHECK(turn::classNamesTool(policy.toolClasses, "memory.forget"));
+  CHECK(turn::classNamesTool(policy.toolClasses, "calendar.cancel_event"));
+  CHECK_FALSE(turn::classNamesTool(policy.toolClasses, "task.create"));
+  CHECK_FALSE(turn::classNamesTool(policy.toolClasses, "memory.recall"));
 }
 
 TEST_CASE("a decider with no tool class judges every tool with its own thresholds")
