@@ -214,6 +214,15 @@ leg, including the base64 upload and the JPEG decode.
 | 512 | CPU | 1.38–1.98 s | 1.23–2.17 s |
 | 384 | Vulkan iGPU (`gpu_layers = 999`) | 0.80–0.98 s | 0.55–0.69 s |
 
+The `vision.threads` fallback became `ThreadBudget::lightThreads()` on
+2026-10-17 (it was `computeThreads()`, 8 on that host). Same host and prod
+build, one uncached describe per request (each carries a new prompt, because
+the caption cache keys on it — two rounds of "8 threads" numbers were cache
+hits before that was noticed): 8 threads 2103 ms per image and 11.4 s of
+process CPU, 4 threads 1470 ms and 4.8 s. The vision engine was
+oversubscribing its threads; the lighter budget also leaves the physical
+cores to a call that runs while a caption is being made.
+
 - The image encoder dominates: a one-word answer costs 60–75 % of a full
   sentence. `max_input_px` is the speed knob, as `AGENTS.md` says. 256 px kept
   the same captions on these scenes; 384 stays the default because camera

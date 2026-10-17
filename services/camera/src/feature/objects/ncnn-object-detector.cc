@@ -86,7 +86,7 @@ ObjectDetectorService::loadImpl(const std::string& modelDir, bool useVulkan)
   impl->vulkan = useVulkan;
   impl->net = std::make_unique<ncnn::Net>();
   impl->net->opt.use_packing_layout = true;
-  impl->net->opt.num_threads = ThreadBudget::computeThreads();
+  impl->net->opt.num_threads = ThreadBudget::lightThreads();
   impl->net->opt.use_vulkan_compute = useVulkan;
   impl->net->opt.use_fp16_packed = true;
   impl->net->opt.use_fp16_storage = true;

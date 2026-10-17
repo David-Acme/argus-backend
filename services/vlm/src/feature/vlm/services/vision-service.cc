@@ -118,7 +118,7 @@ void VisionService::init()
     const auto [modelPath, mmprojPath] = resolveVisionModelFiles();
 
     const VisionEngineSettings engine = resolveVisionEngineSettings();
-    const int threads = engine.threads > 0 ? engine.threads : ThreadBudget::computeThreads();
+    const int threads = engine.threads > 0 ? engine.threads : ThreadBudget::lightThreads();
     const int gpuLayers = engine.gpuLayers >= 0 ? engine.gpuLayers : HardwareProbe::vlmGpuLayers();
 
     llama_model_params mp = llama_model_default_params();

@@ -117,7 +117,7 @@ void LlmService::init()
     }
     model_.reset(rawModel);
 
-    auto nThreads = ThreadBudget::lightThreads();
+    auto nThreads = ThreadBudget::decodeThreads();
     auto nThreadsBatch = ThreadBudget::batchThreads();
     if (const int cfg = ConfigService::getInt("llm.threads"); cfg > 0)
       nThreads = cfg;

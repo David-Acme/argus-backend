@@ -25,6 +25,9 @@ TEST_CASE("every budget stays within its own clamp bounds")
     CHECK(ThreadBudget::computeThreads() >= 2);
     CHECK(ThreadBudget::computeThreads() <= 16);
 
+    CHECK(ThreadBudget::decodeThreads() >= 2);
+    CHECK(ThreadBudget::decodeThreads() <= 8);
+
     CHECK(ThreadBudget::batchThreads() >= 4);
     CHECK(ThreadBudget::batchThreads() <= 16);
 
@@ -38,7 +41,7 @@ TEST_CASE("every budget stays within its own clamp bounds")
     CHECK(ThreadBudget::inferenceSlots() <= 4);
 
     CHECK(ThreadBudget::ttsThreads() >= 2);
-    CHECK(ThreadBudget::ttsThreads() <= 8);
+    CHECK(ThreadBudget::ttsThreads() <= 6);
 
     CHECK(ThreadBudget::extractionSlots() >= 1);
     CHECK(ThreadBudget::extractionSlots() <= 4);
@@ -59,6 +62,8 @@ TEST_CASE("each budget is monotonic non-decreasing in the hardware count")
     const std::vector<BudgetContract> contracts = {
         {"computeThreads", ThreadBudget::computeThreads,
          [](int hw) { return std::clamp(hw / 2, 2, 16); }},
+        {"decodeThreads", ThreadBudget::decodeThreads,
+         [](int hw) { return std::clamp(hw / 2, 2, 8); }},
         {"batchThreads", ThreadBudget::batchThreads,
          [](int hw) { return std::clamp(hw / 2, 4, 16); }},
         {"heavyThreads", ThreadBudget::heavyThreads,
@@ -68,7 +73,7 @@ TEST_CASE("each budget is monotonic non-decreasing in the hardware count")
         {"inferenceSlots", ThreadBudget::inferenceSlots,
          [](int hw) { return std::clamp(hw / 8, 1, 4); }},
         {"ttsThreads", ThreadBudget::ttsThreads,
-         [](int hw) { return std::clamp(hw / 2, 2, 8); }},
+         [](int hw) { return std::clamp(hw / 2, 2, 6); }},
         {"extractionSlots", ThreadBudget::extractionSlots,
          [](int hw) { return std::clamp(hw / 8, 1, 4); }},
         {"extractionThreads", ThreadBudget::extractionThreads,

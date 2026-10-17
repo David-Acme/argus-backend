@@ -49,7 +49,8 @@ both variants have to answer the same numbers.
   plus an injectable file reader, so the suite feeds it cgroup trees instead of
   the host's.
 - `src/runtime/thread-budget.{cc,hxx}` — `ThreadBudget`: `hardwareThreads`,
-  `computeThreads`, `batchThreads`, `heavyThreads`, `lightThreads`,
+  `computeThreads`, `decodeThreads`, `batchThreads`, `heavyThreads`,
+  `lightThreads`,
   `inferenceSlots`, `ttsThreads`, `extractionThreads`, `extractionSlots`,
   `queueWorkers`. The single source of thread counts; no AI service hardcodes
   one. `hardwareThreads()` is `cpu_limits::probeEffectiveThreads()`, read once:

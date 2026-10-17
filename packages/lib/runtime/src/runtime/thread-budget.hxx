@@ -10,6 +10,8 @@ int hardwareThreads();
 
 int computeThreads();
 
+int decodeThreads();
+
 int batchThreads();
 
 int heavyThreads();

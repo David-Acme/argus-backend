@@ -18,6 +18,11 @@ int computeThreads()
   return std::clamp(hardwareThreads() / 2, 2, 16);
 }
 
+int decodeThreads()
+{
+  return std::clamp(hardwareThreads() / 2, 2, 8);
+}
+
 int batchThreads()
 {
   return std::clamp(hardwareThreads() / 2, 4, 16);
@@ -50,7 +55,7 @@ int blockingHeavyThreads()
 
 int ttsThreads()
 {
-  return std::clamp(hardwareThreads() / 2, 2, 8);
+  return std::clamp(hardwareThreads() / 2, 2, 6);
 }
 
 int extractionSlots()

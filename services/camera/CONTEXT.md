@@ -178,6 +178,24 @@ sibling service: own binary, own CMake preset, own `camera.db`.
   service disabled, never a held semaphore), and the mutex guards only the
   snapshot grab — inference runs on a shared snapshot so concurrent cameras
   overlap, bounded by the semaphore.
+- **The probe never sees the GPU in this binary (found 2026-10-17)**: the
+  camera's link line resolves `HardwareProbe::get()` from
+  `libargus_hardware-profile.a` (the ncnn-free variant, listed before the
+  `-gpu` one), so `probeVulkan` is the no-op branch and the profile always
+  reads `vulkan=no` — measured with the camera's own link line:
+  `HardwareProbe::describe()` printed `vulkan=no` while
+  `ncnn::get_gpu_count()` was 1 in the same process, and
+  `argus-vulkan-probe` prints the RADV device. The detector runs on the CPU
+  on a Vulkan-capable host today. The fix is a link-order (or target-list)
+  change in this service; not made here.
+- **The detector's thread budget (2026-10-17)**: ncnn's `opt.num_threads` is
+  `ThreadBudget::lightThreads()` (4 on the reference host; it was
+  `computeThreads()`, 8). Measured on the prod build, a synthetic 1280×720
+  frame, 15 frames after 3 warm-up, the two builds back to back: 8 threads
+  84.9 ms median per frame and 695 ms of process CPU (8.2 cores); 4 threads
+  86.1 ms and 339 ms (3.9 cores). Frame time is unchanged — ncnn was spinning
+  threads it did not need — and the halved CPU is what a call running at the
+  same time keeps.
 - **Frames come from go2rtc** (`/api/frame.jpeg?src=cam<id>` via
   Go2rtcFrameSource, resolved per grab because Go2rtcManager resolves its
   address only at init) — never from a device driver (Ruling AB). The Tapo

@@ -527,7 +527,16 @@ AAC 32 kbps in M4A (Android and iOS). They go to the frontend's
 (including `jean` with the opt-in), then run
 `services/tts/tools/tts-preview/make-previews.sh`.
 
-## Measurements (Ryzen 7 5825U, 8 cores / 16 threads, `ThreadBudget::ttsThreads()` = 8)
+## Measurements (Ryzen 7 5825U, 8 cores / 16 threads, `ThreadBudget::ttsThreads()` = 6)
+
+The synthesis budget capped at 6 on 2026-10-17 (it was 8, `clamp(hw/2, 2, 8)`).
+Same host, prod build, the quality Spanish voice, one window, median of 3:
+8 threads RTF 0.402 and 0.415, first PCM 104 and 123 ms, 5.07 and 5.17 s of
+process CPU; 6 threads RTF 0.402 and 0.395, first PCM 117 and 112 ms, 4.28 and
+4.06 s; 4 threads RTF 0.454, first PCM 139 ms, 3.74 s. Six threads is the same
+synthesis speed as eight with about 18 % less CPU and two cores more for the
+decode running beside it; four is measurably slower. The rows below were taken
+with the 8-thread cap and are kept as measured.
 
 Measured through the internal HTTP stream (`/tts/v1/synthesize-stream`) of a
 Release `argus-tts`, the median of 3 runs. First audio is the time to the first

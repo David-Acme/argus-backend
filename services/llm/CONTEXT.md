@@ -1339,6 +1339,27 @@ with 4 threads. A sweep at load 4–6 gave 4 threads 28.7–29.3, 6 threads
 (decode is memory-bandwidth bound), so `lightThreads()` stays and keeps the
 other cores for STT and TTS during a call.
 
+**Decode takes the physical cores (2026-10-17).** The same host, prod build,
+two sweeps of the same two-cap method on `/llm/v1/chat-stream` (`tools=false`,
+`reset_context`, the same prompt at `max_tokens` 64 and 192; the rate is the
+128 extra tokens over the wall-time difference, median of 3). With the machine
+at busy 17 %: 4 threads 27.4 tok/s, 6 threads 30.4, 8 threads 32.3 — 4 → 8 is
++18 % where the 2026-10-03 sweep had called that step +5 % and noise. With the
+machine at busy 41 % (other units' builds saturating memory bandwidth):
+8 threads 23.0 against 4 threads 22.7, +1 % — the same wash as before, at a
+cost of twice the CPU time for the same request (71 s against 37 s). Decode is
+bandwidth-bound, so the step only pays when the machine is not already
+saturated, and it is the machine a call actually runs on (a home server with
+one user talking) that the budget is chosen for. Decode moved to the new
+`ThreadBudget::decodeThreads()` (the physical cores, `hw/2`, capped at 8);
+prefill keeps `batchThreads()`. The Laya session's fallback stopped being a
+hardcoded 4 and reads `lightThreads()` — 4 on this host, so the session is
+unchanged, but the count is a budget now (root rule 13b). The call-level probe
+(three replies alone, then three while the TTS streamed the previous sentence,
+same 192-token request on both allocations) put the shipped one at 14.6 s for
+the reply with the TTS at RTF 1.067 and a 1.5 s deficit — over realtime — and
+the new one at 8.2 s with the TTS at RTF 0.880 and a 0.3 s deficit.
+
 **The turn without the model loop (2026-10-06).** Same host, prod build, the real LFM2.5-1.2B,
 `llm-tier-eval` over 220 turns of the judge corpus (productivity 50, memory 50, none 40, modules 30,
 app 20, inactive 30; stub tools with instant handlers; load average about 5), one sequential run each,

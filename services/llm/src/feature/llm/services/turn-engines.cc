@@ -14,7 +14,6 @@
 
 namespace
 {
-constexpr int kLayaThreads = 4;
 
 void installDecider(const TurnEngineInput& input, TurnEngines& engines)
 {
@@ -89,7 +88,7 @@ int layaSessionThreads(int configured)
 {
   if (configured > 0)
     return configured;
-  return std::clamp(kLayaThreads, 1, std::max(1, ThreadBudget::hardwareThreads()));
+  return std::clamp(ThreadBudget::lightThreads(), 1, std::max(1, ThreadBudget::hardwareThreads()));
 }
 
 std::string TurnEngines::pipeline() const
