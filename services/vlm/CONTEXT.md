@@ -77,14 +77,18 @@ in `main.cc` only when `rpc.address` and a non-empty `[rpc.callers]` pair are
 set. Both templates arm both keys: `argus-deploy/config.vlm.toml.example` on
 `0.0.0.0:7131` with the mutual-TLS `0.0.0.0:7331` and its caller pairs filled by
 `scripts/lib/common.sh`, `services/vlm/config.toml.example` on `127.0.0.1:7131`
-with `127.0.0.1:7331` and its pairs filled by `scripts/setup.sh`. Both guard
+with `127.0.0.1:7331` and its pairs filled by `scripts/setup.sh`. both guard
 templates therefore dial the typed leg (`[vlm] grpc_target`, no HTTP URL), and a
 native install that still carries a pre-`[vlm]` config keeps `guard.assess.vlm_url`
 until that block is adopted. Arming the native listener also makes the settings
 service wire `owners.vlm` (`[rpc] address` is what `ensure_settings_owners`
-reads), so the `GET /settings` recording is re-recorded with that owner
-`configured: true` — `reachable: false` and empty lists in the plain sandbox,
-which never boots it.
+reads). The recorded `GET /settings` row reads `configured: false`, not true:
+the recording runs in plain no-AI mode on a sandbox stack built by
+`native-stack.sh`, which empties the target of every owner it does not boot, so
+the row is sandbox-shaped and a deterministic replay follows from it. On a
+stack that boots `argus-vlm` the same row reads `configured: true`,
+`reachable: false` and empty lists — shown by the `--with-ai` verify, which
+stays a check and is not pinned into the fixture.
 
 The engine's inference slots are the face's backpressure: one acquisition from
 `ThreadBudget::inferenceSlots()`, `try_acquire` rather than a blocking wait
