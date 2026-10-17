@@ -39,9 +39,17 @@ llm:modules:credential:settings
 llm:guard:credential:guard
 sync:modules:credential:settings"
 
-DATA_OWNERS="identity:rpc.callers:settings:7240
-productivity:grpc:caller_settings:7237
-sync:rpc.callers:settings:7241"
+OWNERS="llm:rpc.callers:settings
+voice:grpc:caller_settings
+tts:rpc.callers:settings
+stt:rpc.callers:settings
+vlm:rpc.callers:settings
+guard:rpc.callers:settings
+camera:grpc:caller_settings
+notification:grpc:caller_settings
+identity:rpc.callers:settings
+productivity:grpc:caller_settings
+sync:rpc.callers:settings"
 
 check_deploy_vlm_pair() {
   local deploy_dir="$1"
@@ -62,18 +70,37 @@ check_deploy_vlm_pair() {
 
 check_data_owners() {
   local deploy_dir="$1"
-  local owner table key port credential served
-  while IFS=: read -r owner table key port; do
+  local owner table key port credential served template address
+  while IFS=: read -r owner table key; do
+    template="$deploy_dir/config.$owner.toml.example"
+    [ -f "$template" ] || fail "deploy: no template for the data owner $owner"
+    address="$(toml_value "$template" internal_tls address)"
+    port="${address##*:}"
+    [ -n "$port" ] || fail "deploy: $owner declares no [internal_tls] address to wire owners.$owner from"
     credential="$(toml_value "$deploy_dir/config.settings.toml" "owners.$owner" credential)"
     served="$(toml_value "$deploy_dir/config.$owner.toml" "$table" "$key")"
     [ "${#credential}" -eq 64 ] || fail "deploy: settings has no credential for the data owner $owner"
     [ "$credential" = "$served" ] || fail "deploy: settings and $owner disagree on [$table] $key"
     [ "$(toml_value "$deploy_dir/config.settings.toml" "owners.$owner" target)" = "tls:argus-$owner:$port" ] ||
-      fail "deploy: settings does not target the data owner $owner on its TLS port $port"
+      fail "deploy: settings does not target the data owner $owner on its mutual TLS port $port"
     if grep -Fxq "$credential" "$TEST_TMP/seen-deploy"; then
       fail "deploy: the data owner $owner reuses another pair's credential"
     fi
-  done <<<"$DATA_OWNERS"
+  done <<<"$OWNERS"
+}
+
+check_owners_without_tls() {
+  local plain="$1"
+  mkdir -p "$plain"
+  cp "$ROOT"/argus-deploy/config.*.toml.example "$plain"/
+  awk '/^\[internal_tls\]$/ { skip = 1; next } skip && /^\[/ { skip = 0 } !skip { print }' \
+    "$plain/config.vlm.toml.example" > "$plain/config.vlm.toml.example.plain"
+  mv "$plain/config.vlm.toml.example.plain" "$plain/config.vlm.toml.example"
+  ensure_deploy_configs "$plain" > /dev/null 2>&1 || fail "provisioning a deploy whose vlm has no [internal_tls] failed"
+  [ -z "$(toml_value "$plain/config.settings.toml" owners.vlm target)" ] ||
+    fail "deploy: settings targeted an owner that declares no mutual TLS listener"
+  [ "$(toml_value "$plain/config.settings.toml" owners.stt target)" = "tls:argus-stt:7330" ] ||
+    fail "deploy: the owners wiring stopped keying off the mutual TLS listener of the others"
 }
 
 check_pairs() {
@@ -109,6 +136,7 @@ ensure_deploy_configs "$deploy" > "$TEST_TMP/deploy-first.log" 2>&1 || fail "ens
 check_pairs deploy "$deploy"
 check_data_owners "$deploy"
 check_deploy_vlm_pair "$deploy"
+check_owners_without_tls "$TEST_TMP/owners-no-tls"
 for service in camera guard identity llm notification productivity sync; do
   [ "$(toml_value "$deploy/config.$service.toml" modules target)" = "tls:argus-settings:7247" ] ||
     fail "deploy: $service does not read the enabled set from tls:argus-settings:7247"
@@ -153,6 +181,7 @@ replace_toml_value identity rpc_secret "$legacy" "$upgrade/config.camera.toml"
 actions="$(toml_value "$upgrade/config.guard.toml" camera actions_credential)"
 ensure_deploy_configs "$upgrade" > /dev/null 2>&1 || fail "upgrading an existing deploy failed"
 check_pairs deploy "$upgrade"
+check_data_owners "$upgrade"
 check_deploy_vlm_pair "$upgrade"
 [ "$(toml_value "$upgrade/config.identity.toml" identity rpc_secret)" = "$legacy" ] ||
   fail "the upgrade rotated the legacy fleet secret"
