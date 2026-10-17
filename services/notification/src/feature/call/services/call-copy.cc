@@ -30,18 +30,33 @@ int64_t number(const Json::Value& data, const char* key)
   return value.isIntegral() ? value.asInt64() : 0;
 }
 
-std::string greeting(const std::string& name, bool english)
+std::string withoutSentenceBreaks(std::string value)
 {
-  if (name.empty())
-    return english ? "Hi. " : "Hola. ";
-  return (english ? "Hi " : "Hola, ") + name + ". ";
+  std::string out;
+  out.reserve(value.size());
+  for (std::size_t i = 0; i < value.size(); ++i) {
+    const char ch = value[i];
+    const bool terminator = ch == '.' || ch == '!' || ch == '?';
+    if (terminator && (i + 1 == value.size() || value[i + 1] == ' '))
+      continue;
+    out.push_back(ch);
+  }
+  return out;
 }
 
 std::string reasonGreeting(const std::string& name, bool english)
 {
-  if (name.empty())
+  const std::string spoken = withoutSentenceBreaks(name);
+  if (spoken.empty())
     return english ? "Hi, " : "Hola, ";
-  return (english ? "Hi " : "Hola, ") + name + ", ";
+  return (english ? "Hi " : "Hola, ") + spoken + ", ";
+}
+
+std::string loweredFirst(std::string value)
+{
+  if (!value.empty() && value.front() >= 'A' && value.front() <= 'Z')
+    value.front() = static_cast<char>(value.front() - 'A' + 'a');
+  return value;
 }
 
 std::string doer(const Json::Value& data, bool english)
@@ -171,11 +186,12 @@ CallCopy panicCopy(const CallCopyInput& input, bool english)
                (environment.empty() ? "" : " · " + environment);
   copy.summary = english ? actor + " pressed the panic button" + at + "."
                          : actor + " ha pulsado el botón de pánico" + at + ".";
-  copy.openingLine = reasonGreeting(input.userName, english) + doer(data, english) +
+  copy.openingLine = reasonGreeting(input.userName, english) +
+                     withoutSentenceBreaks(doer(data, english)) +
                      pick({.es = " pulsó el botón de pánico",
                            .en = " pressed the panic button"},
                           english) +
-                     at + ".";
+                     withoutSentenceBreaks(at) + ".";
   copy.missedLine = english ? "I called because " + actor +
                                   " pressed the panic button" + at + "."
                             : "Te llamé porque " + actor +
@@ -201,11 +217,12 @@ CallCopy duressCopy(const CallCopyInput& input, bool english)
                                ". They may be under threat: do not call them."
                          : actor + " ha enviado una alerta silenciosa" + at +
                                ". Puede estar bajo amenaza: no le llames.";
-  copy.openingLine = reasonGreeting(input.userName, english) + doer(data, english) +
+  copy.openingLine = reasonGreeting(input.userName, english) +
+                     withoutSentenceBreaks(doer(data, english)) +
                      pick({.es = " ha enviado una alerta silenciosa",
                            .en = " sent a silent alert"},
                           english) +
-                     at +
+                     withoutSentenceBreaks(at) +
                      pick({.es = "; puede estar bajo amenaza, no le llames.",
                            .en = "; they may be under threat, do not call them."},
                           english);
@@ -227,7 +244,8 @@ CallCopy tamperCopy(const CallCopyInput& input, bool english)
                          : "La cámara " + where + " ha dejado de ver.";
   const std::string camera = pick({.es = "la cámara", .en = "the camera"}, english);
   copy.openingLine = reasonGreeting(input.userName, english) +
-                     (where.empty() ? camera : camera + " " + where) +
+                     (where.empty() ? camera
+                                    : camera + " " + withoutSentenceBreaks(where)) +
                      pick({.es = " ha dejado de ver; puede estar tapada o desconectada.",
                            .en = " stopped seeing; it may be covered or unplugged."},
                           english);
@@ -256,11 +274,12 @@ CallCopy guardCopy(const CallCopyInput& input, bool english)
   CallCopy copy;
   copy.title = capitalized(someone) + (where.empty() ? "" : " · " + where);
   copy.summary = capitalized(someone) + at + ".";
-  std::string opening = greeting(input.userName, english);
+  std::string opening = reasonGreeting(input.userName, english);
   const Json::Value& discreet = data["discreet"];
   if (discreet.isBool() && discreet.asBool()) {
-    opening += (english ? "Quietly: there is " : "Te aviso en voz baja: hay ") +
-               someone + at + "." +
+    opening += (english ? "I am telling you quietly: there is "
+                        : "te aviso en voz baja: hay ") +
+               someone + withoutSentenceBreaks(at) + "." +
                pick({.es = " No abras y quédate dentro.",
                      .en = " Do not open the door and stay inside."},
                     english);
@@ -278,19 +297,20 @@ CallCopy guardCopy(const CallCopyInput& input, bool english)
     return missedFrom(copy, english);
   }
   if (input.trigger == CallTrigger::GuardEscalation)
-    opening += pick({.es = "Te llamo porque la situación ha empeorado. ",
-                     .en = "I am calling because things got worse. "},
+    opening += pick({.es = "te llamo porque la situación ha empeorado: ",
+                     .en = "I am calling because things got worse: "},
                     english);
   else if (input.trigger == CallTrigger::GuardCritical)
-    opening += pick({.es = "Te llamo por algo urgente de la vigilancia. ",
-                     .en = "I am calling about something urgent. "},
+    opening += pick({.es = "te llamo por algo urgente de la vigilancia: ",
+                     .en = "I am calling about something urgent: "},
                     english);
   else
-    opening += pick({.es = "Te llamo por la vigilancia. ",
-                     .en = "I am calling about the security. "},
+    opening += pick({.es = "te llamo por la vigilancia: ",
+                     .en = "I am calling about the security: "},
                     english);
-  opening += (english ? "There is " : "Hay ") + someone + at +
-             reasonClause(data, english) + "." + actionSentence(data, english);
+  opening += (english ? "there is " : "hay ") + someone +
+             withoutSentenceBreaks(at) + reasonClause(data, english) + "." +
+             actionSentence(data, english);
   const std::string visitor = text(data["visitor"], english ? "phraseEn" : "phraseEs");
   if (!visitor.empty())
     opening += " " + visitor;
@@ -325,9 +345,11 @@ CallCopy arrivalCopy(const CallCopyInput& input, bool english)
                (where.empty() ? "" : " · " + where);
   copy.summary = copy.title;
   copy.openingLine =
-      greeting(input.userName, english) +
-      (english ? "Just letting you know that " + person + " arrived" + at + "."
-               : "Te aviso de que ha llegado " + person + at + ".");
+      reasonGreeting(input.userName, english) +
+      (english ? "I am letting you know that " + withoutSentenceBreaks(person) +
+                     " arrived" + withoutSentenceBreaks(at) + "."
+               : "te aviso de que ha llegado " + withoutSentenceBreaks(person) +
+                     withoutSentenceBreaks(at) + ".");
   copy.missedTitle =
       pick({.es = "Llamada perdida · ", .en = "Missed call · "}, english) +
       copy.title;
@@ -353,9 +375,9 @@ CallCopy agendaCopy(const CallCopyInput& input, bool english)
     copy.title = pick({.es = "Recordatorio · ", .en = "Reminder · "}, english) +
                  clipped(title, 48);
     copy.summary = title;
-    copy.openingLine =
-        greeting(input.userName, english) +
-        (english ? "A reminder: " : "Te recuerdo: ") + title + ".";
+    copy.openingLine = reasonGreeting(input.userName, english) +
+                       (english ? "a reminder: " : "te recuerdo: ") +
+                       withoutSentenceBreaks(title) + ".";
     copy.missedLine =
         (english ? "I called to remind you: " : "Te llamé para recordarte: ") +
         title + ".";
@@ -370,23 +392,27 @@ CallCopy agendaCopy(const CallCopyInput& input, bool english)
   const bool now = startsAt > 0 && startsAt - input.now <= 60;
   const std::string location = clipped(text(data, "location"), 60);
   const std::string atPlace =
-      location.empty() ? std::string{}
-                       : (english ? ", at " : ", en ") + location;
+      location.empty()
+          ? std::string{}
+          : (english ? ", at " : ", en ") + withoutSentenceBreaks(location);
   copy.title = pick({.es = "Agenda · ", .en = "Agenda · "}, english) +
                clipped(title, 48);
   copy.summary = clock.empty() ? quoted
                                : quoted + (english ? " at " : " a las ") + clock;
+  const std::string spokenQuoted = english
+                                       ? "\"" + withoutSentenceBreaks(title) + "\""
+                                       : "«" + withoutSentenceBreaks(title) + "»";
   std::string sentence;
   if (now || clock.empty())
-    sentence = english ? quoted + " is starting now" + atPlace + "."
-                       : "Ahora empieza " + quoted + atPlace + ".";
+    sentence = english ? spokenQuoted + " is starting now" + atPlace + "."
+                       : "Ahora empieza " + spokenQuoted + atPlace + ".";
   else
-    sentence = english ? "At " + clock + " you have " + quoted + atPlace + "."
-                       : "A las " + clock + " tienes " + quoted + atPlace + ".";
-  copy.openingLine = greeting(input.userName, english) +
-                     (english ? "A reminder from your agenda. "
-                              : "Te llamo por tu agenda. ") +
-                     sentence;
+    sentence = english ? "At " + clock + " you have " + spokenQuoted + atPlace + "."
+                       : "A las " + clock + " tienes " + spokenQuoted + atPlace + ".";
+  copy.openingLine = reasonGreeting(input.userName, english) +
+                     (english ? "a reminder from your agenda: "
+                              : "te llamo por tu agenda: ") +
+                     loweredFirst(sentence);
   copy.missedLine =
       (english ? "I called to remind you of " : "Te llamé para recordarte ") +
       copy.summary + ".";
@@ -411,12 +437,12 @@ CallCopy assistantCopy(const CallCopyInput& input, bool english)
   copy.summary = topic;
   copy.openingLine =
       topic.empty()
-          ? greeting(input.userName, english) +
-                pick({.es = "¿En qué te ayudo?", .en = "How can I help?"}, english)
-          : greeting(input.userName, english) +
-                (english ? "You asked me to call you to remind you: "
-                         : "Me pediste que te llamara para recordarte: ") +
-                topic + ".";
+          ? reasonGreeting(input.userName, english) +
+                pick({.es = "¿en qué te ayudo?", .en = "how can I help?"}, english)
+          : reasonGreeting(input.userName, english) +
+                (english ? "you asked me to call you to remind you: "
+                         : "me pediste que te llamara para recordarte: ") +
+                withoutSentenceBreaks(topic) + ".";
   copy.missedTitle =
       pick({.es = "Llamada perdida · ", .en = "Missed call · "}, english) +
       copy.title;

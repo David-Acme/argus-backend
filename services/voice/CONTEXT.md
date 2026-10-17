@@ -429,6 +429,23 @@ session is listening before its first batch: the seam suite measures 22.7 ms
 from `start()` to the first mic window the VAD processes (asserted under
 500 ms), and the greeting's 5.15 s of audio and its TTS round trip are gone.
 
+**The opening is spoken sentence by sentence, first sentence whole
+(2026-10-16).** `speakOpening` splits the line (`splitSentences`, at `. ! ?`
+followed by a space or the end of the text) and runs the sentences through
+`fitOpening` (`opening-budget.hxx`): the first sentence is synthesized first
+and whole, whatever it costs, and the following ones join it only while what
+was already spent plus their estimate still fits `kOpeningBudgetMs` (4000 ms);
+what does not fit moves to `laterLines` and is released as announcements
+(`releaseLaterLines`). A call whose greeting was a sentence of its own used to
+be able to spend the whole budget on "Hola, Laura." and release the reason
+seconds later; the budget has nothing to decide there — the line is its
+input — so the guarantee is a copy contract, and `call-copy.cc` words every
+call kind's reason into the first sentence (`reasonGreeting`, "Hola, Laura,
+…"). A name that carries a period ("Dra. García") loses it in the spoken
+greeting for the same reason: the splitter would otherwise cut "Hola, Dra."
+off the reason. The opening runs on the session's worker before `primeLlm`,
+so no LLM round trip stands between the answer and the first chunk.
+
 ## The call's context
 
 `CallHistory` owns the message list a turn sends to argus-llm and keeps one

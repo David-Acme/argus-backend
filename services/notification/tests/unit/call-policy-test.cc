@@ -383,8 +383,8 @@ TEST_CASE("the opening line carries the context in the user's language")
                                      .data = data,
                                      .userName = "Laura",
                                      .now = kNow});
-  CHECK(es.openingLine.starts_with("Hola, Laura. "));
-  CHECK(es.openingLine.find("Hay una persona desconocida en Patio (Casa), de noche.") !=
+  CHECK(es.openingLine.starts_with("Hola, Laura, "));
+  CHECK(es.openingLine.find("hay una persona desconocida en Patio (Casa), de noche.") !=
         std::string::npos);
   CHECK(es.openingLine.find("Le estoy avisando por el altavoz.") !=
         std::string::npos);
@@ -399,8 +399,8 @@ TEST_CASE("the opening line carries the context in the user's language")
                                      .data = data,
                                      .userName = "",
                                      .now = kNow});
-  CHECK(en.openingLine.starts_with("Hi. I am calling about the security."));
-  CHECK(en.openingLine.find("There is an unknown person at Patio (Casa), at night.") !=
+  CHECK(en.openingLine.starts_with("Hi, I am calling about the security:"));
+  CHECK(en.openingLine.find("there is an unknown person at Patio (Casa), at night.") !=
         std::string::npos);
 
   auto weapon = data;
@@ -425,7 +425,7 @@ TEST_CASE("agenda, arrival and assistant copy read as a person would say them")
                                         .data = reminder,
                                         .userName = "",
                                         .now = kNow});
-  CHECK(chore.openingLine == "Hola. Te recuerdo: Sacar la basura.");
+  CHECK(chore.openingLine == "Hola, te recuerdo: Sacar la basura.");
 
   Json::Value event(Json::objectValue);
   event["kind"] = "agenda_event";
@@ -437,7 +437,7 @@ TEST_CASE("agenda, arrival and assistant copy read as a person would say them")
                                         .data = event,
                                         .userName = "",
                                         .now = kNow});
-  CHECK(later.openingLine.find("A las " + call_copy::clockTime(kNow + 600) +
+  CHECK(later.openingLine.find("a las " + call_copy::clockTime(kNow + 600) +
                                " tienes «Dentista», en Calle Mayor.") !=
         std::string::npos);
   const auto now = call_copy::render({.trigger = CallTrigger::Agenda,
@@ -456,7 +456,7 @@ TEST_CASE("agenda, arrival and assistant copy read as a person would say them")
                                           .data = arrival,
                                           .userName = "Laura",
                                           .now = kNow});
-  CHECK(arrived.openingLine == "Hola, Laura. Te aviso de que ha llegado Marta a Entrada.");
+  CHECK(arrived.openingLine == "Hola, Laura, te aviso de que ha llegado Marta a Entrada.");
   CHECK(arrived.followupLine == "Además, ha llegado Marta a Entrada.");
 
   Json::Value topic(Json::objectValue);
@@ -467,7 +467,7 @@ TEST_CASE("agenda, arrival and assistant copy read as a person would say them")
                                         .userName = "",
                                         .now = kNow});
   CHECK(asked.openingLine ==
-        "Hola. Me pediste que te llamara para recordarte: llamar al dentista.");
+        "Hola, me pediste que te llamara para recordarte: llamar al dentista.");
   CHECK(call_copy::joinFollowups("Hola.", {"Además, A.", "", "Además, B."}) ==
         "Hola. Además, A. Además, B.");
 }
@@ -670,5 +670,5 @@ TEST_CASE("an assistant call without a topic opens with a short greeting and an 
   data["topic"] = "";
   const CallCopy es = call_copy::render(
       {.trigger = CallTrigger::Assistant, .lang = "es", .data = data, .userName = "Laura", .now = kNow});
-  CHECK(es.openingLine == "Hola, Laura. ¿En qué te ayudo?");
+  CHECK(es.openingLine == "Hola, Laura, ¿en qué te ayudo?");
 }

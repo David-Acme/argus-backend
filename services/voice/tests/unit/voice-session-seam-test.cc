@@ -60,14 +60,19 @@ struct FakeTts final : IVoiceTts
 {
   int synthesizeCalls{0};
   std::string lastText;
+  std::vector<std::string> texts;
+  std::chrono::steady_clock::time_point firstCallAt{};
 
   [[nodiscard]] float defaultSpeed(std::stop_token = {}) const override { return 1.25F; }
   [[nodiscard]] int sampleRate(std::stop_token = {}) const override { return 22050; }
 
   void synthesizeStream(TtsRemoteStreamInput input) override
   {
+    if (synthesizeCalls == 0)
+      firstCallAt = std::chrono::steady_clock::now();
     ++synthesizeCalls;
     lastText = input.request.text;
+    texts.push_back(input.request.text);
     input.onChunk(std::vector<float>(512, 0.25F));
   }
 };
@@ -789,6 +794,48 @@ TEST_CASE("With opening = none a claimed call still speaks its line and stays up
   VoiceSessionTestAccess::runTurn({.service = service, .session = *sess, .samples = samples});
   CHECK(tts.synthesizeCalls == 2);
   CHECK(tts.lastText == "Hola de nuevo.");
+
+  service.stop(sink);
+  CHECK(sink.hasType("voice:done"));
+}
+
+TEST_CASE("a claimed call's first TTS chunk carries the reason")
+{
+  OpeningConfig opening("none");
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  ScriptedVad vad;
+  VoiceSessionService service({.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = vad});
+
+  FakeVoiceSink sink;
+  argus::voice::v1::VoiceStart start = duplexStart();
+  start.set_mode(argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  start.set_opening_line(
+      "Hola, Laura, te aviso de que ha llegado Ana a Casa. Además, la puerta "
+      "está abierta.");
+  CHECK(VoiceSessionService::openingWillBeSpoken(start));
+
+  const auto answered = std::chrono::steady_clock::now();
+  service.start(sink, start);
+  REQUIRE(waitFor([&] { return tts.synthesizeCalls >= 1; }, 2000));
+  const auto firstChunkMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                tts.firstCallAt - answered)
+                                .count();
+  INFO("answer_to_first_tts_chunk_ms=" << firstChunkMs);
+  CHECK(firstChunkMs < 100);
+  REQUIRE(waitFor([&] { return tts.synthesizeCalls >= 2; }, 2000));
+  REQUIRE(tts.texts.size() == 2);
+  CHECK(tts.texts.front() == "Hola, Laura, te aviso de que ha llegado Ana a Casa.");
+  CHECK(tts.texts.front().find("ha llegado Ana") != std::string::npos);
+  CHECK(tts.texts[1] == "Además, la puerta está abierta.");
+
+  auto sess = VoiceSessionTestAccess::sessionOf(service, sink);
+  CHECK(waitFor([&] { return !sess->speaking.load(); }, 2000));
+  CHECK(sess->history.entries().back().message.content ==
+        "Hola, Laura, te aviso de que ha llegado Ana a Casa. Además, la puerta "
+        "está abierta.");
 
   service.stop(sink);
   CHECK(sink.hasType("voice:done"));

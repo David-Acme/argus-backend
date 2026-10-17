@@ -930,13 +930,17 @@ Agenda calls go to the event's owner and the people it is shared with.
    answer, any other gets `TAKEN`, a missed or timed-out call `EXPIRED`, a
    call of another user or an `rtc-…` id `NOT_FOUND`. The answer carries the
    opening line, which the agent speaks first, verbatim, once the user's
-   microphone track is up. The line carries the context: "Hola, Laura. Te
-   llamo por algo urgente de la vigilancia. Hay una persona desconocida en
-   Patio, de noche. Le estoy avisando por el altavoz. ¿Quieres que te muestre
-   la cámara?"; follow-ups queued while it rang are appended. Every other
-   device of the user gets `call_cancel {reason: answered_elsewhere, claimedBy:
-   <session id>}`; the claiming device ignores a cancel naming its own session
-   (it can arrive before its own `/rtc/token` answer).
+   microphone track is up. Every kind words its reason into the **first
+   sentence** — `reasonGreeting` ("Hola, Laura, …"), never a greeting sentence
+   of its own, because argus-voice fits the line into a 4 s opening budget
+   sentence by sentence and everything that does not fit becomes a later
+   announcement: "Hola, Laura, te llamo por algo urgente de la vigilancia: hay
+   una persona desconocida en Patio, de noche. Le estoy avisando por el
+   altavoz. ¿Quieres que te muestre la cámara?"; follow-ups queued while it
+   rang are appended. Every other device of the user gets `call_cancel
+   {reason: answered_elsewhere, claimedBy: <session id>}`; the claiming device
+   ignores a cancel naming its own session (it can arrive before its own
+   `/rtc/token` answer).
 3. **Out of the app.** A sweep every second pushes a still-ringing call once
    at its `push_after` (4 s by default): a push intent with `type: call`, the
    generic "Argus te está llamando" line and `data {kind: call, callId,

@@ -460,7 +460,9 @@ TEST_CASE("the first device to answer claims the call; the others are told")
   const auto claimed = drogon::sync_wait(harness.engine.claim(
       {.callId = callId, .userId = 1, .sessionId = "phone"}));
   CHECK(claimed.status == CallClaimStatus::Claimed);
-  CHECK(claimed.openingLine.starts_with("Hola, Laura. Te llamo por algo urgente"));
+  CHECK(claimed.openingLine.starts_with(
+      "Hola, Laura, te llamo por algo urgente de la vigilancia: hay una persona "
+      "desconocida"));
   REQUIRE(claimed.call);
   CHECK(claimed.call.value_or(CallSchema{}).state == CallState::Answered);
   CHECK(stateOf(rang.front().callId) == "answered");
@@ -1099,7 +1101,7 @@ TEST_CASE("scheduled calls: validated, idempotent, rung on time, noted when late
        .userId = 1,
        .sessionId = "phone"}));
   CHECK(claimed.openingLine ==
-        "Hola, Laura. Me pediste que te llamara para recordarte: llamar al dentista.");
+        "Hola, Laura, me pediste que te llamara para recordarte: llamar al dentista.");
 
   drogon::sync_wait(harness.engine.schedule({.userId = 2,
                                              .fireAt = harness.clock->load() + 10,
