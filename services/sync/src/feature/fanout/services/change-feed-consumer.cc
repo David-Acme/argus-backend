@@ -18,6 +18,10 @@ const std::vector<Feed>& defaults()
        .subject = nats_subject::kCameraChange,
        .durable = "argus-sync-camera",
        .maxAckPending = NatsBus::kOrderedMaxAckPending},
+      {.stream = nats_subject::kCameraActionStream,
+       .subject = nats_subject::kCameraUserAction,
+       .durable = "argus-sync-camera-action",
+       .maxAckPending = NatsBus::kDefaultMaxAckPending},
       {.stream = nats_subject::kNotificationChangeStream,
        .subject = nats_subject::kNotificationChange,
        .durable = "argus-sync-notification",
@@ -129,7 +133,8 @@ ChangeFeedConsumer::handle(const durable_delivery::Payload& message)
   if (message.subject == nats_subject::kIdentityUserAction ||
       message.subject == nats_subject::kAuthUserAction ||
       message.subject == nats_subject::kProductivityUserAction ||
-      message.subject == nats_subject::kSettingsUserAction)
+      message.subject == nats_subject::kSettingsUserAction ||
+      message.subject == nats_subject::kCameraUserAction)
     co_return co_await sync_fan_out::handleActionPayload(
         {.json = json,
          .msgId = message.msgId,

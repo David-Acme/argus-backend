@@ -91,6 +91,15 @@ public:
     co_return;
   }
 
+  [[nodiscard]] drogon::Task<void>
+  publishAction(const ActionPublishInput& input) const override
+  {
+    note(input.client);
+    if (refuse_)
+      throw std::runtime_error("the change sink refused the action");
+    co_return;
+  }
+
   void refuse(bool value) const { refuse_ = value; }
   [[nodiscard]] int calls() const { return calls_; }
   [[nodiscard]] bool sawClient() const { return sawClient_; }

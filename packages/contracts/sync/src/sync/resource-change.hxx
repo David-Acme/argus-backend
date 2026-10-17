@@ -42,7 +42,8 @@ enum class ResourceScope : std::uint8_t
   Values,
   Voiceprints,
   Presence,
-  Entries
+  Entries,
+  Clips
 };
 
 
@@ -54,7 +55,7 @@ struct ResourceRoute
   drogon::HttpMethod method;
 };
 
-inline constexpr std::array<ResourceRoute, 20> kResourceRoutes{{
+inline constexpr std::array<ResourceRoute, 21> kResourceRoutes{{
     {.domain = ResourceDomain::Camera,
      .scope = ResourceScope::Device,
      .path = "/camera",
@@ -70,6 +71,10 @@ inline constexpr std::array<ResourceRoute, 20> kResourceRoutes{{
     {.domain = ResourceDomain::Camera,
      .scope = ResourceScope::Overview,
      .path = "/camera/overview",
+     .method = drogon::Get},
+    {.domain = ResourceDomain::Camera,
+     .scope = ResourceScope::Clips,
+     .path = "/camera/0/clips",
      .method = drogon::Get},
     {.domain = ResourceDomain::Guard,
      .scope = ResourceScope::Environments,
@@ -221,6 +226,8 @@ inline std::string resourceScopeToString(ResourceScope scope)
       return "presence";
     case ResourceScope::Entries:
       return "entries";
+    case ResourceScope::Clips:
+      return "clips";
   }
   return "device";
 }
@@ -267,6 +274,8 @@ inline std::optional<ResourceScope> resourceScopeFromString(std::string_view nam
     return ResourceScope::Presence;
   if (name == "entries")
     return ResourceScope::Entries;
+  if (name == "clips")
+    return ResourceScope::Clips;
   return std::nullopt;
 }
 

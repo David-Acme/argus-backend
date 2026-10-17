@@ -77,6 +77,7 @@ TEST_CASE("the resource audience table with every module enabled")
 camera/zones -> owner,resident,guard
 camera/status -> owner,resident,guard,guest
 camera/overview -> owner,resident,guard,guest
+camera/clips -> owner,guard
 guard/environments -> owner,resident,guard
 guard/incidents -> owner,resident,guard
 guard/episodes -> owner,resident,guard
@@ -103,6 +104,7 @@ TEST_CASE("the resource audience table with surveillance disabled")
 camera/zones ->
 camera/status ->
 camera/overview ->
+camera/clips ->
 guard/environments ->
 guard/incidents ->
 guard/episodes ->

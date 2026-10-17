@@ -29,6 +29,12 @@ std::string changeSubject(const std::string& configured)
                             : configured;
 }
 
+std::string actionSubject(const std::string& configured)
+{
+  return configured.empty() ? std::string(nats_subject::kCameraUserAction)
+                            : configured;
+}
+
 outbox::OutboxConfig outboxConfig(const std::shared_ptr<NatsBus>& bus,
                                   const NatsCameraChangeSink::Config& config)
 {
@@ -36,14 +42,24 @@ outbox::OutboxConfig outboxConfig(const std::shared_ptr<NatsBus>& bus,
       .streamName = config.streamName,
       .changeSubject = config.publishSubject,
       .objectSubject = {}};
+  const std::string actionStream = config.actionStreamName.empty()
+                                       ? std::string(nats_subject::kCameraActionStream)
+                                       : config.actionStreamName;
+  const std::string action = actionSubject(config.actionSubject);
   return {.label = "Camera change outbox",
           .client = [] { return DbService::cameraClient(); },
           .defaultSubject = changeSubject(config.publishSubject),
           .legacyIdPrefix = std::string(NatsCameraChangeSink::kEventIdPrefix),
           .refusal = CameraErrors::ChangeNotRecorded,
           .ensureStreams =
-              [bus, stream](NatsBus&) {
-                return camera_event_stream::ensure(bus, stream);
+              [bus, stream, actionStream, action](NatsBus&) {
+                if (!camera_event_stream::ensure(bus, stream))
+                  return false;
+                return bus->ensureStream(
+                    {.name = actionStream,
+                     .subjects = {action},
+                     .maxAgeNs = stream_retention::kRetentionNs,
+                     .duplicatesNs = stream_retention::kDuplicatesNs});
               },
           .timing = {.retryMs = config.retryMs,
                      .maxRetryMs = outbox::kMaxRetryMs,
@@ -58,6 +74,7 @@ outbox::OutboxConfig outboxConfig(const std::shared_ptr<NatsBus>& bus,
 NatsCameraChangeSink::NatsCameraChangeSink(
     const std::shared_ptr<NatsBus>& bus, const Config& config)
     : subject_(changeSubject(config.publishSubject)),
+      actionSubject_(actionSubject(config.actionSubject)),
       outbox_(bus, outboxConfig(bus, config))
 {
 }
@@ -110,6 +127,15 @@ drogon::Task<void> NatsCameraChangeSink::publishResource(
   co_await outbox_.append({.idPrefix = kEventIdPrefix,
                            .subject = subject_,
                            .payload = json_util::toString(body),
+                           .client = input.client});
+}
+
+drogon::Task<void>
+NatsCameraChangeSink::publishAction(const ActionPublishInput& input) const
+{
+  co_await outbox_.append({.idPrefix = kActionIdPrefix,
+                           .subject = actionSubject_,
+                           .payload = json_util::toString(input.event.toJson()),
                            .client = input.client});
 }
 

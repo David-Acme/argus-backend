@@ -14,6 +14,9 @@ inline constexpr const char* kCameraStream = "ARGUS_CAMERA";
 inline constexpr const char* kCameraChangeStream = "ARGUS_CAMERA_CHANGE";
 inline constexpr const char* kCameraChangeFilter = "argus.camera.v1.>";
 
+inline constexpr const char* kCameraUserAction = "argus.camera.v1.user-action";
+inline constexpr const char* kCameraActionStream = "ARGUS_CAMERA_ACTION";
+
 inline constexpr const char* kProductivityChange =
     "argus.productivity.v1.change";
 inline constexpr const char* kProductivityChangeStream =

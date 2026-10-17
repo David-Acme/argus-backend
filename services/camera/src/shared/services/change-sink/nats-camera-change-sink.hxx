@@ -19,6 +19,8 @@ public:
     int retryMs{outbox::kRetryMs};
     std::string publishSubject;
     std::string streamName;
+    std::string actionSubject;
+    std::string actionStreamName;
   };
 
   NatsCameraChangeSink(const std::shared_ptr<NatsBus>& bus,
@@ -37,12 +39,16 @@ public:
   [[nodiscard]] drogon::Task<void>
   publishResource(const CameraResourceChange& input) const override;
 
+  [[nodiscard]] drogon::Task<void>
+  publishAction(const ActionPublishInput& input) const override;
+
   void reconcile();
   void requestStop();
   [[nodiscard]] bool drained() const;
 
   static constexpr std::size_t kMaxPayloadBytes = outbox::kMaxPayloadBytes;
   static constexpr std::string_view kEventIdPrefix = "camera-change:";
+  static constexpr std::string_view kActionIdPrefix = "camera-action:";
 
   [[nodiscard]] static outbox::OutboxRepository repository();
 
@@ -58,5 +64,6 @@ private:
   [[nodiscard]] drogon::Task<void> record(RecordInput input) const;
 
   const std::string subject_;
+  const std::string actionSubject_;
   outbox::TransactionalOutbox outbox_;
 };

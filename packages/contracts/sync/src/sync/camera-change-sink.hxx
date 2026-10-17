@@ -9,6 +9,7 @@
 #include <sync/resource-change.hxx>
 #include <sync/socket-emit-dto.hxx>
 #include <sync/table-name.hxx>
+#include <sync/user-change-sink.hxx>
 #include <vector>
 
 struct CameraResourceChange
@@ -32,6 +33,9 @@ public:
 
   [[nodiscard]] virtual drogon::Task<void>
   publishResource(const CameraResourceChange& input) const = 0;
+
+  [[nodiscard]] virtual drogon::Task<void>
+  publishAction(const ActionPublishInput& input) const = 0;
 };
 
 namespace camera_change
