@@ -2205,6 +2205,17 @@ day.
 
 ### The merge gate, and how to pass it (ruled 2026-10-12)
 
+**Superseded 2026-10-16.** The owner's ruling makes the released INT8 bundles
+(`mvp-2026-10-14`) the initial MVP models and drops the quality gate this
+section describes: no `llm-tier-eval` comparison against master, no
+`selection.accuracy` floor, no sealed-set validation and no re-scoring of the
+int8 exports. What is required instead is integrity — the bundles in the
+installer layout, installed through `install-bundle.sh` with their golden
+vectors passing, the degradation contract, fastText and NuExtract gone from
+build and provisioning, the llm suites green with a prod boot, and RSS and
+decide/extract p95 reported rather than gated. The text below records the gate
+as it stood on 2026-10-12.
+
 The cutover branch is ready and parked: it is merged only when the owner's
 trained INT8 bundles beat master where master works today (the no-regression
 rule). With the pilots, the shipped pipeline drops `memory.recall` recall from
