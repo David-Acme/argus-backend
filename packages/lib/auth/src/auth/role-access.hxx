@@ -244,9 +244,10 @@ struct ModuleRoute
   std::string_view module;
 };
 
-inline constexpr std::array<ModuleRoute, 12> kModuleRoutes = {{
+inline constexpr std::array<ModuleRoute, 13> kModuleRoutes = {{
     {.segment = "camera", .module = kSurveillanceModule},
     {.segment = "zone", .module = kSurveillanceModule},
+    {.segment = "clip", .module = kSurveillanceModule},
     {.segment = "media", .module = kSurveillanceModule},
     {.segment = "guard", .module = kSurveillanceModule},
     {.segment = "visitor", .module = kSurveillanceModule},
@@ -257,6 +258,22 @@ inline constexpr std::array<ModuleRoute, 12> kModuleRoutes = {{
     {.segment = "project-member", .module = kProductivityModule},
     {.segment = "calendar-event", .module = kProductivityModule},
     {.segment = "calendar-event-share", .module = kProductivityModule},
+}};
+
+struct ClipRouteAccess
+{
+  std::string_view path;
+  drogon::HttpMethod method;
+  RoleMask roles;
+};
+
+inline constexpr RoleMask kOwnerAndGuard = roleBits({UserRole::Owner, UserRole::Guard});
+
+inline constexpr std::array<ClipRouteAccess, 4> kClipAccess = {{
+    {.path = "/camera/{id}/clips", .method = drogon::Get, .roles = kOwnerAndGuard},
+    {.path = "/camera/{id}/clips/{id}/preview", .method = drogon::Get, .roles = kOwnerAndGuard},
+    {.path = "/camera/{id}/clips/{id}", .method = drogon::Delete, .roles = kOwnerOnly},
+    {.path = "/clip/{id}/content", .method = drogon::Get, .roles = kOwnerAndGuard},
 }};
 
 inline constexpr std::array<AuthRouteAccess, 5> kRouteOverrides = {{
@@ -314,6 +331,18 @@ inline const AuthRouteAccess* sessionRouteOf(std::string_view path,
                                              drogon::HttpMethod method)
 {
   return routeOf(kSessionAccess, path, method);
+}
+
+inline const ClipRouteAccess* clipRouteOf(std::string_view path,
+                                           drogon::HttpMethod method)
+{
+  constexpr std::string_view kCameraPrefix = "/camera/";
+  if (!path.starts_with(kCameraPrefix))
+    return nullptr;
+  const auto* route = routeOf(kClipAccess, path, method);
+  if (route == nullptr || route->path.find("/clips") == std::string_view::npos)
+    return nullptr;
+  return route;
 }
 
 inline constexpr std::array<TableName, 7> kBaselineTables = {
@@ -562,6 +591,11 @@ inline bool normalizedRouteAccess(const HasHttpAccessInput& input)
     return routeTableAllows(kGuardAccess, input);
   if (segment == "modules")
     return routeTableAllows(kModuleAccess, input);
+  if (segment == "clip")
+    return routeTableAllows(kClipAccess, input);
+
+  if (const auto* clip = clipRouteOf(input.path, input.method))
+    return roleGranted(clip->roles, input.role, input.roleActive);
 
   if (const auto* route = routeOf(kRouteOverrides, input.path, input.method))
     return roleGranted(route->roles, input.role, input.roleActive);

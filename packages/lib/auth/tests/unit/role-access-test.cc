@@ -722,3 +722,47 @@ TEST_CASE("guards read named visitors and their pictures; only owners manage the
   }
   CHECK(hasHttpAccess({.role = UserRole::Owner, .path = "/visitor-settings", .method = drogon::Patch}));
 }
+
+TEST_CASE("clip access follows the table exactly as the access rows")
+{
+  const auto allows = [](UserRole role, const char* path, drogon::HttpMethod method,
+                         bool roleActive = true) {
+    return role_access::hasHttpAccess(
+        {.role = role, .path = path, .method = method, .roleActive = roleActive});
+  };
+
+  CHECK(allows(UserRole::Owner, "/camera/4/clips", drogon::Get));
+  CHECK(allows(UserRole::Owner, "/camera/4/clips/7/preview", drogon::Get));
+  CHECK(allows(UserRole::Owner, "/clip/abc/content", drogon::Get));
+  CHECK(allows(UserRole::Owner, "/camera/4/clips/7", drogon::Delete));
+
+  CHECK(allows(UserRole::Guard, "/camera/4/clips", drogon::Get));
+  CHECK(allows(UserRole::Guard, "/camera/4/clips/7/preview", drogon::Get));
+  CHECK(allows(UserRole::Guard, "/clip/abc/content", drogon::Get));
+  CHECK_FALSE(allows(UserRole::Guard, "/camera/4/clips/7", drogon::Delete));
+  CHECK_FALSE(allows(UserRole::Guard, "/camera/4/clips", drogon::Post));
+
+  for (const auto role : {UserRole::Resident, UserRole::Guest}) {
+    CHECK_FALSE(allows(role, "/camera/4/clips", drogon::Get));
+    CHECK_FALSE(allows(role, "/camera/4/clips/7/preview", drogon::Get));
+    CHECK_FALSE(allows(role, "/clip/abc/content", drogon::Get));
+    CHECK_FALSE(allows(role, "/camera/4/clips/7", drogon::Delete));
+    CHECK(allows(role, "/camera/4", drogon::Get));
+  }
+
+  CHECK_FALSE(allows(UserRole::Unknown, "/camera/4/clips", drogon::Get));
+  CHECK_FALSE(allows(UserRole::Unknown, "/clip/abc/content", drogon::Get));
+
+  CHECK_FALSE(allows(UserRole::Guard, "/camera/4/clips", drogon::Get, false));
+
+  const ModuleSnapshot modules = ModuleSnapshot{ModuleFlags{
+      {.id = "surveillance", .enabled = false, .roles = {"guard"}},
+  }};
+  CHECK(role_access::routeVerdict(
+            {.role = UserRole::Guard, .path = "/camera/4/clips", .method = drogon::Get,
+             .modules = modules}) == role_access::RouteVerdict::ModuleDisabled);
+  CHECK(role_access::routeVerdict(
+            {.role = UserRole::Owner, .path = "/clip/abc/content", .method = drogon::Get,
+             .modules = modules}) == role_access::RouteVerdict::ModuleDisabled);
+  CHECK(role_access::moduleOfPath("/clip/abc/content") == role_access::kSurveillanceModule);
+}
