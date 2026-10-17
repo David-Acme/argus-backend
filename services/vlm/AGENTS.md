@@ -82,10 +82,15 @@ The gRPC leg is composed in `main.cc` and nowhere else, only when `rpc.address`
 and at least one non-empty `[rpc.callers]` pair are set — the RPC server answers
 `argus.vlm.v1` with the same engine the HTTP controller drives, refuses an
 unlisted caller with 401 and sanitizes anything that is not a
-`ResponseException` into 500. Both keys are empty in `config.toml.example`, no
-deploy config sets them, and no toml in the tree sets `vlm.grpc_target`, so a
-default install answers the HTTP wire alone while the gRPC face stays reachable
-for the cutover.
+`ResponseException` into 500. The deploy template arms it
+(`argus-deploy/config.vlm.toml.example`, `0.0.0.0:7131` plus the mutual-TLS
+`0.0.0.0:7331`), and `scripts/lib/common.sh` fills its caller pairs from the
+callees' own configs, so a deployed argus-vlm serves the typed leg and the
+deployed argus-guard dials it (`[vlm] grpc_target = tls:argus-vlm:7331`, no HTTP
+URL). The native template keeps both keys empty the way stt, tts and llm do, so
+a native install answers the HTTP wire alone; its caller keeps dialling
+`guard.assess.vlm_url`, because arming the listener would also wire the
+settings owner and change the frozen `GET /settings` row.
 
 Three properties of the face are the composition's, not the engine's. The
 caller must present the credential header exactly once — zero or two entries

@@ -78,13 +78,14 @@ the gRPC client's types to serve the protocol.
   `vlm.grpc_credential` as the caller's credential, the constructor's
   `timeoutS` as the deadline — and otherwise the HTTP path to the constructor's
   `baseUrl`. `remote()` is true when either is set. The gRPC client is cached in
-  a `std::atomic<std::shared_ptr<RpcCache>>` that holds the target it was built
-  for: `rpcClient()` re-reads `vlm.grpc_target` on every call and adopts the
-  cached client only while the target still matches (`compare_exchange_weak`),
-  so a second thread that raced the first adopts the winner's client and a
-  runtime change of the target rebuilds it before the next call. The blocking
-  gRPC call runs inside `BlockingTask`, off the Drogon event loop, as rule 13c
-  requires of a coroutine caller.
+  a `std::atomic<std::shared_ptr<RpcCache>>` that holds the target and the
+  credential it was built for: `rpcClient()` re-reads both knobs on every call
+  and adopts the cached client only while the two still match
+  (`compare_exchange_weak`), so a second thread that raced the first adopts the
+  winner's client, a runtime change of either knob rebuilds it before the next
+  call, and a rotated credential is never served from a stale client. The
+  blocking gRPC call runs inside `BlockingTask`, off the Drogon event loop, as
+  rule 13c requires of a coroutine caller.
 - The HTTP wire it owns: a POST to `/vlm/v1/describe` whose body is `image_b64`
   — standard-alphabet base64 with padding, so `argus` is `YXJndXM=` — with
   `prompt` always present (even when empty) and `camera_id` only when the
@@ -122,20 +123,20 @@ the gRPC client's types to serve the protocol.
   (`lib/inc/drogon/utils/coroutine.h:500`). The one consumer only checks the
   optional, at `guard-assessment.cc:298` and `:362`, so that exception escapes
   there; the suite pins both sides of it.
-- No endpoint config of its own for the HTTP leg, by design: argus-guard reads
-  `guard.assess.vlm_url` (declared in the deploy config at
-  `argus-deploy/config.guard.toml:131`, `http://172.19.0.31:7031`, inside the
-  `[guard.assess]` block at :128, and in both templates —
-  `argus-deploy/config.guard.toml.example:109`,
-  `services/guard/config.toml.example:113`) and
-  hands the façade that URL with `guard.assess.timeout_ms / 1000.0` — default
-  8000 ms, so 8.0 s, in both templates, while the deploy config sets 60000 at
-  :133 (`services/guard/src/app/main.cc:155-159`). An empty URL
-  means guard builds no façade at all, so the gRPC knobs only matter where the
-  HTTP URL is also set. The gRPC pair (`vlm.grpc_target`,
-  `vlm.grpc_credential`) is declared in no toml at all — only runtime overrides
-  in this package's own suite and in `services/vlm/tests/unit/vlm-rpc-test.cc`
-  set it — so nothing ships the gRPC path enabled.
+- Endpoint config, by design: argus-guard reads `guard.assess.vlm_url` out of
+  `[guard.assess]` and hands the façade that URL with
+  `guard.assess.timeout_ms / 1000.0` (8000 ms, so 8.0 s, in both templates), and
+  builds the façade when **either** that URL or `vlm.grpc_target` is set
+  (`services/guard/src/app/main.cc`), so the target knob alone moves assessment
+  onto the typed leg. The gRPC pair is declared in both templates' own `[vlm]`
+  block: the deploy one dials `tls:argus-vlm:7331` with provisioning filling
+  `grpc_credential` from the callee's `[rpc.callers] guard`
+  (`scripts/lib/common.sh`), so a fresh deploy dials the mutual-TLS listener
+  and ships no HTTP URL at all; the native template leaves the pair out and
+  keeps `vlm_url` on the plaintext loopback listener, because the native VLM
+  serves no gRPC leg (its `[rpc] address` is empty, as stt/tts/llm's are) and
+  arming it would also wire the settings owner — the frozen
+  `GET /settings` row pins that owner as unconfigured.
 - Flagged deviations from §2.3, neither hidden: there is no `details/` folder —
   the HTTP body and the envelope parsing share `vlm-remote.cc` with the façade,
   and the gRPC channel and credential helpers are `lib/grpc`'s

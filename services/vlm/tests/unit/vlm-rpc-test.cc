@@ -516,6 +516,16 @@ TEST_CASE("the guard facade takes the gRPC leg when the knob is set")
                                          .cameraId = input.cameraId}));
   CHECK(described.value_or(VlmDescribeResult{}).caption == expected(input));
 
+  const auto askThrough = [&facade, &input] {
+    return drogon::sync_wait(facade.describe({.jpeg = input.jpeg,
+                                              .prompt = input.prompt,
+                                              .cameraId = input.cameraId}));
+  };
+  ConfigService::setRuntimeString("vlm.grpc_credential", "stale-secret");
+  CHECK_FALSE(askThrough().has_value());
+  ConfigService::setRuntimeString("vlm.grpc_credential", kSecret);
+  CHECK(askThrough().value_or(VlmDescribeResult{}).caption == expected(input));
+
   ConfigService::setRuntimeString("vlm.grpc_target", "");
   ConfigService::setRuntimeString("vlm.grpc_credential", "");
   CHECK_FALSE(facade.remote());

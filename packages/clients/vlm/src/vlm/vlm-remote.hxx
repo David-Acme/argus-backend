@@ -48,6 +48,7 @@ private:
   struct RpcCache
   {
     std::string target;
+    std::string credential;
     std::shared_ptr<argus::vlm::Client> client;
   };
   std::shared_ptr<argus::vlm::Client> rpcClient() const;

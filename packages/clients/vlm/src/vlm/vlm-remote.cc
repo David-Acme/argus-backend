@@ -59,14 +59,17 @@ std::shared_ptr<argus::vlm::Client> VlmClient::rpcClient() const
   const auto target = ConfigService::getString("vlm.grpc_target");
   if (target.empty())
     return {};
+  const auto credential = ConfigService::getString("vlm.grpc_credential");
   auto cached = rpcCache_.load();
-  while (!cached || cached->target != target) {
+  while (!cached || cached->target != target ||
+         cached->credential != credential) {
     const auto seconds = static_cast<std::int64_t>(timeoutS_ * 1000.0);
     auto built = std::make_shared<RpcCache>(RpcCache{
         .target = target,
+        .credential = credential,
         .client = std::make_shared<argus::vlm::Client>(argus::vlm::ClientConfig{
             .target = target,
-            .credential = ConfigService::getString("vlm.grpc_credential"),
+            .credential = credential,
             .timeout = std::chrono::milliseconds(seconds)})});
     if (rpcCache_.compare_exchange_weak(cached, built))
       return built->client;

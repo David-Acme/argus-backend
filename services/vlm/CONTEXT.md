@@ -73,8 +73,16 @@ decoded `cv::Mat` — so the caption a gRPC caller receives is the caption the
 HTTP route would answer, caption cache included, and a shut-down engine
 reports `loaded: false` truthfully instead of a boot snapshot. It is composed
 in `main.cc` only when `rpc.address` and a non-empty `[rpc.callers]` pair are
-set, and nothing in the tree sets either key, or `vlm.grpc_target` on the
-caller side: the leg is live and dormant, and the cutover is a later decision.
+set. `argus-deploy/config.vlm.toml.example` arms both — `0.0.0.0:7131` with the
+mutual-TLS `0.0.0.0:7331`, its caller pairs filled by `scripts/lib/common.sh`
+from `[rpc.callers]` of the callees' own configs — and the deployed
+`argus-guard` therefore dials the typed leg (`[vlm] grpc_target =
+tls:argus-vlm:7331`) with no HTTP URL set. `services/vlm/config.toml.example`
+keeps both empty, so the native checkout answers the HTTP wire while the gRPC
+face stays dormant there, exactly as stt, tts and llm do natively; guard's
+native template keeps `guard.assess.vlm_url`, since arming the listener also
+makes the settings service wire `owners.vlm` and moves the frozen
+`GET /settings` row.
 
 The engine's inference slots are the face's backpressure: one acquisition from
 `ThreadBudget::inferenceSlots()`, `try_acquire` rather than a blocking wait

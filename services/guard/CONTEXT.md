@@ -197,7 +197,13 @@ boot either way. The remaining flags: `profile`, `default_mode`, `notify_level`,
 (`greet_enabled`, `greet_known`, `greet_texts`, `greet_known_text`,
 `greet_listen_seconds`, `greet_reply_texts`, `greet_repair_text`).
 VLM/LLM assessment lives behind `[guard.assess] enabled`, `mode`, `vlm_url`,
-`llm_url`, `timeout_ms` and `max_tool_rounds`.
+`llm_url`, `timeout_ms` and `max_tool_rounds`. `timeout_ms` is the deadline of
+the VLM leg as well, which runs through `argus::clients::vlm`'s façade: `vlm_url`
+is its frozen HTTP transport, kept for the native checkout, while
+`argus-deploy/config.guard.toml.example` sets it empty and points
+`[vlm] grpc_target` at the callee's mutual-TLS listener, with the credential
+`provision-host.sh` fills from `vlm [rpc.callers] guard` — so a deployed guard
+describes through gRPC and the native one through HTTP.
 
 ## Reliability
 
