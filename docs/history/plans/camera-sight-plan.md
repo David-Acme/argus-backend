@@ -139,7 +139,46 @@ The recommended values are a synthesis of the sources above. Every window is own
 - If the server itself dies, the phone's dead man's switch, which exists already, raises "Argus no responde".
 - The copy, in the user's language: "Perdí la visión de la cámara {nombre}" plus the type ("tapada", "deslumbrada", "girada", "sin señal"). The multi-camera case says: "Perdí la visión de {n} cámaras a la vez".
 
-### A5. Tests and measurement
+### A5. Maintenance context
+
+Argus has to tell an attacker apart from someone of the household who is cleaning, moving or repairing a camera. It learns that in three ways: the person says so, Argus sees who it is, or Argus asks. What each way allows depends on the role.
+
+**Declared maintenance**
+- A person declares a maintenance window in the app ("Voy a darle mantenimiento") or to the assistant ("voy a limpiar la cámara del patio", which is rules plus slots, never the LLM's choice).
+- It covers one camera, several, or all of an environment, for 15 minutes by default and 2 hours at most. "Ya terminé" or the button ends it early.
+- Who may declare it:
+  - Owner and Resident: any camera;
+  - Guard: only while on duty, and only the cameras of its own environment;
+  - Guest and Unknown: never.
+  - Every window is audited.
+- Inside the window, tamper on the declared cameras becomes a quiet log line instead of an alarm.
+- When the window ends, the view is compared with the home reference:
+  - if it matches, nothing happens;
+  - if it changed, the person who declared the window is asked: "La cámara {nombre} quedó mirando distinto. ¿Es la nueva vista?". Confirming relearns the reference, and refusing keeps the alert.
+- The window is not a bypass:
+  - it never covers cameras outside its scope, so the several-cameras escalation still holds for the others;
+  - it ends at once when an unknown person is detected on any camera of the environment;
+  - a window declared under duress (the duress phrase or PIN) is flagged to the owner and does not suppress anything.
+
+**Seen maintenance**
+- Argus looks at the pre-roll before onset. If a recognized household face (Owner or Resident, or Guard on duty) appears close to the camera, with a large box approaching the lens, the tamper reads as "probable mantenimiento por {nombre}".
+- At home, no alarm: a notice with the clip, saying "Parece que {nombre} está manipulando la cámara {cámara}".
+- In away or armed mode, it is an alert one level lower (High instead of Critical) that names the person. It stays Critical when guard presence says that person is away, because a known face whose phone is elsewhere may be a photo or a misidentification.
+- A recognized Guest is never a reason to suppress. The owner is told who it was.
+- A voiceprint match can add support, but never decides alone.
+
+**Asking**
+- At home, if the tamper has no recognized face but someone is home, Argus asks the people at home through the response mechanism: "¿Alguien está moviendo la cámara {nombre}?".
+  - "Sí, soy yo" from an Owner or Resident turns it into a declared window.
+  - "No" escalates at once.
+  - No answer within 60 s applies the normal policy.
+- In away or armed mode, Argus does not ask. The owner sees the alert and can answer "fui yo" from it, which turns it into a declared window.
+
+**The assistant knows**
+- The assistant's context carries the active maintenance windows and the recent tamper events. So it can answer "¿por qué me avisaste?" and "¿quién movió la cámara?", and it closes a window when told "ya terminé".
+- Each window and each outcome is kept as a memory episode, without crossing users' private data.
+
+### A6. Tests and measurement
 
 - Run classify on synthetic frames for every row of A1, and over a day/night switch.
 - Check the windows per mode.
@@ -147,6 +186,13 @@ The recommended values are a synthesis of the sources above. Every window is own
 - Check that onset requests a clip.
 - Check that no tamper fires for a masked or aiming camera.
 - Check the copy in es and en.
+- Check the maintenance context:
+  - a declared window per role, including a Guard off duty, a Guest and Unknown, who are all refused;
+  - an unknown person ends the window;
+  - a window declared under duress suppresses nothing;
+  - a seen household face lowers the level, and stays Critical when that person is away;
+  - the ask path: yes, no and timeout;
+  - the view check at the end of a window.
 - Measure in the sandbox, never on the owner's cameras:
   - the time from cover to alert, per type;
   - the false-alarm rate over a recorded normal day.
