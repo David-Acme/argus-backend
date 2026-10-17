@@ -58,7 +58,8 @@ constexpr auto kSpanishRequests = std::to_array<Phrase>({
     "crear", "crealo", "anota", "anotame", "anotar", "anotalo", "apunta", "apuntame", "apuntar", "guarda",
     "guardame", "guardar", "guardalo", "recuerdame", "recordarme", "recuerdales", "activa", "activame",
     "activar", "activalo", "enciende", "apaga", "apagar", "apagalo", "desactiva", "desactivar", "cancela",
-    "cancelar", "cancelalo", "borra", "borrar", "borralo", "elimina", "eliminar", "eliminalo", "quita",
+    "cancelar", "cancelalo", "borra", "borrar", "borralo", "olvida", "olvidalo", "olvidate",
+    "elimina", "eliminar", "eliminalo", "quita",
     "quitar", "quitalo", "pon", "ponme", "poner", "ponlo", "marca", "marcar", "marcalo", "completa", "completar",
     "anade", "agrega", "agregar", "agregalo", "cambia", "mueve", "reprograma", "reserva", "avisale", "pidele",
     "agendarme", "agendarlo", "programarme", "programarlo", "anotarlo", "anotarme", "guardarlo", "crearlo", "activarlo",
@@ -119,8 +120,8 @@ constexpr auto kEnglishHedges = std::to_array<Phrase>({
 
 constexpr auto kEnglishRequests = std::to_array<Phrase>({
     "schedule", "book", "create", "add", "set", "remind", "save", "note", "enable", "activate", "disable",
-    "deactivate", "cancel", "delete", "remove", "erase", "mark", "complete", "turn", "switch", "put",
-    "arrange", "reschedule", "move", "change", "register", "reserve", "notify", "make", "update",
+    "deactivate", "cancel", "delete", "remove", "erase", "forget", "mark", "complete", "turn", "switch",
+    "put", "arrange", "reschedule", "move", "change", "register", "reserve", "notify", "make", "update",
     "organize", "plan", "track", "record", "pin", "store"});
 
 constexpr auto kSpanishCalls = std::to_array<Phrase>({
