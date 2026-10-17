@@ -1,5 +1,12 @@
 # Argus — Detailed plan to reduce tool-calling dependency
 
+> **SUPERSEDED (2026-10-16).** What governs the tool-calling state is the
+> decider + slots turn, not this document: the fast tier proposes, the turn
+> fills the tool's arguments and the LLM only speaks. See the root `AGENTS.md`
+> (rule 15's intent router, and the tool-runtime, turn and intent rows of the
+> key-files table) and `closing-plan-2026-10.md` (Phase 5, item 1: Laya and
+> GLiNER in the product). Kept verbatim as history.
+
 **Recipient:** Claude, implementation agent  
 **Project:** Argus backend  
 **Path:** `/home/acme/Desktop/argus/backend`  

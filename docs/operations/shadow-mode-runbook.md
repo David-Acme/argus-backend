@@ -138,7 +138,7 @@ Procedure:
    journal keeps measuring either way.
 
 Retention: journal rows older than `guard.journal_retention_days`
-(default 90) are purged by the daily retention sweep. Keep the default
+(default 30) are purged by the daily retention sweep. Keep the default
 until Round 9 calibration is done.
 
 ## 6. Quiet log, near misses and labels (Round 11)
