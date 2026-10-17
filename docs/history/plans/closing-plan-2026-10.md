@@ -89,6 +89,18 @@ While one runs, the other subagents keep writing code and wait for the lock; the
   - the commands run, with their exit codes;
   - the acceptance criterion of this plan, and the evidence that it holds.
 
+## 0c. Develop first, build and test at the batch end (owner, 2026-10-16)
+
+- **During development, a unit stops before any heavy build.** It ends at the code, the cheap checks that need no build (comments, deps, routes, tsc, eslint, seconds-fast pure-TS tests), the implementer's diff review and the reviewer's code review.
+- **Accepted units stack on the integration branches** (`integ/backend-candidate`, `integ/frontend-candidate`, and the argus-ai bundles branch).
+- **One integration pass at the batch end**, through the heavy lock with all cores:
+  - the full `build-all.sh dev`;
+  - the frontend verify (e2e excluded), the push JVM tests and one release APK;
+  - the desktop `cargo test` and the bundle probe;
+  - then one prod build for every measurement unit back to back: R, C, G's fixture, 4d, T's measure-first, and 4c last.
+- **Failures become fix units.** The reviewer re-runs the pass, then fast-forwards `master`.
+- **Exception: one targeted run** when a unit's design cannot be judged otherwise.
+
 ## Phase 0: status audit (1–2 h, one subagent)
 
 The backlog in `realtime-and-backlog-plan.md` §3–§9 was written on 2026-10-12, and much of it has landed since: real time, mTLS on the internal callers, call delivery, reminder snooze and more.
