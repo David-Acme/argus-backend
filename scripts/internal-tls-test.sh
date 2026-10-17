@@ -26,7 +26,12 @@ nothing when a port cannot be bound, and refuse a message over the cap on
 both ports while serving one under it, and listenFailure names the ports
 that were asked for and the consequence only when nothing came up. A process
 installs its certificate once, so every test case runs in a process of its
-own. Without openssl the test exits 77, which ctest reports as skipped.
+own. The case list is taken with --no-skip, so a case decorated
+doctest::skip is still listed and counts toward the minimum, and a case whose
+own process reports exactly one skipped test case is accepted - its output is
+passed through so the reason it printed reaches the runner and nothing fails.
+A case that neither reports one passing test case nor one skipped one does
+fail. Without openssl the test exits 77, which ctest reports as skipped.
 USAGE
 }
 
@@ -57,7 +62,7 @@ openssl req -x509 -new -key "$work/foreign/key.pem" -sha256 -days 30 \
   -out "$work/foreign/cert.pem"
 cp "$work/internal/camera/ca.pem" "$work/foreign/ca.pem"
 
-"$test_bin" --list-test-cases > "$work/list.out" 2>&1 \
+"$test_bin" --no-skip --list-test-cases > "$work/list.out" 2>&1 \
   || { cat "$work/list.out" >&2; printf 'internal-tls-test: the test cases could not be listed\n' >&2; exit 1; }
 awk '
   /listing all test case names/ { listing = 1; next }
@@ -67,6 +72,7 @@ awk '
 
 ran=0
 failed=0
+skipped=0
 while IFS= read -r name; do
   filter="${name//\\/\\\\}"
   filter="${filter//,/\\,}"
@@ -75,6 +81,9 @@ while IFS= read -r name; do
     cat "$work/case.out" >&2
     printf 'internal-tls-test: failed: %s\n' "$name" >&2
     failed=$((failed + 1))
+  elif grep -Eq 'test cases: *0 \| *0 passed \| *0 failed \| *[1-9][0-9]* skipped' "$work/case.out"; then
+    cat "$work/case.out"
+    skipped=$((skipped + 1))
   elif ! grep -Eq 'test cases: *1 \| *1 passed' "$work/case.out"; then
     cat "$work/case.out" >&2
     printf 'internal-tls-test: did not run exactly one case: %s\n' "$name" >&2
@@ -85,4 +94,8 @@ done < "$work/cases"
 
 [ "$ran" -ge "$minimum" ] || { printf 'internal-tls-test: only %s test cases were found\n' "$ran" >&2; exit 1; }
 [ "$failed" -eq 0 ] || { printf 'internal-tls-test: %s of %s test cases failed\n' "$failed" "$ran" >&2; exit 1; }
-printf 'internal-tls-test: %s test cases passed, each in a process of its own\n' "$ran"
+if [ "$skipped" -eq 0 ]; then
+  printf 'internal-tls-test: %s test cases passed, each in a process of its own\n' "$ran"
+else
+  printf 'internal-tls-test: %s test cases passed and %s skipped with their reason above, each in a process of its own\n' "$((ran - skipped))" "$skipped"
+fi

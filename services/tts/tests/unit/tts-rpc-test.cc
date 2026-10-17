@@ -19,6 +19,7 @@
 #include <chrono>
 #include <cstddef>
 #include <filesystem>
+#include <iostream>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -34,6 +35,19 @@ using argus::tts::Quality;
 using argus::tts::SynthesisInput;
 
 constexpr const char* kSecret = "rpc-secret";
+
+bool supertonicModelInstalled()
+{
+  const std::filesystem::path manifest =
+      std::filesystem::path(ARGUS_TEST_TTS_MODELS_DIR) / "onnx" / "tts.json";
+  if (std::filesystem::is_regular_file(manifest))
+    return true;
+  std::cerr << "tts-rpc-test skips its real-engine case: the TTS model is not "
+               "installed under "
+            << ARGUS_TEST_TTS_MODELS_DIR
+            << " — run services/tts/scripts/provision.sh to install it\n";
+  return false;
+}
 
 TtsRpcInput serverInput()
 {
@@ -319,7 +333,8 @@ TEST_CASE("invalid requests and malformed details keep http codes bounded")
   CHECK(malformed.errorCode() == "BAD_GATEWAY");
 }
 
-TEST_CASE("real engine streams its native rate through the legacy client")
+TEST_CASE("real engine streams its native rate through the legacy client" *
+          doctest::skip(!supertonicModelInstalled()))
 {
   ConfigService::setRuntimeString("tts.models_dir", ARGUS_TEST_TTS_MODELS_DIR);
   ConfigService::setRuntimeString("tts.speed", "1.0");
@@ -327,17 +342,9 @@ TEST_CASE("real engine streams its native rate through the legacy client")
   ConfigService::setRuntimeString("tts.quality", "low");
   auto& engine = TtsService::instance();
   engine.init();
-  if (!engine.isLoaded()) {
-    const std::filesystem::path manifest =
-        std::filesystem::path(ARGUS_TEST_TTS_MODELS_DIR) / "onnx" / "tts.json";
-    if (std::filesystem::is_regular_file(manifest))
-      FAIL("the TTS engine did not load from the model installed under "
-           ARGUS_TEST_TTS_MODELS_DIR);
-    MESSAGE("skipping the real-engine case: the TTS model is not installed "
-            "under " ARGUS_TEST_TTS_MODELS_DIR
-            " — run services/tts/scripts/provision.sh to install it");
-    return;
-  }
+  REQUIRE_MESSAGE(engine.isLoaded(),
+                  "the model under " ARGUS_TEST_TTS_MODELS_DIR
+                  " is installed but the TTS engine did not load from it");
   auto input = serverInput();
   input.capabilities = {.sampleRate = engine.sampleRate(), .channels = 1,
       .defaultSpeed = engine.defaultSpeed(), .voices = engine.availableVoices(),

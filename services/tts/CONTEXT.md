@@ -467,20 +467,22 @@ coverage in `tts-pocket-test`.
 
 ## A worktree without the models
 
-The two cases that synthesize through the real engine name the gap instead of
-failing the suite. `tts-wire-test` carries
-`doctest::skip(!supertonicModelsInstalled())`: a `models/tts` tree without
-`onnx/tts.json` or `voice_styles/M3.json` reports the case as skipped (ctest
-marks it through its doctest skipped pattern) and the binary prints the
-reason, while a model that is installed but fails to load still fails.
-`tts-rpc-test` cannot use the decorator: it runs under
-`scripts/internal-tls-test.sh`, which lists the test cases and runs each in a
-process of its own expecting exactly one passing case, and doctest neither
-lists a skip-decorated case nor reports a selected skipped one as passing. So
-the real-engine case there prints a `MESSAGE` with the same reason and returns
-green, and only an installed-but-unloading model reaches its `FAIL`. The
-reason names `services/tts/scripts/provision.sh`, which installs Supertonic 3
-and the configured Pocket components.
+The two cases that synthesize through the real engine carry
+`doctest::skip(<predicate>)`, and each predicate prints the reason when it
+reports the gap. `tts-wire-test` needs the Supertonic model its config pins
+both languages to (`onnx/tts.json` and `voice_styles/M3.json`);
+`tts-rpc-test`'s real-engine case needs the model the engine boots from
+(`onnx/tts.json`), which its English synthesis falls back to when Pocket is
+absent. A worktree whose `models/tts` tree is not provisioned therefore
+reports the case as skipped, never red, and names
+`services/tts/scripts/provision.sh`, which installs Supertonic 3 and the
+configured Pocket components. The skip is decided by the files, not by the
+load, so a model that is installed but fails to load still fails. The rpc
+binary runs under `scripts/internal-tls-test.sh`, whose per-case processes
+would otherwise read a skip as a failure: the wrapper lists the cases with
+`--no-skip`, so a skipped case still counts toward its minimum, and accepts a
+case whose process reports exactly one skipped test case, passing its output
+through so the printed reason reaches the runner.
 
 ## A closing client still hears the answer
 
