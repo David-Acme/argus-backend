@@ -1,8 +1,8 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <app/rpc/voice-rpc-server.hxx>
 #include <chrono>
-#include <feature/voice/voice-rpc-server.hxx>
 #include <grpc-test-support/internal-tls-probe.hxx>
 #include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>

@@ -9,6 +9,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/argus-module.cmake)
 
+set(VOICE_SRC_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
 if(PROJECT_IS_TOP_LEVEL)
     find_package(Drogon CONFIG REQUIRED)
     find_package(cnats CONFIG REQUIRED)
@@ -102,7 +104,6 @@ argus_module(NAME voice-core
         src/feature/voice/opening-budget.cc
         src/feature/voice/voice-engine-seam.cc
         src/feature/voice/voice-rpc-service.cc
-        src/feature/voice/voice-rpc-server.cc
         src/feature/health/health-rpc-service.cc
         ${VOICE_ENGINE_SOURCES}
     INCLUDES
@@ -148,10 +149,11 @@ target_compile_options(argus_voice-core PRIVATE -Wall -Wextra)
 add_subdirectory(src/config)
 add_subdirectory(src/feature/settings)
 add_subdirectory(src/feature/rtc)
+add_subdirectory(src/app/rpc)
 
 argus_service(NAME argus-voice
-    MAIN src/main.cc
-    MODULES argus::voice-config argus::voice-core argus::voice-settings argus::voice-rtc
+    MAIN ${VOICE_SRC_ROOT}/app/main.cc
+    MODULES argus::voice-config argus::voice-rpc argus::voice-core argus::voice-settings argus::voice-rtc
     DEPENDS argus::clients::notification
     PORTS 7034 7035)
 
@@ -419,7 +421,7 @@ add_test(NAME voice-playout-gain-test COMMAND voice-playout-gain-test)
 
 add_executable(voice-rpc-server-test tests/unit/voice-rpc-server-test.cc)
 
-target_link_libraries(voice-rpc-server-test PRIVATE argus::voice-core
+target_link_libraries(voice-rpc-server-test PRIVATE argus::voice-rpc
     argus::lib::grpc-test-support
     doctest::doctest)
 

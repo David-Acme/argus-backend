@@ -1,8 +1,8 @@
+#include <app/rpc/voice-rpc-server.hxx>
 #include <config/voice-config.hxx>
 #include <feature/health/health-rpc-service.hxx>
 #include <feature/rtc/rtc-agent-service.hxx>
 #include <feature/settings/voice-settings.hxx>
-#include <feature/voice/voice-rpc-server.hxx>
 #include <feature/voice/voice-rpc-service.hxx>
 #include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
