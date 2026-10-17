@@ -1349,7 +1349,7 @@ volumes:
 
 networks:
   internal:
-    name: argus-cutover-internal
+    name: ${ARGUS_NETWORK_NAME:-argus-cutover-internal}
     ipam:
       config:
-        - subnet: 172.19.0.0/24
+        - subnet: ${ARGUS_NETWORK_SUBNET:-172.19.0.0/24}
