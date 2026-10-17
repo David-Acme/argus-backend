@@ -114,16 +114,24 @@ no longer raises anything; a delivery is not a threat.
 
 **Vision caption.** Because a weapon tag is that decisive, the default
 caption prompt never names a weapon and asks only for what is actually
-visible, saying so when something is not visible. Measured 2026-10-16 on
+visible, saying so when something is not visible, and asks for any held
+object to be named as precisely as it can be seen. Measured 2026-10-16 on
 LFM2.5-VL-450M over the 8 owner frames × 3 seeds (the Bonsai report's own
 harness): with the old prompt ("say clearly if it is a knife, a gun or
 another weapon") the model invented a weapon in 4 of 24 captions, and
 naming the nouns in imperative form ("name a knife … only if clearly
 visible") made it worse at 6 of 24 — the 450M model obeys the noun, not the
-condition. A prompt that asks what is visible in the hands, demands posture
-exactly as seen and offers "say so instead of guessing" measured 0 of 24
-with person recall unchanged, so it is the default; `vision.describe`
-callers may still ask their own question.
+condition. The no-guessing wording measured 0 of 24 on the owner frames,
+but on a labelled positive set (26 frames from COCO 2017 val and train,
+CC BY / CC BY-SA, a person clearly holding a knife; 8 of them grayscale;
+eval-only under `~/.cache/argus-guard-eval/`) it named the weapon in 54 of
+78 replies against the old prompt's 65, so the wording gained the clause
+"if they hold an object, name it as precisely as you can see it"; the
+acceptance rerun (owner frames at zero, positives not below the old
+prompt, hard negatives not above it, latency, and the guard LLM's weapon
+tag on a caption that names a knife) is deferred to the batch's
+integration pass. `vision.describe` callers may still ask their own
+question.
 
 **Deterrence ladder.** Voice needs `High`; the siren needs `Critical`.
 - Public present or staff only: silent always - never talk to or sound a

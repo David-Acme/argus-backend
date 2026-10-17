@@ -27,7 +27,8 @@ constexpr const char* kDefaultVisionPrompt =
     "in their hands, posture exactly as seen, and whether they look "
     "aggressive, masked or suspicious. Only say what is actually visible in "
     "the image; if something is unclear or not visible, say so instead of "
-    "guessing.";
+    "guessing. If they hold an object, name it as precisely as you can see "
+    "it.";
 
 constexpr const char* kGuardGrammar = R"GBNF(root ::= final | vision | listen
 final ::= "{" ws "\"tool\":" ws "\"final\"" "," ws threat "," ws veto "," ws tags "," ws summary "," ws announce "," ws reason "}" ws

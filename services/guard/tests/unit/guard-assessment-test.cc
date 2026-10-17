@@ -28,6 +28,8 @@ TEST_CASE("the default vision prompt forbids guessing and never names a weapon")
   CHECK(decision.tool.prompt.find("actually visible") != std::string::npos);
   CHECK(decision.tool.prompt.find("unclear or not visible") !=
         std::string::npos);
+  CHECK(decision.tool.prompt.find("name it as precisely as you can see it") !=
+        std::string::npos);
   CHECK(decision.tool.prompt.find("knife") == std::string::npos);
   CHECK(decision.tool.prompt.find("gun") == std::string::npos);
   CHECK(decision.tool.prompt.find("weapon") == std::string::npos);
