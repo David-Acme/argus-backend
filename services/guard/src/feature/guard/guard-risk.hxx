@@ -37,6 +37,7 @@ struct GuardRiskInput
   GuardDanger floor{GuardDanger::None};
   std::string threat;
   std::vector<std::string> tags;
+  std::string caption;
   bool hardFloor{false};
 };
 

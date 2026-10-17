@@ -12,6 +12,7 @@ argus_module(NAME guard
         guard-schedule.cc
         guard-schema.cc
         guard-service.cc
+        guard-weapon-lexicon.cc
         controllers/guard-controller.cc
         controllers/response-controller.cc
         infra/identity-response-directory.cc

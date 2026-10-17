@@ -112,6 +112,24 @@ enumerates them) and `weapon` (also `knife`, `gun`, `firearm`,
 expected guest: a guest who carries a knife is not a guest. `carrying_box`
 no longer raises anything; a delivery is not a threat.
 
+The model's tag is not the only source, because it is not a dependable one:
+a downstream check of 15 captions that name a held knife produced the
+`weapon` tag zero times. Beside it, and never instead of it,
+`guard_risk::mergeEvidence` reads the vision caption itself through
+`guard_weapon::captionAssertsWeapon` - a static bilingual lexicon (knife,
+blade, machete, gun, pistol, rifle, firearm / cuchillo, navaja, machete,
+arma, pistola, revolver, escopeta, fusil) matched on word boundaries, case-
+and accent-insensitively over `text_norm`. The caption asserts a weapon only
+when it ties one to the person: a contact or use verb (`holding`, `carries`,
+`cutting`, `sostiene`, `lleva`, `empuna`), the weapon in a hand (`in his
+hand`, `en la mano`) or the instrument phrase (`with a knife`, `con un
+cuchillo`). A negation in the clause (`no visible knife`, `sin arma`, `no se
+ve ningun cuchillo`), a resemblance (`resembles a knife`), a category
+example (`items like knives`) or a scene-only mention (`a knife on the
+table`, `cuchillos en el bloque`) never asserts one. The caption adds the
+same `weapon` evidence the tag would (one `appliedTags` entry, score 4), so
+a tag and a caption together still count once.
+
 **Vision caption.** Because a weapon tag is that decisive, the default
 caption prompt never names a weapon and asks only for what is actually
 visible, saying so when something is not visible, and asks for any held

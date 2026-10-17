@@ -2866,6 +2866,7 @@ GuardService::assessInto(const AssessIntoInput& input)
         guard_risk::mergeEvidence({.floor = danger,
                                    .threat = checkpoint.assessment.threat,
                                    .tags = checkpoint.assessment.tags,
+                                   .caption = checkpoint.assessment.caption,
                                    .hardFloor = hardFloor});
     danger = risk.danger;
     checkpoint.weapon = risk.weapon;

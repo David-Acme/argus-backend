@@ -1,11 +1,23 @@
 #include "guard-risk.hxx"
 
+#include "guard-weapon-lexicon.hxx"
+
 #include <algorithm>
 
 namespace
 {
 constexpr int kRaiseThreshold = 3;
 constexpr int kSoftThreshold = 1;
+
+void applyEvidence(GuardRiskResult& result, RiskEvidence evidence)
+{
+  const std::string name = guard_risk::evidenceToString(evidence);
+  if (std::ranges::find(result.appliedTags, name) != result.appliedTags.end())
+    return;
+  result.appliedTags.push_back(name);
+  result.evidenceScore += guard_risk::evidenceScore(evidence);
+  result.weapon = result.weapon || evidence == RiskEvidence::Weapon;
+}
 }
 
 bool guard_risk::evidenceFromTag(const std::string& tag, RiskEvidence& evidence)
@@ -130,15 +142,11 @@ GuardRiskResult guard_risk::mergeEvidence(const GuardRiskInput& input)
 
   for (const auto& tag : input.tags) {
     RiskEvidence evidence;
-    if (!evidenceFromTag(tag, evidence))
-      continue;
-    const std::string name = evidenceToString(evidence);
-    if (std::ranges::find(result.appliedTags, name) != result.appliedTags.end())
-      continue;
-    result.appliedTags.push_back(name);
-    result.evidenceScore += evidenceScore(evidence);
-    result.weapon = result.weapon || evidence == RiskEvidence::Weapon;
+    if (evidenceFromTag(tag, evidence))
+      applyEvidence(result, evidence);
   }
+  if (guard_weapon::captionAssertsWeapon(input.caption))
+    applyEvidence(result, RiskEvidence::Weapon);
 
   const bool sustainedThreat =
       input.threat == "medium" || input.threat == "high" ||

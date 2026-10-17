@@ -37,6 +37,7 @@ TEST_CASE("hostile scene text cannot become a raising tag")
       {.floor = GuardDanger::Medium,
        .threat = decision.final.threat,
        .tags = decision.final.tags,
+       .caption = {},
        .hardFloor = false});
   CHECK(risk.danger == GuardDanger::Medium);
   CHECK(risk.appliedTags.empty());
@@ -59,6 +60,7 @@ TEST_CASE("only observable vocabulary can raise risk")
       {.floor = GuardDanger::Low,
        .threat = "critical",
        .tags = {"raised_object"},
+       .caption = {},
        .hardFloor = false});
   CHECK(weapon.danger == GuardDanger::High);
 
@@ -66,6 +68,7 @@ TEST_CASE("only observable vocabulary can raise risk")
       {.floor = GuardDanger::Low,
        .threat = "critical",
        .tags = {"system_prompt_override"},
+       .caption = {},
        .hardFloor = false});
   CHECK(fake.danger == GuardDanger::Low);
 }
