@@ -174,6 +174,7 @@ argus_service(NAME argus-camera
         argus::camera-rpc-server
         argus::camera-monitor
         argus::camera-operator
+        argus::camera-recording
         argus::camera-onvif-events
         argus::camera-settings
         argus::camera-privacy
@@ -208,6 +209,7 @@ set(CAMERA_UNIT_TESTS
     camera-stream-test
     camera-media-session-test
     camera-change-transaction-test
+    camera-clip-recorder-test
     camera-privacy-test
     camera-webrtc-test
 )
@@ -302,6 +304,10 @@ target_link_libraries(camera-media-session-test PRIVATE
 target_link_libraries(camera-change-transaction-test PRIVATE
     argus::camera-change-sink
     argus::camera-feature)
+
+target_link_libraries(camera-clip-recorder-test PRIVATE
+    argus::camera-recording
+    argus::contracts::camera)
 
 target_compile_definitions(camera-change-transaction-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")

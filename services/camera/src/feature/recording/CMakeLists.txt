@@ -1,0 +1,35 @@
+argus_module(NAME camera-recording
+    SOURCES
+        controllers/clip-controller.cc
+        dtos/clip-page-dto.cc
+        dtos/response-clip-content-dto.cc
+        dtos/response-clip-preview-capability-dto.cc
+        dtos/response-clips-dto.cc
+        repositories/camera-clip/camera-clip-repository.cc
+        repositories/clip-preview-capability/clip-preview-capability-repository.cc
+        schemas/camera-clip/camera-clip-schema.cc
+        schemas/clip-preview-capability/clip-preview-capability-schema.cc
+        services/clip-builder.cc
+        services/clip-recorder.cc
+        services/clip-service.cc
+        services/opaque-token.cc
+    INCLUDES
+        ../..
+    DEPENDS
+        argus::camera-config
+        argus::camera-motion
+        argus::camera-repositories
+        argus::camera-stream
+        argus::contracts::auth
+        argus::contracts::camera
+        argus::contracts::sync
+        argus::lib::auth
+        argus::lib::errors
+        argus::lib::http
+        argus::lib::sqlite
+        argus::lib::storage
+        argus::lib::validation
+        Drogon::Drogon
+        OpenSSL::Crypto)
+
+target_compile_options(argus_camera-recording PRIVATE -Wall -Wextra)

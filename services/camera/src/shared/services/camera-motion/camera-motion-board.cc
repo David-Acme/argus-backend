@@ -9,22 +9,41 @@ bool CameraMotionBoard::quietPastHold(const Episode& episode, int64_t nowMs)
 
 void CameraMotionBoard::report(const CameraMotionReport& report)
 {
-  const std::scoped_lock lock(mutex_);
-  if (!report.moving) {
-    const auto found = cameras_.find(report.cameraId);
-    if (found != cameras_.end() && found->second.active && found->second.moving) {
-      found->second.moving = false;
-      found->second.endedMs = report.atMs;
+  {
+    const std::scoped_lock lock(mutex_);
+    if (!report.moving) {
+      const auto found = cameras_.find(report.cameraId);
+      if (found != cameras_.end() && found->second.active && found->second.moving) {
+        found->second.moving = false;
+        found->second.endedMs = report.atMs;
+      }
     }
-    return;
+    else {
+      Episode& episode = cameras_[report.cameraId];
+      if (!episode.moving) {
+        if (!episode.active || quietPastHold(episode, report.atMs))
+          episode = {.active = true, .moving = true, .muted = false, .startedMs = report.atMs, .endedMs = 0};
+        else
+          episode.moving = true;
+      }
+    }
   }
-  Episode& episode = cameras_[report.cameraId];
-  if (episode.moving)
+  if (!report.moving)
     return;
-  if (!episode.active || quietPastHold(episode, report.atMs))
-    episode = {.active = true, .moving = true, .muted = false, .startedMs = report.atMs, .endedMs = 0};
-  else
-    episode.moving = true;
+  std::function<void(const CameraMotionReport&)> listener;
+  {
+    const std::scoped_lock lock(mutex_);
+    listener = listener_;
+  }
+  if (listener)
+    listener(report);
+}
+
+void CameraMotionBoard::onReport(
+    std::function<void(const CameraMotionReport&)> listener)
+{
+  const std::scoped_lock lock(mutex_);
+  listener_ = std::move(listener);
 }
 
 bool CameraMotionBoard::raisesCadence(const RaisesCadenceInput& input)

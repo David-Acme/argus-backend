@@ -90,4 +90,28 @@ inline constexpr ErrorDefinition ChangeNotRecorded{
     .code = ErrorCode::InternalError,
     .status = 500,
     .message = "The change could not be recorded"};
+inline constexpr ErrorDefinition InvalidClipId{
+    .code = ErrorCode::BadRequest,
+    .status = 400,
+    .message = "Invalid clipId"};
+inline constexpr ErrorDefinition ClipNotFound{
+    .code = ErrorCode::NotFound,
+    .status = 404,
+    .message = "Clip not found"};
+inline constexpr ErrorDefinition ClipUnavailable{
+    .code = ErrorCode::NotFound,
+    .status = 404,
+    .message = "The clip's object is no longer stored"};
+inline constexpr ErrorDefinition ClipPreviewUnavailable{
+    .code = ErrorCode::NotFound,
+    .status = 404,
+    .message = "The clip view capability is spent, expired or belongs to another user"};
+inline constexpr ErrorDefinition ClipRecordingDisabled{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "This camera does not record"};
+inline constexpr ErrorDefinition ClipPreviewPreparationFailed{
+    .code = ErrorCode::ServiceUnavailable,
+    .status = 503,
+    .message = "The clip view capability could not be prepared"};
 }

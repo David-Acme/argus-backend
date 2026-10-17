@@ -8,6 +8,7 @@ argus_module(NAME camera-feature
         services/camera-feature-service.cc
         services/camera-overview-service.cc
         services/camera-probe-service.cc
+        services/record-mode-migration.cc
     INCLUDES
         ../..
     DEPENDS

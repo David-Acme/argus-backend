@@ -2,6 +2,7 @@ argus_module(NAME camera-config
     SOURCES
         camera-config.cc
         operator-config.cc
+        recording-config.cc
     INCLUDES
         ..
     DEPENDS

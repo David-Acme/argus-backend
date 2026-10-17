@@ -40,7 +40,7 @@ CreateCameraDto CreateCameraDto::fromJson(const Json::Value& json)
     return camera_address_rules::addressError(d.ip);
   })
   BETWEEN(port, 1, 65535)
-  IS_IN(recordMode, "events", "continuous")
+  IS_IN(recordMode, "off", "motion", "continuous", "events")
   IS_IN(driver, "tapo", "onvif", "rtsp")
   MAX_LENGTH(cloudUsername, 120)
   IS_NOT_EMPTY(icon)

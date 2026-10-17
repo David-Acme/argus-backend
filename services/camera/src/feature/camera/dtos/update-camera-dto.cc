@@ -59,7 +59,7 @@ UpdateCameraDto UpdateCameraDto::fromJson(const Json::Value& json)
       return std::nullopt;
     return "must be between 1 and 65535";
   })
-  IS_IN_OPTIONAL(recordMode, "events", "continuous")
+  IS_IN_OPTIONAL(recordMode, "off", "motion", "continuous", "events")
   IS_NOT_EMPTY_OPTIONAL(icon)
   MAX_LENGTH_OPTIONAL(icon, 40)
   MAX_LENGTH_OPTIONAL(manufacturer, 80)

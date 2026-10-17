@@ -130,6 +130,18 @@ overlay_dir = "bench-results/operator-overlay"
 [actions]
 enabled = false
 
+[recording]
+enabled = true
+pre_roll_s = 10
+post_roll_s = 10
+segment_s = 120
+retention_days = 7
+pre_roll_bytes = 12582912
+max_clip_bytes = 100663296
+rescan_s = 15
+sweep_hours = 24
+sweep_start_s = 60
+
 [grpc]
 caller_guard = ""
 caller_sync = ""

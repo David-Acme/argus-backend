@@ -9,6 +9,7 @@
 #include <sqlite/db-service.hxx>
 #include <text/base64.hxx>
 #include <feature/operator/services/evidence/evidence-uploader.hxx>
+#include <feature/recording/services/clip-recorder.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
@@ -998,6 +999,8 @@ void CameraOperatorService::publishPersonPending(
     if (track != input.state.personTracks.end())
       track->second.lastEmitMs = input.nowMs;
     EvidenceUploader::instance().uploadDetection(input.cameraId, input.nowMs);
+    static_cast<void>(ClipRecorder::instance().requestClip(
+        {.cameraId = input.cameraId, .trigger = CameraClipTrigger::Event}));
     if (inputs_.dependencies.detections != nullptr)
       drogon::async_run([this, cameraId = input.cameraId]() -> drogon::Task<void> {
         co_await inputs_.dependencies.detections->detected(cameraId);
@@ -1034,6 +1037,9 @@ void CameraOperatorService::publishOtherPending(const PublishOtherInput& input)
     });
   }
   input.state.pendingOtherStartMs = 0;
-  if (result == ObjectEventPublishResult::Recorded)
+  if (result == ObjectEventPublishResult::Recorded) {
     EvidenceUploader::instance().uploadDetection(input.cameraId, input.nowMs);
+    static_cast<void>(ClipRecorder::instance().requestClip(
+        {.cameraId = input.cameraId, .trigger = CameraClipTrigger::Event}));
+  }
 }

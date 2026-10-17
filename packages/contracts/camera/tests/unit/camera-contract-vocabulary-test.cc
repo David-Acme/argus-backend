@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 
 #include <camera/camera-driver.hxx>
+#include <camera/camera-clip-trigger.hxx>
 #include <camera/camera-record-mode.hxx>
 #include <camera/camera-row-projection.hxx>
 #include <camera/event-severity.hxx>
@@ -49,10 +50,21 @@ TEST_CASE("event severity strings round-trip")
 TEST_CASE("camera record mode strings round-trip")
 {
     checkRoundTrip(CheckRoundTripInput{
-        .values = {CameraRecordMode::Events, CameraRecordMode::Continuous},
-        .names = {"events", "continuous"},
+        .values = {CameraRecordMode::Off, CameraRecordMode::Motion,
+                   CameraRecordMode::Continuous, CameraRecordMode::Events},
+        .names = {"off", "motion", "continuous", "events"},
         .toString = cameraRecordModeToString,
         .fromString = cameraRecordModeFromString});
+}
+
+TEST_CASE("camera clip trigger strings round-trip")
+{
+    checkRoundTrip(CheckRoundTripInput{
+        .values = {CameraClipTrigger::Motion, CameraClipTrigger::Event,
+                   CameraClipTrigger::Continuous},
+        .names = {"motion", "event", "continuous"},
+        .toString = cameraClipTriggerToString,
+        .fromString = cameraClipTriggerFromString});
 }
 
 TEST_CASE("zone type strings round-trip")

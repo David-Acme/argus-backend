@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS camera (
                                      CHECK (driver IN ('tapo', 'onvif', 'rtsp')),
     icon           TEXT    NOT NULL  DEFAULT 'video',
     record_mode    TEXT    NOT NULL  DEFAULT 'events'
-                                     CHECK (record_mode IN ('events', 'continuous')),
+                                     CHECK (record_mode IN ('off', 'motion', 'continuous', 'events')),
     retention_days INTEGER,
     capabilities   TEXT    NOT NULL  DEFAULT '[]',
     config         TEXT    NOT NULL  DEFAULT '{}',
@@ -117,6 +117,44 @@ CREATE TABLE IF NOT EXISTS camera_evidence (
 
 CREATE INDEX IF NOT EXISTS idx_camera_evidence_expires
     ON camera_evidence (expires_at) WHERE deleted_at = 0;
+
+CREATE TABLE IF NOT EXISTS camera_clip (
+    id           INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    camera_id    INTEGER NOT NULL  REFERENCES camera(id) ON DELETE CASCADE,
+    trigger      TEXT    NOT NULL  DEFAULT 'event'
+                                      CHECK (trigger IN ('motion', 'event', 'continuous')),
+    object_key   TEXT    NOT NULL  DEFAULT '',
+    content_type TEXT    NOT NULL  DEFAULT 'video/mp4',
+    codec        TEXT    NOT NULL  DEFAULT '',
+    started_at   INTEGER NOT NULL  DEFAULT 0,
+    duration_ms  INTEGER NOT NULL  DEFAULT 0,
+    byte_size    INTEGER NOT NULL  DEFAULT 0,
+    created_at   INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    expires_at   INTEGER NOT NULL  DEFAULT 0,
+    deleted_at   INTEGER NOT NULL  DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_camera_clip_camera
+    ON camera_clip (camera_id, created_at DESC) WHERE deleted_at = 0;
+CREATE INDEX IF NOT EXISTS idx_camera_clip_expires
+    ON camera_clip (expires_at) WHERE deleted_at = 0;
+CREATE INDEX IF NOT EXISTS idx_camera_clip_deleted
+    ON camera_clip (deleted_at);
+CREATE INDEX IF NOT EXISTS idx_camera_clip_created
+    ON camera_clip (created_at);
+
+CREATE TABLE IF NOT EXISTS camera_clip_capability (
+    id                INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    token_hash        TEXT    NOT NULL UNIQUE,
+    clip_id           INTEGER NOT NULL REFERENCES camera_clip(id) ON DELETE CASCADE,
+    requester_user_id INTEGER NOT NULL,
+    expires_at        INTEGER NOT NULL,
+    consumed_at       INTEGER,
+    created_at        INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_camera_clip_capability_lookup
+    ON camera_clip_capability (token_hash, expires_at, consumed_at);
 
 CREATE TABLE IF NOT EXISTS object_event_outbox (
     event_id   TEXT    NOT NULL  PRIMARY KEY,

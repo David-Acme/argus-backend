@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <mutex>
 #include <unordered_map>
 
@@ -27,6 +28,7 @@ public:
   [[nodiscard]] bool raisesCadence(const RaisesCadenceInput& input);
   void forget(int64_t cameraId);
   [[nodiscard]] int64_t mutedEpisodes() const;
+  void onReport(std::function<void(const CameraMotionReport&)> listener);
 
 private:
   struct Episode
@@ -43,4 +45,5 @@ private:
   mutable std::mutex mutex_;
   std::unordered_map<int64_t, Episode> cameras_;
   int64_t mutedEpisodes_{0};
+  std::function<void(const CameraMotionReport&)> listener_;
 };

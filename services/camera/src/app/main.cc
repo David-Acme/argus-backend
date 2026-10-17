@@ -40,6 +40,8 @@
 #include <feature/monitor/nats-health-event-sink.hxx>
 #include <shared/services/event-stream/event-stream.hxx>
 #include <feature/operator/services/evidence/evidence-uploader.hxx>
+#include <feature/recording/controllers/clip-controller.hxx>
+#include <feature/recording/services/clip-recorder.hxx>
 #include <feature/objects/ncnn-object-detector.hxx>
 #include <feature/onvif-events/onvif-motion-events.hxx>
 #include <feature/operator/camera-operator-service.hxx>
@@ -49,6 +51,7 @@
 #include <feature/operator/known-person-matcher.hxx>
 #include <feature/operator/nats-object-event-sink.hxx>
 #include <config/operator-config.hxx>
+#include <config/recording-config.hxx>
 #include <feature/operator/zone-provider.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <config/config-service.hxx>
@@ -57,6 +60,7 @@
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <feature/camera/services/camera-feature-service.hxx>
+#include <feature/camera/services/record-mode-migration.hxx>
 #include <shared/services/privacy/camera-audio-policy.hxx>
 #include <shared/services/secret-box/secret-box.hxx>
 #include <shared/services/stream/stream-hub.hxx>
@@ -262,6 +266,7 @@ int main()
   drogon::app().registerController(std::make_shared<ZoneController>());
   drogon::app().registerController(std::make_shared<CameraControlController>());
   drogon::app().registerController(std::make_shared<CameraWebRtcController>());
+  drogon::app().registerController(std::make_shared<ClipController>());
 
   requireAuthTarget();
   drogon::app().registerFilter(std::make_shared<DeviceFilter>());
@@ -366,6 +371,7 @@ int main()
       return;
     static_cast<void>(talkService.stopAll("module_disabled"));
     static_cast<void>(mediaSessions.closeAll("module_disabled"));
+    ClipRecorder::instance().dropAll("module_disabled");
     drogon::app().getLoop()->queueInLoop([closer = &webrtcSessions]() {
       drogon::async_run([closer]() { return closer->closeAll(); });
     });
@@ -432,6 +438,10 @@ int main()
     onvifEvents = std::make_unique<OnvifMotionEvents>(
         OnvifMotionEventsParts{.board = &motionBoard, .active = surveillanceActive});
 
+  motionBoard.onReport([](const CameraMotionReport& report) {
+    ClipRecorder::instance().notifyMotion(report);
+  });
+
   const CameraHealthConfig healthConfig = CameraConfig::resolveHealth();
   if (healthConfig.enabled) {
     if (natsBus)
@@ -464,6 +474,11 @@ int main()
 
     if (!DbService::runScriptFile(cameraDb.schemaPath)) {
       LOG_FATAL << "Camera database schema failed to apply — aborting startup";
+      _exit(1);
+    }
+
+    if (!record_mode_migration::applyToFile(cameraDb.dbPath)) {
+      LOG_FATAL << "Camera record mode migration failed — aborting startup";
       _exit(1);
     }
 
@@ -503,6 +518,8 @@ int main()
 
     cameraActionRpc.startLeaseSweeper();
     EvidenceUploader::instance().scheduleRetentionSweep();
+    ClipRecorder::instance().init(recording_config::resolve());
+    ClipRecorder::instance().start();
 
     Go2rtcManager::instance().configure();
     StreamHub::instance().init();
@@ -545,6 +562,8 @@ int main()
   shutdown_signal::onStop(shutdown_signal::drainOf(cameraActionRpc, "camera-actions"));
   shutdown_signal::onStop(
       shutdown_signal::drainOf(EvidenceUploader::instance(), "camera-evidence"));
+  shutdown_signal::onStop(
+      shutdown_signal::drainOf(ClipRecorder::instance(), "camera-recording"));
   shutdown_signal::onStop(shutdown_signal::drainOf(mediaAccess, "camera-media-access"));
   drogon::app().registerBeginningAdvice(
       [&mediaAccess]() { mediaAccess.start(kMediaAccessCheckSeconds); });
@@ -599,6 +618,7 @@ int main()
     operatorService->requestStop();
   if (healthMonitor)
     healthMonitor->requestStop();
+  ClipRecorder::instance().requestStop();
   StreamHub::instance().shutdown();
   Go2rtcManager::instance().shutdown();
   return 0;
