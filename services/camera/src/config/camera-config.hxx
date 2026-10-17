@@ -28,6 +28,15 @@ struct CameraOnvifConfig
   bool events{true};
 };
 
+struct PrivacyNoticeConfig
+{
+  std::string identityTarget;
+  std::string identityCredential;
+  std::string identityFleetSecret;
+  std::string notificationTarget;
+  std::string notificationCredential;
+};
+
 class CameraConfig
 {
 public:
@@ -35,6 +44,7 @@ public:
   static ListenerConfig resolveListener();
   static CameraHealthConfig resolveHealth();
   static CameraOnvifConfig resolveOnvif();
+  static PrivacyNoticeConfig resolvePrivacyNotice();
   static std::string resolveGuardCallerSecret();
   static std::string resolveSyncCallerSecret();
   static std::string resolveLlmCallerSecret();

@@ -908,6 +908,8 @@ SECRETS
     "$deploy_dir/config.notification.toml" grpc caller_voice 32
   fill_config_pair "$deploy_dir/config.notification.toml" voice credential \
     "$deploy_dir/config.voice.toml" grpc caller_notification 32
+  fill_config_pair "$deploy_dir/config.camera.toml" notifications credential \
+    "$deploy_dir/config.notification.toml" grpc caller_camera 32
   fill_config_pair "$deploy_dir/config.sync.toml" notifications credential \
     "$deploy_dir/config.notification.toml" grpc caller_sync 32
   fill_config_pair "$deploy_dir/config.sync.toml" productivity credential \

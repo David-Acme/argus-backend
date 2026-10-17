@@ -30,6 +30,17 @@ CameraDbConfig CameraConfig::resolveDb()
   return config;
 }
 
+PrivacyNoticeConfig CameraConfig::resolvePrivacyNotice()
+{
+  PrivacyNoticeConfig config;
+  config.identityTarget = ConfigService::getString("identity.target");
+  config.identityCredential = ConfigService::getString("identity.credential");
+  config.identityFleetSecret = ConfigService::getString("identity.rpc_secret");
+  config.notificationTarget = ConfigService::getString("notifications.target");
+  config.notificationCredential = ConfigService::getString("notifications.credential");
+  return config;
+}
+
 ListenerConfig CameraConfig::resolveListener()
 {
   return ListenerConfig::resolveServiceTls("camera", 7026);

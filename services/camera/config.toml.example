@@ -96,6 +96,10 @@ trusted_proxy_ips = ""
 target = "tls:127.0.0.1:7240"
 credential = ""
 
+[notifications]
+target = "tls:127.0.0.1:7238"
+credential = ""
+
 [objects]
 enabled = false
 model = "models/objects"

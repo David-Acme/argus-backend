@@ -124,6 +124,10 @@ if(NOT TARGET argus::clients::camera-actions)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera-actions
                      ${CMAKE_BINARY_DIR}/clients/camera-actions EXCLUDE_FROM_ALL)
 endif()
+if(NOT TARGET argus::clients::notification)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
+                     ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
+endif()
 if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
@@ -146,6 +150,7 @@ add_subdirectory(src/shared/services/onvif)
 add_subdirectory(src/shared/services/camera-driver)
 add_subdirectory(src/shared/services/privacy)
 add_subdirectory(src/shared/services/privacy-state)
+add_subdirectory(src/shared/services/privacy-notice)
 add_subdirectory(src/shared/services/stream)
 add_subdirectory(src/shared/services/event-stream)
 add_subdirectory(src/shared/services/camera-motion)
@@ -179,6 +184,7 @@ argus_service(NAME argus-camera
         argus::camera-onvif-events
         argus::camera-settings
         argus::camera-privacy
+        argus::camera-privacy-notice
         argus::camera-module-data
         argus::camera-mcp
         argus::contracts::mcp-wire

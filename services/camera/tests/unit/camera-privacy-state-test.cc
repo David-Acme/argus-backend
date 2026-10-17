@@ -4,6 +4,8 @@
 #include <camera/camera-privacy-state.hxx>
 #include <drogon/drogon.h>
 #include <shared/schemas/camera/camera-schema.hxx>
+#include <shared/services/camera-driver/camera-scene-log.hxx>
+#include <shared/services/privacy-notice/privacy-notice.hxx>
 #include <shared/services/privacy-state/privacy-state.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 #include <sqlite/db-service.hxx>
@@ -60,6 +62,18 @@ public:
 
   mutable std::vector<AuditCall> audits;
   mutable std::vector<ResourceCall> resources;
+};
+
+class FakePrivacyNotifier : public ICameraPrivacyNotifier
+{
+public:
+  drogon::Task<bool> doubtful(const PrivacyDoubtNotice& notice) const override
+  {
+    notices.push_back(notice);
+    co_return true;
+  }
+
+  mutable std::vector<PrivacyDoubtNotice> notices;
 };
 
 constexpr const char* kPrivacyDb = "camera-privacy-state-test.db";
@@ -262,6 +276,8 @@ TEST_CASE("a reply with no mask bool converges the row to unknown, once")
   auto& rig = PrivacyRig::instance();
   FakeChangeSink sink;
   camera_change::setSink(&sink);
+  FakePrivacyNotifier notifier;
+  privacy_notice::setNotifier(&notifier);
   rig.resetCameras();
   rig.addCamera(41, "off");
   auto& service = PrivacyStateService::instance();
@@ -276,12 +292,112 @@ TEST_CASE("a reply with no mask bool converges the row to unknown, once")
   CHECK(sink.audits.size() == 1);
   CHECK(sink.resources.size() == 2);
 
+  CHECK_FALSE(service.masked(41));
+  CHECK(notifier.notices.empty());
+
   for (int tick = 0; tick < 3; ++tick) {
     const auto silent = read(41, statusWithout(), CameraPrivacyState::Unknown);
     CHECK_FALSE(silent.changed);
   }
   CHECK(sink.audits.size() == 1);
   CHECK(sink.resources.size() == 2);
+  CHECK(notifier.notices.empty());
+  privacy_notice::setNotifier(nullptr);
+  camera_change::setSink(nullptr);
+}
+
+TEST_CASE("a confirmed mask is kept when a reply cannot tell, and the owner is told once")
+{
+  REQUIRE(PrivacyRig::instance().booted());
+  auto& rig = PrivacyRig::instance();
+  FakeChangeSink sink;
+  camera_change::setSink(&sink);
+  FakePrivacyNotifier notifier;
+  privacy_notice::setNotifier(&notifier);
+  rig.resetCameras();
+  rig.addCamera(45, "on");
+  auto& service = PrivacyStateService::instance();
+  service.forget(45);
+  service.seed({cameraOf(45, CameraPrivacyState::On, "[]")});
+  CameraSceneLog::instance().noteAimed(45, 1);
+
+  const auto doubtful = read(45, statusWithout(), CameraPrivacyState::On);
+  CHECK(doubtful.changed);
+  CHECK(doubtful.after == CameraPrivacyState::Unknown);
+  CHECK(readOf(45) == CameraPrivacyState::Unknown);
+  CHECK(service.masked(45));
+  CHECK(rig.stateOfRow(45) == "unknown");
+  CHECK(sink.audits.size() == 1);
+  REQUIRE(notifier.notices.size() == 1);
+  CHECK(notifier.notices.front().cameraId == 45);
+  CHECK(notifier.notices.front().cameraName == "Cam");
+  CHECK(notifier.notices.front().atMs > 0);
+
+  const auto again = read(45, statusWithout(), CameraPrivacyState::Unknown);
+  CHECK_FALSE(again.changed);
+  CHECK(service.masked(45));
+  CHECK(notifier.notices.size() == 1);
+  CHECK(sink.audits.size() == 1);
+
+  const auto off = read(45, statusWith(false), CameraPrivacyState::Unknown);
+  CHECK(off.changed);
+  CHECK(off.after == CameraPrivacyState::Off);
+  CHECK(readOf(45) == CameraPrivacyState::Off);
+  CHECK_FALSE(service.masked(45));
+  CHECK(rig.stateOfRow(45) == "off");
+  CHECK(notifier.notices.size() == 1);
+  CHECK(sink.audits.size() == 2);
+  CHECK(CameraSceneLog::instance().sceneOf(45).aimedAtMs > 1);
+  CameraSceneLog::instance().forget(45);
+  privacy_notice::setNotifier(nullptr);
+  camera_change::setSink(nullptr);
+}
+
+TEST_CASE("a reply that cannot tell is not obeyed as a mask when nobody confirmed one")
+{
+  REQUIRE(PrivacyRig::instance().booted());
+  auto& rig = PrivacyRig::instance();
+  FakeChangeSink sink;
+  camera_change::setSink(&sink);
+  FakePrivacyNotifier notifier;
+  privacy_notice::setNotifier(&notifier);
+  rig.resetCameras();
+  rig.addCamera(46, "unknown");
+  auto& service = PrivacyStateService::instance();
+  service.forget(46);
+  service.seed({cameraOf(46, CameraPrivacyState::Unknown, "[]")});
+
+  const auto never = read(46, statusWithout(), CameraPrivacyState::Unknown);
+  CHECK_FALSE(never.changed);
+  CHECK(never.after == CameraPrivacyState::Unknown);
+  CHECK_FALSE(service.masked(46));
+  CHECK(notifier.notices.empty());
+  CHECK(sink.audits.empty());
+
+  const auto on = read(46, statusWith(true), CameraPrivacyState::Unknown);
+  CHECK(on.changed);
+  CHECK(on.after == CameraPrivacyState::On);
+  CHECK(service.masked(46));
+  CHECK(notifier.notices.empty());
+  CHECK(rig.stateOfRow(46) == "on");
+
+  const auto lost = read(46, statusWithout(), CameraPrivacyState::On);
+  CHECK(lost.changed);
+  CHECK(lost.after == CameraPrivacyState::Unknown);
+  CHECK(service.masked(46));
+  CHECK(notifier.notices.size() == 1);
+
+  const auto back = read(46, statusWith(true), CameraPrivacyState::Unknown);
+  CHECK(back.changed);
+  CHECK(back.after == CameraPrivacyState::On);
+  CHECK(service.masked(46));
+  CHECK(notifier.notices.size() == 1);
+
+  const auto lostAgain = read(46, statusWithout(), CameraPrivacyState::On);
+  CHECK(lostAgain.after == CameraPrivacyState::Unknown);
+  CHECK(service.masked(46));
+  CHECK(notifier.notices.size() == 2);
+  privacy_notice::setNotifier(nullptr);
   camera_change::setSink(nullptr);
 }
 
@@ -368,6 +484,29 @@ TEST_CASE("a write that fails sends no audit, obeys the mask and retries")
   CHECK(rig.stateOfRow(71) == "on");
   CHECK(sink.audits.empty());
   CHECK(sink.resources.empty());
+
+  FakePrivacyNotifier notifier;
+  privacy_notice::setNotifier(&notifier);
+  rig.dropCameras();
+  const auto lost = read(71, statusWithout(), CameraPrivacyState::On);
+  CHECK(lost.after == CameraPrivacyState::Unknown);
+  CHECK(service.masked(71));
+  CHECK(notifier.notices.size() == 1);
+  CHECK(sink.audits.empty());
+  const auto lostAgain = read(71, statusWithout(), CameraPrivacyState::Unknown);
+  CHECK_FALSE(lostAgain.changed);
+  CHECK(lostAgain.after == CameraPrivacyState::Unknown);
+  CHECK(service.masked(71));
+  CHECK(notifier.notices.size() == 1);
+
+  rig.resetCameras();
+  rig.addCamera(71, "on");
+  const auto persisted = read(71, statusWithout(), CameraPrivacyState::Unknown);
+  CHECK_FALSE(persisted.changed);
+  CHECK(rig.stateOfRow(71) == "unknown");
+  CHECK(service.masked(71));
+  CHECK(notifier.notices.size() == 1);
+  privacy_notice::setNotifier(nullptr);
   camera_change::setSink(nullptr);
 }
 
@@ -416,6 +555,24 @@ TEST_CASE("the mask clears the stored frame and keeps the state on the camera")
   CHECK(masked.after == CameraPrivacyState::On);
   CHECK_FALSE(SnapshotStore::instance().frame(91).has_value());
   service.forget(91);
+}
+
+TEST_CASE("the doubt is told in the owner's language, with the camera's name")
+{
+  const PrivacyDoubtNotice notice{
+      .cameraId = 45, .cameraName = "Garaje", .atMs = 1700};
+  const auto es = privacy_notice::text(notice, "es");
+  CHECK(es.title == "Modo privacidad sin confirmar");
+  CHECK(es.body == "No puedo confirmar si la cámara Garaje sigue en modo "
+                   "privacidad; mientras tanto no la grabo. Revísala en la app "
+                   "Tapo.");
+  const auto regional = privacy_notice::text(notice, "es-PE");
+  CHECK(regional.body == es.body);
+
+  const auto en = privacy_notice::text(notice, "en");
+  CHECK(en.title == "Unconfirmed privacy mode");
+  CHECK(en.body.find("Garaje") != std::string::npos);
+  CHECK(en.body.find("privacy mode") != std::string::npos);
 }
 
 TEST_CASE("only a camera whose capabilities claim privacy is polled")

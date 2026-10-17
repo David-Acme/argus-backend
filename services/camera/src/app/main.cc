@@ -61,6 +61,7 @@
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <feature/camera/services/camera-feature-service.hxx>
 #include <feature/camera/services/record-mode-migration.hxx>
+#include <shared/services/privacy-notice/privacy-notice.hxx>
 #include <shared/services/privacy-state/privacy-state.hxx>
 #include <shared/services/privacy/camera-audio-policy.hxx>
 #include <shared/services/secret-box/secret-box.hxx>
@@ -189,6 +190,23 @@ int main()
 
   const CameraDbConfig cameraDb = CameraConfig::resolveDb();
   const ListenerConfig listener = CameraConfig::resolveListener();
+  const PrivacyNoticeConfig privacyNoticeConfig =
+      CameraConfig::resolvePrivacyNotice();
+  std::unique_ptr<privacy_notice::NotificationPrivacyNotifier> privacyNotifier;
+  if (!privacyNoticeConfig.notificationTarget.empty() &&
+      !privacyNoticeConfig.identityTarget.empty())
+  {
+    privacyNotifier = std::make_unique<privacy_notice::NotificationPrivacyNotifier>(
+        privacyNoticeConfig);
+    privacy_notice::setNotifier(privacyNotifier.get());
+    LOG_INFO << "Camera privacy: an unconfirmed lens mask is told to the owner "
+             << "through " << privacyNoticeConfig.notificationTarget;
+  }
+  else
+  {
+    LOG_INFO << "Camera privacy: no notification target; an unconfirmed lens "
+                "mask is only logged and audited";
+  }
 
   try {
     DeviceFilter::requireFingerprintSecret();

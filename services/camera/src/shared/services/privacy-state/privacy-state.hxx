@@ -42,12 +42,16 @@ private:
   struct Entry
   {
     CameraPrivacyState state{CameraPrivacyState::Unknown};
+    CameraPrivacyState confirmed{CameraPrivacyState::Unknown};
     CameraPrivacyState persisted{CameraPrivacyState::Unknown};
+    bool noticed{false};
     bool writing{false};
   };
 
   PrivacyStateService() = default;
 
+  [[nodiscard]] static bool obeyed(const Entry& entry);
+  [[nodiscard]] static bool doubted(const Entry& entry);
   [[nodiscard]] drogon::Task<bool> persistState(int64_t cameraId,
                                                 CameraPrivacyState state);
 

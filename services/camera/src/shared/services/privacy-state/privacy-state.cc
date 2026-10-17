@@ -5,6 +5,7 @@
 #include <drogon/HttpAppFramework.h>
 #include <drogon/drogon.h>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
+#include <shared/services/privacy-notice/privacy-notice.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 #include <shared/services/stream/stream-hub.hxx>
 #include <sync/camera-change-sink.hxx>
@@ -46,9 +47,22 @@ void PrivacyStateService::seed(const std::vector<CameraSchema>& cameras)
     if (camera.id <= 0)
       continue;
     entries_[camera.id] = {.state = camera.privacyState,
+                           .confirmed = camera.privacyState,
                            .persisted = camera.privacyState,
                            .writing = false};
   }
+}
+
+bool PrivacyStateService::obeyed(const Entry& entry)
+{
+  return entry.confirmed == CameraPrivacyState::On &&
+         entry.state != CameraPrivacyState::Off;
+}
+
+bool PrivacyStateService::doubted(const Entry& entry)
+{
+  return entry.state == CameraPrivacyState::Unknown &&
+         entry.confirmed == CameraPrivacyState::On;
 }
 
 CameraPrivacyState PrivacyStateService::stateOf(int64_t cameraId) const
@@ -60,7 +74,9 @@ CameraPrivacyState PrivacyStateService::stateOf(int64_t cameraId) const
 
 bool PrivacyStateService::masked(int64_t cameraId) const
 {
-  return stateOf(cameraId) == CameraPrivacyState::On;
+  std::scoped_lock lock(mutex_);
+  const auto it = entries_.find(cameraId);
+  return it != entries_.end() && obeyed(it->second);
 }
 
 bool PrivacyStateService::maskedOf(const CameraSchema& camera) const
@@ -113,8 +129,11 @@ drogon::Task<bool> PrivacyStateService::persistState(int64_t cameraId,
     co_return true;
   }
   if (it->second.state == state && it->second.persisted != state &&
-      state != CameraPrivacyState::On)
+      it->second.confirmed != CameraPrivacyState::On)
+  {
     it->second.state = it->second.persisted;
+    it->second.confirmed = it->second.persisted;
+  }
   co_return false;
 }
 
@@ -134,11 +153,28 @@ drogon::Task<PrivacyTransition> PrivacyStateService::refresh(
 
   const CameraPrivacyState observed = observedState(input.driverStatus);
   bool persist = false;
+  bool noticed = false;
+  bool obeyedBefore = false;
   {
     std::scoped_lock lock(mutex_);
     auto& entry = entries_[cameraId];
     transition.before = entry.state;
+    obeyedBefore = obeyed(entry);
     entry.state = observed;
+    if (observed != CameraPrivacyState::Unknown)
+      entry.confirmed = observed;
+    if (doubted(entry))
+    {
+      if (!entry.noticed)
+      {
+        entry.noticed = true;
+        noticed = true;
+      }
+    }
+    else
+    {
+      entry.noticed = false;
+    }
     persist = observed != entry.persisted && !entry.writing;
     if (persist)
       entry.writing = true;
@@ -148,15 +184,30 @@ drogon::Task<PrivacyTransition> PrivacyStateService::refresh(
   if (persist)
     written = co_await persistState(cameraId, observed);
   const CameraPrivacyState after = written ? observed : stateOf(cameraId);
+  bool obeyedAfter = false;
+  {
+    std::scoped_lock lock(mutex_);
+    const auto it = entries_.find(cameraId);
+    obeyedAfter = it != entries_.end() && obeyed(it->second);
+  }
   transition.after = after;
   transition.changed = transition.before != after;
 
-  if (transition.changed && after == CameraPrivacyState::On)
+  if (obeyedAfter && !obeyedBefore)
   {
     SnapshotStore::instance().forget(cameraId);
     StreamHub::instance().dropCachedFrames(cameraId);
     LOG_WARN << "Camera privacy: camera " << cameraId
              << " is lens-masked; Argus stops seeing, hearing and recording it";
+  }
+  if (noticed)
+  {
+    if (const auto* notifier = privacy_notice::getNotifier())
+    {
+      co_await notifier->doubtful({.cameraId = cameraId,
+                                   .cameraName = input.camera.name,
+                                   .atMs = epochNowMs()});
+    }
   }
   if (!transition.changed || !written)
     co_return transition;
@@ -174,8 +225,7 @@ drogon::Task<PrivacyTransition> PrivacyStateService::refresh(
                                  .actorId = std::nullopt,
                                  .client = nullptr});
   }
-  if (after != CameraPrivacyState::On &&
-      transition.before == CameraPrivacyState::On)
+  if (obeyedBefore && !obeyedAfter)
   {
     CameraSceneLog::instance().noteAimed(cameraId, epochNowMs());
     LOG_INFO << "Camera privacy: camera " << cameraId
