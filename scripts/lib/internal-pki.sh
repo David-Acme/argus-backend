@@ -249,6 +249,7 @@ guard camera actions_target camera
 guard notifications grpc_target notification
 guard identity target identity
 guard modules target settings
+guard vlm grpc_target vlm
 identity auth target auth
 camera auth target auth
 guard auth target auth

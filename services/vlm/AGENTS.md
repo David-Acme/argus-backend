@@ -48,8 +48,8 @@ argus-vlm/
   src/app/main.cc       config load, llama_backend_init/free, engine boot load,
                           rpc leg, app run
   src/app/rpc/          argus::vlm-rpc — the internal gRPC face (the
-                          argus.vlm.v1 Vision service), dormant unless
-                          [rpc] address and [rpc.callers] are set
+                          argus.vlm.v1 Vision service), composed only while
+                          [rpc] address and [rpc.callers] hold values
   src/config/           argus::vlm-config — the listener and the optional
                           gRPC leg's address and callers
   src/feature/vlm/      argus::vlm — the whole vertical slice:
@@ -82,15 +82,16 @@ The gRPC leg is composed in `main.cc` and nowhere else, only when `rpc.address`
 and at least one non-empty `[rpc.callers]` pair are set — the RPC server answers
 `argus.vlm.v1` with the same engine the HTTP controller drives, refuses an
 unlisted caller with 401 and sanitizes anything that is not a
-`ResponseException` into 500. The deploy template arms it
-(`argus-deploy/config.vlm.toml.example`, `0.0.0.0:7131` plus the mutual-TLS
-`0.0.0.0:7331`), and `scripts/lib/common.sh` fills its caller pairs from the
-callees' own configs, so a deployed argus-vlm serves the typed leg and the
-deployed argus-guard dials it (`[vlm] grpc_target = tls:argus-vlm:7331`, no HTTP
-URL). The native template keeps both keys empty the way stt, tts and llm do, so
-a native install answers the HTTP wire alone; its caller keeps dialling
-`guard.assess.vlm_url`, because arming the listener would also wire the
-settings owner and change the frozen `GET /settings` row.
+`ResponseException` into 500. Both templates arm it —
+`argus-deploy/config.vlm.toml.example` on `0.0.0.0:7131` plus the mutual-TLS
+`0.0.0.0:7331`, `services/vlm/config.toml.example` on `127.0.0.1:7131` plus
+`127.0.0.1:7331` — and provisioning fills their caller pairs from the callees'
+own configs (`scripts/lib/common.sh` for the deploy, `scripts/setup.sh` for the
+native one), so both serve the typed leg and both guard templates dial it
+(`[vlm] grpc_target`, no HTTP URL). The native `[rpc] address` also makes the
+settings service wire `owners.vlm`, so the `GET /settings` recording is being
+re-recorded with that owner `configured: true`; the plain sandbox does not boot
+it, so the recorded row stays `reachable: false` with empty lists.
 
 Three properties of the face are the composition's, not the engine's. The
 caller must present the credential header exactly once — zero or two entries

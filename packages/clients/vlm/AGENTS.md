@@ -129,14 +129,13 @@ the gRPC client's types to serve the protocol.
   builds the façade when **either** that URL or `vlm.grpc_target` is set
   (`services/guard/src/app/main.cc`), so the target knob alone moves assessment
   onto the typed leg. The gRPC pair is declared in both templates' own `[vlm]`
-  block: the deploy one dials `tls:argus-vlm:7331` with provisioning filling
-  `grpc_credential` from the callee's `[rpc.callers] guard`
-  (`scripts/lib/common.sh`), so a fresh deploy dials the mutual-TLS listener
-  and ships no HTTP URL at all; the native template leaves the pair out and
-  keeps `vlm_url` on the plaintext loopback listener, because the native VLM
-  serves no gRPC leg (its `[rpc] address` is empty, as stt/tts/llm's are) and
-  arming it would also wire the settings owner — the frozen
-  `GET /settings` row pins that owner as unconfigured.
+  block and both dial the callee's mutual-TLS listener — the deploy one
+  `tls:argus-vlm:7331` with provisioning filling `grpc_credential` from
+  `[rpc.callers] guard` (`scripts/lib/common.sh`), the native one
+  `tls:127.0.0.1:7331` filled by `scripts/setup.sh` — and both set `vlm_url` to
+  `""`, so the HTTP transport stays declared but undialed. An existing install
+  whose config predates the `[vlm]` block keeps its `vlm_url` value and the HTTP
+  leg, since that block is a wiring key no adopter carries.
 - Flagged deviations from §2.3, neither hidden: there is no `details/` folder —
   the HTTP body and the envelope parsing share `vlm-remote.cc` with the façade,
   and the gRPC channel and credential helpers are `lib/grpc`'s

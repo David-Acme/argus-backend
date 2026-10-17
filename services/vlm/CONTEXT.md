@@ -57,8 +57,9 @@ the legacy's RAM/VRAM with zero functional risk. It mirrors the argus-tts
   caps a message at 64 MiB on both, and throws when a port cannot be bound.
   The plaintext leg stays until the owner's deploy check.
 - **Config**: `[vision]` (engine knobs, mirroring the legacy block) +
-  `[server]` (loopback listener, default 7031) + `[rpc]` (address and caller
-  pairs, both empty by default when Phase 4 step 6b added the gRPC leg). No
+  `[server]` (loopback listener, default 7031) + `[rpc]` (address armed by both
+  templates, caller pairs left empty for provisioning to fill — empty in the
+  example when Phase 4 step 6b added the gRPC leg). No
   database, no NATS, no JWT/device keys — nothing here persists anything.
 
 ## The gRPC leg (Phase 4 step 6b)
@@ -73,16 +74,17 @@ decoded `cv::Mat` — so the caption a gRPC caller receives is the caption the
 HTTP route would answer, caption cache included, and a shut-down engine
 reports `loaded: false` truthfully instead of a boot snapshot. It is composed
 in `main.cc` only when `rpc.address` and a non-empty `[rpc.callers]` pair are
-set. `argus-deploy/config.vlm.toml.example` arms both — `0.0.0.0:7131` with the
-mutual-TLS `0.0.0.0:7331`, its caller pairs filled by `scripts/lib/common.sh`
-from `[rpc.callers]` of the callees' own configs — and the deployed
-`argus-guard` therefore dials the typed leg (`[vlm] grpc_target =
-tls:argus-vlm:7331`) with no HTTP URL set. `services/vlm/config.toml.example`
-keeps both empty, so the native checkout answers the HTTP wire while the gRPC
-face stays dormant there, exactly as stt, tts and llm do natively; guard's
-native template keeps `guard.assess.vlm_url`, since arming the listener also
-makes the settings service wire `owners.vlm` and moves the frozen
-`GET /settings` row.
+set. Both templates arm both keys: `argus-deploy/config.vlm.toml.example` on
+`0.0.0.0:7131` with the mutual-TLS `0.0.0.0:7331` and its caller pairs filled by
+`scripts/lib/common.sh`, `services/vlm/config.toml.example` on `127.0.0.1:7131`
+with `127.0.0.1:7331` and its pairs filled by `scripts/setup.sh`. Both guard
+templates therefore dial the typed leg (`[vlm] grpc_target`, no HTTP URL), and a
+native install that still carries a pre-`[vlm]` config keeps `guard.assess.vlm_url`
+until that block is adopted. Arming the native listener also makes the settings
+service wire `owners.vlm` (`[rpc] address` is what `ensure_settings_owners`
+reads), so the `GET /settings` recording is re-recorded with that owner
+`configured: true` — `reachable: false` and empty lists in the plain sandbox,
+which never boots it.
 
 The engine's inference slots are the face's backpressure: one acquisition from
 `ThreadBudget::inferenceSlots()`, `try_acquire` rather than a blocking wait
