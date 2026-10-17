@@ -2,6 +2,9 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib/common.sh"
+
 usage() {
   cat <<'USAGE'
 usage: scripts/scratch-stack.sh <root> <stack> [options]
@@ -30,6 +33,11 @@ Steps, in order:
   7. Seed the golden rows, then the role sessions (seed-golden.py, plain then --roles).
 
 --down stops the AI services, the native stack and the scratch broker of <stack>.
+
+The boot takes <stack>/boot.lock for the life of the services it starts (they
+inherit the descriptor), so a second boot of the same stack fails loudly
+instead of doubling the fleet; --down releases it once the last service stops.
+--check takes no lock and changes nothing.
 
 Options:
   --nats-port N      scratch broker port (default 14222; 4222 and 7025-7047 are refused)
@@ -153,6 +161,8 @@ if [ "$CHECK" -eq 1 ]; then
   echo "check passed: nothing changed"
   exit 0
 fi
+
+boot_lock_acquire "$STACK" || exit 1
 
 if [ -n "$MODELS" ]; then
   ln -sfn "$MODELS" "$ROOT/models"

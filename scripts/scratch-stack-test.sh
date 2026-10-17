@@ -10,7 +10,9 @@ Checks the guards of scripts/scratch-stack.sh on a fake tree, without starting
 anything: --check passes on a complete tree and changes nothing (the NATS URL
 and the stack directory stay as they were); a Git work tree, a NATS port of the
 production broker or of the native services, a missing binary, a real models
-directory, a missing go2rtc and an unknown stack all refuse with the reason.
+directory, a missing go2rtc and an unknown stack all refuse with the reason;
+and a boot (of either scripts/scratch-stack.sh or scripts/native-stack.sh)
+refuses while another boot holds the stack's boot lock.
 USAGE
 }
 
@@ -103,5 +105,31 @@ grep -Fq "ARGUS_NATS_SERVER_BIN must name an executable nats-server" <<<"$unset_
 
 output="$(ARGUS_NATS_SERVER_BIN= "$ROOT/scripts/scratch-stack.sh" --down "$TREE" "$TEST_TMP/empty-stack" 2>&1)"
 grep -Fq "scratch stack down" <<<"$output"
+
+LOCKED_STACK="$TEST_TMP/locked-stack"
+mkdir -p "$LOCKED_STACK"
+output="$(flock -x "$LOCKED_STACK/boot.lock" \
+  "$ROOT/scripts/scratch-stack.sh" --check "$TREE" "$LOCKED_STACK" --with-ai \
+  --models "$TEST_TMP/models-src" 2>&1)"
+grep -Fq "check passed: nothing changed" <<<"$output"
+
+code=0
+output="$(flock -x "$LOCKED_STACK/boot.lock" \
+  "$ROOT/scripts/scratch-stack.sh" "$TREE" "$LOCKED_STACK" \
+  --models "$TEST_TMP/models-src" 2>&1)" || code=$?
+if [ "$code" -eq 0 ]; then
+  echo "boot under a held boot lock: accepted" >&2
+  exit 1
+fi
+grep -Fq "another boot of $LOCKED_STACK" <<<"$output"
+
+code=0
+output="$(flock -x "$LOCKED_STACK/boot.lock" \
+  env ARGUS_STACK_DIR="$LOCKED_STACK" "$ROOT/scripts/native-stack.sh" up 2>&1)" || code=$?
+if [ "$code" -eq 0 ]; then
+  echo "native boot under a held boot lock: accepted" >&2
+  exit 1
+fi
+grep -Fq "another boot of $LOCKED_STACK" <<<"$output"
 
 echo "scratch stack test passed"

@@ -83,6 +83,12 @@ A service started here outlives the command that started it, and with it any
 descriptor it inherited. Wrap a stack run in a lock with `flock -o FILE ...`:
 plain `flock FILE native-stack.sh up` leaves the lock held by the services,
 and it is released only when the last of them stops.
+
+`up` takes <stack>/boot.lock before it prepares anything and keeps it for that
+same lifetime (the services inherit it): a second boot refuses while one is in
+flight or while any service of the last boot still runs, and a service found
+doubled (started by hand beside the boot) refuses too. Stop the stack (down)
+before booting again.
 USAGE
 }
 
@@ -277,6 +283,22 @@ running_pid() {
   pgrep -f "^$(binary_of "$1")\$" || true
 }
 
+check_single_instances() {
+  local svc pids count
+  for svc in "${SERVICES[@]}"; do
+    pids="$(running_pid "$svc")"
+    count=0
+    for _ in $pids; do
+      count=$((count + 1))
+    done
+    if [ "$count" -gt 1 ]; then
+      err "$svc runs $count instances of this kit (pids $(printf '%s' "$pids" | tr '\n' ' ')): the kit was booted twice or the service was started by hand; run ARGUS_STACK_DIR=$STACK_DIR $ROOT/scripts/native-stack.sh down and boot once"
+      return 1
+    fi
+  done
+  return 0
+}
+
 wait_health() {
   local svc="$1"
   local port="$2"
@@ -342,12 +364,15 @@ start_service() {
 }
 
 up() {
+  boot_lock_acquire "$STACK_DIR" || return 1
   prepare || return 1
 
   local svc
   for svc in "${SERVICES[@]}"; do
     start_service "$svc" || return 1
   done
+
+  check_single_instances || return 1
 
   for svc in "${SERVICES[@]}"; do
     wait_health "$svc" "$(service_port "$(config_of "$svc")")" || return 1

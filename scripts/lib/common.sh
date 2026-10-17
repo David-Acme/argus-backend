@@ -13,6 +13,21 @@ need_cmd() {
   fi
 }
 
+boot_lock_acquire() {
+  local stack="$1"
+  if [ -n "${ARGUS_STACK_BOOT_LOCKED:-}" ]; then
+    return 0
+  fi
+  need_cmd flock
+  mkdir -p "$stack"
+  exec 9>"$stack/boot.lock"
+  if ! flock -n 9; then
+    err "another boot of $stack is in flight, or its services still hold $stack/boot.lock: stop the stack (scripts/scratch-stack.sh --down, or ARGUS_STACK_DIR=$stack scripts/native-stack.sh down) before booting again"
+    return 1
+  fi
+  export ARGUS_STACK_BOOT_LOCKED=1
+}
+
 sha256_file() {
   if command -v sha256sum >/dev/null 2>&1; then
     sha256sum "$1" | awk '{print $1}'
