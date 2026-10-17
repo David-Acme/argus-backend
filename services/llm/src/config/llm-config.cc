@@ -11,8 +11,8 @@
 
 namespace
 {
-constexpr std::string_view kDecideBundle = "models/decide/bundle-laya-pilot";
-constexpr std::string_view kExtractBundle = "models/extract/pilot-bundle";
+constexpr std::string_view kDecideBundle = "models/decide/bundle-laya-mvp";
+constexpr std::string_view kExtractBundle = "models/extract/bundle-gliner-pilot";
 }
 
 ListenerConfig LlmConfig::resolveListener()

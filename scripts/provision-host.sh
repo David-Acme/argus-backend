@@ -531,11 +531,16 @@ main() {
   fi
 
   install -d -m 0755 "$MODELS_DIR/vision" "$MODELS_DIR/decide" "$MODELS_DIR/extract"
-  for bundle in decide/bundle-laya-pilot extract/pilot-bundle; do
-    if [ ! -d "$MODELS_DIR/$bundle" ] && [ -d "$ROOT/models/$bundle" ]; then
-      cp -a "$ROOT/models/$bundle" "$MODELS_DIR/$bundle"
-    fi
-  done
+  copy_bundle() {
+    local slot="$1" legacy="$2" source
+    [ -d "$MODELS_DIR/$slot" ] && return 0
+    source="$ROOT/models/$slot"
+    [ -d "$source" ] || source="$ROOT/models/$legacy"
+    [ -d "$source" ] && cp -a "$source" "$MODELS_DIR/$slot"
+    return 0
+  }
+  copy_bundle decide/bundle-laya-mvp decide/bundle-laya-pilot
+  copy_bundle extract/bundle-gliner-pilot extract/pilot-bundle
   if [ "$WITH_MODELS" -eq 1 ]; then
     provision_models
   elif [ ! -d "$MODELS_DIR/llm" ] || [ ! -d "$MODELS_DIR/stt" ]; then

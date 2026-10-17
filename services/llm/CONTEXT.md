@@ -1735,7 +1735,7 @@ dir>` is the production decider stack over a bundle — rules, then Laya, the ex
 answering `decider-eval.py`'s line protocol with the tool, the confidence, the runner-up and `now`. `llm-tier-eval`
 drives the whole turn (decide, fill, run, speak) with stub tools and the real model, and it and
 `call-faithfulness-eval` run the shipped pipeline through `installTurnEngines` (`--decide-bundle` and
-`--extract-bundle`, by default `models/decide/bundle-laya-pilot` and `models/extract/pilot-bundle` beside the LLM
+`--extract-bundle`, by default `models/decide/bundle-laya-mvp` and `models/extract/bundle-gliner-pilot` beside the LLM
 weights' models root); both print `[REFUSED]` and exit 1 rather than report a gate when Laya or GLiNER is not up.
 `llm-tier-eval --no-engines` measures the rules, the triggers and the rule text alone. Why the numbers are what they are, and how they were
 measured: `docs/operations/voice-quality-eval.md`.
@@ -1783,7 +1783,7 @@ then `+gliner` or `+rule-text`.
 
 | key | values | meaning |
 |---|---|---|
-| `decide.bundle_dir` | a path (default `models/decide/bundle-laya-pilot`) | the decider bundle the loader opens |
+| `decide.bundle_dir` | a path (default `models/decide/bundle-laya-mvp`) | the decider bundle the loader opens |
 | `decide.act` / `.ask` / `.margin` | 0..1 (template 0.90 / 0.60 / 0.10) | the policy of a decider whose bundle declares none; Laya's thresholds come from its bundle |
 | `decide.threads` | `0` (default) \| n | Laya's intra-op threads; `0` means 4, clamped to the host's hardware threads (`layaSessionThreads`) |
 | `decide.cpu_arena` | `false` (default) \| `true` | the ORT CPU memory arena |
@@ -1791,7 +1791,7 @@ then `+gliner` or `+rule-text`.
 | `decide.prepacking` | `false` (default) \| `true` | `session.use_prepacking` |
 | `decide.mmap` | `true` (default) \| `false` | hand ORT the path (mmap) instead of a read buffer |
 | `decide.rules.witness_only` | `false` (default) \| `true` | the rule decider's word is a second signal only |
-| `extract.bundle_dir` | a path (default `models/extract/pilot-bundle`) | the extractor bundle |
+| `extract.bundle_dir` | a path (default `models/extract/bundle-gliner-pilot`) | the extractor bundle |
 | `extract.lexicon_min_coverage` | 0..1 (default 0.6) | the share of a clause the memory lexicon must cover for its triple to stand |
 | `extract.threads` / `.cpu_arena` / `.mem_pattern` / `.prepacking` / `.mmap` | as above | the same five session options |
 
@@ -1960,22 +1960,39 @@ are only the fallback for a bundle that declares none. The pilot declares
 `act` 0.77, `ask` 0.77, `margin` 0.0, `now` 0.5 on Platt-calibrated
 confidence, so 0.77 is what runs; a new bundle sets its own the same way.
 
-### The pilot bundles, and how they arrive
+### The bundles, and how they arrive
 
-The pilot bundles are local artefacts exported by the sibling `intent-training/`
-project (`scripts/kit_bundle.py`); no URL serves them. Laya is
-`models/decide/bundle-laya-pilot` (embedding-only INT8, `model.onnx` 700,845,867
-B, sha256 `d9932dc3…`); GLiNER is `models/extract/pilot-bundle` (embedding-only
-INT8, `model.onnx` 540,153,983 B, sha256 `bd5841bb…`).
-`services/llm/scripts/provision.sh` checks the two slots and, when one is
-missing, installs it through `install-bundle.sh` from
-`ARGUS_DECIDE_BUNDLE_SOURCE` / `ARGUS_EXTRACT_BUNDLE_SOURCE` when set, and
-otherwise warns with the copy step. `argus-deploy/docker-compose.yml` mounts
-`models/decide` and `models/extract` read-only into `argus-llm`;
-`scripts/provision-host.sh` copies the two pilot bundles into
-`ARGUS_MODELS_DIR` when that differs from the repository's `models/`; and
-`scripts/deploy-mounts-test.sh` checks the mounts and that the deploy config
-names both bundles and selects no engine.
+Two local artefacts, exported by the sibling `intent-training/` project and packed
+into this layout by its `scripts/mvp_bundle.py`; no URL serves either, and the
+repository's `models/` carries neither.
+
+`models/decide/bundle-laya-mvp` is the Laya MVP of release `mvp-2026-10-14`: the L3 +
+L7 + seed-7 soup with the embedding-only INT8 (`model.onnx` 700,845,867 B, sha256
+`626d7257…`), a `decision.json` that carries the release's own thresholds into the
+calibrated space the judge reads (`act` = `ask` = 0.838439, the stricter tier, both
+readings recorded in the bundle) and its own golden vectors.
+`models/extract/bundle-gliner-pilot` is the GLiNER pilot bundle: the epoch-7 adapter's
+whole forward, embedding-only INT8 (`model.onnx` 540,153,983 B, sha256 `bd5841bb…`),
+its decode the pilot's `pairThreshold` 0.1 and `maxSpanWords` 16. It is the extractor
+that ships because the released `gliner-e4-int8.zip` carries an encoder-only ONNX
+graph (`input_ids`, `attention_mask` → `last_hidden_state`), not the six-input,
+four-output extraction graph `GlinerExtractor` runs; exporting the E4 whole forward,
+quantising its embedding and installing it in the same slot with the same command is
+the swap-by-replacement path, and nothing in the service changes when it lands.
+
+Both bundles carry their base model's licence text and a NOTICE as `LICENSE` and
+`NOTICE`, listed in `sha256` and recorded in `manifest.json`; the loader reads neither,
+and `install-bundle.sh` verifies them like every other file.
+
+`services/llm/scripts/provision.sh` checks the two slots and, when one is missing,
+installs it through `install-bundle.sh` from `ARGUS_DECIDE_BUNDLE_SOURCE` /
+`ARGUS_EXTRACT_BUNDLE_SOURCE` when set, and otherwise warns with the copy step.
+`argus-deploy/docker-compose.yml` mounts `models/decide` and `models/extract`
+read-only into `argus-llm`; `scripts/provision-host.sh` copies the two slots into
+`ARGUS_MODELS_DIR` when that differs from the repository's `models/`, falling back to
+the pre-rename `bundle-laya-pilot` / `pilot-bundle` directories when the named ones are
+not there; and `scripts/deploy-mounts-test.sh` checks the mounts and that the deploy
+config names both bundles and selects no engine.
 
 ### The label set is the only coupling
 
@@ -2050,7 +2067,7 @@ over fifteen states (Spanish, English, runs of whitespace, emoji, the mask token
 the empty string and a ~1,300-token text): **360 sequences, all reproduced id for
 id and marker for marker**, and the fifteen state tokenizations with them
 (`llm-sp-tokenizer-test`). The test reads the tokenizer of the installed bundle
-(`models/decide/bundle-laya-pilot`, or `ARGUS_LAYA_BUNDLE`) and says so and skips
+(`models/decide/bundle-laya-mvp`, or `ARGUS_LAYA_BUNDLE`) and says so and skips
 when none is installed or when the installed tokenizer is not the one the
 fixture was frozen from; a new bundle with a new tokenizer regenerates the
 fixture with the same command.

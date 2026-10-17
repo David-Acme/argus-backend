@@ -199,5 +199,5 @@ setup_turn_bundle() {
 
 setup_llm_model
 setup_memory_model
-setup_turn_bundle decide bundle-laya-pilot ARGUS_DECIDE_BUNDLE_SOURCE
-setup_turn_bundle extract pilot-bundle ARGUS_EXTRACT_BUNDLE_SOURCE
+setup_turn_bundle decide bundle-laya-mvp ARGUS_DECIDE_BUNDLE_SOURCE
+setup_turn_bundle extract bundle-gliner-pilot ARGUS_EXTRACT_BUNDLE_SOURCE

@@ -71,7 +71,7 @@ compact_wait_ms = 15000
 compact_max_tokens = 256
 
 [decide]
-bundle_dir = "models/decide/bundle-laya-pilot"
+bundle_dir = "models/decide/bundle-laya-mvp"
 act = 0.90
 ask = 0.60
 margin = 0.10
@@ -85,7 +85,7 @@ mmap = true
 witness_only = false
 
 [extract]
-bundle_dir = "models/extract/pilot-bundle"
+bundle_dir = "models/extract/bundle-gliner-pilot"
 lexicon_min_coverage = 0.6
 threads = 0
 cpu_arena = false

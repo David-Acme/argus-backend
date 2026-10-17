@@ -39,7 +39,7 @@ chat_template = "chatml"
 gpu_layers = 0
 
 [decide]
-bundle_dir = "models/decide/bundle-laya-pilot"
+bundle_dir = "models/decide/bundle-laya-mvp"
 act = 0.90
 ask = 0.60
 margin = 0.10
@@ -108,7 +108,7 @@ compact_max_tokens = 256
 observe_camera_events = false
 
 [extract]
-bundle_dir = "models/extract/pilot-bundle"
+bundle_dir = "models/extract/bundle-gliner-pilot"
 lexicon_min_coverage = 0.6
 threads = 0
 cpu_arena = false

@@ -115,7 +115,7 @@ import sys
 import tomllib
 
 config, kind = pathlib.Path(sys.argv[1]), sys.argv[2]
-default = {"decide": "models/decide/bundle-laya-pilot", "extract": "models/extract/pilot-bundle"}[kind]
+default = {"decide": "models/decide/bundle-laya-mvp", "extract": "models/extract/bundle-gliner-pilot"}[kind]
 value = ""
 if config.is_file():
     value = tomllib.loads(config.read_text()).get(kind, {}).get("bundle_dir", "")

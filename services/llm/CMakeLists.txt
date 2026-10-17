@@ -373,10 +373,10 @@ target_compile_options(llm-bundle-check PRIVATE -Wall -Wextra)
 set_target_properties(llm-bundle-check PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-bundle-check-decide
-    COMMAND llm-bundle-check decide ${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-pilot --skip-missing)
+    COMMAND llm-bundle-check decide ${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-mvp --skip-missing)
 
 add_test(NAME llm-bundle-check-extract
-    COMMAND llm-bundle-check extract ${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/pilot-bundle --skip-missing)
+    COMMAND llm-bundle-check extract ${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/bundle-gliner-pilot --skip-missing)
 
 set_tests_properties(llm-bundle-check-decide llm-bundle-check-extract PROPERTIES SKIP_RETURN_CODE 77)
 
@@ -409,7 +409,7 @@ add_executable(llm-sp-tokenizer-test tests/unit/llm-sp-tokenizer-test.cc)
 
 target_compile_definitions(llm-sp-tokenizer-test PRIVATE
     ARGUS_TEST_LAYA_SEQUENCES="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/laya/sequence-parity.json"
-    ARGUS_TEST_LAYA_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-pilot"
+    ARGUS_TEST_LAYA_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-mvp"
     ARGUS_TEST_NFC_PAIRS="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/laya/nfc-pairs.json")
 
 target_link_libraries(llm-sp-tokenizer-test PRIVATE argus::llm doctest::doctest)
@@ -424,7 +424,7 @@ add_executable(llm-laya-runtime-test tests/unit/llm-laya-runtime-test.cc)
 
 target_compile_definitions(llm-laya-runtime-test PRIVATE
     ARGUS_TEST_LAYA_PILOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/laya/parity-pilot.json"
-    ARGUS_TEST_LAYA_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-pilot")
+    ARGUS_TEST_LAYA_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-mvp")
 
 target_link_libraries(llm-laya-runtime-test PRIVATE argus::llm doctest::doctest)
 
@@ -452,7 +452,7 @@ add_executable(llm-gliner-runtime-test tests/unit/llm-gliner-runtime-test.cc)
 
 target_compile_definitions(llm-gliner-runtime-test PRIVATE
     ARGUS_TEST_GLINER_PARITY="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/gliner/parity-pilot.json"
-    ARGUS_TEST_GLINER_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/pilot-bundle")
+    ARGUS_TEST_GLINER_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/bundle-gliner-pilot")
 
 target_link_libraries(llm-gliner-runtime-test PRIVATE argus::llm doctest::doctest)
 
@@ -465,8 +465,8 @@ add_test(NAME llm-gliner-runtime-test COMMAND llm-gliner-runtime-test)
 add_executable(llm-e2e-turn-test tests/unit/llm-e2e-turn-test.cc)
 
 target_compile_definitions(llm-e2e-turn-test PRIVATE
-    ARGUS_TEST_LAYA_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-pilot"
-    ARGUS_TEST_GLINER_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/pilot-bundle")
+    ARGUS_TEST_LAYA_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-mvp"
+    ARGUS_TEST_GLINER_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/bundle-gliner-pilot")
 
 target_link_libraries(llm-e2e-turn-test PRIVATE argus::llm doctest::doctest)
 

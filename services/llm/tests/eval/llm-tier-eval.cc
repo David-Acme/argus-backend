@@ -119,9 +119,9 @@ Options parseOptions(int argc, char** argv)
   }
   const std::filesystem::path models = std::filesystem::path(options.llmModel).parent_path().parent_path();
   if (options.decideBundle.empty())
-    options.decideBundle = (models / "decide" / "bundle-laya-pilot").string();
+    options.decideBundle = (models / "decide" / "bundle-laya-mvp").string();
   if (options.extractBundle.empty())
-    options.extractBundle = (models / "extract" / "pilot-bundle").string();
+    options.extractBundle = (models / "extract" / "bundle-gliner-pilot").string();
   return options;
 }
 

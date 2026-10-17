@@ -553,8 +553,8 @@ shared file-static behind a mutex.
 - **Laya and GLiNER bundles** — the decider is Laya (an mmBERT-based
   multilingual choice model, ONNX through onnxruntime) and the extractor is
   GLiNER (the gliner2.5-multi backbone, ONNX). Both load from bundle
-  directories, `models/decide/bundle-laya-pilot` and
-  `models/extract/pilot-bundle` by default, validated at load by the bundle's
+  directories, `models/decide/bundle-laya-mvp` and
+  `models/extract/bundle-gliner-pilot` by default, validated at load by the bundle's
   own `sha256` listing and `manifest.json`: no configured pin, no compile-time
   pin. Thresholds and the decode come from the bundle's `decision.json`, never
   config. A new model is installed by replacing the files with
