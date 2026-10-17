@@ -335,8 +335,9 @@ episodic throttle beside it.
 
 `packages/memory` and `packages/intent` became features of this service:
 `src/feature/memory/` (`argus::memory`) and `src/feature/intent/`
-(`argus::intent`, removed with the fastText router on 2026-10-12; "The decider:
-rules, Laya and explicit triggers"), with the schema at `database/schema.sql`
+(`argus::intent`, removed on 2026-10-12 with the model router it served;
+"The decider: rules, Laya and explicit triggers"), with the schema at
+`database/schema.sql`
 and the provisioning in this service's `scripts/provision.sh`. Nothing linked
 them from outside — the memory stack's only caller is the assistant turn beside
 it, and the intent router's only caller was this feature's gate — so the two
@@ -426,7 +427,8 @@ and the memory feature both read it, which is what `src/shared/` is for.
   the back-pressure suite exercises the port over the wire shape.
   Back-pressure is the bounded work queue (`[memory] queue_bound`, default
   64): at the bound, a new job drops with a WARN. The worker's jobs are
-  embed, compact, rebuild and profile; the extract job left with NuExtract.
+  embed, compact, rebuild and profile; the extract job is gone with the
+  off-turn extractor.
 - **Models stay in the shared `models/` tree** — `models/memory/` for the
   embeddings, `models/decide/` and `models/extract/` for the Laya and GLiNER
   bundles, never copied — and arrive through this service's
@@ -554,22 +556,12 @@ that an explicit ask to write ("recuerda que el código del portón es 1234") is
 honoured even with no model: the user asked for the write in so many words, and
 no score is needed to believe it.
 
-History. From Phase 4 step 7 until 2026-10-12 the second decider was the
-fastText router (`src/feature/intent/`, `argus::intent`): a six-class
-classifier (`memory_save`, `memory_recall`, `reminder_set`, `memory_forget`,
-`camera`, `none`) at an operating point of 0.90 / 0.10, arbitrated against the
-rule proposals by `IntentRouter`, gated by `IntentGate` and handed to the turn
-by `RouterDecider`. Over 629 judge utterances the rules alone had decided with
-a precision of 0.44 (statements) and 0.31 (recall markers) against the model's
-0.96, which is why the router let a statement or a recall marker stand only
-when the model agreed. The owner's decision of 2026-10-12 made Laya and GLiNER
-the only engines and removed the router with its classifier, the
-`third_party/fastText` submodule, the in-repo artifact `models/intent/intent.bin`
-with its card and configure-time pin, `[intent]`, `intent-router-test`,
-`intent-accuracy-test`, `fast-tier-eval` and `tests/fixtures/intent/eval-check.tsv`.
-Its explicit-trigger tier survives as `TriggerDecider`.
-`tests/fixtures/intent/eval-production.tsv` (real traffic) stays; `decider-eval.py
---traffic` reads it.
+The owner's decisions of 2026-10-12 and 2026-10-16 made Laya and GLiNER the
+only engines and took the engines they replaced, with their artifacts and
+configure-time pins, from the build and the provisioning. The replaced
+router's explicit-trigger tier survives as `TriggerDecider`, and
+`tests/fixtures/intent/eval-production.tsv` (real traffic) stays;
+`decider-eval.py --traffic` reads it.
 
 ## Phase 4 step 9: config resolution into `src/config/` (D20)
 
@@ -1247,16 +1239,14 @@ The voice session and argus-llm agreed this contract with the voice agent:
   statement start made "muéstrame la cámara 3" a reminder, and the 3 read as a
   time. Without a trigger or a subject it stores nothing.
 - **A save trigger outranks a cancellation inside it.** "don't forget that
-  the dog eats at 7" contains the cancellation "forget that", and the fastText router
-  answered it with `memory.forget`. The router then tried the rule triggers
-  first and treated a cancellation as a forget only when no trigger matched;
-  `TriggerDecider` keeps that order and answers the sentence with
-  `memory.remember` (`llm-turn-flow-test`). "Enciende la luz de la cocina",
-  which the router sent to a memory tool at 0.96, stores nothing; before, an
-  empty extraction let it through the rule path. The tool handlers extract
-  with the lexicon tier, the only one since NuExtract was removed on
-  2026-10-12; NuExtract inside a call's turn had measured 23 s of `tool_ms` on
-  a loaded machine.
+  the dog eats at 7" contains the cancellation "forget that". The rule
+  triggers are tried first and a cancellation counts as a forget only when no
+  trigger matched, so the sentence answers `memory.remember`
+  (`llm-turn-flow-test`). "Enciende la luz de la cocina" stores nothing; an
+  empty extraction must not let it through the rule path. The tool handlers
+  extract with the lexicon tier, the only one since the off-turn extractor
+  left on 2026-10-12; inside a call's turn that extractor had measured 23 s of
+  `tool_ms` on a loaded machine.
 - **A command is not a statement about its object.** The vocabulary's
   statement starts are noun phrases ("la cámara", "la luz", "the heating"),
   accepted within the first five words, so "muéstrame la cámara 3",
@@ -1272,8 +1262,8 @@ The voice session and argus-llm agreed this contract with the voice agent:
 - **Plain save requests are triggers.** "save that", "save this", "store
   that", "guarda esto", "guárdame esto", "memoriza que", "no te olvides de
   que", "quiero que guardes que", "toma nota" and their variants were not in
-  the vocabulary. The fastText router sent such a request to
-  `memory.remember` on the model's word, formation refused it as not explicit, and the model then
+  the vocabulary. A routed save request used to reach `memory.remember` on
+  the model's word, formation refused it as not explicit, and the model then
   answered "lo he guardado" for a fact that was never written (9 of 16 such
   probes before this change).
 - **A note the lexicon cannot structure stays a note.** An explicit request
@@ -1282,11 +1272,11 @@ The voice session and argus-llm agreed this contract with the voice agent:
   (`CoveredLexiconExtractor`), is stored at once as the speaker's note
   (`predicate = nota`, the clause as written), so the confirmation the user
   hears is true and the fact survives a restart. Until 2026-10-12
-  `MemoryService::refineLater` then queued an off-turn extract job that ran
-  NuExtract on the utterance when the chat engine was idle and replaced the
+  `MemoryService::refineLater` then queued a job that ran the off-turn
+  extractor on the utterance when the chat engine was idle and replaced the
   note with a triple when the model found one; that job, `memory.extract_wait_ms`
   and the model left together, and the note is now final. The memory behaves
-  as it always did on an install without NuExtract.
+  as it always did on an install without that extractor.
 - **A newer value closes the older one; notes accumulate.** `upsertFact`
   looked for the open fact with the same entity and predicate and bound three
   of `CLOSE_FACT`'s four parameters, so since the close was scoped to its
@@ -1393,10 +1383,10 @@ row in its own language and persona:
 | HEAD (llm as of ed766524) | 24 | 7, every miss answered "lo he guardado" / "I've saved" | 10 tried, 1 stored ("show me the camera 3") | 2 |
 | this work | 25 | 15 ("apunta el código del wifi, es casa2024" has no trigger) | 0 | 2 ("la alarma se activa a las 10", "la cámara de mi teléfono no funciona", both statements) |
 
-Of the eight rule notes the run left, NuExtract refined two off the turn
-("el código del portón es 1234", "the gate code is 1234") and kept six as
-notes; since 2026-10-12 there is no off-turn refinement and all eight stay
-notes. Inside a call (`argus-tool-bench --voice`, `check.tsv`): camera 56/56
+Of the eight rule notes the run left, the off-turn extractor of that day
+refined two ("el código del portón es 1234", "the gate code is 1234") and kept
+six as notes; since 2026-10-12 there is no off-turn refinement and all eight
+stay notes. Inside a call (`argus-tool-bench --voice`, `check.tsv`): camera 56/56
 and saves 19/20 in both builds; "neither" rows 22/27 → 23/27 with 3 → 2
 memory writes.
 
@@ -1673,13 +1663,13 @@ existing store keeps an unused empty table.
   outside the `VecDb` mutex; the lock is held only for the dedup probe and
   for the one replace transaction, so a background embed no longer holds
   the recall of a live turn for 50-300 ms.
-- The memory worker's NuExtract extraction waited for the chat engine to be
-  idle on every job, so NuExtract, e5 and the main model did not run at once
+- The memory worker's off-turn extraction waited for the chat engine to be
+  idle on every job, so it, e5 and the main model did not run at once
   on the same cores. The job and the model were removed on 2026-10-12;
   compaction still waits for an idle engine on its `preferIdle` jobs and
   requeues when the engine stays busy.
 - `ExtractionService::extractAsync` had no caller and was removed (#111); the
-  rest of `ExtractionService` went with NuExtract on 2026-10-12.
+  rest of `ExtractionService` went with the off-turn extractor on 2026-10-12.
 
 ## The `llm` component (selectable modules, 2026-10-05)
 
@@ -1757,8 +1747,10 @@ specs; a snapshot of every provider's `tools/list` that both sides test against 
 
 The owner's decision of 2026-10-12: Laya decides and GLiNER extracts, by
 default, with the pilot bundles, and no configuration chooses another engine.
-fastText and NuExtract are removed and no longer installed. Swapping in a newly
-trained model is replacing the bundle's files.
+The engines the pilots were swapped in for are removed and no longer installed
+— replaced by Laya and GLiNER, see the retirement record in
+`docs/history/reports/` (2026-10-17). Swapping in a newly trained model is
+replacing the bundle's files.
 
 Both engines ride the turn's own seams; nothing in the MCP path, the tool
 runtime, the pendings or the audit knows they exist. `installTurnEngines`
@@ -1771,10 +1763,10 @@ and by the evals:
 - **The extractor.** `turn::GlinerExtractor` is the slot layer's text engine,
   behind `slots::TextSlots`. When its bundle does not load, its model cannot
   run, or it finds no span above the bundle's threshold, the rule tier
-  (`slots::RuleText`) answers. `turn::ModelText` and the NuExtract
-  `ExtractionService` (`models/extract/NuExtract-1.5-tiny-Q4_K_M.gguf`, through
-  llama.cpp) are gone; the memory feature's capture is the lexicon tier with its
-  coverage floor (`CoveredLexiconExtractor`, `extract.lexicon_min_coverage`).
+  (`slots::RuleText`) answers. `turn::ModelText` and the retired
+  `ExtractionService` are gone; the memory feature's capture is the lexicon
+  tier with its coverage floor (`CoveredLexiconExtractor`,
+  `extract.lexicon_min_coverage`).
 
 `TurnEngines::pipeline()` names what is up: `rules+triggers+laya` or `rules+triggers`,
 then `+gliner` or `+rule-text`.
@@ -2253,10 +2245,10 @@ section describes: no `llm-tier-eval` comparison against master, no
 `selection.accuracy` floor, no sealed-set validation and no re-scoring of the
 int8 exports. What is required instead is integrity — the bundles in the
 installer layout, installed through `install-bundle.sh` with their golden
-vectors passing, the degradation contract, fastText and NuExtract gone from
-build and provisioning, the llm suites green with a prod boot, and RSS and
-decide/extract p95 reported rather than gated. The text below records the gate
-as it stood on 2026-10-12.
+vectors passing, the degradation contract, the engines the pilots displaced
+gone from build and provisioning, the llm suites green with a prod boot, and
+RSS and decide/extract p95 reported rather than gated. The text below records
+the gate as it stood on 2026-10-12.
 
 The cutover branch is ready and parked: it is merged only when the owner's
 trained INT8 bundles beat master where master works today (the no-regression
@@ -2266,7 +2258,7 @@ falls under its gate, because the pilot Laya scores plain memory statements and
 questions below its 0.77 operating point and only explicit triggers still route
 them.
 
-**The bar** — master `ef85ad81` (fastText router + NuExtract), `llm-tier-eval`
+**The bar** — master `ef85ad81` as it stood before the cutover, `llm-tier-eval`
 in a prod build, 789 cases, beside the branch on the pilots:
 
 | metric | gate | master (the bar) | branch, pilots |
@@ -2455,7 +2447,7 @@ The dev build is not the reference: it measured 26 to 48 s turns, and its proces
 
 ## Eval gates red with the weights present (backlog, 2026-10-16)
 
-`llm-tier-eval` and `call-faithfulness-eval` exit 77 (skipped) when the LLM weights, the intent model, or a debug build is present in the wrong way. Where the weights and the intent model are present (the prod build, the stack's models), both run and their gates fail. The failure is not a batch-3 regression: the same numbers come from `ca416a52` and from `6176b907`, both built fresh with the same models (`LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf`, `intent.bin` with the same sha256). Nothing in `services/llm` changes between them but a log line.
+`llm-tier-eval` and `call-faithfulness-eval` exit 77 (skipped) when the LLM weights, a turn engine's bundle, or a debug build is present in the wrong way. Where the weights and the bundles are present (the prod build, the stack's models), both run and their gates fail. The failure is not a batch-3 regression: the same numbers come from `ca416a52` and from `6176b907`, both built fresh with the same models (`LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf` and the same engine files). Nothing in `services/llm` changes between them but a log line.
 
 - `llm-tier-eval`, memory selection and recall (both commits): `selection.memory.accuracy` 0.241379 against 0.600; `tool.memory.forget.recall` 0.156250 against 0.600; `tool.memory.remember.recall` 0.227848 against 0.500; `tool.memory.remind.recall` 0.013333 against 0.750; `falseCompletionRate` 0.042 to 0.057 against 0 (en, neutral, pe, stt variants).
 - `call-faithfulness-eval` (both commits): `retryShare` 0.333333 against 0.050; `missedNameAsk`, `recital` and `relevance` 1.000000 each against 0 (32 cases, 34 turns).
@@ -2464,7 +2456,7 @@ The gates stay as they are. Until this is worked, the build that runs these eval
 
 ### What the first working pass measured (2026-10-16)
 
-The memory selection is green: `RouterDecider` marks its candidate exact when its own arbitration decided
+The memory selection is green: the decider of that day's router marked its candidate exact when its own arbitration decided
 (see "The turn" above), and the same prod build that measured 0.241379 measures `selection.memory.accuracy`
 0.620690 with every memory recall and precision inside its gate; the details are in the commit and the
 unit's report. `falseCompletionRate` stays red, and the unit's dump shows why it is not the memory path's:

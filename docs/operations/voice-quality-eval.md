@@ -47,8 +47,8 @@ scripts/measure-guard.sh --build services/llm/build/dev --profile dev \
 ```
 
 A decider, a filler and a speaker are processes that read one JSON request per line on stdin and
-write one JSON answer per line on stdout, so the rule tier, the fastText families, a fine-tuned
-model and the pipeline's own stages are scored by the same code and the same numbers. A command that
+write one JSON answer per line on stdout, so the rule tier, a fine-tuned model and the pipeline's own
+stages are scored by the same code and the same numbers. A command that
 cannot start is a visible skip (exit 77), never a pass. The classifier is retrained and republished
 from the sibling `intent-training/` project (`CONTEXT.md` there).
 
@@ -175,69 +175,13 @@ figures), which is why a third sealed set of 2,399 further near-misses, by autho
 the training data, SEALED-2 or each other, joins the pool: 363 + 3,311 + 2,399 = 6,073 negatives give 0.063% at zero errors,
 0.093% at one (passes) and 0.120% at two (fails).
 
-Baseline: the fastText classifier with twenty classes (the six of the memory router plus fourteen
-for the module families, `intent-training` `CONTEXT.md`), adapter `scripts/decider_fasttext.py`,
-margin 0.10.
-
-| reading | model sha256 | threshold | module-family coverage | precision | pooled false-route | near-miss stratum |
-|---|---|---|---|---|---|---|
-| first (trained on a corpus with 1,247 containment near-duplicates of the sealed set) | d8c93ec5... | 0.93 | 0.456 | 0.852 | 0.665% | 2.875% |
-| clean (0 near-duplicates; same hyperparameters) | 44bd49cf... | 0.93 | 0.456 | 0.874 | 0.488% | 2.259% |
-
-The clean reading is the bar: per family (coverage / precision / false-route) calendar 0.500 / 0.756
-/ 0.456% (near-miss 1.700%), task 0.423 / 0.957 / 0.041%, project 0.630 / 0.944 / 0.041%, modules
-0.403 / 0.931 / 0.083%, reminder list 0.286 / 1.000 / 0.000%; memory coverage 0.556, precision 0.900,
-false action 0.167%; the real stratum has no false route at all. On the sealed sweep the near-miss
-stratum is at or under 0.5% only at confidence 0.99 and above, where coverage is 0.180. The model
-fails the gate and is not published: the false routes are near-miss sentences that use the family
-nouns in the past tense or as plain nouns, and calendar is where nearly all of them land. The
-sealed set has been read twice for fastText; any later number of it on the sealed set is a tuned
-number and is labelled so.
-
-The coverage bar is 0.456, fastText at the sealed point where it broke the wrong-ACT gate; a pass is
-under the gate AND above the bar. Beside it every report prints what a fastText that obeys the gate
-reaches: 0.154 on the selection set at the 0.1% ceiling (calibrated, `ACT >= 0.91 ASK >= 0.85`, 8,807
-non-positives, upper 95% bound 0.10%) and 0.101 on the sealed set (the figure of the first sealed
-reading, at confidence >= 0.995 under the 0.5% false-route gate that held then, so it is a tuned number and not the same
-ceiling as the selection figure). `gates.json` carries both under `decider.gateObeyingFastText`, and
-`decider-eval.py` and `round-report.py` print them beside the coverage they report.
-
-On real traffic (turns that came from the product or lab sessions) at the selected threshold the
-clean model sends 44.3% of the 61 production turns to a tool and leaves 55.7% to plain conversation
-(memory coverage 43.1%); 44.6% of the 92 lab-session turns and 61.2% of the 103 check turns reach a
-tool. With the LLM no longer a second chance, that share is the number to move: a turn nothing
-decides is conversation, never a guess.
-
-The classifier's own split (`intent-training`, 5,649 test rows): the Wilson 95% lower bounds of
-precision are 0.873 for `memory_save`, 0.840 for `memory_recall`, 0.908 for `reminder_set`, 0.839 for
-`memory_forget` and 0.831 for `camera`, and the pooled precision of the fourteen family classes is
-0.956 (lower bound 0.936); held-out `none` rows fire a module family 0.170% of the time (ceiling
-0.5%) and `memory_save` 0.089% (ceiling 0.25%). Its gates sit within the noise of a split of that
-size: three of them miss on this build (`memory_recall` by 0.010 and `camera` by 0.019 on the lower
-bound, `none` recall on the case judge 0.968 against 0.97), which is why the decision to publish is
-taken on the sealed reading and not on them.
-
-### Round 0 of the fine-tuned model, on the selection sets only
-
-Laya (`jhu-clsp/mmBERT-base` fine-tuned on 5,978 folded rows, 2 epochs) against fastText families-v1.1 on
-the same selection set (the judge corpus, the fresh holdout and 2,500 real negatives; the sealed sets
-untouched), module families pooled, ACT only:
-
-| ACT at | decider | coverage | precision | wrong tool | wrong ACT | near-miss stratum |
-|---|---|---|---|---|---|---|
-| 0.90 | Laya | 0.849 | 0.869 | 1.59% | 1.005% | 3.09% |
-| 0.90 | fastText | 0.669 | 0.966 | 1.99% | 0.100% | 0.617% |
-| 0.93 | Laya | 0.653 | 0.906 | 0.80% | 0.502% | 2.06% |
-| 0.93 | fastText | 0.622 | 0.969 | 1.59% | 0.067% | 0.412% |
-| 0.94 | Laya | 0.167 | 0.933 | 0.40% | 0.067% | 0.206% |
-
-Laya's confidence is compressed (it stops near 0.945 and falls off a cliff above it), so thresholds must
-be fitted by calibration before two deciders are compared at equal wrong-ACT; no non-trivial ACT / ASK
-policy meets the 0.1% ceiling on that selection set for either decider. The production router of that
-day (`appCommandFor` + the six-class fastText memory router, then behind `tests/eval/production-decider`)
-routed no module family and sent 3.98% of module-family requests to a memory tool. Since 2026-10-12
-`production-decider --bundle <decider bundle dir>` is the shipped stack over a bundle: the rules, then Laya,
-with the explicit triggers as the fallback, answering with the tool, the confidence, the runner-up and `now`.
+The decider the harness scores is the shipped one: `production-decider --bundle <decider bundle dir>`
+runs the rules, then Laya, with the explicit triggers as the fallback, and answers with the tool, the
+confidence, the runner-up and `now`. The coverage bar the harness prints beside a report is the pin in
+`gates.json` (`decider.metrics`). The engines the pipeline shipped before the 2026-10 cutover were
+replaced by Laya and GLiNER; what they were, the numbers they measured (their coverage and precision,
+the sealed readings, the real-traffic shares and the round-0 comparison) and why the swap happened are
+in the retirement record (`docs/history/reports/`, 2026-10-17).
 
 ## Performance and consumption
 
@@ -245,17 +189,9 @@ with the explicit triggers as the fallback, answering with the tool, the confide
 tree, threads, CPU milliseconds per call, load time and artifact size, sequentially, and refuses to
 record a number when `/proc/stat` shows the machine busy (exit 77; `--allow-busy` measures anyway and
 marks it not reportable). `gates.json` (`performance.metrics`) holds the budget: p95 150 ms, resident
-600 MB, CPU 400 ms per call after INT8 with 4 threads.
-
-| decider | p50 / p95 ms | CPU ms per call | resident / peak MB | threads | artifact MB |
-|---|---|---|---|---|---|
-| fastText router, C++ dev build (removed 2026-10-12) | 0.28 / 0.39 | 0.27 | 54.8 / 54.8 | 1 | 12.3 |
-| fastText 20 classes, Python adapter | 0.06 / 0.14 | 0.03 | 52.3 / 52.3 | 1 | 12.5 |
-| Laya round 0, PyTorch fp32, CPU | 91.7 / 101.4 | 740.6 | 1,733 / 2,324 | 39 | 1,294 (615 weights) |
-
-Laya passes the latency budget and fails the memory budget by 2.9 times in the form nobody ships. The plan
-for the shipped form (vocabulary pruned to the Spanish and English tokens, ONNX, INT8, 4 threads) is
-measured before it is claimed.
+600 MB, CPU 400 ms per call after INT8 with 4 threads; the shipped engine's own reading, reported
+rather than gated since the owner's 2026-10-16 ruling, is in `services/llm/CONTEXT.md`, "The budget the
+MVP ships with".
 
 ## The slots
 
@@ -284,9 +220,7 @@ the reason for it: with the fast tier removed the model called `memory.remember`
 the other three memory tools in none; it never called a calendar, task, project or module tool (28 of
 28 requests with a policy sentence in its prompt: 0 calls); 13.2% of its turns claimed an action
 nothing had done (22.7% of the productivity requests); and with a module off it never made the offer
-(0 of 146). The fastText router before this wave sent 27.7% of the negatives to a memory tool, which the new
-arbitration and the retrained classifier took to 1.4% (productivity requests routed to a memory tool
-52.6% to 0.9%). `llm-tier-eval` and its stub tools drove that loop; since 2026-10-12 they drive the shipped turn
+(0 of 146). `llm-tier-eval` and its stub tools drove that loop; since 2026-10-12 they drive the shipped turn
 (rules, Laya, GLiNER, through `installTurnEngines`) and print `[REFUSED]` and exit 1 when either engine
 is not up, as `call-faithfulness-eval` does; `llm-tier-eval --no-engines` measures the rules, the
 triggers and the rule text alone.

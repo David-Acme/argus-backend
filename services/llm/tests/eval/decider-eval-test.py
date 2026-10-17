@@ -483,18 +483,12 @@ class RunTest(unittest.TestCase):
         self.assertIsNone(data["policy"])
         self.assertAlmostEqual(data["slices"]["origin"]["x"]["moduleFamilies"]["coverage"], 1.0)
 
-    def test_the_gate_obeying_baseline_is_printed_beside_the_bar(self):
+    def test_the_coverage_bar_is_printed_for_each_final_section(self):
         self.gates.write_text(json.dumps({
             "sealed": {"file": "sealed.jsonl", "sha256": hashlib.sha256(self.sealed.read_bytes()).hexdigest()},
-            "decider": {"wrongActMax": 0.0, "minStratum": 0, "metrics": {"moduleFamilies.coverage": {"min": 0.456}},
-                        "gateObeyingFastText": {
-                            "selection": {"coverage": 0.154, "label": "at the 0.1% ceiling after calibration"},
-                            "sealed": {"coverage": 0.101, "label": "at confidence >= 0.995 under the older 0.5% gate"}}}}))
+            "decider": {"wrongActMax": 0.0, "minStratum": 0, "metrics": {"moduleFamilies.coverage": {"min": 0.456}}}}))
         result, _ = self.run_harness("--final", "--sealed", str(self.sealed))
-        self.assertIn("against the bar 0.456 (fastText where it broke the wrong-ACT gate) and 0.154 "
-                      "(gate-obeying fastText on the selection set at the 0.1% ceiling after calibration)", result.stdout)
-        self.assertIn("0.101 (gate-obeying fastText on the sealed set at confidence >= 0.995 under the older 0.5% gate)",
-                      result.stdout)
+        self.assertIn("coverage 1.000 against the bar 0.456", result.stdout)
 
     def test_a_changed_sealed_set_is_refused(self):
         self.write_gates("0" * 64, 0.0)

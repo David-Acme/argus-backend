@@ -22,3 +22,4 @@ verification records live in [reports/](reports/).
 | 2026-09-10 | F10 — hygiene | Curated English documentation tree, per-project ignores, dead root aggregator removed, one Docker image per microservice. |
 | 2026-09-11/14 | F11 — camera guard | Autonomous `argus-guard` service (danger policy, staged saga, gated camera actions), fleet-secret caller credentials, durable camera outbox, identity person RPC, TTS cache, audio endpointer, RustFS object store, host provisioning. |
 | 2026-09-14 | R5 — durable delivery | JetStream stream reconciliation, injected notification sinks, gateway delivery inbox, encounter-closed memory feed, LLM grammar-constrained chat, guard lifecycle/lease hardening. |
+| 2026-10-17 | Engines retired | Laya and GLiNER are the turn's engines; fastText and NuExtract retired from the build, the provisioning and every live surface, and the MVP ratchet is the baseline ([record](reports/fasttext-nuextract-retired.md)). |

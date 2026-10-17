@@ -590,7 +590,9 @@ the matching `*-init` profile is the only migration path onto a volume.
   `[tts] remote_url` in config.camera.toml, the loopback publish), the GPU
   pins, and (from f8-b4) the `[memory]`/`[extract]` blocks config.llm.toml
   gains with the hosted memory feature; `[decide]` and `[extract]` name the
-  Laya and GLiNER bundles and select no engine (there is no NuExtract).
+  Laya and GLiNER bundles and select no engine (the engines of the earlier
+  cutover, replaced by Laya and GLiNER; see the retirement record in
+  `docs/history/reports/`, 2026-10-17).
 - No docker secrets for the services: nothing is baked into images and
   instance secrets live only in the gitignored config files (rustfs and its
   init job read theirs from compose secret files).
