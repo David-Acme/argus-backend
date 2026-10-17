@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mcp/server.hxx>
+#include <shared/vocabulary/masked-camera.hxx>
 
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
@@ -21,6 +22,7 @@ using EnvironmentCatalog = std::function<drogon::Task<std::vector<EnvironmentCho
 struct GuardToolsInput
 {
   EnvironmentCatalog catalog;
+  MaskedCameraDirectory maskedCameras{};
   std::function<trantor::EventLoop*()> loop;
 };
 

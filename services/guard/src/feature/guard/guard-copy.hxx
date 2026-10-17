@@ -19,7 +19,8 @@ enum class NoticeKind : uint8_t
   Digest,
   Panic,
   Duress,
-  SpokenDuress
+  SpokenDuress,
+  PrivacyCoverage
 };
 
 enum class NoticeSubject : uint8_t
@@ -81,6 +82,7 @@ struct GuardNotice
   std::string tamperStatus;
   std::vector<DigestLine> held;
   std::vector<DigestLine> routine;
+  std::vector<DigestLine> masked{};
   int64_t notified{0};
   bool afterQuiet{false};
   std::string actorName;

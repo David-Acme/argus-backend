@@ -8,6 +8,7 @@
 #include <exception>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -42,6 +43,7 @@ EpisodeRow episodeFromRow(const drogon::orm::Row& row)
 }
 
 constexpr std::string_view kTamperOnsetPrefix = "tamper_onset_";
+constexpr std::string_view kTamperClosedPrefix = "tamper_closed_";
 }
 
 drogon::Task<std::vector<EpisodeRow>>
@@ -105,10 +107,27 @@ EpisodeRepository::tamper(const EpisodeListInput& input) const
   std::vector<TamperRow> tampered;
   tampered.reserve(rows.size());
   std::unordered_set<int64_t> seen;
+  std::unordered_map<int64_t, std::pair<std::string, int64_t>> closed;
+  for (const auto& marker :
+       co_await client->execSqlCoro(std::string(CLOSED_TAMPER_KEYS))) {
+    const auto key = marker["key"].as<std::string>();
+    try {
+      closed[std::stoll(key.substr(kTamperClosedPrefix.size()))] = {
+          marker["value"].as<std::string>(), marker["updated_at"].as<int64_t>()};
+    }
+    catch (const std::exception&) {
+      LOG_WARN << "Guard episodes: unreadable tamper closure key " << key;
+    }
+  }
   for (const auto& row : rows) {
     const int64_t cameraId = row["camera_id"].as<int64_t>();
     const Json::Value event =
         json_util::fromString(row["event_json"].as<std::string>());
+    const int64_t createdAt = row["created_at"].as<int64_t>();
+    std::string reason;
+    if (const auto marker = closed.find(cameraId); marker != closed.end() &&
+        marker->second.second >= createdAt)
+      reason = marker->second.first;
     tampered.push_back(
         {.incidentId = row["id"].as<int64_t>(),
          .cameraId = cameraId,
@@ -116,8 +135,9 @@ EpisodeRepository::tamper(const EpisodeListInput& input) const
          .danger = row["danger"].as<std::string>(),
          .status = event.isObject() ? event.get("status", "").asString()
                                     : std::string{},
-         .createdAt = row["created_at"].as<int64_t>(),
+         .createdAt = createdAt,
          .open = openCameras.contains(cameraId) && seen.insert(cameraId).second,
+         .closedReason = std::move(reason),
          .environmentId = row["environment_id"].as<int64_t>()});
   }
   co_return tampered;

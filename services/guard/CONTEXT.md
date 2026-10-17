@@ -1983,3 +1983,36 @@ Two writes deliberately record nothing. `markEvidenceDeleted` changes no read
 at all yet: `GET /guard/incidents` has no consumer in the app, the registry row
 stays as the contract, and wiring it is a line in the plan tied to the screen
 that will read it (rule 24: no structure ahead of its consumer).
+
+## Cameras in privacy mode (2026-10-17, PM)
+
+A camera the owner put in privacy mode (its lens mask, however it was set) is
+not watched, so it must not read as a fault. The camera service publishes the
+truth (`argus.camera.v1.privacy`, one frame per privacy-capable camera per
+health tick, `services/camera/CONTEXT.md`, "Privacy mode"), and the guard keeps
+it: a masked camera is skipped by the tamper sweep before any reading is
+considered, its open tamper episode is closed with the reason `privacy` (the
+`tamper_onset_`/`tamper_last_seen_`/`tamper_notified_onset_` keys are cleared
+and a `tamper_closed_<id>` marker carries the reason to the episode JSON, whose
+`resolution` then reads `privacy` instead of `recovered`), and no notice of
+kind `guard_tamper` is ever sent for it — the tamper copy is for tampering, not
+for a mask. A camera whose privacy state is unknown (a model that does not
+claim privacy, a camera the monitor never sampled) is treated exactly as before
+this change.
+
+The mask is visible where coverage is decided: `GET /guard/safety` (and the
+`PATCH`/`PUT`/`DELETE` answers that return the same status), each environment's
+JSON (`maskedCameras`, the ids of that environment's cameras whose mask is on)
+and `GET /guard/decisions/summary` all list the masked cameras, and
+`app.set_guard_mode` names them in its reply when the new mode expects
+protection (away, armed or night), carrying `maskedCameras` in its app action
+so the app can offer to unmask. Nothing unmasks automatically.
+
+When the guard is armed or away with cameras masked, an informative notice of
+the new kind `camera_privacy_coverage` is sent once per environment and per
+masked set (`privacy_coverage_<environmentId>` in `guard_state` holds the
+fingerprint): its copy names the cameras and says Argus is not seeing those
+areas, its urgency is `passive`, and the call-trigger classifier does not
+whitelist the kind, so it is never a phone call. Putting the mask on is the
+camera's own act (the Tapo app, a preset, the button) or the app's
+(`camera.set_privacy`, Owner and Resident); the guard only reports.

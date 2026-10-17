@@ -34,6 +34,7 @@
 #include <feature/presence/infra/nats-presence-publisher.hxx>
 #include <feature/presence/services/presence-service.hxx>
 #include <feature/settings/guard-settings.hxx>
+#include <shared/vocabulary/masked-camera.hxx>
 #include <auth/auth-access.hxx>
 #include <auth/device-filter.hxx>
 #include <auth/jwt-filter.hxx>
@@ -118,6 +119,7 @@ struct RpcListenerInput
   const ModuleImpactHost& moduleImpact;
   OwnerPinHost& ownerPin;
   EnvironmentCatalog environments;
+  MaskedCameraDirectory maskedCameras;
   std::shared_ptr<const SafetyService> safety;
   const SafetyActorDirectory* actors{nullptr};
   std::string tlsAddress;
@@ -131,7 +133,9 @@ std::unique_ptr<argus::mcp::McpRpcService> toolsService(const RpcListenerInput& 
     return nullptr;
   }
   return std::make_unique<argus::mcp::McpRpcService>(argus::mcp::McpRpcInput{
-      .server = guardToolServer({.catalog = input.environments, .loop = {}}),
+      .server = guardToolServer({.catalog = input.environments,
+                                 .maskedCameras = input.maskedCameras,
+                                 .loop = {}}),
       .gate = std::make_shared<const argus::client::FleetCallerGate>(argus::client::FleetGateConfig{
           .expectedCallers = {},
           .callerPairs = {{std::string(argus::mcp::kToolCaller), rpc.toolCredential}},
@@ -381,12 +385,19 @@ int main()
   const GuardAlertSink safetySink(guardService);
   const NotificationActorNotifier safetyActor(
       {.notifications = notifications.get(), .identity = identity.get()});
+  const MaskedCameraDirectory maskedCameras = [&guardService] {
+    std::vector<MaskedCamera> masked;
+    for (const auto& camera : guardService.maskedCameras())
+      masked.push_back({.cameraId = camera.cameraId, .name = camera.name});
+    return masked;
+  };
   SafetyService::Config safetyConfig{};
   safetyConfig.retentionS = static_cast<int64_t>(guardConfig.journalRetentionDays) * 86400;
   const auto safety = std::make_shared<SafetyService>(
       SafetyService::Dependencies{.sink = &safetySink,
                                   .actor = &safetyActor,
                                   .changes = &resourceChanges,
+                                  .maskedCameras = maskedCameras,
                                   .clock = {}},
       safetyConfig);
   const auto siren = std::make_shared<SirenService>(
@@ -449,6 +460,7 @@ int main()
            places.push_back({.id = environment.id, .name = environment.name});
          co_return places;
        },
+       .maskedCameras = maskedCameras,
        .safety = safety,
        .actors = &safetyActors,
        .tlsAddress = internalTlsConfig.address,
@@ -464,7 +476,8 @@ int main()
   drogon::app().registerController(std::make_shared<GuardController>(
       GuardFeatureDependencies{.identity = identity.get(),
                                .disarm = safety.get(),
-                               .changes = &resourceChanges}));
+                               .changes = &resourceChanges,
+                               .maskedCameras = maskedCameras}));
   drogon::app().registerController(std::make_shared<SafetyController>(safety, siren));
   drogon::app().registerController(std::make_shared<SirenController>(siren));
   drogon::app().registerController(

@@ -287,3 +287,44 @@ TEST_CASE("a recognised visitor is named in the notice, and a watchlist person t
   CHECK(watch.body.starts_with("Es Hombre de la moto, alguien de tu lista de vigilancia."));
   CHECK(guard_copy::visitorSentence({}, "es").empty());
 }
+
+TEST_CASE("a coverage notice names the masked cameras and is never the tamper copy")
+{
+  GuardNotice notice{.kind = NoticeKind::PrivacyCoverage,
+                     .subject = NoticeSubject::Unobserved,
+                     .people = 0,
+                     .cameraId = 0,
+                     .cameraName = {},
+                     .environmentName = "Casa",
+                     .role = CameraRole::Other,
+                     .outdoor = false,
+                     .zoneName = {},
+                     .reasons = {},
+                     .dwellS = 0,
+                     .danger = GuardDanger::Low,
+                     .action = NoticeAction::Watching,
+                     .tamperStatus = {},
+                     .held = {},
+                     .routine = {},
+                     .masked = {{.cameraId = 7, .cameraName = "Garaje"}},
+                     .notified = 0,
+                     .afterQuiet = false,
+                     .actorName = {},
+                     .visitor = {}};
+  const NoticeText spanish = guard_copy::render(notice, "es");
+  CHECK(noticeKindToString(notice.kind) == "camera_privacy_coverage");
+  CHECK(spanish.title == "Cámaras en privacidad · Casa");
+  CHECK(spanish.body.find("Garaje") != std::string::npos);
+  CHECK(spanish.body.find("modo privacidad") != std::string::npos);
+  CHECK(guard_copy::urgency(notice) == "passive");
+
+  notice.masked = {{.cameraId = 7, .cameraName = "Garaje"},
+                   {.cameraId = 8, .cameraName = "Patio"}};
+  const NoticeText english = guard_copy::render(notice, "en");
+  CHECK(english.body.find("Garaje, Patio") != std::string::npos);
+  CHECK(english.body.find("privacy mode") != std::string::npos);
+
+  notice.kind = NoticeKind::Tamper;
+  notice.tamperStatus = "covered";
+  CHECK(guard_copy::render(notice, "es").body.find("tapada") != std::string::npos);
+}

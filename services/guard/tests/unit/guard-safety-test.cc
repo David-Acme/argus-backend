@@ -11,6 +11,7 @@
 #include <feature/guard/services/guard-feature-service.hxx>
 #include <feature/module-data/services/guard-owner-pin.hxx>
 #include <feature/safety/dtos/remove-pin-dto.hxx>
+#include <feature/safety/dtos/response-safety-dto.hxx>
 #include <feature/safety/dtos/set-pin-dto.hxx>
 #include <feature/safety/infra/guard-alert-sink.hxx>
 #include <feature/safety/infra/notification-actor-notifier.hxx>
@@ -170,9 +171,11 @@ struct SafetyRig
   NotificationActorNotifier actor{
       NotificationActorNotifier::Dependencies{.notifications = &notifications, .identity = &identity}};
   int64_t clock{1'700'000'000};
+  std::vector<MaskedCamera> masked;
   SafetyService safety{SafetyService::Dependencies{.sink = &sink,
                                                    .actor = &actor,
                                                    .changes = &changes,
+                                                   .maskedCameras = [this] { return masked; },
                                                    .clock = [this] { return clock; }},
                        SafetyService::Config{.pinIterations = 1000,
                                              .panicRepeatWindowS = 60,
@@ -184,7 +187,9 @@ struct SafetyRig
                                              .sweepIntervalS = 5.0,
                                              .retentionS = 30LL * 86400,
                                              .attempts = {.maxFailures = 3, .windowSeconds = 900}}};
-  GuardFeatureService feature{GuardFeatureDependencies{.identity = &identity, .disarm = &safety}};
+  GuardFeatureService feature{GuardFeatureDependencies{.identity = &identity,
+                                                       .disarm = &safety,
+                                                       .maskedCameras = [this] { return masked; }}};
 
   size_t sweep()
   {
@@ -418,6 +423,37 @@ TEST_CASE("without duress PINs, disarming is exactly as before")
   CHECK(rig.notifications.sent().empty());
   CHECK_THROWS_AS(drogon::sync_wait(rig.safety.setPin({.userId = 2, .userName = "Laura", .disarmPin = "1111", .duressPin = "2222", .currentPin = std::nullopt})),
                   ResponseException);
+}
+
+TEST_CASE("the safety view and the environment JSON name the cameras in privacy mode")
+{
+  boot();
+  SafetyRig rig;
+  rig.masked = {{.cameraId = 7, .name = "Garaje"}};
+  const SafetyStatus status = drogon::sync_wait(rig.safety.status(1));
+  REQUIRE(status.maskedCameras.size() == 1);
+  CHECK(status.maskedCameras.front().cameraId == 7);
+  CHECK(status.maskedCameras.front().name == "Garaje");
+  const Json::Value json =
+      ResponseSafetyStatusDto{.duressEnabled = status.duressEnabled,
+                              .hasPin = status.hasPin,
+                              .hasPhrase = status.hasPhrase,
+                              .alertsReach = status.reach,
+                              .appSirenEnabled = false,
+                              .maskedCameras = status.maskedCameras}
+          .toJson();
+  REQUIRE(json["maskedCameras"].size() == 1);
+  CHECK(json["maskedCameras"][0]["cameraId"].asInt64() == 7);
+  CHECK(json["maskedCameras"][0]["name"].asString() == "Garaje");
+
+  const Json::Value summary = drogon::sync_wait(
+      rig.feature.decisionsSummary({.from = 0, .to = rig.clock}));
+  REQUIRE(summary["maskedCameras"].size() == 1);
+  CHECK(summary["maskedCameras"][0]["cameraId"].asInt64() == 7);
+
+  rig.masked.clear();
+  const SafetyStatus clean = drogon::sync_wait(rig.safety.status(1));
+  CHECK(clean.maskedCameras.empty());
 }
 
 TEST_CASE("a duress PIN disarms like the real one and silently alerts everyone else")
@@ -1027,6 +1063,7 @@ TEST_CASE("safety notices render in both languages")
                      .tamperStatus = {},
                      .held = {},
                      .routine = {},
+                     .masked = {},
                      .notified = 0,
                      .afterQuiet = false,
                      .actorName = "Laura",

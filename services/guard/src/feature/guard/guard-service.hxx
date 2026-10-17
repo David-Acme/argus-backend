@@ -21,6 +21,7 @@
 
 #include <atomic>
 #include <auth/module-gate.hxx>
+#include <camera/camera-privacy-state.hxx>
 #include <config/guard-config.hxx>
 #include <cstdint>
 #include <ctime>
@@ -135,7 +136,37 @@ public:
 
   void ingestHealth(const HealthSample& sample);
 
-  drogon::Task<void> checkTamperSweep(int64_t now);
+  struct PrivacySample
+  {
+    int64_t cameraId{0};
+    std::string cameraName{};
+    CameraPrivacyState state{CameraPrivacyState::Unknown};
+  };
+
+  void ingestPrivacy(const PrivacySample& sample);
+
+  struct MaskedCamera
+  {
+    int64_t cameraId{0};
+    std::string name;
+  };
+
+  [[nodiscard]] std::vector<MaskedCamera> maskedCameras() const;
+
+  struct HouseholdPosture
+  {
+    bool protects{false};
+    bool armed{false};
+  };
+
+  [[nodiscard]] HouseholdPosture householdPosture() const;
+
+  [[nodiscard]] drogon::Task<void> checkTamperSweep(int64_t now);
+
+  [[nodiscard]] drogon::Task<void> closeTamperForPrivacy(int64_t cameraId,
+                                                         int64_t now);
+
+  [[nodiscard]] drogon::Task<void> checkPrivacyCoverage(int64_t now);
 
   drogon::Task<void> maybeSendDigests(int64_t now);
 
@@ -495,7 +526,11 @@ private:
 
   void subscribeHealth();
 
-  std::string cameraHealthStatus(int64_t cameraId) const;
+  void subscribePrivacy();
+
+  [[nodiscard]] bool cameraMasked(int64_t cameraId) const;
+
+  [[nodiscard]] std::string cameraHealthStatus(int64_t cameraId) const;
 
   drogon::Task<bool> journalDecision(const JournalDecisionInput& input);
 
@@ -551,6 +586,8 @@ private:
   void publishEncounterClosed(const GuardEncounter& encounter, int64_t at);
 
   void publishHeartbeat();
+
+  drogon::Task<void> refreshHouseholdPosture(int64_t now);
 
   struct KnownSeenInput
   {
@@ -637,6 +674,7 @@ private:
   std::atomic<bool> subscribed_{false};
   bool advisoriesSubscribed_{false};
   bool healthSubscribed_{false};
+  bool privacySubscribed_{false};
   bool sweepsStarted_{false};
   bool heartbeatStarted_{false};
   int subscribeAttempts_{0};
@@ -646,6 +684,7 @@ private:
   std::optional<uint64_t> durableSubscription_;
   std::optional<uint64_t> advisorySubscription_;
   std::optional<uint64_t> healthSubscription_;
+  std::optional<uint64_t> privacySubscription_;
 
   struct CameraHealth
   {
@@ -656,6 +695,11 @@ private:
   mutable std::mutex healthMutex_;
   std::map<int64_t, CameraHealth> healthByCamera_;
   std::map<int64_t, std::string> cameraNames_;
+
+  mutable std::mutex privacyMutex_;
+  std::map<int64_t, CameraPrivacyState> privacyByCamera_;
+  std::atomic<bool> householdProtects_{false};
+  std::atomic<bool> householdArmed_{false};
 
   struct LangEntry
   {

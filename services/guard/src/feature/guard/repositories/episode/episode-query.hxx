@@ -114,6 +114,10 @@ inline constexpr std::string_view OPEN_TAMPER_KEYS =
     "SELECT key, value FROM guard_state WHERE key LIKE 'tamper\\_onset\\_%' "
     "ESCAPE '\\'";
 
+inline constexpr std::string_view CLOSED_TAMPER_KEYS =
+    "SELECT key, value, updated_at FROM guard_state "
+    "WHERE key LIKE 'tamper\\_closed\\_%' ESCAPE '\\' ORDER BY updated_at";
+
 }
 
 struct EpisodeRow
@@ -221,5 +225,6 @@ struct TamperRow
   std::string status;
   int64_t createdAt{0};
   bool open{false};
+  std::string closedReason;
   int64_t environmentId{0};
 };

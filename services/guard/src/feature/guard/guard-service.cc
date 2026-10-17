@@ -302,6 +302,20 @@ Json::Value noticeData(const NoticeDataInput& input)
     case NoticeKind::SpokenDuress:
       data["threadKey"] = "guard:duress:" + std::to_string(input.encounterId);
       break;
+    case NoticeKind::PrivacyCoverage:
+      data["threadKey"] =
+          "guard:privacy:" + std::to_string(input.environmentId);
+      break;
+  }
+  if (notice.kind == NoticeKind::PrivacyCoverage) {
+    Json::Value masked(Json::arrayValue);
+    for (const auto& camera : notice.masked) {
+      Json::Value entry(Json::objectValue);
+      entry["cameraId"] = static_cast<Json::Int64>(camera.cameraId);
+      entry["name"] = camera.cameraName;
+      masked.append(std::move(entry));
+    }
+    data["maskedCameras"] = std::move(masked);
   }
   return data;
 }
@@ -576,6 +590,8 @@ GuardService::~GuardService()
       dependencies_.bus->unsubscribe(*advisorySubscription_);
     if (healthSubscription_.has_value())
       dependencies_.bus->unsubscribe(*healthSubscription_);
+    if (privacySubscription_.has_value())
+      dependencies_.bus->unsubscribe(*privacySubscription_);
   }
   std::unique_lock lock(lifecycle_->mutex);
   const bool idle = lifecycle_->idle.wait_for(
@@ -688,6 +704,10 @@ void GuardService::stop()
       dependencies_.bus->unsubscribe(*healthSubscription_);
       healthSubscription_.reset();
     }
+    if (privacySubscription_.has_value()) {
+      dependencies_.bus->unsubscribe(*privacySubscription_);
+      privacySubscription_.reset();
+    }
   }
   if (drogon::app().isRunning()) {
     if (subscribeRetryTimer_.has_value())
@@ -702,6 +722,7 @@ void GuardService::stop()
   subscribed_.store(false, std::memory_order_release);
   advisoriesSubscribed_ = false;
   healthSubscribed_ = false;
+  privacySubscribed_ = false;
   heartbeatStarted_ = false;
   subscribeAttempts_ = 0;
 }
@@ -821,6 +842,7 @@ bool GuardService::trySubscribe()
   subscribed_.store(true, std::memory_order_release);
   subscribeAdvisories();
   subscribeHealth();
+  subscribePrivacy();
   return true;
 }
 
@@ -883,6 +905,32 @@ void GuardService::subscribeHealth()
   }
 }
 
+void GuardService::subscribePrivacy()
+{
+  if (privacySubscribed_ || !dependencies_.bus)
+    return;
+  const auto subscription = dependencies_.bus->subscribe(
+      std::string(nats_subject::kCameraPrivacy),
+      [this](std::string_view, std::string_view payload) {
+        const Json::Value privacy =
+            json_util::fromString(std::string(payload));
+        if (!privacy.isObject())
+          return;
+        const int64_t cameraId = privacy.get("cameraId", 0).asInt64();
+        if (cameraId <= 0)
+          return;
+        ingestPrivacy({.cameraId = cameraId,
+                       .cameraName = privacy.get("cameraName", "").asString(),
+                       .state = cameraPrivacyStateFromString(
+                                    privacy.get("privacy", "").asString())
+                                    .value_or(CameraPrivacyState::Unknown)});
+      });
+  if (subscription) {
+    privacySubscription_ = *subscription;
+    privacySubscribed_ = true;
+  }
+}
+
 void GuardService::ingestHealth(const HealthSample& sample)
 {
   if (sample.cameraId <= 0)
@@ -896,6 +944,68 @@ void GuardService::ingestHealth(const HealthSample& sample)
   health = {.status = sample.status, .firstSeenMs = sample.atMs, .lastSeenMs = sample.atMs};
 }
 
+void GuardService::ingestPrivacy(const PrivacySample& sample)
+{
+  if (sample.cameraId <= 0)
+    return;
+  if (!sample.cameraName.empty())
+    rememberCameraName(sample.cameraId, sample.cameraName);
+  std::scoped_lock lock(privacyMutex_);
+  privacyByCamera_[sample.cameraId] = sample.state;
+}
+
+bool GuardService::cameraMasked(int64_t cameraId) const
+{
+  std::scoped_lock lock(privacyMutex_);
+  const auto found = privacyByCamera_.find(cameraId);
+  return found != privacyByCamera_.end() &&
+         found->second == CameraPrivacyState::On;
+}
+
+GuardService::HouseholdPosture GuardService::householdPosture() const
+{
+  return {.protects = householdProtects_.load(std::memory_order_acquire),
+          .armed = householdArmed_.load(std::memory_order_acquire)};
+}
+
+drogon::Task<void> GuardService::refreshHouseholdPosture(int64_t now)
+{
+  try {
+    const int64_t environmentId = co_await environmentRepository_.defaultId();
+    const auto environment = co_await environmentRepository_.find(environmentId);
+    if (!environment)
+      co_return;
+    const GuardSchedule schedule =
+        guard_schedule::fromEnvironment(*environment);
+    const GuardPosture posture =
+        postureAt({.schedule = schedule, .manual = environment->mode, .now = now});
+    householdProtects_.store(protectionExpected(posture.mode),
+                             std::memory_order_release);
+    householdArmed_.store(posture.mode == GuardMode::Armed,
+                          std::memory_order_release);
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Guard service: the household posture could not be resolved: "
+             << error.what();
+  }
+  co_return;
+}
+
+std::vector<GuardService::MaskedCamera> GuardService::maskedCameras() const
+{
+  std::vector<MaskedCamera> masked;
+  {
+    std::scoped_lock lock(privacyMutex_);
+    for (const auto& [cameraId, state] : privacyByCamera_) {
+      if (state == CameraPrivacyState::On)
+        masked.push_back({.cameraId = cameraId, .name = {}});
+    }
+  }
+  for (auto& camera : masked)
+    camera.name = cameraName(camera.cameraId);
+  return masked;
+}
+
 std::string GuardService::cameraHealthStatus(int64_t cameraId) const
 {
   const auto config = currentConfig();
@@ -906,6 +1016,128 @@ std::string GuardService::cameraHealthStatus(int64_t cameraId) const
   if (nowMillis() - found->second.lastSeenMs > config->healthStaleS * 1000)
     return {};
   return found->second.status;
+}
+
+drogon::Task<void> GuardService::closeTamperForPrivacy(int64_t cameraId,
+                                                       int64_t now)
+{
+  const std::string onsetKey = "tamper_onset_" + std::to_string(cameraId);
+  const std::string stored = co_await repository_.state(onsetKey, "");
+  int64_t onset = 0;
+  const auto [end, error] =
+      std::from_chars(stored.data(), stored.data() + stored.size(), onset);
+  if (error != std::errc{} || end != stored.data() + stored.size() || onset <= 0)
+    co_return;
+  co_await repository_.clearState(onsetKey);
+  co_await repository_.clearState("tamper_last_seen_" +
+                                  std::to_string(cameraId));
+  co_await repository_.clearState("tamper_notified_onset_" +
+                                  std::to_string(cameraId));
+  co_await repository_.setState(
+      {.key = "tamper_closed_" + std::to_string(cameraId),
+       .value = "privacy",
+       .updatedAt = now});
+  LOG_INFO << "Guard tamper: camera " << cameraId
+           << " is in privacy mode; its tamper episode is closed and it is "
+              "not watched until the mask is off";
+}
+
+drogon::Task<void> GuardService::checkPrivacyCoverage(int64_t now)
+{
+  if (!evaluating())
+    co_return;
+  const auto masked = maskedCameras();
+  if (masked.empty())
+    co_return;
+  struct MaskedEnvironment
+  {
+    GuardEnvironmentScope scope;
+    std::vector<DigestLine> cameras;
+  };
+  std::map<int64_t, MaskedEnvironment> byEnvironment;
+  for (const auto& camera : masked) {
+    const GuardEnvironmentScope scope =
+        co_await environmentScope(camera.cameraId);
+    MaskedEnvironment& entry = byEnvironment[scope.environment.id];
+    entry.scope = scope;
+    entry.cameras.push_back({.cameraId = camera.cameraId,
+                             .cameraName = camera.name,
+                             .count = 0});
+  }
+  for (auto& [environmentId, entry] : byEnvironment) {
+    std::vector<DigestLine>& cameras = entry.cameras;
+    const GuardEnvironmentScope& scope = entry.scope;
+    const GuardSchedule schedule =
+        guard_schedule::fromEnvironment(scope.environment);
+    const GuardPosture posture =
+        postureAt({.schedule = schedule, .manual = scope.environment.mode, .now = now});
+    if (!protectionExpected(posture.mode))
+      continue;
+    std::ranges::sort(cameras, {}, &DigestLine::cameraId);
+    std::string fingerprint = guardModeToString(posture.mode);
+    for (const auto& camera : cameras)
+      fingerprint += ":" + std::to_string(camera.cameraId);
+    const std::string key =
+        "privacy_coverage_" + std::to_string(environmentId);
+    if (co_await repository_.state(key, "") == fingerprint)
+      continue;
+    const GuardNotice notice{
+        .kind = NoticeKind::PrivacyCoverage,
+        .subject = NoticeSubject::Unobserved,
+        .people = 0,
+        .cameraId = 0,
+        .cameraName = {},
+        .environmentName = scope.several ? scope.environment.name : std::string{},
+        .role = CameraRole::Other,
+        .outdoor = false,
+        .zoneName = {},
+        .reasons = {},
+        .dwellS = 0,
+        .danger = GuardDanger::Low,
+        .action = NoticeAction::Watching,
+        .tamperStatus = {},
+        .held = {},
+        .routine = {},
+        .masked = cameras,
+        .notified = 0,
+        .afterQuiet = false,
+        .actorName = {},
+        .visitor = {}};
+    const Json::Value data = noticeData({.notice = notice,
+                                         .environmentId = environmentId,
+                                         .digestDay = {},
+                                         .rule = "camera_privacy_coverage",
+                                         .incidentId = 0,
+                                         .encounterId = 0,
+                                         .zoneKind = {},
+                                         .identityState = {},
+                                         .phase = "coverage"});
+    const auto config = currentConfig();
+    const GuardDanger authorized =
+        guardDangerFromRank(std::clamp(config->notifyLevel, 1, 4));
+    const EffectResult sent = co_await performEffect(
+        {.kind = GuardActionKind::Notify,
+         .danger = authorized,
+         .greetingEnabled = false,
+         .replyRequested = false,
+         .cameraId = 0,
+         .incidentId = 0,
+         .encounterId = 0,
+         .personId = 0,
+         .now = now,
+         .text = {},
+         .lang = {},
+         .seconds = 0,
+         .correlationId = "privacy_coverage:" + std::to_string(environmentId) +
+                          ":" + std::to_string(now),
+         .sequence = 1,
+         .notifyContent = {.notice = notice, .data = data, .excludeUserIds = {}}});
+    if (sent.resumable)
+      continue;
+    co_await repository_.setState(
+        {.key = key, .value = fingerprint, .updatedAt = now});
+  }
+  co_return;
 }
 
 drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
@@ -942,7 +1174,11 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
       co_return 0;
     co_return stamp;
   };
+  for (const auto& masked : maskedCameras())
+    co_await closeTamperForPrivacy(masked.cameraId, now);
   for (const auto& reading : fresh) {
+    if (cameraMasked(reading.cameraId))
+      continue;
     const std::string onsetKey =
         "tamper_onset_" + std::to_string(reading.cameraId);
     const std::string seenKey =
@@ -1361,6 +1597,9 @@ void GuardService::publishHeartbeat()
   Json::Value payload;
   payload["service"] = "argus-guard";
   payload["enabled"] = config->enabled;
+  const HouseholdPosture posture = householdPosture();
+  payload["protects"] = posture.protects;
+  payload["armed"] = posture.armed;
   payload["at"] = static_cast<Json::Int64>(std::time(nullptr));
   dependencies_.bus->publish(nats_subject::kGuardHeartbeat,
                              json_util::toString(payload));
@@ -1405,6 +1644,8 @@ void GuardService::scheduleEncounterSweep()
                .decisionMode = config->decisionMode});
         }
         co_await checkTamperSweep(now);
+        co_await checkPrivacyCoverage(now);
+        co_await refreshHouseholdPosture(now);
         co_await maybeSendDigests(now);
       }
       catch (const std::exception& error) {

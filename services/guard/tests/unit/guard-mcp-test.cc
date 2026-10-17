@@ -34,6 +34,7 @@ struct Harness
   trantor::EventLoopThread thread;
   std::shared_ptr<McpServer> server;
   int reads{0};
+  std::vector<MaskedCamera> masked;
 
   explicit Harness(std::vector<EnvironmentChoice> places = defaultPlaces())
   {
@@ -43,6 +44,7 @@ struct Harness
                                 ++reads;
                                 co_return places;
                               },
+                              .maskedCameras = [this] { return masked; },
                               .loop = [loop] { return loop; }});
     moduleGate().reset();
   }
@@ -187,4 +189,19 @@ TEST_CASE("a mode the schema does not know never reaches the catalog")
   CHECK(outcome.isError);
   CHECK(outcome.text == "argument 'mode' has an invalid value");
   CHECK(harness.reads == 0);
+}
+
+TEST_CASE("a mode that expects protection warns about the cameras in privacy mode")
+{
+  Harness harness;
+  harness.masked = {{.cameraId = 7, .name = "Garaje"}};
+  const auto armed = harness.call("owner", "es", args("armed"));
+  CHECK(armed.text.find("Garaje") != std::string::npos);
+  CHECK(armed.text.find("modo privacidad") != std::string::npos);
+  CHECK(must(armed.appAction).arguments["maskedCameras"].size() == 1);
+  CHECK(must(armed.appAction).arguments["maskedCameras"][0]["cameraId"].asInt64() == 7);
+
+  const auto home = harness.call("owner", "es", args("home"));
+  CHECK(home.text == "La app puso la vigilancia en modo en casa.");
+  CHECK_FALSE(must(home.appAction).arguments.isMember("maskedCameras"));
 }

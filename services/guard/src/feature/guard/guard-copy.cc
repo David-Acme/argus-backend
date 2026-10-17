@@ -297,6 +297,36 @@ std::string visitorSentenceOf(const GuardVisitor& visitor, bool english)
   return sentence + ".";
 }
 
+NoticeText renderPrivacyCoverage(const GuardNotice& notice, bool english)
+{
+  NoticeText text;
+  text.title = (english ? "Cameras in privacy mode" : "Cámaras en privacidad");
+  if (!notice.environmentName.empty())
+    text.title += " · " + notice.environmentName;
+  std::string names;
+  for (const auto& camera : notice.masked) {
+    const std::string label = camera.cameraName.empty()
+                                  ? std::to_string(camera.cameraId)
+                                  : camera.cameraName;
+    names += (names.empty() ? "" : ", ") + label;
+  }
+  const bool one = notice.masked.size() == 1;
+  if (english)
+    text.body = "The guard is on and " + names +
+                (one ? " is" : " are") +
+                " in privacy mode: Argus is not seeing " +
+                (one ? "that area" : "those areas") +
+                ". Turn the mask off on the camera or in the app to cover " +
+                (one ? "it" : "them") + " again.";
+  else
+    text.body = "La vigilancia está activa y " + names + (one ? " está" : " están") +
+                " en modo privacidad: Argus no está viendo " +
+                (one ? "esa zona" : "esas zonas") +
+                ". Quítalo en la cámara o en la app para volver a cubrir" +
+                (one ? "la" : "las") + ".";
+  return text;
+}
+
 NoticeText renderEpisode(const GuardNotice& notice, bool english)
 {
   const std::string camera = cameraLabel(notice, english);
@@ -478,6 +508,8 @@ std::string noticeKindToString(NoticeKind kind)
     case NoticeKind::Duress:
     case NoticeKind::SpokenDuress:
       return "guard_duress";
+    case NoticeKind::PrivacyCoverage:
+      return "camera_privacy_coverage";
   }
   return "guard_episode";
 }
@@ -547,6 +579,8 @@ NoticeText guard_copy::render(const GuardNotice& notice, std::string_view lang)
     case NoticeKind::Duress:
     case NoticeKind::SpokenDuress:
       return renderSafety(notice, english);
+    case NoticeKind::PrivacyCoverage:
+      return renderPrivacyCoverage(notice, english);
   }
   return renderEpisode(notice, english);
 }
@@ -591,6 +625,7 @@ std::string guard_copy::urgency(const GuardNotice& notice)
 {
   switch (notice.kind) {
     case NoticeKind::Digest:
+    case NoticeKind::PrivacyCoverage:
       return "passive";
     case NoticeKind::Tamper:
       return notice.danger == GuardDanger::Critical ? "critical" : "active";

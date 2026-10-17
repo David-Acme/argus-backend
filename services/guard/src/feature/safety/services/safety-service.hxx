@@ -8,6 +8,7 @@
 #include <feature/safety/repositories/user-pin/user-pin-repository.hxx>
 #include <feature/safety/services/pin-attempts.hxx>
 #include <feature/safety/vocabulary/phrase-change.hxx>
+#include <shared/vocabulary/masked-camera.hxx>
 #include <text/secret-phrase.hxx>
 
 #include <cstdint>
@@ -16,6 +17,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 struct SafetyStatus
 {
@@ -23,6 +25,7 @@ struct SafetyStatus
   bool hasPin{false};
   bool hasPhrase{false};
   SafetyReach reach{SafetyReach::Unknown};
+  std::vector<MaskedCamera> maskedCameras{};
 };
 
 struct PinSetInput
@@ -106,6 +109,7 @@ public:
     const SafetyAlertSink* sink{nullptr};
     const SafetyActorNotifier* actor{nullptr};
     const ResourceChangeOutbox* changes{nullptr};
+    MaskedCameraDirectory maskedCameras{};
     Clock clock;
   };
 
@@ -137,6 +141,7 @@ public:
 
   [[nodiscard]] drogon::Task<SafetyStatus> status(int64_t userId) const;
   [[nodiscard]] drogon::Task<SafetyReach> reach(int64_t userId) const;
+  [[nodiscard]] std::vector<MaskedCamera> maskedCameras() const;
   [[nodiscard]] drogon::Task<SafetyStatus> setPin(const PinSetInput& input) const;
   [[nodiscard]] drogon::Task<SafetyStatus> removePin(const PinRemoveInput& input) const;
   [[nodiscard]] drogon::Task<SafetySetting> setting() const;

@@ -33,7 +33,8 @@ Json::Value statusJson(const SafetyStatus& status, const JwtContext& caller,
                                  .hasPin = status.hasPin,
                                  .hasPhrase = phraseHolder && status.hasPhrase,
                                  .alertsReach = status.reach,
-                                 .appSirenEnabled = appSirenEnabled}
+                                 .appSirenEnabled = appSirenEnabled,
+                                 .maskedCameras = status.maskedCameras}
       .toJson();
 }
 }

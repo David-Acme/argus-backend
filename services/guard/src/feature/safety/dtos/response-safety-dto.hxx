@@ -1,9 +1,11 @@
 #pragma once
 
 #include <feature/guard/vocabulary/safety-reach.hxx>
+#include <shared/vocabulary/masked-camera.hxx>
 
 #include <cstdint>
 #include <json/value.h>
+#include <vector>
 
 struct ResponseSafetyStatusDto
 {
@@ -12,6 +14,7 @@ struct ResponseSafetyStatusDto
   bool hasPhrase{false};
   SafetyReach alertsReach{SafetyReach::Unknown};
   bool appSirenEnabled{false};
+  std::vector<MaskedCamera> maskedCameras{};
 
   [[nodiscard]] Json::Value toJson() const;
 };

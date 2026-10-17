@@ -148,12 +148,18 @@ drogon::Task<SafetyStatus> SafetyService::status(int64_t userId) const
   co_return SafetyStatus{.duressEnabled = setting.duressEnabled,
                          .hasPin = setting.duressEnabled && pin.has_value(),
                          .hasPhrase = setting.duressEnabled && !setting.phraseKey.empty(),
-                         .reach = co_await reach(userId)};
+                         .reach = co_await reach(userId),
+                         .maskedCameras = maskedCameras()};
+}
+
+std::vector<MaskedCamera> SafetyService::maskedCameras() const
+{
+  return dependencies_.maskedCameras ? dependencies_.maskedCameras()
+                                     : std::vector<MaskedCamera>{};
 }
 
 drogon::Task<SafetyReach> SafetyService::reach(int64_t userId) const
-{
-  if (dependencies_.sink == nullptr)
+{  if (dependencies_.sink == nullptr)
     co_return SafetyReach::Unknown;
   try {
     co_return co_await dependencies_.sink->reach(userId);
@@ -254,7 +260,8 @@ drogon::Task<SafetyStatus> SafetyService::setPin(const PinSetInput& input) const
   co_return SafetyStatus{.duressEnabled = true,
                          .hasPin = true,
                          .hasPhrase = !setting.phraseKey.empty(),
-                         .reach = co_await reach(input.userId)};
+                         .reach = co_await reach(input.userId),
+                         .maskedCameras = maskedCameras()};
 }
 
 drogon::Task<SafetyStatus> SafetyService::removePin(const PinRemoveInput& input) const
@@ -286,7 +293,8 @@ drogon::Task<SafetyStatus> SafetyService::removePin(const PinRemoveInput& input)
   co_return SafetyStatus{.duressEnabled = setting.duressEnabled,
                          .hasPin = false,
                          .hasPhrase = setting.duressEnabled && !setting.phraseKey.empty(),
-                         .reach = co_await reach(input.userId)};
+                         .reach = co_await reach(input.userId),
+                         .maskedCameras = maskedCameras()};
 }
 
 drogon::Task<void> SafetyService::forgetUser(int64_t userId) const

@@ -1655,3 +1655,50 @@ TEST_CASE("queued and running deliveries are kept in progress until they settle"
   CHECK(runningTouches.load() == 1);
   CHECK(queuedTouches.load() == 1);
 }
+
+TEST_CASE("a masked camera is never tamper and its open episode closes with the reason privacy")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  ThreadHarness harness;
+  const int64_t start = testNowMs() / 1000;
+  {
+    auto service = harness.makeService();
+    for (int64_t step = 0; step <= 300; step += 60) {
+      service->ingestHealth({.cameraId = 154, .status = "covered", .atMs = (start + step) * 1000});
+      drogon::sync_wait(service->checkTamperSweep(start + step));
+    }
+    CHECK(harness.notifications.calls == 1);
+    CHECK(scalar("SELECT COUNT(*) FROM guard_state WHERE key = "
+                 "'tamper_onset_154'") == "1");
+
+    service->ingestPrivacy({.cameraId = 154,
+                            .cameraName = "Garaje",
+                            .state = CameraPrivacyState::On});
+    REQUIRE(service->maskedCameras().size() == 1);
+    CHECK(service->maskedCameras().front().cameraId == 154);
+    CHECK(service->maskedCameras().front().name == "Garaje");
+    drogon::sync_wait(service->checkTamperSweep(start + 360));
+    CHECK(scalar("SELECT COUNT(*) FROM guard_state WHERE key LIKE 'tamper\\_%\\_154' "
+                 "ESCAPE '\\' AND key NOT LIKE 'tamper\\_closed\\_%' ESCAPE '\\'") == "0");
+    CHECK(scalar("SELECT value FROM guard_state WHERE key = "
+                 "'tamper_closed_154'") == "privacy");
+
+    for (int64_t step = 420; step <= 900; step += 60) {
+      service->ingestHealth({.cameraId = 154, .status = "covered", .atMs = (start + step) * 1000});
+      drogon::sync_wait(service->checkTamperSweep(start + step));
+    }
+    CHECK(harness.notifications.calls == 1);
+  }
+  {
+    auto restarted = harness.makeService();
+    restarted->ingestPrivacy({.cameraId = 154,
+                              .cameraName = "Garaje",
+                              .state = CameraPrivacyState::On});
+    for (int64_t step = 960; step <= 1200; step += 60) {
+      restarted->ingestHealth({.cameraId = 154, .status = "covered", .atMs = (start + step) * 1000});
+      drogon::sync_wait(restarted->checkTamperSweep(start + step));
+    }
+    CHECK(harness.notifications.calls == 1);
+  }
+}

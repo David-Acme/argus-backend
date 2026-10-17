@@ -8,6 +8,14 @@ Json::Value ResponseSafetyStatusDto::toJson() const
   json["hasPhrase"] = hasPhrase;
   json["alertsReach"] = safetyReachToString(alertsReach);
   json["appSirenEnabled"] = appSirenEnabled;
+  Json::Value cameras(Json::arrayValue);
+  for (const auto& camera : maskedCameras) {
+    Json::Value entry(Json::objectValue);
+    entry["cameraId"] = static_cast<Json::Int64>(camera.cameraId);
+    entry["name"] = camera.name;
+    cameras.append(std::move(entry));
+  }
+  json["maskedCameras"] = std::move(cameras);
   return json;
 }
 

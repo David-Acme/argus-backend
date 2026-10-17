@@ -18,9 +18,11 @@
 #include <feature/guard/repositories/environment/environment-repository.hxx>
 #include <feature/guard/vocabulary/feedback-label.hxx>
 #include <auth/user-role.hxx>
+#include <shared/vocabulary/masked-camera.hxx>
 #include <optional>
 #include <json/value.h>
 #include <string>
+#include <vector>
 
 class IdentityClient;
 class ResourceChangeOutbox;
@@ -30,6 +32,7 @@ struct GuardFeatureDependencies
   IdentityClient* identity{nullptr};
   const DisarmGate* disarm{nullptr};
   const ResourceChangeOutbox* changes{nullptr};
+  MaskedCameraDirectory maskedCameras{};
 };
 
 struct ExpectedGuestCreation
@@ -133,11 +136,14 @@ private:
   [[nodiscard]] drogon::Task<void>
   requireNameFree(const std::string& name, int64_t except) const;
 
+  [[nodiscard]] std::vector<MaskedCamera> maskedCameras() const;
+
   [[nodiscard]] drogon::Task<int64_t> resolveEnvironment(int64_t id) const;
 
   IdentityClient* identity_{nullptr};
   const DisarmGate* disarm_{nullptr};
   const ResourceChangeOutbox* changes_{nullptr};
+  MaskedCameraDirectory maskedCameras_{};
   drogon::Task<void> rememberPosture(const GuardEnvironment& environment,
                                      drogon::orm::DbClient* client) const;
 

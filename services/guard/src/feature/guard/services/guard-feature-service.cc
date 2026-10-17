@@ -44,8 +44,14 @@ GuardFeatureService::GuardFeatureService(
     const GuardFeatureDependencies& dependencies)
     : identity_(dependencies.identity),
       disarm_(dependencies.disarm),
-      changes_(dependencies.changes)
+      changes_(dependencies.changes),
+      maskedCameras_(dependencies.maskedCameras)
 {
+}
+
+std::vector<MaskedCamera> GuardFeatureService::maskedCameras() const
+{
+  return maskedCameras_ ? maskedCameras_() : std::vector<MaskedCamera>{};
 }
 
 drogon::Task<bool> GuardFeatureService::promotePerson(
@@ -296,6 +302,14 @@ drogon::Task<Json::Value> GuardFeatureService::decisionsSummary(
   response["assessMsP95"] = static_cast<Json::Int64>(summary.assessMsP95);
   response["detectionHealth"] =
       co_await BlockingTask<Json::Value>([]() { return detectionHealth(); });
+  Json::Value masked(Json::arrayValue);
+  for (const auto& camera : maskedCameras()) {
+    Json::Value entry(Json::objectValue);
+    entry["cameraId"] = static_cast<Json::Int64>(camera.cameraId);
+    entry["name"] = camera.name;
+    masked.append(std::move(entry));
+  }
+  response["maskedCameras"] = std::move(masked);
   co_return response;
 }
 
@@ -409,6 +423,7 @@ struct EnvironmentJsonInput
 {
   const GuardEnvironment& environment;
   const std::vector<int64_t>& cameraIds;
+  const std::vector<MaskedCamera>& masked;
   const std::tm& local;
 };
 
@@ -443,6 +458,17 @@ Json::Value environmentJson(const EnvironmentJsonInput& input)
   for (const int64_t cameraId : input.cameraIds)
     cameras.append(static_cast<Json::Int64>(cameraId));
   json["cameraIds"] = std::move(cameras);
+  Json::Value masked(Json::arrayValue);
+  for (const auto& camera : input.masked) {
+    if (std::ranges::find(input.cameraIds, camera.cameraId) ==
+        input.cameraIds.end())
+      continue;
+    Json::Value entry(Json::objectValue);
+    entry["cameraId"] = static_cast<Json::Int64>(camera.cameraId);
+    entry["name"] = camera.name;
+    masked.append(std::move(entry));
+  }
+  json["maskedCameras"] = std::move(masked);
   json["modeUpdatedAt"] = static_cast<Json::Int64>(environment.modeUpdatedAt);
   json["updatedAt"] = static_cast<Json::Int64>(environment.updatedAt);
   return json;
@@ -541,7 +567,9 @@ Json::Value tamperJson(const TamperRow& row)
   json["groupId"] = 0;
   json["reviewLabel"] = "";
   json["reviewedAt"] = 0;
-  json["resolution"] = row.open ? "" : "recovered";
+  json["resolution"] = row.open ? ""
+                       : row.closedReason.empty() ? "recovered"
+                                                  : row.closedReason;
   json["spoke"] = false;
   json["sounded"] = false;
   json["status"] = row.status;
@@ -615,12 +643,14 @@ drogon::Task<Json::Value> GuardFeatureService::environments() const
     cameras[assignment.environmentId].push_back(assignment.cameraId);
   const std::tm local = localNow();
   const std::vector<int64_t> none;
+  const std::vector<MaskedCamera> masked = maskedCameras();
   Json::Value response(Json::arrayValue);
   for (const auto& environment : environments) {
     const auto found = cameras.find(environment.id);
     response.append(environmentJson(
         {.environment = environment,
          .cameraIds = found == cameras.end() ? none : found->second,
+         .masked = masked,
          .local = local}));
   }
   co_return response;
@@ -702,8 +732,10 @@ GuardFeatureService::createEnvironment(const CreateEnvironmentDto& input) const
     db_transaction::rollback(transaction);
     throw;
   }
-  co_return environmentJson(
-      {.environment = created, .cameraIds = {}, .local = localNow()});
+  co_return environmentJson({.environment = created,
+                             .cameraIds = {},
+                             .masked = maskedCameras(),
+                             .local = localNow()});
 }
 
 drogon::Task<Json::Value>
@@ -758,8 +790,10 @@ GuardFeatureService::updateEnvironment(const EnvironmentPatchInput& input) const
     if (assignment.environmentId == updated->id)
       cameraIds.push_back(assignment.cameraId);
   }
-  co_return environmentJson(
-      {.environment = *updated, .cameraIds = cameraIds, .local = localNow()});
+  co_return environmentJson({.environment = *updated,
+                             .cameraIds = cameraIds,
+                             .masked = maskedCameras(),
+                             .local = localNow()});
 }
 
 drogon::Task<Json::Value> GuardFeatureService::removeEnvironment(int64_t id) const

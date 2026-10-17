@@ -43,33 +43,78 @@ std::string listed(const std::vector<EnvironmentChoice>& places)
   return out;
 }
 
-argus::mcp::ToolOutcome changed(const argus::mcp::ToolInvocation& invocation, const EnvironmentChoice* place)
+bool expectsProtection(std::string_view mode)
+{
+  return mode == "away" || mode == "armed" || mode == "night";
+}
+
+std::string maskedSentence(const std::vector<MaskedCamera>& masked, bool english)
+{
+  if (masked.empty())
+    return {};
+  std::string names;
+  for (const auto& camera : masked) {
+    const std::string label = camera.name.empty()
+                                  ? std::to_string(camera.cameraId)
+                                  : camera.name;
+    names += (names.empty() ? "" : ", ") + label;
+  }
+  if (masked.size() == 1)
+    return english ? " Careful: the " + names +
+                         " camera is in privacy mode and does not see anything."
+                   : " Ojo: la cámara " + names +
+                         " está en modo privacidad y no ve nada.";
+  return english ? " Careful: " + names +
+                       " are in privacy mode and do not see anything."
+                 : " Ojo: " + names +
+                       " están en modo privacidad y no ven nada.";
+}
+
+argus::mcp::ToolOutcome changed(const argus::mcp::ToolInvocation& invocation, const EnvironmentChoice* place,
+                                const std::vector<MaskedCamera>& masked)
 {
   const bool english = invocation.caller.lang == "en";
-  const std::string mode = modeLabel(invocation);
+  const std::string mode = invocation.arguments.get("mode", "").asString();
   argus::mcp::ToolOutcome outcome;
   Json::Value arguments(Json::objectValue);
-  arguments["mode"] = invocation.arguments.get("mode", "").asString();
+  arguments["mode"] = mode;
   if (place != nullptr) {
     arguments["environment"] = place->name;
     arguments["environmentId"] = place->id;
-    outcome.text = english ? "The app set the guard mode of " + place->name + " to " + mode + "."
-                           : "La app puso la vigilancia de " + place->name + " en modo " + mode + ".";
+    outcome.text = english ? "The app set the guard mode of " + place->name + " to " + modeLabel(invocation) + "."
+                           : "La app puso la vigilancia de " + place->name + " en modo " + modeLabel(invocation) + ".";
   }
   else {
-    outcome.text = english ? "The app set the guard mode to " + mode + "."
-                           : "La app puso la vigilancia en modo " + mode + ".";
+    outcome.text = english ? "The app set the guard mode to " + modeLabel(invocation) + "."
+                           : "La app puso la vigilancia en modo " + modeLabel(invocation) + ".";
+  }
+  if (expectsProtection(mode)) {
+    const std::string warning = maskedSentence(masked, english);
+    outcome.text += warning;
+    if (!masked.empty()) {
+      Json::Value listed(Json::arrayValue);
+      for (const auto& camera : masked) {
+        Json::Value entry(Json::objectValue);
+        entry["cameraId"] = static_cast<Json::Int64>(camera.cameraId);
+        entry["name"] = camera.name;
+        listed.append(std::move(entry));
+      }
+      arguments["maskedCameras"] = std::move(listed);
+    }
   }
   outcome.structured = arguments;
   outcome.appAction = argus::mcp::AppAction{.name = "app.set_guard_mode", .arguments = std::move(arguments)};
   return outcome;
 }
 
-drogon::Task<argus::mcp::ToolOutcome> setGuardMode(EnvironmentCatalog catalog, argus::mcp::ToolInvocation invocation)
+drogon::Task<argus::mcp::ToolOutcome> setGuardMode(EnvironmentCatalog catalog, MaskedCameraDirectory maskedCameras,
+                                                   argus::mcp::ToolInvocation invocation)
 {
   const std::string asked = invocation.arguments.get("environment", "").asString();
+  const std::vector<MaskedCamera> masked =
+      maskedCameras ? maskedCameras() : std::vector<MaskedCamera>{};
   if (text_norm::folded(asked).empty())
-    co_return changed(invocation, nullptr);
+    co_return changed(invocation, nullptr, masked);
   const auto places = co_await catalog();
   std::vector<std::string> names;
   names.reserve(places.size());
@@ -78,7 +123,7 @@ drogon::Task<argus::mcp::ToolOutcome> setGuardMode(EnvironmentCatalog catalog, a
   const auto match = text_norm::matchName(names, asked);
   const bool english = invocation.caller.lang == "en";
   if (match.kind == text_norm::NameMatchKind::Exact)
-    co_return changed(invocation, &places.at(match.hits.front()));
+    co_return changed(invocation, &places.at(match.hits.front()), masked);
   if (match.kind == text_norm::NameMatchKind::Ambiguous) {
     std::vector<EnvironmentChoice> candidates;
     candidates.reserve(match.hits.size());
@@ -98,6 +143,7 @@ std::shared_ptr<argus::mcp::McpServer> guardToolServer(const GuardToolsInput& in
   auto server = std::make_shared<argus::mcp::McpServer>(
       argus::mcp::ServerIdentity{.name = "argus-guard", .version = "1", .instructions = ""});
   const EnvironmentCatalog catalog = input.catalog;
+  const MaskedCameraDirectory maskedCameras = input.maskedCameras;
   server->add({.name = "app.set_guard_mode",
                .title = "",
                .description = "Cambia el modo de vigilancia: home al estar en casa, night al dormir, away al salir, "
@@ -109,8 +155,8 @@ std::shared_ptr<argus::mcp::McpServer> guardToolServer(const GuardToolsInput& in
                .annotations = {.idempotent = true},
                .module = "surveillance",
                .capability = "guard.mode.set"},
-              argus::mcp::onLoop({.loop = input.loop, .handler = [catalog](const argus::mcp::ToolInvocation& invocation) {
-                return setGuardMode(catalog, invocation);
+              argus::mcp::onLoop({.loop = input.loop, .handler = [catalog, maskedCameras](const argus::mcp::ToolInvocation& invocation) {
+                return setGuardMode(catalog, maskedCameras, invocation);
               }}));
   server->setGate(tool_gate::capabilities());
   return server;
