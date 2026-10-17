@@ -2350,14 +2350,20 @@ default now, and his INT8 encoder is the fix. Batching costs the fp32 pilot
 about 6% at four threads (35% at two) and is kept, because it is the
 reference's behaviour and what INT8 parity needs.
 
-Expected of an INT8 Laya of the same architecture, to verify when the bundle
-arrives (expectations, not results): about 1.5–2× faster per decide and about
-half the model on disk and in memory, rather than the textbook 4×, because the
-pilot's 197M-parameter embedding table is already INT8 and only the encoder
-shrinks. A fully quantized copy of the pilot, made for this measurement and not
-shipped, read 116 ms p50 / 124 ms p95 and 563 MB at four threads — but its
-decisions are not the pilot's, so only a model calibrated as INT8, with its own
-golden vectors, can ship that way.
+**Measured 2026-10-17 (integration pass, prod build, this machine).** The
+shipped INT8 Laya (`bundle-laya-mvp`, `model.onnx` `626d7257af95`, 668 MB)
+through `production-decider --bundle` and the project's perf harness, 200
+requests after 20 warm-up turns, idle machine, four threads: the decisions the
+rule and trigger tiers leave read **p95 193.51 ms, max 197.12 ms** (the tiers
+themselves answer the median request in 0.18 ms), 328.85 CPU ms per call,
+971.95 MB resident (1008.13 MB peak) and 3.89 s to load; the booted service's
+Laya session reads a 782–799 MB warm RSS delta over runs. The earlier
+expectation of 1.5–2× and half the model **did not hold, and could not**: the
+pilot already ships the embedding-only INT8 artefact, so the release's INT8
+file is the same 668 MB and the model path reads the pilot's own bracket (205
+ms p95), not a fraction of it. The bundle reproduces its own golden vectors —
+18 probes, 0 decisions differing, worst probability gap 4.98·10⁻⁵, worst `now`
+gap 4.97·10⁻⁵ against the 2·10⁻³ tolerance.
 
 ### The C++ tokenizer and the GLiNER decode
 
