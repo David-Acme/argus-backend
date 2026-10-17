@@ -33,11 +33,6 @@ namespace
 
 constexpr int kWaitMillis = 10000;
 
-s3_credentials::Credentials configuredKeys()
-{
-  return {.accessKey = "SHAREDKEY", .secretKey = "sharedsecret"};
-}
-
 s3_credentials::Credentials writerKeys()
 {
   return {.accessKey = "WRITERKEY", .secretKey = "writersecret"};
@@ -53,7 +48,6 @@ struct StorageSetup
 {
   std::string endpoint;
   std::string credentialsFile;
-  s3_credentials::Credentials configured;
 };
 
 struct CapturedCall
@@ -90,10 +84,6 @@ void useStorage(const StorageSetup& setup)
   ConfigService::setRuntimeString("storage.s3.bucket", "argus-test");
   ConfigService::setRuntimeString("storage.s3.credentials_file",
                                   setup.credentialsFile);
-  ConfigService::setRuntimeString("storage.s3.access_key",
-                                  setup.configured.accessKey);
-  ConfigService::setRuntimeString("storage.s3.secret_key",
-                                  setup.configured.secretKey);
 }
 
 std::string lowered(std::string_view text)
@@ -259,47 +249,6 @@ private:
   std::thread thread_;
 };
 
-class LogCapture
-{
-public:
-  LogCapture()
-  {
-    trantor::Logger::setOutputFunction(
-        [this](const char* message, uint64_t length) {
-          const std::scoped_lock lock(mutex_);
-          lines_.emplace_back(message, static_cast<std::size_t>(length));
-        },
-        [] {});
-  }
-
-  ~LogCapture()
-  {
-    trantor::Logger::setOutputFunction(
-        [](const char* message, uint64_t length) {
-          std::fwrite(message, 1, static_cast<std::size_t>(length), stdout);
-        },
-        [] { std::fflush(stdout); });
-  }
-
-  LogCapture(const LogCapture&) = delete;
-  LogCapture& operator=(const LogCapture&) = delete;
-  LogCapture(LogCapture&&) = delete;
-  LogCapture& operator=(LogCapture&&) = delete;
-
-  [[nodiscard]] std::size_t count(std::string_view needle) const
-  {
-    const std::scoped_lock lock(mutex_);
-    return static_cast<std::size_t>(
-        std::ranges::count_if(lines_, [needle](const std::string& line) {
-          return line.find(needle) != std::string::npos;
-        }));
-  }
-
-private:
-  mutable std::mutex mutex_;
-  std::vector<std::string> lines_;
-};
-
 CapturedCall fetchThrough(const CaptureServer& server)
 {
   std::string head;
@@ -313,7 +262,7 @@ CapturedCall fetchThrough(const CaptureServer& server)
 
 }
 
-TEST_CASE("the writer's own credentials file wins over the configured keys")
+TEST_CASE("the writer's own credentials file is read")
 {
   const auto path =
       writeFile({.name = "own.json", .body = credentialsJson(writerKeys())});
@@ -323,11 +272,6 @@ TEST_CASE("the writer's own credentials file wins over the configured keys")
   const auto read = fromDisk.value_or(s3_credentials::Credentials{});
   CHECK(read.accessKey == "WRITERKEY");
   CHECK(read.secretKey == "writersecret");
-
-  const auto used = s3_credentials::resolve(
-      {.credentialsFile = path, .fallback = configuredKeys()});
-  CHECK(used.accessKey == "WRITERKEY");
-  CHECK(used.secretKey == "writersecret");
 
   std::filesystem::remove(path);
 }
@@ -340,24 +284,15 @@ TEST_CASE("the admin API's answer is read with the fields it adds")
            R"({"credentials":{"accessKey":"JAO8WCU7XUN0E5ETQFO8","secretKey":"generated","sessionToken":"","expiration":"9999-12-31T23:59:59Z"}})"
            "\n"});
 
-  const auto used = s3_credentials::resolve(
-      {.credentialsFile = path, .fallback = configuredKeys()});
-  CHECK(used.accessKey == "JAO8WCU7XUN0E5ETQFO8");
-  CHECK(used.secretKey == "generated");
+  const auto read = s3_credentials::fromFile(path);
+  REQUIRE(read.has_value());
+  CHECK(read->accessKey == "JAO8WCU7XUN0E5ETQFO8");
+  CHECK(read->secretKey == "generated");
 
   std::filesystem::remove(path);
 }
 
-TEST_CASE("without a credentials file the configured keys are used")
-{
-  const auto used = s3_credentials::resolve(
-      {.credentialsFile = "", .fallback = configuredKeys()});
-  CHECK(used.accessKey == "SHAREDKEY");
-  CHECK(used.secretKey == "sharedsecret");
-}
-
-TEST_CASE("a credentials file that cannot be used falls back to the "
-          "configured keys")
+TEST_CASE("a credentials file that cannot be used is read as nothing")
 {
   const std::vector<std::string> unusable{
       "",
@@ -377,18 +312,11 @@ TEST_CASE("a credentials file that cannot be used falls back to the "
         writeFile({.name = "unusable-" + std::to_string(i) + ".json",
                    .body = unusable[i]});
     CHECK_FALSE(s3_credentials::fromFile(path).has_value());
-    const auto used = s3_credentials::resolve(
-        {.credentialsFile = path, .fallback = configuredKeys()});
-    CHECK(used.accessKey == "SHAREDKEY");
-    CHECK(used.secretKey == "sharedsecret");
     std::filesystem::remove(path);
   }
 
   const auto missing = scratchPath("missing.json").string();
   CHECK_FALSE(s3_credentials::fromFile(missing).has_value());
-  const auto used = s3_credentials::resolve(
-      {.credentialsFile = missing, .fallback = configuredKeys()});
-  CHECK(used.accessKey == "SHAREDKEY");
 
   const auto directory = scratchPath("directory");
   std::filesystem::create_directory(directory);
@@ -396,90 +324,45 @@ TEST_CASE("a credentials file that cannot be used falls back to the "
   std::filesystem::remove(directory);
 }
 
-TEST_CASE("a writer whose only keys are in its credentials file is configured")
+TEST_CASE("a writer is configured from its credentials file alone")
 {
   const S3StorageService storage;
   const auto path = writeFile(
       {.name = "service.json", .body = credentialsJson(writerKeys())});
-  const s3_credentials::Credentials none{.accessKey = "", .secretKey = ""};
 
-  useStorage({.endpoint = "http://127.0.0.1:9",
-              .credentialsFile = "",
-              .configured = none});
+  useStorage({.endpoint = "http://127.0.0.1:9", .credentialsFile = ""});
   CHECK_FALSE(storage.isConfigured());
 
-  useStorage({.endpoint = "http://127.0.0.1:9",
-              .credentialsFile = path,
-              .configured = none});
+  useStorage({.endpoint = "http://127.0.0.1:9", .credentialsFile = path});
   CHECK(storage.isConfigured());
 
   std::filesystem::remove(path);
   CHECK_FALSE(storage.isConfigured());
 
-  useStorage({.endpoint = "http://127.0.0.1:9",
-              .credentialsFile = path,
-              .configured = configuredKeys()});
-  CHECK(storage.isConfigured());
-
   ConfigService::setRuntimeString("storage.mode", "");
   CHECK_FALSE(storage.isConfigured());
 }
 
-TEST_CASE("a request is signed with the credentials file's keys, and with the "
-          "configured keys once the file is gone")
+TEST_CASE("a request is signed with the credentials file's keys, and refused "
+          "once the file is gone")
 {
   const LoopRunner loop;
   REQUIRE(loop.running());
   const CaptureServer server;
   const auto path =
       writeFile({.name = "signed.json", .body = credentialsJson(writerKeys())});
-  useStorage({.endpoint = server.endpoint(),
-              .credentialsFile = path,
-              .configured = configuredKeys()});
+  useStorage({.endpoint = server.endpoint(), .credentialsFile = path});
 
-  const auto withFile = fetchThrough(server);
-  CHECK(withFile.method == "GET");
-  CHECK(withFile.path == "/argus-test/faces/1/1.jpg");
-  const auto signedWithFile = headerOf(withFile, "authorization");
-  CHECK(signedWithFile.starts_with("AWS4-HMAC-SHA256 Credential=WRITERKEY/"));
-  CHECK(signedWithFile == authorizationFor(withFile, writerKeys()));
-  CHECK(signedWithFile != authorizationFor(withFile, configuredKeys()));
+  const auto call = fetchThrough(server);
+  CHECK(call.method == "GET");
+  CHECK(call.path == "/argus-test/faces/1/1.jpg");
+  const auto signature = headerOf(call, "authorization");
+  CHECK(signature.starts_with("AWS4-HMAC-SHA256 Credential=WRITERKEY/"));
+  CHECK(signature == authorizationFor(call, writerKeys()));
 
   std::filesystem::remove(path);
-  const auto withoutFile = fetchThrough(server);
-  const auto signedWithoutFile = headerOf(withoutFile, "authorization");
-  CHECK(
-      signedWithoutFile.starts_with("AWS4-HMAC-SHA256 Credential=SHAREDKEY/"));
-  CHECK(signedWithoutFile == authorizationFor(withoutFile, configuredKeys()));
-  CHECK(signedWithoutFile != authorizationFor(withoutFile, writerKeys()));
+  CHECK_THROWS_AS(drogon::sync_wait(storage.get("faces/1/1.jpg")),
+                  std::runtime_error);
+  CHECK_FALSE(storage.isConfigured());
 }
-
-TEST_CASE("the log names the file when its keys are used, and the three "
-          "reasons once per change when they cannot be")
-{
-  const auto usable =
-      writeFile({.name = "log-usable.json", .body = credentialsJson(writerKeys())});
-  const auto malformed =
-      writeFile({.name = "log-malformed.json", .body = "not json"});
-  const s3_credentials::Source usableSource{.credentialsFile = usable,
-                                            .fallback = configuredKeys()};
-  const s3_credentials::Source malformedSource{.credentialsFile = malformed,
-                                               .fallback = configuredKeys()};
-  const std::string notice = "S3 keys come from the credentials file " + usable;
-  const std::string warning =
-      "S3 credentials file " + malformed +
-      " is missing, unreadable or malformed; the configured keys are used";
-
-  const LogCapture log;
-  static_cast<void>(s3_credentials::resolve(malformedSource));
-  static_cast<void>(s3_credentials::resolve(usableSource));
-  const std::size_t before = log.count(warning);
-  static_cast<void>(s3_credentials::resolve(malformedSource));
-  static_cast<void>(s3_credentials::resolve(malformedSource));
-
-  CHECK(log.count(notice) == 1);
-  CHECK(log.count(warning) == before + 1);
-
-  std::filesystem::remove(usable);
-  std::filesystem::remove(malformed);
 }

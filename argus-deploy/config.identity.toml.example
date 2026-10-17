@@ -119,8 +119,6 @@ mode = "s3"
 endpoint = "http://rustfs:9000"
 region = "us-east-1"
 bucket = ""
-access_key = ""
-secret_key = ""
 credentials_file = "/run/secrets/s3/credentials.json"
 
 [pairing]

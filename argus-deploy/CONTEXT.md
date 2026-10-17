@@ -1172,19 +1172,12 @@ in order:
    above); the per-service accounts take keys the server generates, its JSON
    answer written straight into a 0600 file, because the admin API generates
    and confines them when the request names none. `S3StorageService` reads that
-   file on every operation and falls back to `access_key`/`secret_key`, the
-   shared account, only while the file is missing, unreadable or malformed
-   (not JSON, or without a non-empty `credentials.accessKey` and
-   `credentials.secretKey`). The log says which, once per change: a notice
-   names the file when the keys come from it, and a warning names the three
-   causes when they cannot. It comes at a writer's first storage call
-   (identity's object-deletion sweep runs every minute; camera and guard call
-   storage when they first store evidence). The owner's check reads each
-   writer's latest such line, because a writer whose file became usable later
-   logged the warning before the notice. That fallback is transitional: the
-   owner deploy
-   step that removes the shared account also removes those two keys from the
-   identity, camera and guard configs (`realtime-and-backlog-plan`, S4).
+   file on every operation and signs with those keys alone: since 2026-10-16
+   the shared `access_key`/`secret_key` pair is gone from the identity, camera
+   and guard templates and from the provisioning (`configure_storage`,
+   `sync_storage_credentials`), and a writer whose file is empty, unreadable
+   or malformed is refused with the path named rather than signing with a
+   shared secret (`realtime-and-backlog-plan`, S4).
    Deploying this change needs `scripts/provision-host.sh` re-run before
    `docker compose up -d`: the writers mount their account directory with
    `create_host_path: false`, and provisioning is what creates it.

@@ -17,7 +17,8 @@ the encounter evidence guard seals.
   `isConfigured`, `put`/`putPortrait`, `get`, `remove`, answering
   `S3StoredObject` (object key, sha256, byte size). It resolves
   `storage.mode` and the `storage.s3.*` keys — endpoint, bucket, region,
-  credentials_file, access_key, secret_key — on every operation.
+  credentials_file — on every operation, and refuses, naming the path, when
+  the credentials file is empty, unreadable or malformed.
 - `src/storage/stored-file-category.hxx` — `StoredFileCategory`
   (`Portrait`, `Attachment`) with its two string converters: the category is
   what drives retention and access policy.
@@ -29,13 +30,12 @@ the encounter evidence guard seals.
   (`SigV4Input`, canonical request, signing key), the piece that must not leak
   into a consumer's include path.
 - `src/storage/details/s3-credentials.{cc,hxx}` — private by convention too:
-  which keys sign a request. `s3_credentials::resolve` takes the writer's own
-  account from `credentials_file` (the RustFS admin API's answer,
-  `{"credentials":{"accessKey","secretKey"}}`, which `rustfs-init` writes) and
-  falls back to `access_key`/`secret_key` only while that file is missing,
-  malformed or names an empty key. The file is read on each operation, so an
-  account `rustfs-init` issues again is used without a restart; the log says
-  which keys are in use once per change, never the keys.
+  which keys sign a request. `s3_credentials::fromFile` takes the writer's own
+  account from the file `credentials_file` names (the RustFS admin API's
+  answer, `{"credentials":{"accessKey","secretKey"}}`, which `rustfs-init`
+  writes), and nothing else signs a request. The file is read on each
+  operation, so an account `rustfs-init` issues again is used without a
+  restart.
 
 ## Rules
 
@@ -52,19 +52,19 @@ the encounter evidence guard seals.
 - A refusal is an `ErrorDefinition`, never a bare string, and it is thrown
   through `argus::lib::errors`: the storage layer does not know the HTTP
   status-to-envelope mapping, argus-http does.
-- The configured `access_key`/`secret_key` are the shared account's, kept
-  only as the transitional fallback: the owner step that removes the shared
-  account removes them from the configs too
-  (`docs/history/plans/realtime-and-backlog-plan.md`, S4).
+- There is no shared key pair: `access_key` and `secret_key` left the
+  templates, the provisioning and this package on 2026-10-16, so the keys a
+  writer presents are the ones its own bucket-scoped account holds.
 
 ## Tests
 
 `tests/unit/storage-vocabulary-test.cc` — `StoredFileCategory` round-trips its
 strings, and an unknown value falls back to the documented default.
-`tests/unit/s3-credentials-test.cc` — the credentials file wins over the
-configured keys, every unusable file (missing, a directory, not JSON, a key
-missing, empty or not a string) falls back to them, and a request sent to a
-loopback listener is signed with the file's keys and, once the file is gone,
-with the configured ones: the test recomputes the SigV4 `Authorization` for
-each pair. The upload and presign paths against a real endpoint are exercised
-by the suites of the domains that own the objects.
+`tests/unit/s3-credentials-test.cc` — the credentials file is read with the
+fields the admin API adds, every unusable file (missing, a directory, not
+JSON, a key missing, empty or not a string) is read as nothing, and a request
+sent to a loopback listener is signed with the file's keys, the test
+recomputing the SigV4 `Authorization` for them; once the file is gone the read
+throws and the service reports itself unconfigured. The upload and presign
+paths against a real endpoint are exercised by the suites of the domains that
+own the objects.

@@ -724,9 +724,13 @@ for run in first second; do
       "$native/out-$run")" = 1 ] \
     || fail "the native setup did not say once that it leaves the container configs alone ($run run)"
 done
-[ "$(toml_value "$native/services/identity/config.toml" storage.s3 secret_key)" \
-    = "$(tr -d '\r\n' < "$sandbox/data/rustfs/secrets/argus_s3_secret_key")" ] \
-  || fail "the native setup did not sync the S3 secret into identity's config"
+[ "$(toml_value "$native/services/identity/config.toml" storage.s3 credentials_file)" \
+    = "$(cd "$sandbox/data/rustfs/accounts/identity" && pwd -P)/credentials.json" ] \
+  || fail "the native setup did not point identity at its bucket-scoped account"
+! toml_key_exists "$native/services/identity/config.toml" storage.s3 access_key \
+  || fail "the native setup wrote the shared S3 access key into identity's config"
+! toml_key_exists "$native/services/identity/config.toml" storage.s3 secret_key \
+  || fail "the native setup wrote the shared S3 secret into identity's config"
 for service in $(internal_tls_services); do
   [ "$(toml_value "$native/services/$service/config.toml" internal_tls dir)" \
       = "$(cd "$sandbox/data/certs/internal" && pwd -P)/$service" ] \
@@ -756,15 +760,16 @@ for service in identity camera guard; do
   account_dir="$sandbox/data/rustfs/accounts/$service"
   [ -d "$account_dir" ] && [ "$(find "$account_dir" -maxdepth 0 -perm 700)" = "$account_dir" ] \
     || fail "provisioning did not create the 0700 account directory of $service"
-  for pair in "access_key argus_s3_access_key" "secret_key argus_s3_secret_key" "bucket rustfs-bucket"; do
-    set -- $pair
-    [ "$(toml_value "$sandbox/root/argus-deploy/config.$service.toml" storage.s3 "$1")" \
-        = "$(tr -d '\r\n' < "$sandbox/data/rustfs/secrets/$2")" ] \
-      || fail "provisioning did not write $1 into config.$service.toml"
-  done
+  [ "$(toml_value "$sandbox/root/argus-deploy/config.$service.toml" storage.s3 bucket)" \
+      = "$(tr -d '\r\n' < "$sandbox/data/rustfs/secrets/rustfs-bucket")" ] \
+    || fail "provisioning did not write the bucket into config.$service.toml"
   [ "$(toml_value "$sandbox/root/argus-deploy/config.$service.toml" storage.s3 credentials_file)" \
       = "/run/secrets/s3/credentials.json" ] \
     || fail "provisioning did not name the account's credentials file in config.$service.toml"
+  for key in access_key secret_key; do
+    ! toml_key_exists "$sandbox/root/argus-deploy/config.$service.toml" storage.s3 "$key" \
+      || fail "provisioning wrote the shared S3 $key into config.$service.toml"
+  done
 done
 grep -Eq '^ensure_secret_file "\$secrets/argus_s3_secret_key" lower_hex 16$|^  ensure_secret_file "\$secrets/argus_s3_secret_key" lower_hex 16$' \
   "$ROOT/scripts/provision-host.sh" || fail "provision-host.sh no longer generates the application secret into its file"

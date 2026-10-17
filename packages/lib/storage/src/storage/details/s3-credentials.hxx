@@ -12,13 +12,6 @@ struct Credentials
   std::string secretKey;
 };
 
-struct Source
-{
-  std::string credentialsFile;
-  Credentials fallback;
-};
-
 [[nodiscard]] std::optional<Credentials> fromFile(const std::string& path);
-[[nodiscard]] Credentials resolve(const Source& source);
 
 }

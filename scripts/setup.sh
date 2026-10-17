@@ -287,27 +287,25 @@ sync_storage_credentials() {
   if compgen -G "$ROOT/argus-deploy/config.*.toml" > /dev/null; then
     log "The container configs argus-deploy/config.*.toml belong to provision-host.sh; setup.sh leaves them untouched."
   fi
-  for name in rustfs-bucket argus_s3_access_key argus_s3_secret_key; do
-    [ -r "$secrets/$name" ] || return 0
-  done
-  for name in rustfs-bucket argus_s3_access_key argus_s3_secret_key; do
-    if ! awk 'NR == 1 { sub(/\r$/, ""); found = length($0) > 0; exit } END { exit !found }' "$secrets/$name"; then
-      warn "RustFS secrets are incomplete; storage configs left untouched."
-      return 0
-    fi
-  done
+  [ -r "$secrets/rustfs-bucket" ] || return 0
+  if ! awk 'NR == 1 { sub(/\r$/, ""); found = length($0) > 0; exit } END { exit !found }' "$secrets/rustfs-bucket"; then
+    warn "RustFS secrets are incomplete; storage configs left untouched."
+    return 0
+  fi
 
-  local config synced=0
+  local config service account synced=0
   for config in "$ROOT"/argus-deploy/data/native/*/config.toml \
                 "$ROOT"/services/*/config.toml; do
     [ -f "$config" ] || continue
     toml_key_exists "$config" "storage.s3" "bucket" || continue
+    service="$(basename "$(dirname "$config")")"
+    account="$data_dir/rustfs/accounts/$service/credentials.json"
+    [ -s "$account" ] || warn "No bucket-scoped RustFS account for $service at $account; bring the stack's rustfs-init up once, or the service starts without object storage."
     replace_toml_value_from_file storage.s3 bucket "$secrets/rustfs-bucket" "$config"
-    replace_toml_value_from_file storage.s3 access_key "$secrets/argus_s3_access_key" "$config"
-    replace_toml_value_from_file storage.s3 secret_key "$secrets/argus_s3_secret_key" "$config"
+    replace_toml_value storage.s3 credentials_file "$account" "$config"
     synced=$((synced + 1))
   done
-  log "Object storage credentials synced into $synced config(s) from ${secrets#"$ROOT"/}."
+  log "Object storage endpoint credentials synced into $synced config(s) from ${secrets#"$ROOT"/}."
 }
 
 provision_tts() {

@@ -51,24 +51,27 @@ S3Config loadConfig()
   if (ConfigService::getString("storage.mode") != "s3")
     throw std::runtime_error("Private object storage is disabled");
 
-  auto credentials = s3_credentials::resolve({
-      .credentialsFile =
-          ConfigService::getString("storage.s3.credentials_file"),
-      .fallback = {.accessKey =
-                       ConfigService::getString("storage.s3.access_key"),
-                   .secretKey =
-                       ConfigService::getString("storage.s3.secret_key")},
-  });
+  const std::string credentialsFile =
+      ConfigService::getString("storage.s3.credentials_file");
+  if (credentialsFile.empty()) {
+    throw std::runtime_error(
+        "Private object storage names no credentials file");
+  }
+  auto credentials = s3_credentials::fromFile(credentialsFile);
+  if (!credentials) {
+    throw std::runtime_error("the S3 credentials file " + credentialsFile +
+                             " is missing, unreadable or malformed");
+  }
   S3Config config{
       .endpoint = ConfigService::getString("storage.s3.endpoint"),
       .hostHeader = "",
       .bucket = ConfigService::getString("storage.s3.bucket"),
-      .accessKey = std::move(credentials.accessKey),
-      .secretKey = std::move(credentials.secretKey),
+      .accessKey = std::move(credentials->accessKey),
+      .secretKey = std::move(credentials->secretKey),
       .region = ConfigService::getString("storage.s3.region"),
   };
-  if (config.endpoint.empty() || config.bucket.empty() || config.accessKey.empty() ||
-      config.secretKey.empty() || config.region.empty()) {
+  if (config.endpoint.empty() || config.bucket.empty() ||
+      config.region.empty()) {
     throw std::runtime_error("Private object storage is not configured");
   }
 
