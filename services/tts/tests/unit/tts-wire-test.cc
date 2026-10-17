@@ -25,7 +25,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <map>
 #include <string>
 #include <vector>
@@ -38,6 +40,20 @@ namespace
 #ifndef ARGUS_TEST_TTS_MODELS_DIR
 #define ARGUS_TEST_TTS_MODELS_DIR "models/tts"
 #endif
+
+bool supertonicModelsInstalled()
+{
+  const std::filesystem::path root{ARGUS_TEST_TTS_MODELS_DIR};
+  const bool installed =
+      std::filesystem::is_regular_file(root / "onnx" / "tts.json") &&
+      std::filesystem::is_regular_file(root / "voice_styles" / "M3.json");
+  if (!installed)
+    std::cerr << "tts-wire-test skips its model-backed case: the Supertonic "
+                 "model is not installed under "
+              << root.string()
+              << " — run services/tts/scripts/provision.sh to install it\n";
+  return installed;
+}
 
 constexpr const char* kScratchConfig = "tts-wire-test.toml";
 
@@ -251,7 +267,8 @@ bool waitForBoot(std::chrono::milliseconds timeout)
 
 }
 
-TEST_CASE("the argus-tts internal wire serves the legacy adapters")
+TEST_CASE("the argus-tts internal wire serves the legacy adapters" *
+          doctest::skip(!supertonicModelsInstalled()))
 {
   std::remove(kScratchConfig);
   {
@@ -272,8 +289,8 @@ TEST_CASE("the argus-tts internal wire serves the legacy adapters")
 
   TtsService::instance().init();
   REQUIRE_MESSAGE(TtsService::instance().isLoaded(),
-                  "TTS engine failed to load from " ARGUS_TEST_TTS_MODELS_DIR
-                  " — run scripts/setup.sh tts first");
+                  "the model under " ARGUS_TEST_TTS_MODELS_DIR
+                  " is installed but the TTS engine did not load from it");
 
   drogon::app().setLogLevel(trantor::Logger::kWarn);
   drogon::app().registerController(std::make_shared<HealthController>(

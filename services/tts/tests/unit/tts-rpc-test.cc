@@ -18,6 +18,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -326,7 +327,17 @@ TEST_CASE("real engine streams its native rate through the legacy client")
   ConfigService::setRuntimeString("tts.quality", "low");
   auto& engine = TtsService::instance();
   engine.init();
-  REQUIRE(engine.isLoaded());
+  if (!engine.isLoaded()) {
+    const std::filesystem::path manifest =
+        std::filesystem::path(ARGUS_TEST_TTS_MODELS_DIR) / "onnx" / "tts.json";
+    if (std::filesystem::is_regular_file(manifest))
+      FAIL("the TTS engine did not load from the model installed under "
+           ARGUS_TEST_TTS_MODELS_DIR);
+    MESSAGE("skipping the real-engine case: the TTS model is not installed "
+            "under " ARGUS_TEST_TTS_MODELS_DIR
+            " — run services/tts/scripts/provision.sh to install it");
+    return;
+  }
   auto input = serverInput();
   input.capabilities = {.sampleRate = engine.sampleRate(), .channels = 1,
       .defaultSpeed = engine.defaultSpeed(), .voices = engine.availableVoices(),

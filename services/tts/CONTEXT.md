@@ -465,6 +465,23 @@ threads busy, and the whole test 5 s instead of 38 s. The test also checks that
 silently stop applying. The Pocket path through the service keeps its own
 coverage in `tts-pocket-test`.
 
+## A worktree without the models
+
+The two cases that synthesize through the real engine name the gap instead of
+failing the suite. `tts-wire-test` carries
+`doctest::skip(!supertonicModelsInstalled())`: a `models/tts` tree without
+`onnx/tts.json` or `voice_styles/M3.json` reports the case as skipped (ctest
+marks it through its doctest skipped pattern) and the binary prints the
+reason, while a model that is installed but fails to load still fails.
+`tts-rpc-test` cannot use the decorator: it runs under
+`scripts/internal-tls-test.sh`, which lists the test cases and runs each in a
+process of its own expecting exactly one passing case, and doctest neither
+lists a skip-decorated case nor reports a selected skipped one as passing. So
+the real-engine case there prints a `MESSAGE` with the same reason and returns
+green, and only an installed-but-unloading model reaches its `FAIL`. The
+reason names `services/tts/scripts/provision.sh`, which installs Supertonic 3
+and the configured Pocket components.
+
 ## A closing client still hears the answer
 
 `POST /tts/v1/synthesize-stream` answered a client that sends
