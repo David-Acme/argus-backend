@@ -303,7 +303,8 @@ TEST_CASE("one turn runs the whole pipeline on both pilot bundles, from the norm
                turn::DecisionPolicy{.act = layaBundle.policy().act,
                                     .ask = layaBundle.policy().ask,
                                     .margin = layaBundle.policy().margin,
-                                    .nowMin = layaBundle.policy().now});
+                                    .nowMin = layaBundle.policy().now,
+                                    .toolClasses = layaBundle.policy().toolClasses});
   ScriptedEngine engine;
   LfmAdapter adapter({.engine = engine.engine(),
                       .registry = world.registry,

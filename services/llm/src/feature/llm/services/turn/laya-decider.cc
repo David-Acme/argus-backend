@@ -297,7 +297,7 @@ std::optional<Candidate> LayaDecider::decide(const DecideInput& input) const
                    .source = "laya, " + ranked.front().label,
                    .decider = std::string(id()),
                    .exact = false,
-                   .confident = top >= policy_.ask,
+                   .confident = top >= policy_.thresholdsFor(ranked.front().tool).ask,
                    .runnerUp = std::move(runnerUp),
                    .now = now_.apply(reading->now)};
 }

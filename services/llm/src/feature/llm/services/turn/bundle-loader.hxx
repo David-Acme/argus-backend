@@ -1,6 +1,7 @@
 #pragma once
 
 #include "calibration.hxx"
+#include "decision-policy.hxx"
 
 #include <array>
 #include <filesystem>
@@ -49,6 +50,12 @@ struct BundlePolicy
   double now{0.0};
   bool guardMemory{false};
   bool present{false};
+  DecisionToolClasses toolClasses{};
+
+  [[nodiscard]] DecisionThresholds thresholdsFor(std::string_view tool) const
+  {
+    return turn::thresholdsFor(toolClasses, DecisionThresholds{.act = act, .ask = ask, .margin = margin}, tool);
+  }
 };
 
 struct BundleThresholds

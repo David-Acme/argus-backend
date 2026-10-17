@@ -179,7 +179,8 @@ turn::PolicySet configuredPolicies(const turn::BundlePolicy* laya)
   }
   if (laya != nullptr && laya->present)
     policies.set(std::string(turn::kDeciderIds[2]),
-                 turn::DecisionPolicy{.act = laya->act, .ask = laya->ask, .margin = laya->margin, .nowMin = laya->now});
+                 turn::DecisionPolicy{.act = laya->act, .ask = laya->ask, .margin = laya->margin, .nowMin = laya->now,
+                                      .toolClasses = laya->toolClasses});
   return policies;
 }
 

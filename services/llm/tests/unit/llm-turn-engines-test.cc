@@ -287,7 +287,8 @@ TEST_CASE("the whole new pipeline runs on the pilot bundles: laya decides, gline
                        .policies = turn::PolicySet(turn::DecisionPolicy{.act = bundle.policy().act,
                                                                         .ask = bundle.policy().ask,
                                                                         .margin = bundle.policy().margin,
-                                                                        .nowMin = bundle.policy().now})});
+                                                                        .nowMin = bundle.policy().now,
+                                                                        .toolClasses = bundle.policy().toolClasses})});
   const turn::Outcome outcome = flow.run({.utterance = "recuerda que el codigo del porton es AB12CD",
                                           .offered = world.offered,
                                           .audience = world.audience,

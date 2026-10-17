@@ -1,13 +1,33 @@
 #pragma once
 
+#include <algorithm>
 #include <map>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace turn
 {
+
+struct DecisionThresholds
+{
+  double act{0.90};
+  double ask{0.90};
+  double margin{0.0};
+};
+
+using DecisionToolClasses = std::vector<std::pair<std::vector<std::string>, DecisionThresholds>>;
+
+[[nodiscard]] inline DecisionThresholds thresholdsFor(const DecisionToolClasses& classes,
+                                                     const DecisionThresholds& fallback, std::string_view tool)
+{
+  const auto found = std::ranges::find_if(classes, [tool](const auto& entry) {
+    return std::ranges::find(entry.first, tool) != entry.first.end();
+  });
+  return found == classes.end() ? fallback : found->second;
+}
 
 struct DecisionPolicy
 {
@@ -16,6 +36,12 @@ struct DecisionPolicy
   double margin{0.0};
   double nowMin{0.0};
   bool witnessOnly{false};
+  DecisionToolClasses toolClasses{};
+
+  [[nodiscard]] DecisionThresholds thresholdsFor(std::string_view tool) const
+  {
+    return turn::thresholdsFor(toolClasses, DecisionThresholds{.act = act, .ask = ask, .margin = margin}, tool);
+  }
 };
 
 enum class Verdict : unsigned char
@@ -32,13 +58,13 @@ struct Reading
   std::optional<double> runnerUp;
 };
 
-[[nodiscard]] constexpr Verdict judge(const DecisionPolicy& policy, const Reading& reading)
+[[nodiscard]] constexpr Verdict judge(const DecisionThresholds& thresholds, const Reading& reading)
 {
-  if (reading.confidence < policy.ask)
+  if (reading.confidence < thresholds.ask)
     return Verdict::Pass;
-  if (reading.runnerUp && *reading.runnerUp >= policy.ask && reading.confidence - *reading.runnerUp < policy.margin)
+  if (reading.runnerUp && *reading.runnerUp >= thresholds.ask && reading.confidence - *reading.runnerUp < thresholds.margin)
     return Verdict::Choose;
-  return reading.confidence >= policy.act ? Verdict::Act : Verdict::Ask;
+  return reading.confidence >= thresholds.act ? Verdict::Act : Verdict::Ask;
 }
 
 class PolicySet

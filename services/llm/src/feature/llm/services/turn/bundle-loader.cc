@@ -319,6 +319,24 @@ void BundleLoader::load()
     policy_.guardMemory = (*decision).get("guardMemory", false).asBool();
     policy_.present = true;
   }
+  if (const Json::Value& tiers = (*decision)["tiers"]; tiers.isObject()) {
+    for (const std::string& name : tiers.getMemberNames()) {
+      const Json::Value& tier = tiers[name];
+      if (!tier.isObject() || !tier.isMember("actAtOrAbove") || !tier["actAtOrAbove"].isNumeric())
+        continue;
+      const double act = tier["actAtOrAbove"].asDouble();
+      std::vector<std::string> tools;
+      for (const Json::Value& tool : tier["tools"])
+        if (tool.isString())
+          tools.push_back(tool.asString());
+      if (tools.empty()) {
+        policy_.act = act;
+        policy_.ask = act;
+        continue;
+      }
+      policy_.toolClasses.emplace_back(std::move(tools), DecisionThresholds{.act = act, .ask = act, .margin = policy_.margin});
+    }
+  }
   if (kind_ == BundleKind::Extractor && ((*decision).isMember("pairThreshold") || (*decision).isMember("maxSpanWords"))) {
     thresholds_.threshold = (*decision).get("pairThreshold", 0.0).asDouble();
     thresholds_.maxSpanWidth = (*decision).get("maxSpanWords", 0).asInt();

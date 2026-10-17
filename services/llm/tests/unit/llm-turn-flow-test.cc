@@ -436,20 +436,48 @@ struct Spoken
 TEST_CASE("a confidence is judged against two thresholds and a margin, all of them data")
 {
   constexpr turn::DecisionPolicy policy{.act = 0.90, .ask = 0.60, .margin = 0.10};
-  CHECK(turn::judge(policy, {.confidence = 1.0, .runnerUp = std::nullopt}) == turn::Verdict::Act);
-  CHECK(turn::judge(policy, {.confidence = 0.90, .runnerUp = std::nullopt}) == turn::Verdict::Act);
-  CHECK(turn::judge(policy, {.confidence = 0.75, .runnerUp = std::nullopt}) == turn::Verdict::Ask);
-  CHECK(turn::judge(policy, {.confidence = 0.60, .runnerUp = std::nullopt}) == turn::Verdict::Ask);
-  CHECK(turn::judge(policy, {.confidence = 0.59, .runnerUp = std::nullopt}) == turn::Verdict::Pass);
-  CHECK(turn::judge(policy, {.confidence = 0.95, .runnerUp = 0.70}) == turn::Verdict::Act);
-  CHECK(turn::judge(policy, {.confidence = 0.95, .runnerUp = 0.90}) == turn::Verdict::Choose);
-  CHECK(turn::judge(policy, {.confidence = 0.75, .runnerUp = 0.70}) == turn::Verdict::Choose);
-  CHECK(turn::judge(policy, {.confidence = 0.95, .runnerUp = 0.30}) == turn::Verdict::Act);
-  constexpr turn::DecisionPolicy strict{.act = 0.99, .ask = 0.99, .margin = 0.0};
+  constexpr turn::DecisionThresholds thresholds{.act = 0.90, .ask = 0.60, .margin = 0.10};
+  CHECK(turn::judge(thresholds, {.confidence = 1.0, .runnerUp = std::nullopt}) == turn::Verdict::Act);
+  CHECK(turn::judge(thresholds, {.confidence = 0.90, .runnerUp = std::nullopt}) == turn::Verdict::Act);
+  CHECK(turn::judge(thresholds, {.confidence = 0.75, .runnerUp = std::nullopt}) == turn::Verdict::Ask);
+  CHECK(turn::judge(thresholds, {.confidence = 0.60, .runnerUp = std::nullopt}) == turn::Verdict::Ask);
+  CHECK(turn::judge(thresholds, {.confidence = 0.59, .runnerUp = std::nullopt}) == turn::Verdict::Pass);
+  CHECK(turn::judge(thresholds, {.confidence = 0.95, .runnerUp = 0.70}) == turn::Verdict::Act);
+  CHECK(turn::judge(thresholds, {.confidence = 0.95, .runnerUp = 0.90}) == turn::Verdict::Choose);
+  CHECK(turn::judge(thresholds, {.confidence = 0.75, .runnerUp = 0.70}) == turn::Verdict::Choose);
+  CHECK(turn::judge(thresholds, {.confidence = 0.95, .runnerUp = 0.30}) == turn::Verdict::Act);
+  constexpr turn::DecisionThresholds strict{.act = 0.99, .ask = 0.99, .margin = 0.0};
   CHECK(turn::judge(strict, {.confidence = 0.98, .runnerUp = std::nullopt}) == turn::Verdict::Pass);
-  constexpr turn::DecisionPolicy fallback{};
+  constexpr turn::DecisionThresholds fallback{};
   CHECK(turn::judge(fallback, {.confidence = 0.5, .runnerUp = std::nullopt}) == turn::Verdict::Pass);
   CHECK(turn::judge(fallback, {.confidence = 0.9, .runnerUp = 0.89}) == turn::Verdict::Act);
+}
+
+TEST_CASE("a tool class carries its own thresholds and every other tool keeps the decider's")
+{
+  turn::DecisionPolicy policy{.act = 0.838439, .ask = 0.838439, .margin = 0.0};
+  policy.toolClasses.push_back(
+      {{"app.set_guard_mode", "calendar.cancel_event", "memory.forget", "modules.disable", "modules.open_purge_screen",
+        "modules.purge"},
+       {.act = 0.829932, .ask = 0.829932, .margin = 0.0}});
+  CHECK(policy.thresholdsFor("memory.forget").act == doctest::Approx(0.829932));
+  CHECK(policy.thresholdsFor("calendar.cancel_event").act == doctest::Approx(0.829932));
+  CHECK(policy.thresholdsFor("task.create").act == doctest::Approx(0.838439));
+  CHECK(policy.thresholdsFor("memory.recall").act == doctest::Approx(0.838439));
+  CHECK(turn::judge(policy.thresholdsFor("memory.forget"), {.confidence = 0.831, .runnerUp = std::nullopt}) ==
+        turn::Verdict::Act);
+  CHECK(turn::judge(policy.thresholdsFor("task.create"), {.confidence = 0.831, .runnerUp = std::nullopt}) ==
+        turn::Verdict::Pass);
+  CHECK(turn::judge(policy.thresholdsFor("task.create"), {.confidence = 0.839, .runnerUp = std::nullopt}) ==
+        turn::Verdict::Act);
+}
+
+TEST_CASE("a decider with no tool class judges every tool with its own thresholds")
+{
+  const turn::DecisionPolicy policy{.act = 0.90, .ask = 0.60, .margin = 0.10};
+  CHECK(policy.thresholdsFor("memory.forget").act == doctest::Approx(0.90));
+  CHECK(policy.thresholdsFor("memory.forget").ask == doctest::Approx(0.60));
+  CHECK(policy.thresholdsFor("memory.forget").margin == doctest::Approx(0.10));
 }
 
 TEST_CASE("each decider has its own policy and the others fall back to the default")

@@ -750,7 +750,7 @@ Verdict TurnFlow::levelOf(const Candidate& candidate) const
   Reading reading{.confidence = candidate.confidence, .runnerUp = std::nullopt};
   if (candidate.runnerUp)
     reading.runnerUp = candidate.runnerUp->confidence;
-  return judge(policies_.of(candidate.decider), reading);
+  return judge(policies_.of(candidate.decider).thresholdsFor(candidate.tool), reading);
 }
 
 Verdict TurnFlow::verdictOf(const Candidate& candidate) const

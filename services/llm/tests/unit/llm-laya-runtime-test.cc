@@ -191,7 +191,8 @@ TEST_CASE("the real Laya bundle decides, and the turn runs the tool it chose")
                          .policies = turn::PolicySet(turn::DecisionPolicy{.act = bundle.policy().act,
                                                                           .ask = bundle.policy().ask,
                                                                           .margin = bundle.policy().margin,
-                                                                          .nowMin = bundle.policy().now})});
+                                                                          .nowMin = bundle.policy().now,
+                                                                          .toolClasses = bundle.policy().toolClasses})});
     const turn::Outcome outcome = flow.run({.utterance = text,
                                             .offered = world.offered,
                                             .audience = world.audience,

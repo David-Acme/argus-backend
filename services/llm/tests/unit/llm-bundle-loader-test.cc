@@ -127,6 +127,37 @@ TEST_CASE("a complete bundle loads its labels and its policy")
   CHECK(loader.tokenizerJson() == bundle.dir / "tokenizer" / "tokenizer.json");
 }
 
+TEST_CASE("a bundle's tiers give a tool class its own thresholds and the rest the default one")
+{
+  const Built bundle = built("tiers");
+  write(bundle.dir / "decision.json",
+        R"({"act": 0.838439, "ask": 0.838439, "margin": 0.0, "now": 0.5, "guardMemory": true,
+            "head_max_len": 256, "temperature": [3.0, 1.0, 5.0],
+            "calibration": {"confidence": {"type": "platt", "scale": 2.0, "shift": -0.5}},
+            "source": {"fitOn": "calibration"},
+            "tiers": {"destructive": {"actAtOrAbove": 0.829932, "rawActAtOrAbove": 0.975,
+                                       "tools": ["app.set_guard_mode", "memory.forget", "modules.purge"]},
+                      "low_risk": {"actAtOrAbove": 0.838439, "rawActAtOrAbove": 0.9771}}})");
+  seal(bundle.dir);
+  const turn::BundleLoader loader({.dir = bundle.dir});
+  CHECK(loader.valid());
+  CHECK(loader.error().empty());
+  CHECK(loader.policy().present);
+  CHECK(loader.policy().act == doctest::Approx(0.838439));
+  CHECK(loader.policy().toolClasses.size() == 1);
+  CHECK(loader.policy().thresholdsFor("memory.forget").act == doctest::Approx(0.829932));
+  CHECK(loader.policy().thresholdsFor("memory.forget").ask == doctest::Approx(0.829932));
+  CHECK(loader.policy().thresholdsFor("modules.purge").act == doctest::Approx(0.829932));
+  CHECK(loader.policy().thresholdsFor("task.create").act == doctest::Approx(0.838439));
+  CHECK(loader.policy().thresholdsFor("task.create").ask == doctest::Approx(0.838439));
+
+  const Built plain = built("tiers-absent");
+  const turn::BundleLoader withoutTiers({.dir = plain.dir});
+  CHECK(withoutTiers.valid());
+  CHECK(withoutTiers.policy().toolClasses.empty());
+  CHECK(withoutTiers.policy().thresholdsFor("memory.forget").act == doctest::Approx(0.84));
+}
+
 TEST_CASE("a decider bundle reads the head_max_len and temperature it declares")
 {
   const Built bundle = built("decode-ok");
