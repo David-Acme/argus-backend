@@ -35,6 +35,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <exception>
 #include <filesystem>
 #include <fstream>
 #include <format>
@@ -930,7 +931,9 @@ int finish(const FinishInput& input)
 
 }
 
-int main(int argc, char** argv)
+namespace
+{
+int runContextScenarios(int argc, char** argv)
 {
   const Options options = parseOptions(argc, argv);
   if (options.printConfig) {
@@ -1143,4 +1146,18 @@ int main(int argc, char** argv)
   controller.shutdownEngine();
   llama_backend_free();
   return finish({.options = options, .gates = gates, .runs = runs});
+}
+}
+
+int main(int argc, char** argv)
+{
+  try {
+    return runContextScenarios(argc, argv);
+  } catch (const std::exception& error) {
+    std::cout << "[ERROR] " << error.what() << "\n";
+    return 1;
+  } catch (...) {
+    std::cout << "[ERROR] the context scenarios harness failed\n";
+    return 1;
+  }
 }
