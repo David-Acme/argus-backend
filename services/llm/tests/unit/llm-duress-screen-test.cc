@@ -466,7 +466,7 @@ TEST_CASE("the model is never prompted with the phrase")
   ScreenRig rig(sealed(kPhrase));
   ToolRegistry registry;
   ScriptedEngine engine;
-  LfmAdapter adapter({.engine = engine.engine(), .registry = registry, .router = nullptr});
+  LfmAdapter adapter({.engine = engine.engine(), .registry = registry});
   std::ignore = adapter.chatPlain(screenTurn(&rig.screen, turnOf(historyEndingWith("el gato está en el tejado"))).request);
   REQUIRE(engine.requests.size() == 1);
   for (const ChatMessage& message : engine.requests.front().messages)
