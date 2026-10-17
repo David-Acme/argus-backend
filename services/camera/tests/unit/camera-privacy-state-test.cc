@@ -535,8 +535,11 @@ TEST_CASE("a write that fails sends no audit, obeys the mask and retries")
   const auto retried = read(71, statusWith(true), CameraPrivacyState::On);
   CHECK_FALSE(retried.changed);
   CHECK(rig.stateOfRow(71) == "on");
-  CHECK(sink.audits.empty());
-  CHECK(sink.resources.empty());
+  CHECK(rig.obeyedOfRow(71));
+  REQUIRE(sink.audits.size() == 1);
+  CHECK(sink.audits.back().before.find("\"privacyObeyed\"") != std::string::npos);
+  CHECK(sink.audits.back().after.find("\"privacyObeyed\"") != std::string::npos);
+  CHECK(sink.resources.size() == 2);
 
   FakePrivacyNotifier notifier;
   privacy_notice::setNotifier(&notifier);
@@ -545,7 +548,7 @@ TEST_CASE("a write that fails sends no audit, obeys the mask and retries")
   CHECK(lost.after == CameraPrivacyState::Unknown);
   CHECK(service.masked(71));
   CHECK(notifier.notices.size() == 1);
-  CHECK(sink.audits.empty());
+  CHECK(sink.audits.size() == 1);
   const auto lostAgain = read(71, statusWithout(), CameraPrivacyState::Unknown);
   CHECK_FALSE(lostAgain.changed);
   CHECK(lostAgain.after == CameraPrivacyState::Unknown);
@@ -557,8 +560,10 @@ TEST_CASE("a write that fails sends no audit, obeys the mask and retries")
   const auto persisted = read(71, statusWithout(), CameraPrivacyState::Unknown);
   CHECK_FALSE(persisted.changed);
   CHECK(rig.stateOfRow(71) == "unknown");
+  CHECK(rig.obeyedOfRow(71));
   CHECK(service.masked(71));
   CHECK(notifier.notices.size() == 1);
+  CHECK(sink.audits.size() == 2);
   privacy_notice::setNotifier(nullptr);
   camera_change::setSink(nullptr);
 }

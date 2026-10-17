@@ -100,6 +100,7 @@ drogon::Task<Json::Value> CameraOverviewService::overview(UserRole role) const
     row["id"] = static_cast<Json::Int64>(camera.id);
     row["privacyState"] =
         cameraPrivacyStateToString(PrivacyStateService::instance().stateOf(camera.id));
+    row["privacyObeyed"] = PrivacyStateService::instance().masked(camera.id);
     const auto state = board.find(camera.id);
     const bool known = state != board.end();
     row["lastSeenAt"] = static_cast<Json::Int64>(known ? state->second.lastSeenMs : 0);

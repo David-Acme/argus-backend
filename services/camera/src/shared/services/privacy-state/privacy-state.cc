@@ -58,7 +58,7 @@ void PrivacyStateService::seed(const std::vector<CameraSchema>& cameras)
         .confirmed = confirmed,
         .persisted = state,
         .noticed = obeyedNow && state == CameraPrivacyState::Unknown,
-        .persistedObeyed = obeyedNow,
+        .persistedObeyed = camera.privacyObeyed,
         .writing = false};
   }
 }
@@ -169,6 +169,8 @@ drogon::Task<PrivacyTransition> PrivacyStateService::refresh(
   bool noticed = false;
   bool obeyedBefore = false;
   bool obeyedNow = false;
+  bool persistedObeyedBefore = false;
+  CameraPrivacyState persistedStateBefore = CameraPrivacyState::Unknown;
   {
     std::scoped_lock lock(mutex_);
     auto& entry = entries_[cameraId];
@@ -190,6 +192,8 @@ drogon::Task<PrivacyTransition> PrivacyStateService::refresh(
       entry.noticed = false;
     }
     obeyedNow = obeyed(entry);
+    persistedObeyedBefore = entry.persistedObeyed;
+    persistedStateBefore = entry.persisted;
     persist = (observed != entry.persisted ||
                obeyedNow != entry.persistedObeyed) &&
               !entry.writing;
@@ -228,15 +232,17 @@ drogon::Task<PrivacyTransition> PrivacyStateService::refresh(
                                    .atMs = epochNowMs()});
     }
   }
-  if (!transition.changed || !written)
+  if ((!transition.changed && !persist) || !written)
     co_return transition;
 
   if (const auto* sink = camera_change::getSink())
   {
     Json::Value before = input.camera.toJson();
-    before["privacyState"] = cameraPrivacyStateToString(transition.before);
+    before["privacyState"] = cameraPrivacyStateToString(persistedStateBefore);
+    before["privacyObeyed"] = persistedObeyedBefore;
     Json::Value row = before;
     row["privacyState"] = cameraPrivacyStateToString(after);
+    row["privacyObeyed"] = obeyedNow;
     co_await sink->publishAudit({.recordId = cameraId,
                                  .tableName = TableName::Camera,
                                  .before = before,

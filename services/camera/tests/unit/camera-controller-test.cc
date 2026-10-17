@@ -420,8 +420,9 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK_FALSE(cam["isOnline"].asBool());
   CHECK(cam["updatedAt"].isNull());
   CHECK(cam["deletedAt"].isNull());
-  CHECK(cam.getMemberNames().size() == 20);
+  CHECK(cam.getMemberNames().size() == 21);
   CHECK(cam["privacyState"].asString() == "unknown");
+  CHECK_FALSE(cam["privacyObeyed"].asBool());
   checkNoCredentials(cam);
 
   Json::Value toRtsp;

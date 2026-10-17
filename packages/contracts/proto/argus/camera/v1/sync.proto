@@ -31,6 +31,7 @@ message CameraRow {
   optional int64 updated_at = 18;
   optional int64 deleted_at = 19;
   string privacy_state = 20;
+  bool privacy_obeyed = 21;
 }
 
 message ZoneRow {

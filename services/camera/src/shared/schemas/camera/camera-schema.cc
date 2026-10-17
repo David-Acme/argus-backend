@@ -65,6 +65,7 @@ Json::Value CameraSchema::toJson() const
   json["isEnabled"] = isEnabled;
   json["isOnline"] = isOnline;
   json["privacyState"] = cameraPrivacyStateToString(privacyState);
+  json["privacyObeyed"] = privacyObeyed;
   json["createdAt"] = Json::Int64(createdAt);
   json["updatedAt"] = updatedAt ? Json::Value(Json::Int64(*updatedAt)) : Json::Value();
   json["deletedAt"] = deletedAt ? Json::Value(Json::Int64(*deletedAt)) : Json::Value();
