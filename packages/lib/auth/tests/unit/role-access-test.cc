@@ -455,6 +455,11 @@ TEST_CASE("hasHttpAccess applies kGuardAccess route by route")
     CHECK_FALSE(allows(UserRole::Resident, "/guard/mode/extra", drogon::Get));
     CHECK_FALSE(allows(UserRole::Resident, "/guardian", drogon::Get));
 
+    CHECK(allows(UserRole::Resident, "/guard/siren", drogon::Post));
+    CHECK(allows(UserRole::Guard, "/guard/siren", drogon::Post));
+    CHECK_FALSE(allows(UserRole::Guest, "/guard/siren", drogon::Post));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/siren", drogon::Get));
+
     CHECK(allows(UserRole::Owner, "/guard/decisions", drogon::Get));
     CHECK(allows(UserRole::Owner, "/guard/environments/2", drogon::Delete));
 }
@@ -700,6 +705,77 @@ TEST_CASE("every role presses panic and reads the safety state; only disarmers k
   CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guard, .path = "/guard/safety/pin", .method = drogon::Put}));
   CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guest, .path = "/guard/safety/pin", .method = drogon::Put}));
   CHECK(role_access::hasHttpAccess({.role = UserRole::Owner, .path = "/guard/safety", .method = drogon::Patch}));
+}
+
+TEST_CASE("only the roles the camera action table names may sound a camera siren")
+{
+  using role_access::CameraAction;
+  using role_access::hasCameraAction;
+  using role_access::hasHttpAccess;
+  using role_access::RouteVerdict;
+  using role_access::routeVerdict;
+
+  for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard}) {
+    CAPTURE(userRoleToString(role));
+    CHECK(hasCameraAction(role, CameraAction::Siren));
+    CHECK(hasHttpAccess({.role = role, .path = "/guard/siren", .method = drogon::Post}));
+  }
+  for (const UserRole role : {UserRole::Guest, UserRole::Unknown}) {
+    CAPTURE(userRoleToString(role));
+    CHECK_FALSE(hasCameraAction(role, CameraAction::Siren));
+    CHECK_FALSE(hasHttpAccess({.role = role, .path = "/guard/siren", .method = drogon::Post}));
+  }
+  CHECK_FALSE(hasHttpAccess({.role = UserRole::Resident, .path = "/guard/siren", .method = drogon::Get}));
+  CHECK_FALSE(hasHttpAccess({.role = UserRole::Resident, .path = "/guard/siren/1", .method = drogon::Post}));
+
+  const ModuleFlags modules{
+      {.id = std::string(role_access::kSurveillanceModule),
+       .enabled = true,
+       .lifecycle = "active",
+       .dataPurgedAt = 0,
+       .roles = {"guard"},
+       .name = {},
+       .summary = {},
+       .intro = {},
+       .kind = "optional"},
+      {.id = std::string(role_access::kProductivityModule),
+       .enabled = false,
+       .lifecycle = "disabled",
+       .dataPurgedAt = 0,
+       .roles = {"resident"},
+       .name = {},
+       .summary = {},
+       .intro = {},
+       .kind = "optional"}};
+  const ModuleSnapshot split(modules);
+  const auto siren = [](UserRole role, const ModuleSnapshot& snapshot) {
+    return routeVerdict({.role = role,
+                         .path = "/guard/siren",
+                         .method = drogon::Post,
+                         .modules = snapshot});
+  };
+  CHECK(siren(UserRole::Guard, split) == RouteVerdict::Allowed);
+  CHECK(routeVerdict({.role = UserRole::Owner,
+                      .path = "/guard/siren",
+                      .method = drogon::Post,
+                      .modules = split}) == RouteVerdict::Allowed);
+  CHECK(siren(UserRole::Resident, split) == RouteVerdict::RoleInactive);
+  CHECK(siren(UserRole::Guest, split) == RouteVerdict::Denied);
+
+  const ModuleSnapshot surveillanceOff(ModuleFlags{
+      {.id = std::string(role_access::kSurveillanceModule),
+       .enabled = false,
+       .lifecycle = "disabled",
+       .dataPurgedAt = 0,
+       .roles = {"guard"},
+       .name = {},
+       .summary = {},
+       .intro = {},
+       .kind = "optional"}});
+  for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard}) {
+    CAPTURE(userRoleToString(role));
+    CHECK(siren(role, surveillanceOff) == RouteVerdict::ModuleDisabled);
+  }
 }
 
 TEST_CASE("guards read named visitors and their pictures; only owners manage the gallery")

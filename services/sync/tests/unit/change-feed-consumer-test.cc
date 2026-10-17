@@ -257,6 +257,11 @@ TEST_CASE("every producer stream carries the durable the change feed holds")
   CHECK(feeds[12].durable == "argus-sync-guard");
   CHECK(feeds[12].maxAckPending == NatsBus::kOrderedMaxAckPending);
 
+  CHECK(feeds[13].stream == std::string(nats_subject::kGuardActionStream));
+  CHECK(feeds[13].subject == std::string(nats_subject::kGuardUserAction));
+  CHECK(feeds[13].durable == "argus-sync-guard-action");
+  CHECK(feeds[13].maxAckPending == NatsBus::kDefaultMaxAckPending);
+
   std::unordered_set<std::string> durables;
   for (const auto& feed : feeds) {
     CHECK(nats_subject::isValidSubject(feed.subject,
@@ -408,6 +413,21 @@ TEST_CASE("the change feed applies, routes and settles every change subject")
   CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "3");
   CHECK(scalar("SELECT msg_id FROM user_action_log WHERE record_id = 7") ==
         "auth-action:1");
+
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kGuardUserAction,
+             .msgId = "guard-action:1",
+             .body = json_util::toString(actionJournal(8))})) ==
+        DurableDisposition::Ack);
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "4");
+  CHECK(scalar("SELECT msg_id FROM user_action_log WHERE record_id = 8") ==
+        "guard-action:1");
+  CHECK(drogon::sync_wait(consumer.handle(
+            {.subject = nats_subject::kGuardChange,
+             .msgId = "guard-action:1",
+             .body = json_util::toString(actionJournal(8))})) ==
+        DurableDisposition::Term);
+  CHECK(scalar("SELECT COUNT(*) FROM user_action_log") == "4");
 
   SocketEmitDto revokedFrame;
   revokedFrame.operation = SyncOperation::AuthContextChanged;

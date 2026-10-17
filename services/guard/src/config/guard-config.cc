@@ -368,6 +368,14 @@ BeliefConfig GuardConfig::resolveBelief(int64_t cameraId)
   return config;
 }
 
+GuardSirenConfig GuardConfig::resolveSiren()
+{
+  GuardSirenConfig config;
+  config.enabled = configBoolOr("guard.app_siren_enabled", false);
+  config.leaseSeconds = configIntOr("guard.siren_seconds", 20);
+  return config;
+}
+
 GuardPresenceConfig GuardConfig::resolvePresence()
 {
   constexpr int64_t kMinute = 60;

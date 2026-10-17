@@ -480,7 +480,11 @@ alert is the notification service's own check (404 for anyone else:
 the baseline, independent of `guard.read` and of every module. What stays
 surveillance is enabling, configuring and entering duress (`PATCH
 /guard/safety`, `PUT` and `DELETE /guard/safety/pin`), the modes and every
-other `/guard` route.
+other `/guard` route, the app siren (`POST /guard/siren`) among them: it is the
+camera action `CameraAction::Siren` (`kResidentAndGuard`, `hasCameraAction`),
+served by guard because the camera unit is frozen, and it is neither core nor
+baseline, so a disabled module answers 403 `MODULE_DISABLED` and an inactive
+Guard 403 `ROLE_INACTIVE` (`services/guard/CONTEXT.md`, "The app siren").
 
 `role_access::hasAppAction({.role, .action, .modules})` is the module-aware twin
 of `hasAppAction(role, action)`: the app actions the assistant may trigger
@@ -518,7 +522,7 @@ capability's probe route or table answers exactly what the capability says.
 | `people.write` `memory.manage` | core | Resident |
 | `users.manage` `invitations.manage` `privacy.household` `settings.manage` `modules.manage` `activity.read` | core | Owner only |
 | `camera.view` | surveillance | Resident, Guard, Guest |
-| `camera.talk` `zones.read` `events.read` `guard.read` | surveillance | Resident, Guard |
+| `camera.talk` `camera.siren` `zones.read` `events.read` `guard.read` | surveillance | Resident, Guard |
 | `camera.manage` `zones.write` `guard.mode.set` `guard.guests.write` `safety.duress` | surveillance | Resident |
 | `response.duty` `visitors.read` | surveillance | Guard |
 | `guard.admin` `visitors.manage` `presence.read` | surveillance | Owner only |

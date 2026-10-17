@@ -1,10 +1,13 @@
 argus_module(NAME guard-safety
     SOURCES
         controllers/safety-controller.cc
+        controllers/siren-controller.cc
         dtos/panic-dto.cc
         dtos/remove-pin-dto.cc
         dtos/response-safety-dto.cc
+        dtos/response-siren-dto.cc
         dtos/set-pin-dto.cc
+        dtos/siren-dto.cc
         dtos/update-safety-dto.cc
         infra/guard-alert-sink.cc
         infra/identity-actor-directory.cc
@@ -17,16 +20,22 @@ argus_module(NAME guard-safety
         services/pin-hash.cc
         services/safety-copy.cc
         services/safety-service.cc
+        services/siren-service.cc
     INCLUDES
         ../..
     DEPENDS
         argus::guard
+        argus::guard-config
+        argus::clients::camera-actions
         argus::clients::identity
         argus::clients::notification
         argus::contracts::auth
+        argus::contracts::sync
         argus::lib::auth
         argus::lib::errors
         argus::lib::http
+        argus::lib::nats
+        argus::lib::outbox
         argus::lib::runtime
         argus::lib::sqlite
         argus::lib::text

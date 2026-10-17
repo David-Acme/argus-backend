@@ -130,9 +130,9 @@ TEST_CASE("the guard catalog builds through the registry")
 {
   const auto catalog = guardSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{guardSettingsCatalog()});
-  CHECK(catalog.size() == 44);
+  CHECK(catalog.size() == 45);
   CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) ==
-        12);
+        13);
   for (const auto& spec : catalog) {
     CHECK_MESSAGE(spec.apply == SettingApply::Live, spec.key);
     CHECK_MESSAGE(spec.key.starts_with("guard."), spec.key);
@@ -166,6 +166,10 @@ TEST_CASE("every fallback is what the guard runs with when the key is absent")
   CHECK(intFallback(catalog, "guard.alarm_seconds") == service.alarmSeconds);
   CHECK(toggleFallback(catalog, "guard.arm_siren") == service.armSiren);
   CHECK(intFallback(catalog, "guard.siren_seconds") == service.sirenSeconds);
+  CHECK(toggleFallback(catalog, "guard.app_siren_enabled") ==
+        GuardConfig::resolveSiren().enabled);
+  CHECK(intFallback(catalog, "guard.siren_seconds") ==
+        GuardConfig::resolveSiren().leaseSeconds);
   CHECK(toggleFallback(catalog, "guard.greet_enabled") == service.greetEnabled);
   CHECK(toggleFallback(catalog, "guard.greet_known") == service.greetKnown);
   CHECK(toggleFallback(catalog, "guard.expected_guests") ==

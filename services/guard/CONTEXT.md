@@ -550,6 +550,7 @@ owner page lists guard without a hand edit.
 | `guard.alarm_seconds` | basic | live | alarm | 1-60 | 6 |
 | `guard.arm_siren` | basic | live | alarm | toggle | false |
 | `guard.siren_seconds` | basic | live | alarm | 1-300 | 20 |
+| `guard.app_siren_enabled` | basic | live | alarm | toggle | false |
 | `guard.greet_enabled` | basic | live | visitors | toggle | true |
 | `guard.greet_known` | basic | live | visitors | toggle | false |
 | `guard.expected_guests` | basic | live | visitors | toggle | true |
@@ -1372,6 +1373,72 @@ stale key, the RPC's caller and capability checks, the two times a spoken
 alert keeps and the absent or impossible `said_at` kept as `NULL`), and
 `tests/unit/guard-migration-test.cc` (an alert table from before the safety
 columns gains all of them, `said_at` included, with its row intact).
+
+### The app siren (2026-10-16, F5)
+
+Arlo and Doro both put the siren behind a confirmation, and the owner decided
+the same on 2026-10-16: tapping Sirena asks once, confirming runs the app's own
+5-second countdown with **Cancelar**, and Detener is one tap while it sounds.
+The app owns the countdown (`frontend/AGENTS.md`, the siren sheet); the server
+owns the action.
+
+`POST /guard/siren {cameraId, enabled}` (Resident and Guard; the camera action
+`CameraAction::Siren` in `kCameraActionAccess`, so `hasCameraAction` and the
+route row carry the same mask). It lives in guard, not in argus-camera, because
+the camera's `SetSiren` RPC is the action Argus already fires and the guard
+holds its client (`SirenService` over `CameraActionClient`); the camera unit was
+frozen for the recording work when this landed. Module gating and the inactive
+role come from the tables as for every other `/guard` route: `/guard` is
+surveillance (`kModuleRoutes`), and the row carries no baseline bit, so a
+disabled module answers 403 `MODULE_DISABLED` and an inactive Guard 403
+`ROLE_INACTIVE`.
+
+**The owner's switch.** `guard.app_siren_enabled` (basic, alarm, live, off by
+default) is the consent gate the owner decision asked for: with it off the
+route answers 403 `APP_SIREN_DISABLED` before anything is sent, and the app
+shows nothing. The setting is read through `GuardConfig::resolveSiren()` and
+refreshed on `SettingsRegistry::onChange`, like the rest of the service's live
+config.
+
+**The lease.** An activation sends `enabled=true` with
+`leaseSeconds = guard.siren_seconds` (default 20), so the camera itself stops
+the siren when the lease runs out — a lost phone cannot leave it sounding. The
+answer carries `until` (the epoch second the lease ends) so the app knows when
+Detener stops being useful; a stop sends `enabled=false, leaseSeconds=0` and
+answers `until: 0`. The command id is fresh per press
+(`app-siren:<userId>:<millis>`) because each press is its own command; the
+camera's own idempotency (`command_id` + fingerprint) collapses two presses in
+the same millisecond into one. A camera that refuses is its own refusal
+(`CameraErrors::CameraUnreachable` with its detail, 404 for
+`camera_not_found`) and nothing is recorded.
+
+**Recording.** An accepted activation or stop writes, in this order, one
+user-action audit event `{table: camera, record: cameraId, action: update,
+new_data: {event: "app_siren", cameraId, enabled}, ip}` on the guard's own
+`argus.guard.v1.user-action` subject (`ARGUS_GUARD_ACTION`, consumed by
+argus-sync's change feed as `argus-sync-guard-action`, which stores it in
+`user_action_log` — the Owner's activity history, module surveillance) and one
+`ResourceChanged {camera, status, [cameraId]}` on the guard change feed through
+the same outbox, so every camera screen refetches. Both go through
+`ResourceChangeOutbox`, the guard's one relay (`change_outbox`), which now
+ensures both streams.
+
+Code: `src/feature/safety/services/siren-service.{hxx,cc}`,
+`src/feature/safety/controllers/siren-controller.{hxx,cc}`,
+`src/feature/safety/dtos/siren-dto.{hxx,cc}` and `response-siren-dto.{hxx,cc}`,
+`resource-change-outbox.hxx` (`publishAction`, the `domain` on the resource
+input), `GuardConfig::resolveSiren()`; `tests/unit/guard-siren-test.cc` (the
+off switch, the lease and the command id, the audit and the camera notice, two
+activations, a refusal and a missing camera, no camera actions configured), and
+`packages/lib/auth/tests/unit/role-access-test.cc` (the role and module
+refusals). The golden HTTP recording of `POST /guard/siren` belongs to the next
+integration pass: the census row is in `scripts/lib/route-baseline.txt` and the
+fixture is recorded from a live stack.
+
+**Still open.** The camera persists no `sounding` flag of its own
+(`services/camera/CONTEXT.md`, R8 of the backlog): the app tracks the lease it
+was answered, and a siren armed by guard's own response plan (the `guard_siren`
+episode actions) is not visible to it.
 
 ## Who is called, in what order, and how (2026-10, RESPONSE)
 

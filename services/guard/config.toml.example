@@ -70,6 +70,7 @@ greet_repair_text = "No te escuché bien. ¿Puedes repetirlo?"
 alarm_seconds = 6
 arm_siren = false
 siren_seconds = 20
+app_siren_enabled = false
 veto_scope = "soft_only"
 action_cooldown_s = 120
 repeat_window_s = 86400

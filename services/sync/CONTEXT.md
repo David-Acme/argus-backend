@@ -91,8 +91,11 @@ protocol could not regress by accident in the commit that changed the endpoint.
   `ARGUS_AUTH_CHANGE`, `argus-sync-auth-session` on
   `ARGUS_AUTH_SESSION`, `argus-sync-settings-module` on
   `ARGUS_SETTINGS_MODULE` and `argus-sync-settings-action` on
-  `ARGUS_SETTINGS_ACTION`, `argus-sync-guard` on `ARGUS_GUARD`, and
-  `argus-sync-settings` on `ARGUS_SETTINGS_CHANGE`), plus the delivery
+  `ARGUS_SETTINGS_ACTION`, `argus-sync-guard` on `ARGUS_GUARD`,
+  `argus-sync-guard-action` on `ARGUS_GUARD_ACTION` (the guard's user-action
+  journal: the app siren's activation and stop audit events, and later the
+  guard's other journal entries), and `argus-sync-settings` on
+  `ARGUS_SETTINGS_CHANGE`), plus the delivery
   consumer. `change-feed-consumer-test` pins the list row by row and the
   uniqueness of every durable. Each attaches with
   `deliverAll = false` — deliver-new, so the first boot after this landed

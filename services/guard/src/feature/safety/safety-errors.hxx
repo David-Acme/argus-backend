@@ -17,6 +17,14 @@ inline constexpr ErrorDefinition PinLocked{.code = ErrorCode::PinLocked,
 inline constexpr ErrorDefinition DuressDisabled{.code = ErrorCode::Conflict,
                                                 .status = 409,
                                                 .message = "Disarm PINs are not enabled"};
+inline constexpr ErrorDefinition AppSirenDisabled{
+    .code = ErrorCode::AppSirenDisabled,
+    .status = 403,
+    .message = "The camera siren from the app is off"};
+inline constexpr ErrorDefinition SirenUnavailable{
+    .code = ErrorCode::ServiceUnavailable,
+    .status = 503,
+    .message = "This home has no camera actions configured"};
 inline constexpr ErrorDefinition MalformedBody{.code = ErrorCode::BadRequest,
                                               .status = 400,
                                               .message = "Invalid JSON body"};

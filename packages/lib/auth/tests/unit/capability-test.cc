@@ -82,6 +82,7 @@ constexpr std::array kRouteProbes = std::to_array<RouteProbe>({
     {.capability = "camera.view", .method = drogon::Get, .path = "/camera/overview"},
     {.capability = "camera.view", .method = drogon::Post, .path = "/camera/1/webrtc"},
     {.capability = "camera.talk", .method = drogon::Post, .path = "/camera/1/talk"},
+    {.capability = "camera.siren", .method = drogon::Post, .path = "/guard/siren"},
     {.capability = "camera.manage", .method = drogon::Post, .path = "/camera"},
     {.capability = "zones.read", .method = drogon::Get, .path = "/zone"},
     {.capability = "zones.write", .method = drogon::Post, .path = "/zone"},

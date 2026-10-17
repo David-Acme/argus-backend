@@ -5,15 +5,31 @@
 #include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 #include <outbox/outbox-backoff.hxx>
+#include <outbox/outbox-key.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
 #include <sync/stream-retention.hxx>
 #include <sync/sync-change.hxx>
+#include <sync/table-name.hxx>
 #include <text/json-util.hxx>
 #include <utility>
 
 namespace
 {
+bool ensureGuardStreams(NatsBus& bus)
+{
+  return bus.ensureStream(
+             {.name = nats_subject::kGuardStream,
+              .subjects = {nats_subject::kGuardSubjectFilter},
+              .maxAgeNs = stream_retention::kRetentionNs,
+              .duplicatesNs = stream_retention::kDuplicatesNs}) &&
+         bus.ensureStream(
+             {.name = nats_subject::kGuardActionStream,
+              .subjects = {nats_subject::kGuardUserAction},
+              .maxAgeNs = stream_retention::kRetentionNs,
+              .duplicatesNs = stream_retention::kDuplicatesNs});
+}
+
 outbox::OutboxConfig outboxConfig()
 {
   return {.label = "Guard resource changes",
@@ -21,14 +37,7 @@ outbox::OutboxConfig outboxConfig()
           .defaultSubject = std::string(nats_subject::kGuardChange),
           .legacyIdPrefix = std::string(ResourceChangeOutbox::kEventIdPrefix),
           .refusal = GuardErrors::ChangeNotRecorded,
-          .ensureStreams =
-              [](NatsBus& bus) {
-                return bus.ensureStream(
-                    {.name = nats_subject::kGuardStream,
-                     .subjects = {nats_subject::kGuardSubjectFilter},
-                     .maxAgeNs = stream_retention::kRetentionNs,
-                     .duplicatesNs = stream_retention::kDuplicatesNs});
-              },
+          .ensureStreams = ensureGuardStreams,
           .timing = {.retryMs = outbox::kRetryMs,
                      .maxRetryMs = outbox::kMaxRetryMs,
                      .progressMs = outbox::kProgressMs,
@@ -43,7 +52,7 @@ ResourceChangeRow resourceChangeRow(const ResourceChangeInput& input)
 {
   return {.subject = std::string(nats_subject::kGuardChange),
           .payload = json_util::toString(resource_change::payload(
-              ResourceDomain::Guard, input.scope, input.ids, input.user))};
+              input.domain, input.scope, input.ids, input.user))};
 }
 
 ResourceChangeOutbox::ResourceChangeOutbox(const std::shared_ptr<NatsBus>& bus)
@@ -59,6 +68,23 @@ ResourceChangeOutbox::record(const ResourceChangeInput& input) const
                            .subject = row.subject,
                            .payload = row.payload,
                            .client = input.client});
+}
+
+drogon::Task<void>
+ResourceChangeOutbox::publishAction(const ActionPublishInput& input) const
+{
+  const UserActionEvent& event = input.event;
+  const std::string payload = json_util::toString(event.toJson());
+  const std::string eventId =
+      outbox::transitionId({.prefix = kActionIdPrefix,
+                            .table = tableNameToString(event.tableName),
+                            .recordId = event.recordId,
+                            .discriminator = payload});
+  static_cast<void>(co_await outbox_.record(
+      {.eventId = eventId,
+       .subject = std::string(nats_subject::kGuardUserAction),
+       .payload = payload,
+       .client = input.client}));
 }
 
 outbox::OutboxRepository ResourceChangeOutbox::repository()

@@ -25,10 +25,12 @@
 #include <feature/module-data/services/guard-module-data.hxx>
 #include <feature/module-data/services/guard-owner-pin.hxx>
 #include <feature/safety/controllers/safety-controller.hxx>
+#include <feature/safety/controllers/siren-controller.hxx>
 #include <feature/safety/infra/guard-alert-sink.hxx>
 #include <feature/safety/infra/identity-actor-directory.hxx>
 #include <feature/safety/infra/notification-actor-notifier.hxx>
 #include <feature/safety/services/safety-service.hxx>
+#include <feature/safety/services/siren-service.hxx>
 #include <feature/presence/infra/nats-presence-publisher.hxx>
 #include <feature/presence/services/presence-service.hxx>
 #include <feature/settings/guard-settings.hxx>
@@ -386,6 +388,11 @@ int main()
                                   .changes = &resourceChanges,
                                   .clock = {}},
       safetyConfig);
+  const auto siren = std::make_shared<SirenService>(
+      SirenService::Dependencies{.camera = actions.get(),
+                                 .changes = &resourceChanges,
+                                 .clock = {}},
+      GuardConfig::resolveSiren());
   ResponseVerdictFeed verdictFeed(natsBus.get());
   verdictFeed.start();
 
@@ -402,9 +409,10 @@ int main()
       GuardConfig::resolvePresence());
 
   SettingsRegistry settings(guardSettingsCatalog());
-  settings.onChange([&guardService, &presence](const std::vector<std::string>&) {
+  settings.onChange([&guardService, &presence, &siren](const std::vector<std::string>&) {
     guardService.refresh(GuardConfig::resolveService());
     presence.refresh(GuardConfig::resolvePresence());
+    siren->refresh(GuardConfig::resolveSiren());
   });
   PostureWatch postureWatch(
       {.changes = &resourceChanges},
@@ -443,6 +451,7 @@ int main()
                                .disarm = safety.get(),
                                .changes = &resourceChanges}));
   drogon::app().registerController(std::make_shared<SafetyController>(safety));
+  drogon::app().registerController(std::make_shared<SirenController>(siren));
   drogon::app().registerController(
       std::make_shared<PresenceController>(&presence));
   drogon::app().registerController(std::make_shared<ResponseController>(

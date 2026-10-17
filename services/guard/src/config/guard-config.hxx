@@ -148,6 +148,13 @@ struct GuardPresenceConfig
   int64_t consentRefreshSeconds{600};
 };
 
+struct GuardSirenConfig
+{
+  bool enabled{false};
+  int leaseSeconds{20};
+  int64_t expiresMarginSeconds{60};
+};
+
 class GuardConfig
 {
 public:
@@ -172,4 +179,6 @@ public:
   [[nodiscard]] static BeliefConfig resolveBelief(int64_t cameraId);
 
   [[nodiscard]] static GuardPresenceConfig resolvePresence();
+
+  [[nodiscard]] static GuardSirenConfig resolveSiren();
 };

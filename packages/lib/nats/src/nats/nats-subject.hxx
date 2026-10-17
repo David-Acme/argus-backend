@@ -73,6 +73,10 @@ inline constexpr const char* kGuardStream = "ARGUS_GUARD";
 
 inline constexpr const char* kGuardSubjectFilter = "argus.guard.v1.>";
 
+inline constexpr const char* kGuardUserAction = "argus.guard.v1.user-action";
+
+inline constexpr const char* kGuardActionStream = "ARGUS_GUARD_ACTION";
+
 inline constexpr const char* kNotificationPushStream = "ARGUS_NOTIFICATION_PUSH";
 
 inline constexpr const char* kTunnelPushConsumer = "argus-tunnel-push";

@@ -67,6 +67,7 @@ TEST_CASE("every error code has exactly one wire string")
       {.code = ErrorCode::ModuleRolesHeld, .name = "MODULE_ROLES_HELD"},
       {.code = ErrorCode::CameraControlLocked, .name = "CAMERA_CONTROL_LOCKED"},
       {.code = ErrorCode::CameraControlRefused, .name = "CAMERA_CONTROL_REFUSED"},
+      {.code = ErrorCode::AppSirenDisabled, .name = "APP_SIREN_DISABLED"},
       {.code = ErrorCode::RouteNotFound, .name = "ROUTE_NOT_FOUND"}};
 
   CHECK(table.size() ==

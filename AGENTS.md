@@ -212,7 +212,10 @@ incidents and episodes, manages expected visits and keeps its own safety PINs
 response lists, incidents, episodes and expected visits, and goes on duty in
 an environment (`POST /guard/environments/{id}/duty`); household presence
 (`GET /guard/presence`, who is home and who is not) is the Owner's alone, and
-no Guard, Resident or Guest reads it (owner decision, 2026-10-12); every role presses
+no Guard, Resident or Guest reads it (owner decision, 2026-10-12); Resident and
+Guard sound a camera's siren from the app (`POST /guard/siren`, the camera
+action `CameraAction::Siren`, behind the Owner's `guard.app_siren_enabled`,
+`services/guard/CONTEXT.md` "The app siren"); every role presses
 panic (`POST /guard/panic`) and reads its safety state (`GET /guard/safety`),
 and those two are the only guard routes a Guest has; creating, editing and
 removing environments, episode detail and review, camera context, decision

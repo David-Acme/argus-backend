@@ -348,6 +348,20 @@ target_compile_definitions(guard-safety-test PRIVATE
     ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 add_test(NAME guard-safety-test COMMAND guard-safety-test)
 
+add_executable(guard-siren-test tests/unit/guard-siren-test.cc)
+set_target_properties(guard-siren-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(guard-siren-test PRIVATE
+    argus::guard
+    argus::guard-safety
+    argus::clients::camera-actions
+    doctest::doctest)
+target_include_directories(guard-siren-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+target_compile_options(guard-siren-test PRIVATE -Wall -Wextra)
+target_compile_definitions(guard-siren-test PRIVATE
+    ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+add_test(NAME guard-siren-test COMMAND guard-siren-test)
+
 add_executable(guard-duress-phrase-test tests/unit/guard-duress-phrase-test.cc)
 set_target_properties(guard-duress-phrase-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(guard-duress-phrase-test PRIVATE

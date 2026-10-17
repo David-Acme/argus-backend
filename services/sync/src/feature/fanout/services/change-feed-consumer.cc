@@ -66,6 +66,10 @@ const std::vector<Feed>& defaults()
        .subject = nats_subject::kGuardChange,
        .durable = "argus-sync-guard",
        .maxAckPending = NatsBus::kOrderedMaxAckPending},
+      {.stream = nats_subject::kGuardActionStream,
+       .subject = nats_subject::kGuardUserAction,
+       .durable = "argus-sync-guard-action",
+       .maxAckPending = NatsBus::kDefaultMaxAckPending},
   };
   return feeds;
 }
@@ -134,7 +138,8 @@ ChangeFeedConsumer::handle(const durable_delivery::Payload& message)
       message.subject == nats_subject::kAuthUserAction ||
       message.subject == nats_subject::kProductivityUserAction ||
       message.subject == nats_subject::kSettingsUserAction ||
-      message.subject == nats_subject::kCameraUserAction)
+      message.subject == nats_subject::kCameraUserAction ||
+      message.subject == nats_subject::kGuardUserAction)
     co_return co_await sync_fan_out::handleActionPayload(
         {.json = json,
          .msgId = message.msgId,

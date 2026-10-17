@@ -52,6 +52,7 @@ inline constexpr std::array kCapabilities = std::to_array<CapabilitySpec>({
     {.id = "activity.read", .module = kCoreModule, .roles = kOwnerOnly},
     {.id = "camera.view", .module = kSurveillanceModule, .roles = kEveryRole},
     {.id = "camera.talk", .module = kSurveillanceModule, .roles = kOwnerResidentGuard},
+    {.id = "camera.siren", .module = kSurveillanceModule, .roles = kOwnerResidentGuard},
     {.id = "camera.manage", .module = kSurveillanceModule, .roles = kOwnerResident},
     {.id = "zones.read", .module = kSurveillanceModule, .roles = kOwnerResidentGuard},
     {.id = "zones.write", .module = kSurveillanceModule, .roles = kOwnerResident},
