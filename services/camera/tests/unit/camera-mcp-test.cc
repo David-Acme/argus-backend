@@ -256,18 +256,20 @@ TEST_CASE("the privacy tool carries its capability and asks for confirmation whe
   CHECK(spec->annotations.destructive);
   CHECK(spec->inputSchema["properties"]["privacy"]["enum"].size() == 2);
 
-  harness.posture = {.protects = true, .armed = false};
-  const auto guarded = harness.call("resident", "es",
-                                    privacyArgs("garaje", "off"),
-                                    "camera.set_privacy");
+  Harness masked;
+  masked.masked = 1;
+  masked.posture = {.protects = true, .armed = false};
+  const auto guarded = masked.call("resident", "es",
+                                   privacyArgs("garaje", "off"),
+                                   "camera.set_privacy");
   CHECK_FALSE(guarded.isError);
   CHECK(guarded.structured["needsConfirmation"].asBool());
   CHECK_FALSE(guarded.structured["confirmation"].asString().empty());
   CHECK(guarded.text.find("quitaría el modo privacidad") != std::string::npos);
 
-  const auto bad = harness.call("resident", "es",
-                                privacyArgs("garaje", "off", "no-such-code"),
-                                "camera.set_privacy");
+  const auto bad = masked.call("resident", "es",
+                               privacyArgs("garaje", "off", "no-such-code"),
+                               "camera.set_privacy");
   CHECK(bad.isError);
   CHECK(bad.structured["code"].asString() == "confirmation_invalid");
 
@@ -285,6 +287,12 @@ TEST_CASE("the privacy tool carries its capability and asks for confirmation whe
                                        "camera.set_privacy");
   CHECK(alreadyOff.isError);
   CHECK(alreadyOff.structured["code"].asString() == "already_off");
+
+  const auto alreadyOn = masked.call("resident", "es",
+                                     privacyArgs("garaje", "on"),
+                                     "camera.set_privacy");
+  CHECK(alreadyOn.isError);
+  CHECK(alreadyOn.structured["code"].asString() == "already_on");
 
   const auto unknown = harness.call("resident", "es",
                                     privacyArgs("jardín", "on"),

@@ -378,45 +378,6 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
   CHECK(actuator->speakCalls == 1);
   CHECK(tts.requests().at("POST /tts/v1/synthesize") == 1);
 
-  CameraSchema masked;
-  masked.id = 1;
-  masked.name = "Action Cam";
-  masked.capabilities = "[\"privacy\",\"talk\"]";
-  masked.privacyState = CameraPrivacyState::On;
-  PrivacyStateService::instance().seed({masked});
-  const auto maskedListen = client.listen({.cameraId = 1,
-                                          .seconds = 1,
-                                          .lang = "es",
-                                          .commandId = "cmd-listen-masked",
-                                          .encounterId = 9,
-                                          .expiresAt = 0});
-  CHECK_FALSE(maskedListen.succeeded());
-  CHECK_FALSE(maskedListen.captured);
-  CHECK(maskedListen.status.error_code() == grpc::StatusCode::FAILED_PRECONDITION);
-
-  actuator->refuseSpeak = true;
-  const auto maskedAnnounce = client.announce({.cameraId = 1,
-                                               .text = "Alerta",
-                                               .lang = "es",
-                                               .commandId = "cmd-announce-masked",
-                                               .encounterId = 9,
-                                               .expiresAt = 0});
-  CHECK_FALSE(maskedAnnounce.succeeded());
-  CHECK_FALSE(maskedAnnounce.duplicate);
-  CHECK(actuator->speakCalls == 2);
-  CHECK(maskedAnnounce.detail == "The camera refused the audio");
-
-  const auto maskedAlarm = client.alarm({.cameraId = 1,
-                                         .seconds = 1,
-                                         .commandId = "cmd-alarm-masked",
-                                         .encounterId = 9,
-                                         .expiresAt = 0});
-  CHECK_FALSE(maskedAlarm.succeeded());
-  CHECK(actuator->speakCalls == 3);
-  CHECK(maskedAlarm.detail == "The camera refused the audio");
-  actuator->refuseSpeak = false;
-  PrivacyStateService::instance().forget(1);
-
   const auto repeated = client.announce({.cameraId = 1,
                                          .text = "Hola",
                                          .lang = "es",
@@ -1101,6 +1062,48 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
     audio_capture::setCaptureFunctionForTest({});
   }
 
+  CameraSchema masked;
+  masked.id = 1;
+  masked.name = "Action Cam";
+  masked.capabilities = "[\"privacy\",\"talk\"]";
+  masked.privacyState = CameraPrivacyState::On;
+  PrivacyStateService::instance().seed({masked});
+  auto refusing = std::make_shared<StubActuator>();
+  refusing->refuseSpeak = true;
+  CameraDriverTestAccess::install(1, refusing);
+
+  const auto maskedListen = client.listen({.cameraId = 1,
+                                          .seconds = 1,
+                                          .lang = "es",
+                                          .commandId = "cmd-listen-masked",
+                                          .encounterId = 9,
+                                          .expiresAt = 0});
+  CHECK_FALSE(maskedListen.succeeded());
+  CHECK_FALSE(maskedListen.captured);
+  CHECK(maskedListen.status.error_code() == grpc::StatusCode::FAILED_PRECONDITION);
+  CHECK(refusing->speakCalls.load() == 0);
+
+  const auto maskedAnnounce = client.announce({.cameraId = 1,
+                                               .text = "Alerta",
+                                               .lang = "es",
+                                               .commandId = "cmd-announce-masked",
+                                               .encounterId = 9,
+                                               .expiresAt = 0});
+  CHECK_FALSE(maskedAnnounce.succeeded());
+  CHECK_FALSE(maskedAnnounce.duplicate);
+  CHECK(refusing->speakCalls.load() == 1);
+  CHECK(maskedAnnounce.detail == "The camera refused the audio");
+
+  const auto maskedAlarm = client.alarm({.cameraId = 1,
+                                         .seconds = 1,
+                                         .commandId = "cmd-alarm-masked",
+                                         .encounterId = 9,
+                                         .expiresAt = 0});
+  CHECK_FALSE(maskedAlarm.succeeded());
+  CHECK(refusing->speakCalls.load() == 2);
+  CHECK(maskedAlarm.detail == "The camera refused the audio");
+  PrivacyStateService::instance().forget(1);
+
   writeConfig(false);
   ConfigService::load(kConfig);
   CHECK(client
@@ -1111,6 +1114,7 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
                        .encounterId = 9,
                        .expiresAt = 0})
             .rejected());
+
 
   server->Shutdown();
   std::remove(kCameraDb);

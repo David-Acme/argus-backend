@@ -2454,19 +2454,40 @@ TP-Link sends no push event, `getLensMaskConfig` (read by the Tapo driver
 inside its one `getStatus` batch as `privacyEnabled`) is the only way to read
 it, and firmware around 1.5.x can refuse the local API entirely.
 
-**One truth.** `camera.privacy_state` is `on`, `off` or `unknown` (a fresh
-column; `CameraRepository::acceptPrivacyState` adds it to an older database),
-`CameraPrivacyState` in `packages/contracts/camera` is its vocabulary, and
-`PrivacyStateService` (`src/shared/services/privacy-state/`) is its only
-writer. The boot seeds `CameraSceneLog` from the column before the first
-sample; the health monitor refreshes it on every tick for the cameras whose
-capabilities claim `privacy` (one driver read, backed off ten minutes after an
-error) and `GET /camera/{id}/status` refreshes it from the same call; the
-settings route reads it back after a toggle. A transition persists the row,
-publishes a camera audit Log, announces `Status` and `Overview`, and — turning
-on — clears `SnapshotStore` and the hub's cached fragments so no pre-mask
-frame can be replayed. **An unreadable state is `unknown`, never `off`**: a
-camera whose privacy cannot be read is treated exactly as before this change.
+**One truth, and it is a tri-state.** `camera.privacy_state` is `on`, `off` or
+`unknown` (a fresh column; `CameraRepository::acceptPrivacyState` adds it to an
+older database), `CameraPrivacyState` in `packages/contracts/camera` is its
+vocabulary, and `PrivacyStateService` (`src/shared/services/privacy-state/`) is
+its only writer *and* the one place the state lives in memory: one
+`CameraPrivacyState` per camera under its own mutex, seeded from the column at
+boot (before the first sample) and read through `stateOf`/`masked` alone —
+`CameraSceneLog` no longer carries a privacy bit at all, and nothing derives
+the state from a boolean of its own. The health monitor refreshes it on every
+tick for the cameras whose capabilities claim `privacy` (one driver read,
+backed off ten minutes after an error) and `GET /camera/{id}/status` refreshes
+it from the same call; the settings route reads it back after a toggle. A
+transition is applied by a compare-and-set under the per-camera lock, so the
+health tick and a status route racing on the same camera publish one audit and
+one announce pair, never two; a transition that persists publishes a camera
+audit Log and announces `Status` and `Overview`, and one that cannot be
+persisted publishes nothing (the in-memory state stands only while it says
+`on`, and the write is retried on the next tick). Turning on clears
+`SnapshotStore` and the hub's cached fragments so no pre-mask frame can be
+replayed.
+
+**What `unknown` means, and what Argus obeys.** An unreadable state is
+`unknown`, never `off`, and the row and the app read it as such ("Estado
+desconocido"). From `off`, or from the initial unknown, a reply that lacks
+`privacyEnabled` stays `unknown` and is **not** obeyed as masked: Argus treats
+that camera exactly as before the lens-mask work. From `on` it is the other
+way round — a readable reply that no longer carries the field reports
+`unknown` to the row and the app while Argus **keeps obeying the mask** (it is
+still not recorded, analysed or sampled) until an explicit `off` arrives, and
+the Owner is told once ("No puedo confirmar si la cámara {nombre} sigue en modo
+privacidad; mientras tanto no la grabo. Revísala en la app Tapo."). The
+asymmetry is deliberate: the failure mode that costs a private moment is
+treating a masked camera as if it were seeing, and the failure mode that costs
+a recording is the reverse, so the doubt resolves towards the owner's promise.
 
 **What privacy on means.** The recorder detaches that camera and logs once
 (`its recording is paused`): the watchdog neither warns nor re-subscribes
