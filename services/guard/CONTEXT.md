@@ -126,12 +126,17 @@ but on a labelled positive set (26 frames from COCO 2017 val and train,
 CC BY / CC BY-SA, a person clearly holding a knife; 8 of them grayscale;
 eval-only under `~/.cache/argus-guard-eval/`) it named the weapon in 54 of
 78 replies against the old prompt's 65, so the wording gained the clause
-"if they hold an object, name it as precisely as you can see it"; the
-acceptance rerun (owner frames at zero, positives not below the old
-prompt, hard negatives not above it, latency, and the guard LLM's weapon
-tag on a caption that names a knife) is deferred to the batch's
-integration pass. `vision.describe` callers may still ask their own
-question.
+"if they hold an object, name it as precisely as you can see it". The
+acceptance rerun ran in the batch's integration pass (2026-10-17, this
+wording, seeds 42/43/44): 63 of 78 positives named the weapon, 0 of 48 false
+on the hard negatives, latency +1.4 % on the set and −1.6 % on the owner
+frames, with one background enumeration on the owner frames ("items like
+knives" in a kitchen scene, not attributed to a person). The owner chose this
+wording on those numbers, and the weapon lexicon's attribution rule must not
+count that phrase. The same pass measured the downstream guard LLM emitting
+no `weapon` tag on 15 hostile knife captions, which the weapon-signal unit
+answers by deriving the signal from the caption beside the tag.
+`vision.describe` callers may still ask their own question.
 
 **Deterrence ladder.** Voice needs `High`; the siren needs `Critical`.
 - Public present or staff only: silent always - never talk to or sound a
