@@ -652,30 +652,13 @@ NotificationRepository::markAsRead(const NotificationMarkReadInput& input) const
   if (input.ids.empty())
     co_return {};
 
-  std::string placeholders;
-  std::vector<std::string> args;
-  args.reserve(input.ids.size() + 1);
-  for (size_t i = 0; i < input.ids.size(); ++i) {
-    if (i > 0)
-      placeholders += ", ";
-    placeholders += '?';
-    args.push_back(std::to_string(input.ids[i]));
-  }
-  args.insert(args.begin(), std::to_string(input.userId));
-
-  const auto withIds = [&placeholders](std::string_view templateQuery) {
-    std::string query{templateQuery};
-    const auto position = query.find("%1%");
-    if (position != std::string::npos)
-      query.replace(position, 3, placeholders);
-    return query;
-  };
-
   const auto pooled = DbService::client();
   auto* client = input.client ? input.client : pooled.get();
+  std::vector<std::string> args{std::to_string(input.userId)};
+  const std::string unreadQuery = withIdList(
+      {.templateQuery = FIND_UNREAD_BY_IDS, .ids = input.ids, .args = args});
   const auto& argsRef = args;
-  const auto rows =
-      co_await client->execSqlCoro(withIds(FIND_UNREAD_BY_IDS), argsRef);
+  const auto rows = co_await client->execSqlCoro(unreadQuery, argsRef);
   if (rows.empty())
     co_return {};
 
@@ -691,12 +674,47 @@ NotificationRepository::markAsRead(const NotificationMarkReadInput& input) const
     changes.push_back(std::move(change));
   }
 
-  std::vector<std::string> markArgs;
-  markArgs.reserve(args.size() + 1);
-  markArgs.push_back(std::to_string(readAt));
-  markArgs.insert(markArgs.end(), args.begin(), args.end());
+  std::vector<std::string> markArgs{std::to_string(readAt),
+                                    std::to_string(input.userId)};
+  const std::string markQuery = withIdList(
+      {.templateQuery = MARK_READ, .ids = input.ids, .args = markArgs});
   const auto& markArgsRef = markArgs;
-  co_await client->execSqlCoro(withIds(MARK_READ), markArgsRef);
+  co_await client->execSqlCoro(markQuery, markArgsRef);
+  co_return changes;
+}
+
+drogon::Task<std::vector<NotificationChange>>
+NotificationRepository::markThreadAsRead(
+    const NotificationThreadInput& input) const
+{
+  const auto pooled = DbService::client();
+  auto* client = input.client ? input.client : pooled.get();
+  const auto rows = co_await client->execSqlCoro(
+      std::string(FIND_UNREAD_THREAD), input.userId, input.threadKey);
+  if (rows.empty())
+    co_return {};
+
+  std::vector<NotificationChange> changes;
+  std::vector<int64_t> ids;
+  changes.reserve(rows.size());
+  ids.reserve(rows.size());
+  const auto readAt = static_cast<int64_t>(std::time(nullptr));
+  for (const auto& row : rows) {
+    NotificationChange change;
+    change.before = NotificationSchema(row);
+    change.after = change.before;
+    change.after.isRead = true;
+    change.after.readAt = readAt;
+    ids.push_back(change.before.id);
+    changes.push_back(std::move(change));
+  }
+
+  std::vector<std::string> args{std::to_string(readAt),
+                                std::to_string(input.userId)};
+  const std::string markQuery = withIdList(
+      {.templateQuery = MARK_READ, .ids = ids, .args = args});
+  const auto& argsRef = args;
+  co_await client->execSqlCoro(markQuery, argsRef);
   co_return changes;
 }
 

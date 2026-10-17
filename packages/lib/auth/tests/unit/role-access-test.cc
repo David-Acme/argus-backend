@@ -607,7 +607,7 @@ TEST_CASE("every route of the notification table answers each role as pinned, in
     bool declared;
     std::array<role_access::RouteVerdict, 4> verdicts;
   };
-  const std::array<PinnedRoute, 40> pinned{{
+  const std::array<PinnedRoute, 45> pinned{{
       {.route = "/notification/ack", .method = drogon::Get, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
       {.route = "/notification/ack", .method = drogon::Post, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
       {.route = "/notification/ack", .method = drogon::Put, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
@@ -643,6 +643,11 @@ TEST_CASE("every route of the notification table answers each role as pinned, in
       {.route = "/notification/thread/{1}", .method = drogon::Put, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
       {.route = "/notification/thread/{1}", .method = drogon::Patch, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
       {.route = "/notification/thread/{1}", .method = drogon::Delete, .declared = true, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/thread/{1}/read", .method = drogon::Get, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/thread/{1}/read", .method = drogon::Post, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/thread/{1}/read", .method = drogon::Put, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
+      {.route = "/notification/thread/{1}/read", .method = drogon::Patch, .declared = true, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
+      {.route = "/notification/thread/{1}/read", .method = drogon::Delete, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
       {.route = "/notification/{1}", .method = drogon::Get, .declared = false, .verdicts = {kAllow, kAllow, kAllow, kAllow}},
       {.route = "/notification/{1}", .method = drogon::Post, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},
       {.route = "/notification/{1}", .method = drogon::Put, .declared = false, .verdicts = {kAllow, kDeny, kDeny, kDeny}},

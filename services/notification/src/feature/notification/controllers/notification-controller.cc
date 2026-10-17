@@ -3,6 +3,7 @@
 #include <feature/notification/dtos/delivery-summary-dto.hxx>
 #include <feature/notification/dtos/notification-ack-dto.hxx>
 #include <feature/notification/dtos/notification-read-dto.hxx>
+#include <feature/notification/dtos/notification-thread-read-dto.hxx>
 #include <auth/jwt-filter.hxx>
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
@@ -72,4 +73,21 @@ NotificationController::removeThread(drogon::HttpRequestPtr req,
   if (!co_await service_.removeThread(thread))
     throw ResponseException(NotificationErrors::NotificationNotFound);
   co_return ApiResponse::noContent();
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+NotificationController::markThreadAsRead(drogon::HttpRequestPtr req,
+                                         std::string threadKey)
+{
+  const auto body = NotificationThreadReadDto::fromPath(std::move(threadKey));
+  const auto& ctx =
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const NotificationThreadRef thread{.threadKey = body.threadKey,
+                                     .userId = ctx.sub};
+
+  co_await service_.markThreadAsRead(thread);
+
+  Json::Value result;
+  result["updated"] = true;
+  co_return ApiResponse::ok(result);
 }

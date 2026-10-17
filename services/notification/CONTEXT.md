@@ -485,6 +485,35 @@ audit diff reports, so the stored value and the published `readAt` no longer
 differ by the second between `time(nullptr)` and `strftime('now')`.
 **Frontend:** batch "mark all as read" in chunks of at most 500 ids.
 
+**Marking a thread read (D14, 2026-10-16).** `PATCH /notification/thread/{threadKey}/read`
+marks every unread notification of the caller whose `data.threadKey` is that key, which is
+the gap the app's "mark the thread as read" had: it only reached the rows it had loaded, so
+a thread longer than the loaded page kept its older entries unread. The key is the same
+opaque string the thread delete takes — the app's own keys (`guard:episode:41`,
+`camera:fallback:5`, `agenda:event:9:…`), never a UUID — compared trimmed, so the boundary
+(`NotificationThreadReadDto`) only asks that it is non-empty and at most 128 characters.
+The route keeps `ValidJsonFilter` like its sibling PATCH routes, so the app sends `{}`.
+- One transaction, and the unread rows are selected before anything mutates: the select
+  (`FIND_UNREAD_THREAD`, guarded by `json_valid` and trimmed the same way as the delete's)
+  yields the before rows, then one `UPDATE … id IN (…)` writes `is_read` and `read_at` on
+  exactly those ids. A row already read is neither selected nor updated.
+- One user-audit diff per changed row, in id order, inside that transaction, through the
+  same `publishReadAudits` helper as the by-id read: `isRead` false→true and `readAt`
+  null→the stored second. A refused diff rolls the whole thread back, so the rows stay
+  unread. No `Add`, no hand-built `Log`: an update is an audit diff.
+- It is scoped to the caller. Another user's unread rows with the same key are untouched.
+  The answer is 200 `{"updated": true}`, the shape of the by-id route, and it is the answer
+  for every key: an unknown key, a blank key and a thread already read change nothing and
+  are not an error.
+- RoleFilter grants it from the `notification` table's existing `Update` permission, so no
+  role-access row changed; like the delete, the route is core and the table baseline, so an
+  inactive role keeps it.
+
+Tests: `notification-controller-test` covers the route's answer, the two rows marked and
+their two diffs, the already-read row, the blank and unknown keys, and another user's row
+in the same thread left alone; `notification-change-transaction-test` covers the rollback
+of a refused diff and the two outbox audits with their fields.
+
 ## Delivery proof (Round 11)
 
 The chain used to end at gateway dispatch. Clients now confirm display

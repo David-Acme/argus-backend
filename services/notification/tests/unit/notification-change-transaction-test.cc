@@ -356,6 +356,68 @@ TEST_CASE("a notification read, delete or thread delete and its changes are one 
   CHECK_FALSE(drogon::sync_wait(notifications.removeThread(ownThread)));
   CHECK(outbox.pendingBatch(50).size() == queued + 4);
 
+  const std::string readThread = R"({"threadKey":"guard:episode:53"})";
+  const int64_t readFirst =
+      seedRow({.userId = 7, .title = "Porch 1", .data = readThread});
+  const int64_t readSecond =
+      seedRow({.userId = 7, .title = "Porch 2", .data = readThread});
+  const int64_t readSettled =
+      seedRow({.userId = 7, .title = "Porch 3", .data = readThread});
+  const int64_t readTheirs =
+      seedRow({.userId = 8, .title = "Porch 1", .data = readThread});
+  DbService::client()->execSqlSync(
+      "UPDATE notification SET is_read = 1, read_at = 1700000000 "
+      "WHERE id = ?",
+      readSettled);
+  const std::size_t readQueued = outbox.pendingBatch(50).size();
+  const NotificationThreadRef readOwn{.threadKey = "guard:episode:53",
+                                      .userId = 7};
+
+  RefusingSink readRefusal(pooled.get());
+  readRefusal.refuse(true);
+  user_change::setNotificationSink(&readRefusal);
+  CHECK_THROWS_AS(drogon::sync_wait(notifications.markThreadAsRead(readOwn)),
+                  std::runtime_error);
+  CHECK(readRefusal.calls() == 1);
+  CHECK(readRefusal.transactional());
+  CHECK(settledReadAt(readFirst) == 0);
+  CHECK(settledReadAt(readSecond) == 0);
+  CHECK(settledReadAt(readSettled) == 1700000000);
+  CHECK(settledReadAt(readTheirs) == 0);
+  CHECK(outbox.pendingBatch(50).size() == readQueued);
+
+  user_change::setNotificationSink(&durableSink);
+  drogon::sync_wait(notifications.markThreadAsRead(readOwn));
+  CHECK(settledReadAt(readFirst) > 0);
+  CHECK(settledReadAt(readSecond) > 0);
+  CHECK(settledReadAt(readSettled) == 1700000000);
+  CHECK(settledReadAt(readTheirs) == 0);
+  const auto readRows = outbox.pendingBatch(50);
+  REQUIRE(readRows.size() == readQueued + 2);
+  for (std::size_t i = 0; i < 2; ++i) {
+    const int64_t id = i == 0 ? readFirst : readSecond;
+    const Json::Value readAudit =
+        json_util::fromString(readRows[readQueued + i].payload);
+    CHECK(readAudit["kind"].asString() == "audit");
+    CHECK(readAudit["record_id"].asInt64() == id);
+    CHECK(readAudit["table_name"].asString() == "notification");
+    CHECK(readAudit["changes"].getMemberNames().size() == 2U);
+    CHECK(readAudit["changes"]["isRead"]["previous"].asInt() == 0);
+    CHECK(readAudit["changes"]["isRead"]["current"].asInt() == 1);
+    CHECK(readAudit["changes"]["readAt"]["previous"].isNull());
+    CHECK(readAudit["changes"]["readAt"]["current"].asInt64() ==
+          settledReadAt(id));
+    REQUIRE(readAudit["users"].size() == 1U);
+    CHECK(readAudit["users"][0].asInt64() == 7);
+  }
+
+  const std::size_t readSettledQueued = outbox.pendingBatch(50).size();
+  drogon::sync_wait(notifications.markThreadAsRead(
+      {.threadKey = "guard:episode:53", .userId = 9}));
+  CHECK(outbox.pendingBatch(50).size() == readSettledQueued);
+  drogon::sync_wait(notifications.markThreadAsRead(readOwn));
+  CHECK(outbox.pendingBatch(50).size() == readSettledQueued);
+
   DbService::client()->execSqlSync("DROP TABLE change_outbox");
 
   const int64_t orphan = seedNotification("Bell 4");

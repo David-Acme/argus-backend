@@ -5,6 +5,7 @@ argus_module(NAME notification-feature
         dtos/delivery-summary-dto.cc
         dtos/notification-ack-dto.cc
         dtos/notification-read-dto.cc
+        dtos/notification-thread-read-dto.cc
         dtos/register-notification-token-dto.cc
         dtos/unregister-notification-token-dto.cc
         services/notification-feature-service.cc

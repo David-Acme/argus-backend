@@ -70,6 +70,33 @@ drogon::Task<void> publishRemovals(const RemovalPublishInput& input)
   }
 }
 
+struct ReadAuditInput
+{
+  std::vector<NotificationChange> changes;
+  int64_t userId{0};
+  drogon::orm::DbClient* client{nullptr};
+};
+
+drogon::Task<void> publishReadAudits(const ReadAuditInput& input)
+{
+  const AuditSink* sink = user_change::getNotificationSink();
+  if (sink == nullptr) {
+    if (!input.changes.empty())
+      LOG_WARN << "user change sink not installed; drop notification audit";
+    co_return;
+  }
+  for (const auto& change : input.changes) {
+    co_await sink->publishAudit(UserAuditInput{
+        .recordId = change.after.id,
+        .tableName = TableName::Notification,
+        .before = change.before.toJson(),
+        .after = change.after.toJson(),
+        .userIds = {input.userId},
+        .client = input.client,
+    });
+  }
+}
+
 std::string trimmed(std::string_view text)
 {
   const auto first = text.find_first_not_of(" \t\r\n");
@@ -200,25 +227,38 @@ NotificationService::markAsRead(int64_t userId,
 {
   auto transaction = co_await db_transaction::begin(DbService::client());
   try {
-    const auto changes = co_await repository_.markAsRead(
+    auto changes = co_await repository_.markAsRead(
         {.userId = userId, .ids = ids, .client = transaction.get()});
-    const AuditSink* sink = user_change::getNotificationSink();
-    if (sink == nullptr) {
-      if (!changes.empty())
-        LOG_WARN << "user change sink not installed; drop notification audit";
-    }
-    else {
-      for (const auto& change : changes) {
-        co_await sink->publishAudit(UserAuditInput{
-            .recordId = change.after.id,
-            .tableName = TableName::Notification,
-            .before = change.before.toJson(),
-            .after = change.after.toJson(),
-            .userIds = {userId},
-            .client = transaction.get(),
-        });
-      }
-    }
+    const ReadAuditInput publish{.changes = std::move(changes),
+                                 .userId = userId,
+                                 .client = transaction.get()};
+    co_await publishReadAudits(publish);
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(NotificationErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_return;
+}
+
+drogon::Task<void>
+NotificationService::markThreadAsRead(const NotificationThreadRef& ref) const
+{
+  std::string threadKey = trimmed(ref.threadKey);
+  if (threadKey.empty())
+    co_return;
+  auto transaction = co_await db_transaction::begin(DbService::client());
+  try {
+    auto changes = co_await repository_.markThreadAsRead(
+        {.userId = ref.userId,
+         .threadKey = std::move(threadKey),
+         .client = transaction.get()});
+    const ReadAuditInput publish{.changes = std::move(changes),
+                                 .userId = ref.userId,
+                                 .client = transaction.get()};
+    co_await publishReadAudits(publish);
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(NotificationErrors::ChangeNotRecorded);
   }

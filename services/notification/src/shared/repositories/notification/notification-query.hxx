@@ -73,6 +73,13 @@ inline constexpr std::string_view FIND_OWNED_THREAD =
     "'$.threadKey') = 'text' THEN trim(json_extract(data, '$.threadKey'), "
     "' ' || char(9, 10, 13)) END END = ? ORDER BY id ASC";
 
+inline constexpr std::string_view FIND_UNREAD_THREAD =
+    "SELECT * FROM notification WHERE user_id = ? AND is_read = 0 "
+    "AND deleted_at IS NULL "
+    "AND CASE WHEN json_valid(data) THEN CASE WHEN json_type(data, "
+    "'$.threadKey') = 'text' THEN trim(json_extract(data, '$.threadKey'), "
+    "' ' || char(9, 10, 13)) END END = ? ORDER BY id ASC";
+
 inline constexpr std::string_view SOFT_DELETE_THREAD =
     "UPDATE notification SET deleted_at = strftime('%s', 'now') "
     "WHERE user_id = ? AND deleted_at IS NULL "

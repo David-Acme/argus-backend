@@ -22,6 +22,13 @@ NotificationFeatureService::markAsRead(int64_t userId,
   co_return;
 }
 
+drogon::Task<void> NotificationFeatureService::markThreadAsRead(
+    const NotificationThreadRef& ref) const
+{
+  co_await notificationService_->markThreadAsRead(ref);
+  co_return;
+}
+
 drogon::Task<bool>
 NotificationFeatureService::remove(const NotificationRef& ref) const
 {

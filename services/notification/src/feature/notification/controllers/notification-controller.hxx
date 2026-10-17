@@ -29,6 +29,9 @@ public:
   ADD_METHOD_TO(NotificationController::removeThread,
                 "/notification/thread/{1}", drogon::Delete, "DeviceFilter",
                 "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(NotificationController::markThreadAsRead,
+                "/notification/thread/{1}/read", drogon::Patch, "DeviceFilter",
+                "ValidJsonFilter", "JwtFilter", "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> markAsRead(drogon::HttpRequestPtr req);
@@ -43,6 +46,9 @@ public:
 
   drogon::Task<drogon::HttpResponsePtr> removeThread(drogon::HttpRequestPtr req,
                                                      std::string threadKey);
+
+  drogon::Task<drogon::HttpResponsePtr> markThreadAsRead(
+      drogon::HttpRequestPtr req, std::string threadKey);
 
 private:
   NotificationFeatureService service_;

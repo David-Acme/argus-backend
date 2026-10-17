@@ -60,6 +60,9 @@ public:
   drogon::Task<std::vector<NotificationChange>>
   markAsRead(const NotificationMarkReadInput& input) const;
 
+  drogon::Task<std::vector<NotificationChange>>
+  markThreadAsRead(const NotificationThreadInput& input) const;
+
   drogon::Task<std::optional<NotificationChange>>
   remove(const NotificationOwnedInput& input) const;
 

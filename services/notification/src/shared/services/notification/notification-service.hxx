@@ -87,6 +87,8 @@ public:
   drogon::Task<void> markAsRead(int64_t userId,
                                 const std::vector<int64_t>& ids) const;
 
+  drogon::Task<void> markThreadAsRead(const NotificationThreadRef& ref) const;
+
   [[nodiscard]] drogon::Task<bool> remove(const NotificationRef& ref) const;
 
   [[nodiscard]] drogon::Task<bool> removeThread(

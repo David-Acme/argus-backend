@@ -7,6 +7,7 @@
 #include <feature/notification/controllers/notification-controller.hxx>
 #include <feature/notification/controllers/notification-token-controller.hxx>
 #include <feature/notification/dtos/notification-read-dto.hxx>
+#include <feature/notification/dtos/notification-thread-read-dto.hxx>
 #include <feature/notification/dtos/notification-ack-dto.hxx>
 #include <feature/notification/dtos/register-notification-token-dto.hxx>
 #include <auth/device-filter.hxx>
@@ -606,6 +607,103 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
   CHECK(sink.emits.size() == emitsBeforeThread + 2);
   CHECK(scalar("SELECT COUNT(*) AS total FROM notification WHERE id = 23 "
                "AND deleted_at IS NULL") == 1);
+
+  DbService::client()->execSqlSync(
+      "INSERT INTO notification (id, user_id, type, title, body, data, "
+      "is_read, read_at) VALUES "
+      "(30, 7, 'event', 'Patio 1', 'motion', '{\"threadKey\":\"guard:episode:44\"}', 0, NULL), "
+      "(31, 7, 'event', 'Patio 2', 'motion', '{\"threadKey\":\" guard:episode:44 \"}', 0, NULL), "
+      "(32, 7, 'event', 'Patio 3', 'motion', '{\"threadKey\":\"guard:episode:44\"}', 1, 1700000000), "
+      "(33, 8, 'event', 'Patio 1', 'motion', '{\"threadKey\":\"guard:episode:44\"}', 0, NULL)");
+
+  auto readThreadAs = [&notificationController](int64_t userId,
+                                                const std::string& threadKey) {
+    auto req = drogon::HttpRequest::newHttpRequest();
+    req->setMethod(drogon::Patch);
+    req->getAttributes()->insert(
+        AuthContext::kJwtKey,
+        JwtContext{.sub = userId, .name = "Resident", .role = UserRole::Resident, .isActive = true, .deviceHash = {}, .sessionId = {}});
+    return drogon::sync_wait(
+        notificationController.markThreadAsRead(req, threadKey));
+  };
+  const std::size_t auditsBeforeRead = sink.audits.size();
+  const std::size_t emitsBeforeRead = sink.emits.size();
+
+  bool blankThreadKeyThrown = false;
+  try {
+    const auto dto = NotificationThreadReadDto::fromPath(std::string{});
+    (void)dto;
+  }
+  catch (const ValidationException& e) {
+    blankThreadKeyThrown = true;
+    CHECK(e.statusCode() == 422);
+    REQUIRE(e.errors().count("threadKey") == 1);
+  }
+  CHECK(blankThreadKeyThrown);
+
+  bool overlongThreadKeyThrown = false;
+  try {
+    const auto dto = NotificationThreadReadDto::fromPath(
+        std::string(NotificationThreadReadDto::kMaxThreadKeyLength + 1, 'k'));
+    (void)dto;
+  }
+  catch (const ValidationException& e) {
+    overlongThreadKeyThrown = true;
+    CHECK(e.statusCode() == 422);
+    REQUIRE(e.errors().count("threadKey") == 1);
+  }
+  CHECK(overlongThreadKeyThrown);
+
+  const auto threadRead = readThreadAs(7, "guard:episode:44");
+  REQUIRE(threadRead);
+  const Json::Value threadReadJson = body(threadRead);
+  CHECK(threadReadJson["status"].asInt() == 200);
+  CHECK(threadReadJson["errors"].isNull());
+  CHECK(threadReadJson["info"]["updated"].asBool());
+
+  REQUIRE(sink.audits.size() == auditsBeforeRead + 2);
+  CHECK(sink.emits.size() == emitsBeforeRead);
+  for (std::size_t i = 0; i < 2; ++i) {
+    const int64_t id = 30 + static_cast<int64_t>(i);
+    const RecordedAudit& readAudit = sink.audits[auditsBeforeRead + i];
+    CHECK(readAudit.recordId == id);
+    CHECK(readAudit.tableName == "notification");
+    CHECK(readAudit.users == std::vector<int64_t>{7});
+    const Json::Value before = json_util::fromString(readAudit.before);
+    const Json::Value after = json_util::fromString(readAudit.after);
+    CHECK(before["isRead"].asInt() == 0);
+    CHECK(before["readAt"].isNull());
+    CHECK(after["isRead"].asInt() == 1);
+    CHECK(after["readAt"].asInt64() > 0);
+    CHECK(scalar("SELECT read_at AS total FROM notification WHERE id = " +
+                 std::to_string(id)) == after["readAt"].asInt64());
+  }
+  CHECK(scalar("SELECT is_read AS total FROM notification WHERE id = 32") == 1);
+  CHECK(scalar("SELECT read_at AS total FROM notification WHERE id = 32") ==
+        1700000000);
+  CHECK(scalar("SELECT is_read AS total FROM notification WHERE id = 33") == 0);
+  CHECK(scalar("SELECT COUNT(*) AS total FROM notification WHERE user_id = 7 "
+               "AND is_read = 0 AND id IN (22, 25, 26)") == 3);
+
+  const auto threadReadAgain = readThreadAs(7, "guard:episode:44");
+  CHECK(body(threadReadAgain)["info"]["updated"].asBool());
+  CHECK(sink.audits.size() == auditsBeforeRead + 2);
+
+  const auto blankThreadRead = readThreadAs(7, "   ");
+  CHECK(body(blankThreadRead)["info"]["updated"].asBool());
+  CHECK(sink.audits.size() == auditsBeforeRead + 2);
+
+  const auto unknownThreadRead = readThreadAs(7, "guard:episode:99");
+  CHECK(body(unknownThreadRead)["info"]["updated"].asBool());
+  CHECK(sink.audits.size() == auditsBeforeRead + 2);
+
+  const auto strangerThreadRead = readThreadAs(8, "guard:episode:44");
+  CHECK(body(strangerThreadRead)["info"]["updated"].asBool());
+  REQUIRE(sink.audits.size() == auditsBeforeRead + 3);
+  CHECK(sink.audits.back().recordId == 33);
+  CHECK(sink.audits.back().users == std::vector<int64_t>{8});
+  CHECK(scalar("SELECT is_read AS total FROM notification WHERE id = 33") == 1);
+  CHECK(sink.emits.size() == emitsBeforeRead);
 
   NotificationTokenController tokenController;
 
