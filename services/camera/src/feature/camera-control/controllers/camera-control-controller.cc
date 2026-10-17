@@ -1,5 +1,8 @@
 #include "camera-control-controller.hxx"
 
+#include <auth/device-filter.hxx>
+#include <auth/jwt-filter.hxx>
+#include <auth/request-context.hxx>
 #include <camera/camera-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <http/api-response.hxx>
@@ -63,7 +66,12 @@ drogon::Task<drogon::HttpResponsePtr>
 CameraControlController::settings(drogon::HttpRequestPtr req, int64_t id)
 {
   const auto body = CameraSettingsDto::fromJson(*req->getJsonObject());
-  co_return respond(co_await service_.settings(id, body));
+  const auto& jwt = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const auto& device =
+      req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
+  co_return respond(co_await service_.settings(
+      {.cameraId = id, .body = std::move(body), .actorUserId = jwt.sub,
+       .actorIp = device.ip}));
 }
 
 drogon::Task<drogon::HttpResponsePtr>

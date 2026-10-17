@@ -7,10 +7,12 @@
 #include <feature/camera-control/dtos/camera-settings-dto.hxx>
 #include <feature/camera-control/services/camera-control-feature-service.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
+#include <shared/services/privacy-state/privacy-state.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/camera-change-sink.hxx>
 #include <sync/resource-change.hxx>
 
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <memory>
@@ -64,7 +66,13 @@ class SettingsDriver final : public ICameraDriver
 {
 public:
   [[nodiscard]] Json::Value capabilities() const override { return {}; }
-  DriverResult status() override { return {.ok = true, .error = {}, .data = Json::Value()}; }
+  DriverResult status() override
+  {
+    Json::Value data(Json::objectValue);
+    if (privacyStatus_)
+      data["privacyEnabled"] = *privacyStatus_;
+    return {.ok = true, .error = {}, .data = std::move(data)};
+  }
   DriverResult presets() override { return {.ok = true, .error = {}, .data = Json::Value()}; }
   DriverResult move(const DriverMoveInput&) override { return {.ok = true}; }
   DriverResult preset(const DriverPresetInput&) override
@@ -85,8 +93,11 @@ public:
 
   void refuse(bool value) { refuse_ = value; }
 
+  void privacyStatus(std::optional<bool> value) { privacyStatus_ = value; }
+
 private:
   bool refuse_{false};
+  std::optional<bool> privacyStatus_;
 };
 
 class RecordingSink final : public CameraChangeSink
@@ -108,12 +119,14 @@ public:
   }
 
   [[nodiscard]] drogon::Task<void>
-  publishAction(const ActionPublishInput&) const override
+  publishAction(const ActionPublishInput& input) const override
   {
+    actions.push_back(input.event);
     co_return;
   }
 
   mutable std::vector<CameraResourceChange> notices;
+  mutable std::vector<UserActionEvent> actions;
 };
 
 struct Rig
@@ -168,14 +181,17 @@ TEST_CASE("a settings write announces the camera, and a refused one announces no
   const CameraControlFeatureService service;
 
   const auto applied = drogon::sync_wait(service.settings(
-      rig.cameraId, CameraSettingsDto{.privacy = std::nullopt,
-                                      .led = std::nullopt,
-                                      .dayNight = std::nullopt,
-                                      .motion = std::nullopt,
-                                      .motionSensitivity = std::nullopt,
-                                      .autoTrack = std::nullopt,
-                                      .alarm = true,
-                                      .alarmVolume = 100}));
+      {.cameraId = rig.cameraId,
+       .body = CameraSettingsDto{.privacy = std::nullopt,
+                                 .led = std::nullopt,
+                                 .dayNight = std::nullopt,
+                                 .motion = std::nullopt,
+                                 .motionSensitivity = std::nullopt,
+                                 .autoTrack = std::nullopt,
+                                 .alarm = true,
+                                 .alarmVolume = 100},
+       .actorUserId = 7,
+       .actorIp = "127.0.0.1"}));
   REQUIRE(applied.has_value());
   REQUIRE(rig.sink.notices.size() == 1);
   CHECK(rig.sink.notices.front().scope == ResourceScope::Status);
@@ -184,14 +200,15 @@ TEST_CASE("a settings write announces the camera, and a refused one announces no
 
   rig.fake->refuse(true);
   const auto refused = drogon::sync_wait(service.settings(
-      rig.cameraId, CameraSettingsDto{.privacy = std::nullopt,
-                                      .led = std::nullopt,
-                                      .dayNight = std::nullopt,
-                                      .motion = std::nullopt,
-                                      .motionSensitivity = std::nullopt,
-                                      .autoTrack = std::nullopt,
-                                      .alarm = false,
-                                      .alarmVolume = std::nullopt}));
+      {.cameraId = rig.cameraId,
+       .body = CameraSettingsDto{.privacy = std::nullopt,
+                                 .led = std::nullopt,
+                                 .dayNight = std::nullopt,
+                                 .motion = std::nullopt,
+                                 .motionSensitivity = std::nullopt,
+                                 .autoTrack = std::nullopt,
+                                 .alarm = false,
+                                 .alarmVolume = std::nullopt}}));
   if (!refused) {
     FAIL("expected the control service to answer");
     return;
@@ -200,8 +217,76 @@ TEST_CASE("a settings write announces the camera, and a refused one announces no
   CHECK(rig.sink.notices.size() == 1);
 }
 
-TEST_CASE("saving or deleting a preset announces, and moving to one does not")
+TEST_CASE("a privacy toggle is audited with its actor and announces status and overview")
 {
+  Rig& rig = sharedRig();
+  rig.sink.notices.clear();
+  rig.sink.actions.clear();
+  rig.fake->refuse(false);
+  rig.fake->privacyStatus(true);
+  DbService::cameraClient()->execSqlSync(
+      "UPDATE camera SET capabilities = '[\"privacy\"]' WHERE id = ?",
+      rig.cameraId);
+  PrivacyStateService::instance().forget(rig.cameraId);
+  const CameraControlFeatureService service;
+
+  const auto masked = drogon::sync_wait(service.settings(
+      {.cameraId = rig.cameraId,
+       .body = CameraSettingsDto{.privacy = true,
+                                 .led = std::nullopt,
+                                 .dayNight = std::nullopt,
+                                 .motion = std::nullopt,
+                                 .motionSensitivity = std::nullopt,
+                                 .autoTrack = std::nullopt,
+                                 .alarm = std::nullopt,
+                                 .alarmVolume = std::nullopt},
+       .actorUserId = 41,
+       .actorIp = "192.0.2.7"}));
+  REQUIRE(masked.has_value());
+  CHECK(masked->ok);
+  CHECK(PrivacyStateService::instance().stateOf(rig.cameraId) ==
+        CameraPrivacyState::On);
+  REQUIRE(rig.sink.actions.size() == 1);
+  CHECK(rig.sink.actions.front().userId == 41);
+  CHECK(rig.sink.actions.front().recordId == rig.cameraId);
+  CHECK(rig.sink.actions.front().action == UserAction::Update);
+  CHECK(rig.sink.actions.front().ipAddress == "192.0.2.7");
+  CHECK(rig.sink.actions.front().newData["privacyState"] == "on");
+  CHECK(rig.sink.actions.front().newData["requested"].asBool());
+  const auto counts = [&rig](ResourceScope scope) {
+    return std::ranges::count_if(rig.sink.notices, [scope](const auto& notice) {
+      return notice.scope == scope;
+    });
+  };
+  CHECK(counts(ResourceScope::Status) >= 1);
+  CHECK(counts(ResourceScope::Overview) >= 1);
+  CHECK(rig.sink.notices.back().scope == ResourceScope::Overview);
+
+  rig.fake->privacyStatus(false);
+  const auto cleared = drogon::sync_wait(service.settings(
+      {.cameraId = rig.cameraId,
+       .body = CameraSettingsDto{.privacy = false,
+                                 .led = std::nullopt,
+                                 .dayNight = std::nullopt,
+                                 .motion = std::nullopt,
+                                 .motionSensitivity = std::nullopt,
+                                 .autoTrack = std::nullopt,
+                                 .alarm = std::nullopt,
+                                 .alarmVolume = std::nullopt},
+       .actorUserId = 41,
+       .actorIp = "192.0.2.7"}));
+  REQUIRE(cleared.has_value());
+  CHECK(cleared->ok);
+  CHECK(PrivacyStateService::instance().stateOf(rig.cameraId) ==
+        CameraPrivacyState::Off);
+  REQUIRE(rig.sink.actions.size() == 2);
+  CHECK(counts(ResourceScope::Overview) >= 2);
+  CHECK(rig.sink.actions.back().oldData["privacyState"] == "on");
+  CHECK(rig.sink.actions.back().newData["privacyState"] == "off");
+  CHECK_FALSE(rig.sink.actions.back().newData["requested"].asBool());
+}
+
+TEST_CASE("saving or deleting a preset announces, and moving to one does not"){
   Rig& rig = sharedRig();
   rig.sink.notices.clear();
   rig.fake->refuse(false);

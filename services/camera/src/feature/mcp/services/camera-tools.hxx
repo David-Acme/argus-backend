@@ -1,5 +1,7 @@
 #pragma once
 
+#include <camera/camera-privacy-state.hxx>
+#include <mcp/confirmation.hxx>
 #include <mcp/server.hxx>
 
 #include <cstdint>
@@ -14,13 +16,23 @@ struct CameraChoice
 {
   int64_t id{0};
   std::string name;
+  CameraPrivacyState privacyState{CameraPrivacyState::Unknown};
 };
 
 using CameraCatalog = std::function<drogon::Task<std::vector<CameraChoice>>()>;
 
+struct HouseholdPosture
+{
+  bool protects{false};
+  bool armed{false};
+};
+
+using PostureDirectory = std::function<HouseholdPosture()>;
+
 struct CameraToolsInput
 {
   CameraCatalog catalog;
+  PostureDirectory posture{};
   std::function<trantor::EventLoop*()> loop;
 };
 

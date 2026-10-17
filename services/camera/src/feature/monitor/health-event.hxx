@@ -1,5 +1,6 @@
 #pragma once
 
+#include <camera/camera-privacy-state.hxx>
 #include <shared/vocabulary/health-thresholds.hxx>
 
 #include <cstdint>
@@ -32,6 +33,14 @@ struct CameraHealthEvent
   int64_t detectedAtMs{0};
 };
 
+struct CameraPrivacyEvent
+{
+  int64_t cameraId{0};
+  std::string cameraName{};
+  CameraPrivacyState state{CameraPrivacyState::Unknown};
+  int64_t detectedAtMs{0};
+};
+
 namespace health_monitor
 {
 CameraHealthState classify(const HealthMetrics& metrics,
@@ -44,4 +53,5 @@ class IHealthEventSink
 public:
   virtual ~IHealthEventSink() = default;
   virtual bool publish(const CameraHealthEvent& event) = 0;
+  virtual bool publishPrivacy(const CameraPrivacyEvent& event) = 0;
 };

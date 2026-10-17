@@ -6,7 +6,9 @@
 #include <shared/services/stream/frame-source.hxx>
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
+#include <shared/schemas/camera/camera-schema.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
+#include <shared/services/privacy-state/privacy-state.hxx>
 
 #include <cstdint>
 #include <vector>
@@ -50,7 +52,14 @@ public:
     return true;
   }
 
+  bool publishPrivacy(const CameraPrivacyEvent& event) override
+  {
+    privacyEvents.push_back(event);
+    return true;
+  }
+
   std::vector<CameraHealthEvent> events;
+  std::vector<CameraPrivacyEvent> privacyEvents;
 };
 
 TEST_CASE("Round15 healthy first tick and periodic ticks publish")
@@ -336,6 +345,14 @@ struct SceneSetup
   int64_t rebaselineAfterMs{0};
 };
 
+void seedPrivacy(int64_t cameraId, CameraPrivacyState state)
+{
+  CameraSchema camera;
+  camera.id = cameraId;
+  camera.privacyState = state;
+  PrivacyStateService::instance().seed({camera});
+}
+
 struct SceneRun
 {
   SyntheticHealthSource source;
@@ -402,15 +419,15 @@ TEST_CASE("a view Argus aimed is the reference at once")
 TEST_CASE("a camera in privacy mode is not checked")
 {
   SceneRun run({.cameraId = 104, .rebaselineAfterMs = 900000});
-  CameraSceneLog::instance().notePrivacy(104, true);
+  seedPrivacy(104, CameraPrivacyState::On);
   run.source.frame.capturedAtMs = 1000;
   drogon::sync_wait(run.monitor.tick({.id = 104, .name = "Scene"}));
   CHECK(run.source.calls == 0);
   CHECK(run.sink.events.empty());
-  CameraSceneLog::instance().notePrivacy(104, false);
+  seedPrivacy(104, CameraPrivacyState::Off);
   drogon::sync_wait(run.monitor.tick({.id = 104, .name = "Scene"}));
   CHECK(run.source.calls == 1);
-  CameraSceneLog::instance().forget(104);
+  PrivacyStateService::instance().forget(104);
 }
 
 TEST_CASE("a preset that settles between samples is not moved")

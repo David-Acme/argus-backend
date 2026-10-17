@@ -3,7 +3,9 @@
 #include <utility>
 
 #include <auth/role-access.hxx>
+#include <camera/camera-privacy-state.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
+#include <shared/services/privacy-state/privacy-state.hxx>
 #include <shared/services/stream/camera-live-board.hxx>
 #include <feature/camera/infra/rtsp-probe.hxx>
 #include <shared/services/stream/go2rtc-http.hxx>
@@ -96,6 +98,8 @@ drogon::Task<Json::Value> CameraOverviewService::overview(UserRole role) const
   for (const auto& camera : cameras) {
     Json::Value row(Json::objectValue);
     row["id"] = static_cast<Json::Int64>(camera.id);
+    row["privacyState"] =
+        cameraPrivacyStateToString(PrivacyStateService::instance().stateOf(camera.id));
     const auto state = board.find(camera.id);
     const bool known = state != board.end();
     row["lastSeenAt"] = static_cast<Json::Int64>(known ? state->second.lastSeenMs : 0);

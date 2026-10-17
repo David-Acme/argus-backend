@@ -52,6 +52,8 @@ inline constexpr const char* kCameraObjectDetected =
 
 inline constexpr const char* kCameraHealth = "argus.camera.v1.health";
 
+inline constexpr const char* kCameraPrivacy = "argus.camera.v1.privacy";
+
 inline constexpr const char* kGuardHeartbeat = "argus.guard.v1.heartbeat";
 
 inline constexpr const char* kGuardChange = "argus.guard.v1.change";

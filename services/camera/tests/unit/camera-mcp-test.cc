@@ -36,23 +36,32 @@ struct Harness
 {
   trantor::EventLoopThread thread;
   std::shared_ptr<McpServer> server;
+  HouseholdPosture posture;
+  int64_t masked{0};
 
   explicit Harness(std::vector<CameraChoice> cameras = defaultCameras())
   {
     thread.run();
     trantor::EventLoop* loop = thread.getLoop();
-    server = cameraToolServer({.catalog = [cameras = std::move(cameras)]() -> drogon::Task<std::vector<CameraChoice>> {
-                                 co_return cameras;
+    server = cameraToolServer({.catalog = [this, cameras = std::move(cameras)]() -> drogon::Task<std::vector<CameraChoice>> {
+                                 std::vector<CameraChoice> listed = cameras;
+                                 for (auto& camera : listed) {
+                                   if (camera.id == masked)
+                                     camera.privacyState = CameraPrivacyState::On;
+                                 }
+                                 co_return listed;
                                },
+                               .posture = [this] { return posture; },
                                .loop = [loop] { return loop; }});
     moduleGate().reset();
   }
 
-  ToolOutcome call(const std::string& role, const std::string& lang, Json::Value arguments)
+  ToolOutcome call(const std::string& role, const std::string& lang, Json::Value arguments,
+                   const std::string& tool = "app.show_camera")
   {
     Json::Value info(Json::objectValue);
     Json::Value params(Json::objectValue);
-    params["name"] = "app.show_camera";
+    params["name"] = tool;
     params["arguments"] = std::move(arguments);
     params["_meta"] = requestMeta(info);
     params["_meta"]["argus/context"] = toJson(CallerContext{
@@ -72,6 +81,17 @@ Json::Value args(const std::string& camera, const std::string& view = "")
     arguments["camera"] = camera;
   if (!view.empty())
     arguments["view"] = view;
+  return arguments;
+}
+
+Json::Value privacyArgs(const std::string& camera, const std::string& privacy,
+                        const std::string& confirmation = "")
+{
+  Json::Value arguments(Json::objectValue);
+  arguments["camera"] = camera;
+  arguments["privacy"] = privacy;
+  if (!confirmation.empty())
+    arguments["confirmation"] = confirmation;
   return arguments;
 }
 }
@@ -210,4 +230,65 @@ TEST_CASE("a bad view is refused by the schema before the catalog is read")
   const auto outcome = harness.call("resident", "es", args("garaje", "panorama"));
   CHECK(outcome.isError);
   CHECK(outcome.text == "argument 'view' has an invalid value");
+}
+
+TEST_CASE("a masked camera is spoken as masked and the app is told the state")
+{
+  Harness harness;
+  harness.masked = 1;
+  const auto outcome = harness.call("resident", "es", args("garaje"));
+  CHECK_FALSE(outcome.isError);
+  CHECK(outcome.text ==
+        "La cámara Garaje está en modo privacidad: Argus no la ve. Quita el modo "
+        "privacidad en la cámara o en la app para volver a verla.");
+  const auto action = must(outcome.appAction);
+  CHECK(action.arguments["privacyState"].asString() == "on");
+  CHECK(action.arguments["cameraId"].asInt64() == 1);
+}
+
+TEST_CASE("the privacy tool carries its capability and asks for confirmation when it matters")
+{
+  Harness harness;
+  const auto* spec = harness.server->find("camera.set_privacy");
+  REQUIRE(spec != nullptr);
+  CHECK(spec->module == "surveillance");
+  CHECK(spec->capability == "camera.manage");
+  CHECK(spec->annotations.destructive);
+  CHECK(spec->inputSchema["properties"]["privacy"]["enum"].size() == 2);
+
+  harness.posture = {.protects = true, .armed = false};
+  const auto guarded = harness.call("resident", "es",
+                                    privacyArgs("garaje", "off"),
+                                    "camera.set_privacy");
+  CHECK_FALSE(guarded.isError);
+  CHECK(guarded.structured["needsConfirmation"].asBool());
+  CHECK_FALSE(guarded.structured["confirmation"].asString().empty());
+  CHECK(guarded.text.find("quitaría el modo privacidad") != std::string::npos);
+
+  const auto bad = harness.call("resident", "es",
+                                privacyArgs("garaje", "off", "no-such-code"),
+                                "camera.set_privacy");
+  CHECK(bad.isError);
+  CHECK(bad.structured["code"].asString() == "confirmation_invalid");
+
+  harness.posture = {.protects = false, .armed = true};
+  const auto arming = harness.call("owner", "en",
+                                   privacyArgs("garaje", "on"),
+                                   "camera.set_privacy");
+  CHECK_FALSE(arming.isError);
+  CHECK(arming.structured["needsConfirmation"].asBool());
+  CHECK(arming.text.find("privacy mode while the guard is armed") != std::string::npos);
+
+  harness.posture = {};
+  const auto alreadyOff = harness.call("resident", "es",
+                                       privacyArgs("garaje", "off"),
+                                       "camera.set_privacy");
+  CHECK(alreadyOff.isError);
+  CHECK(alreadyOff.structured["code"].asString() == "already_off");
+
+  const auto unknown = harness.call("resident", "es",
+                                    privacyArgs("jardín", "on"),
+                                    "camera.set_privacy");
+  CHECK(unknown.isError);
+  CHECK(unknown.structured["code"].asString() == "unknown_camera");
 }

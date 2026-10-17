@@ -12,6 +12,7 @@ public:
   explicit NatsHealthEventSink(std::shared_ptr<NatsBus> bus);
 
   bool publish(const CameraHealthEvent& event) override;
+  bool publishPrivacy(const CameraPrivacyEvent& event) override;
 
 private:
   std::shared_ptr<NatsBus> bus_;

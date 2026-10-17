@@ -3,11 +3,14 @@
 #include <algorithm>
 #include <auth/module-gate.hxx>
 #include <auth/role-access.hxx>
+#include <camera/camera-privacy-state.hxx>
 #include <chrono>
 #include <ctime>
 #include <drogon/drogon.h>
 #include <feature/recording/infra/disk-space.hxx>
+#include <runtime/blocking-task.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
+#include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/privacy-state/privacy-state.hxx>
 #include <shared/schemas/camera/camera-schema.hxx>
 #include <shared/services/stream/ws-frame.hxx>
@@ -181,11 +184,55 @@ void ClipRecorder::onClosed(const StreamHub::StreamClosedInput& input)
     std::scoped_lock lock(slotsMutex_);
     bySub_.erase(input.subId);
   }
-  std::scoped_lock lock(slot->mtx);
-  if (slot->subId.load(std::memory_order_acquire) != input.subId)
+  {
+    std::scoped_lock lock(slot->mtx);
+    if (slot->subId.load(std::memory_order_acquire) != input.subId)
+      return;
+    slot->subId.store(0, std::memory_order_release);
+    slot->builder.reset();
+  }
+  if (input.reason != "upstream_failed" && input.reason != "upstream_corrupt")
     return;
-  slot->subId.store(0, std::memory_order_release);
-  slot->builder.reset();
+  scheduleMaskProbe(slot->cameraId);
+}
+
+void ClipRecorder::scheduleMaskProbe(int64_t cameraId) const
+{
+  if (stopping_.load(std::memory_order_acquire) ||
+      !drogon::app().isRunning())
+    return;
+  drogon::async_run([this, cameraId]() -> drogon::Task<void> {
+    try {
+      co_await probeLensMask(cameraId);
+    }
+    catch (const std::exception& error) {
+      LOG_WARN << "Camera recording: the lens mask of camera " << cameraId
+               << " could not be probed (" << error.what() << ")";
+    }
+    co_return;
+  });
+}
+
+drogon::Task<void> ClipRecorder::probeLensMask(int64_t cameraId) const
+{
+  const auto camera = co_await cameraRepository_.findById(cameraId);
+  if (!camera || !PrivacyStateService::privacyCapable(*camera))
+    co_return;
+  const DriverResult status = co_await BlockingTask<DriverResult>(
+      [camera = *camera]() {
+        const auto driver =
+            CameraDriverRegistry::instance().driverFor(camera);
+        return driver ? driver->status() : DriverResult{};
+      });
+  if (!status.ok)
+    co_return;
+  const PrivacyTransition transition = co_await PrivacyStateService::instance()
+                                           .refresh({.camera = *camera,
+                                                     .driverStatus = status.data,
+                                                     .readable = true});
+  if (transition.changed && transition.after == CameraPrivacyState::On)
+    LOG_INFO << "Camera recording: camera " << cameraId
+             << " answered no stream because its lens mask is on";
 }
 
 void ClipRecorder::onSubscribed(uint16_t subId, int64_t cameraId)
@@ -320,6 +367,7 @@ drogon::Task<void> ClipRecorder::reconcile()
       if (slot->subId.load(std::memory_order_acquire) == 0) {
         LOG_WARN << "Camera recording: camera " << camera.id
                  << " is not recording yet (" << error << ")";
+        co_await probeLensMask(camera.id);
         continue;
       }
     }

@@ -120,6 +120,45 @@ CameraControlFeatureService::announceStatus(int64_t cameraId) const
                                   .client = nullptr});
 }
 
+drogon::Task<void>
+CameraControlFeatureService::announcePrivacy(int64_t cameraId) const
+{
+  const CameraChangeSink* sink = camera_change::getSink();
+  if (sink == nullptr)
+    co_return;
+  co_await sink->publishResource({.scope = ResourceScope::Status,
+                                  .ids = {cameraId},
+                                  .user = 0,
+                                  .client = nullptr});
+  co_await sink->publishResource({.scope = ResourceScope::Overview,
+                                  .ids = {},
+                                  .user = 0,
+                                  .client = nullptr});
+}
+
+drogon::Task<void> CameraControlFeatureService::recordPrivacyAction(
+    const CameraSettingsInput& input, CameraPrivacyState before,
+    CameraPrivacyState after) const
+{
+  const CameraChangeSink* sink = camera_change::getSink();
+  if (sink == nullptr)
+    co_return;
+  Json::Value oldData(Json::objectValue);
+  oldData["privacyState"] = cameraPrivacyStateToString(before);
+  Json::Value newData(Json::objectValue);
+  newData["privacyState"] = cameraPrivacyStateToString(after);
+  newData["requested"] = *input.body.privacy;
+  co_await sink->publishAction(
+      {.event = {.userId = input.actorUserId,
+                 .recordId = input.cameraId,
+                 .tableName = TableName::Camera,
+                 .action = UserAction::Update,
+                 .oldData = std::move(oldData),
+                 .newData = std::move(newData),
+                 .ipAddress = input.actorIp},
+       .client = nullptr});
+}
+
 drogon::Task<CameraControlResult>
 CameraControlFeatureService::preset(int64_t cameraId, const CameraPresetDto& body) const
 {
@@ -153,8 +192,12 @@ bool privacyClaimed(const std::string& capabilities)
 }
 
 drogon::Task<CameraControlResult>
-CameraControlFeatureService::settings(int64_t cameraId, const CameraSettingsDto& body) const
+CameraControlFeatureService::settings(const CameraSettingsInput& input) const
 {
+  const CameraSettingsDto& body = input.body;
+  const int64_t cameraId = input.cameraId;
+  const CameraPrivacyState before =
+      PrivacyStateService::instance().stateOf(cameraId);
   if (body.privacy)
   {
     CameraRepository repository;
@@ -201,11 +244,16 @@ CameraControlFeatureService::settings(int64_t cameraId, const CameraSettingsDto&
         co_await PrivacyStateService::instance().refresh(
             {.camera = *camera, .driverStatus = readBack->data, .readable = true});
     }
+    co_await recordPrivacyAction(
+        input, before, PrivacyStateService::instance().stateOf(cameraId));
   }
   auto& scenes = CameraSceneLog::instance();
   if ((body.privacy && !*body.privacy) || body.dayNight)
     scenes.noteAimed(cameraId, nowMs());
-  co_await announceStatus(cameraId);
+  if (body.privacy)
+    co_await announcePrivacy(cameraId);
+  else
+    co_await announceStatus(cameraId);
   co_return result;
 }
 

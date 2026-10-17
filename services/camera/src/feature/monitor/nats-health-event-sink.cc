@@ -30,3 +30,17 @@ bool NatsHealthEventSink::publish(const CameraHealthEvent& event)
 
   return bus_->publish(nats_subject::kCameraHealth, json_util::toString(json));
 }
+
+bool NatsHealthEventSink::publishPrivacy(const CameraPrivacyEvent& event)
+{
+  if (!bus_)
+    return false;
+
+  Json::Value json(Json::objectValue);
+  json["cameraId"] = Json::Int64(event.cameraId);
+  json["cameraName"] = event.cameraName;
+  json["privacy"] = cameraPrivacyStateToString(event.state);
+  json["detectedAt"] = Json::Int64(event.detectedAtMs);
+
+  return bus_->publish(nats_subject::kCameraPrivacy, json_util::toString(json));
+}

@@ -304,6 +304,18 @@ drogon::Task<void> CameraHealthMonitor::run()
   co_return;
 }
 
+void CameraHealthMonitor::publishPrivacyState(const CameraRef& camera)
+{
+  if (dependencies_.sink == nullptr ||
+      !PrivacyStateService::privacyCapable(camera.camera))
+    return;
+  dependencies_.sink->publishPrivacy(
+      {.cameraId = camera.id,
+       .cameraName = camera.name,
+       .state = PrivacyStateService::instance().stateOf(camera.id),
+       .detectedAtMs = nowMs()});
+}
+
 drogon::Task<bool> CameraHealthMonitor::refreshPrivacy(const CameraRef& camera)
 {
   if (!PrivacyStateService::privacyCapable(camera.camera))
@@ -339,6 +351,7 @@ drogon::Task<bool> CameraHealthMonitor::refreshPrivacy(const CameraRef& camera)
 drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
 {
   co_await refreshPrivacy(camera);
+  publishPrivacyState(camera);
   if (PrivacyStateService::instance().masked(camera.id))
     co_return;
   auto frame = co_await dependencies_.source->grab(

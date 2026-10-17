@@ -50,6 +50,8 @@ public:
 
   drogon::Task<void> tick(CameraRef camera);
 
+  void publishPrivacyState(const CameraRef& camera);
+
 private:
   struct CameraState
   {

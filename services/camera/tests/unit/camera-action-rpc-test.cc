@@ -27,6 +27,7 @@
 #include <optional>
 #include <feature/actions/repositories/action-command/action-command-repository.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
+#include <shared/services/privacy-state/privacy-state.hxx>
 #include <config/config-service.hxx>
 #include <sqlite/db-service.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
@@ -56,6 +57,7 @@ struct StubActuator final : ICameraDriver
   bool blockSpeak{false};
   bool speakReleased{false};
   bool throwOnSpeak{false};
+  bool refuseSpeak{false};
   bool throwOnSettings{false};
   bool blockSettings{false};
   bool settingsReleased{false};
@@ -106,6 +108,8 @@ struct StubActuator final : ICameraDriver
     }
     if (throwOnSpeak)
       throw std::runtime_error("driver speak exploded");
+    if (refuseSpeak)
+      return DriverResult::failed("The camera refused the audio");
     return DriverResult{.ok = true, .error = "", .data = Json::Value()};
   }
 
@@ -373,6 +377,45 @@ TEST_CASE("the camera action RPC drives the driver behind the fleet gate")
   CHECK_FALSE(announced.duplicate);
   CHECK(actuator->speakCalls == 1);
   CHECK(tts.requests().at("POST /tts/v1/synthesize") == 1);
+
+  CameraSchema masked;
+  masked.id = 1;
+  masked.name = "Action Cam";
+  masked.capabilities = "[\"privacy\",\"talk\"]";
+  masked.privacyState = CameraPrivacyState::On;
+  PrivacyStateService::instance().seed({masked});
+  const auto maskedListen = client.listen({.cameraId = 1,
+                                          .seconds = 1,
+                                          .lang = "es",
+                                          .commandId = "cmd-listen-masked",
+                                          .encounterId = 9,
+                                          .expiresAt = 0});
+  CHECK_FALSE(maskedListen.succeeded());
+  CHECK_FALSE(maskedListen.captured);
+  CHECK(maskedListen.status.error_code() == grpc::StatusCode::FAILED_PRECONDITION);
+
+  actuator->refuseSpeak = true;
+  const auto maskedAnnounce = client.announce({.cameraId = 1,
+                                               .text = "Alerta",
+                                               .lang = "es",
+                                               .commandId = "cmd-announce-masked",
+                                               .encounterId = 9,
+                                               .expiresAt = 0});
+  CHECK_FALSE(maskedAnnounce.succeeded());
+  CHECK_FALSE(maskedAnnounce.duplicate);
+  CHECK(actuator->speakCalls == 2);
+  CHECK(maskedAnnounce.detail == "The camera refused the audio");
+
+  const auto maskedAlarm = client.alarm({.cameraId = 1,
+                                         .seconds = 1,
+                                         .commandId = "cmd-alarm-masked",
+                                         .encounterId = 9,
+                                         .expiresAt = 0});
+  CHECK_FALSE(maskedAlarm.succeeded());
+  CHECK(actuator->speakCalls == 3);
+  CHECK(maskedAlarm.detail == "The camera refused the audio");
+  actuator->refuseSpeak = false;
+  PrivacyStateService::instance().forget(1);
 
   const auto repeated = client.announce({.cameraId = 1,
                                          .text = "Hola",

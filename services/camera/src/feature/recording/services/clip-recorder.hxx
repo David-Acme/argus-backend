@@ -68,6 +68,7 @@ public:
   drogon::Task<void> reconcile();
   drogon::Task<ClipSweepReport> runRetentionSweep(int64_t now);
   void dropAll(const char* reason);
+  drogon::Task<void> probeLensMask(int64_t cameraId) const;
 
   bool sendBinary(const uint8_t* data, size_t len) override;
   bool tryReserve(size_t bytes) override;
@@ -118,6 +119,7 @@ private:
   void detach(const std::shared_ptr<CameraSlot>& slot);
   void sweepTick();
   void watchdogTick();
+  void scheduleMaskProbe(int64_t cameraId) const;
   drogon::Task<void> floorTick();
   drogon::Task<int64_t> purgeOldestUntil(int64_t minBytes);
   drogon::Task<void> setPaused(bool paused, int64_t freeBytes);

@@ -4,6 +4,7 @@ argus_module(NAME camera-mcp
     INCLUDES
         ../..
     DEPENDS
+        argus::camera-control
         argus::camera-repositories
         argus::contracts::mcp-wire
         argus::lib::auth

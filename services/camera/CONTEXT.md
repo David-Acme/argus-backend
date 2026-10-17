@@ -1131,6 +1131,13 @@ use.
   microphone shows in its stream (the probe and the app read the audio track).
   ONVIF profiles still claim nothing: an ONVIF camera's pan, tilt and presets
   are read from the camera itself ("ONVIF control" below).
+  `privacy` in that mask is what the lens-mask work reads: a model that does
+  not claim it answers `CAMERA_PRIVACY_UNSUPPORTED` (422) to
+  `PATCH /camera/{id}/settings` with `{"privacy": …}` — the one model the
+  catalog does not know (a doorbell, a generic profile) earns the claim only
+  after a successful `getLensMaskConfig` probe. Doorbells today get that 422
+  instead of a `setLensMaskConfig` the camera would ignore ("Privacy mode"
+  below).
   Doorbells claim only microphone and speaker: the control APIs on them were
   never measured.
 - **Models were researched, not guessed**, from the vendor's model pages and
@@ -1273,6 +1280,12 @@ close, and the fake talk channel received the vendor stop).
 Done in this pass: catalog per model, connection test, live overview, calls and announcements
 for owner/resident/guard, presets (go to, save), motion sensitivity, privacy/LED/night/motion
 on cameras without PTZ, SD card state in the device panel, snapshot per camera.
+
+The privacy bit of that pass grew teeth in the lens-mask work (2026-10-17, PM): privacy is no
+longer a blind `setLensMaskConfig` for every model — the catalog's `privacy` claim decides, an
+unknown model is probed once, the state is read back after every toggle and persisted as the one
+truth (`camera.privacy_state`), and a toggle is audited with its actor ("Privacy mode (the lens
+mask)" below).
 
 Not done yet, in the order they pay off:
 
@@ -2478,3 +2491,30 @@ reads `covered` by the old health monitor and records ~0.23 GB/day of black
 (pre-fix), the dropped case reads `unreachable`, marks the camera offline and
 loops the recorder's re-subscribe. Both are moot once the truth is known: the
 camera is skipped from the persisted state, never from the frame's content.
+
+**How the rest of the tree learns it.** The monitor publishes one
+`argus.camera.v1.privacy` frame per privacy-capable camera on every tick
+(`{cameraId, cameraName, privacy, detectedAt}`) — the read is the state that
+already lives in memory, so a masked camera needs no driver call to announce
+itself — and argus-guard is its consumer: the guard treats a masked camera as
+"no cubre", closes its tamper episode with the reason `privacy` and lists it in
+`GET /guard/safety`, the environment JSON and the decisions summary
+(`services/guard/CONTEXT.md`, "Cameras in privacy mode"). The state also
+travels outward: `privacyState` is on `CameraRow` (`argus/camera/v1/sync.proto`,
+additive field 20) and on `GET /camera/overview`. A toggle published its own
+audit: `PATCH /camera/{id}/settings` with `{"privacy": …}` writes a
+`UserAction::Update` on the camera with the actor's id and ip, the state before
+and after, and the two ResourceChanged frames (`Status` and `Overview`), so the
+app reloads both the row and the overview. The mask is also a tool: the camera's
+MCP server answers `app.show_camera` on a masked camera with the masked state
+(never a success over a black picture) and offers `camera.set_privacy`
+(`camera.manage`, Owner and Resident) with the confirmation ledger for taking
+the mask off while the household expects protection and for putting it on while
+the guard is armed; the household posture reaches the camera as `protects` and
+`armed` in argus-guard's heartbeat. The recorder checks the lens mask before it
+backs off from a stream that just failed: one driver read for a camera that
+claims privacy, and if the mask is on the failure is the mask and not a fault.
+
+**Not built now.** Automatic privacy by presence (Nest style: mask on when
+home, off when away) is an owner decision left for later; nothing in the tree
+turns the mask on or off on its own.

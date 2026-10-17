@@ -19,6 +19,7 @@ argus_module(NAME camera-control
         argus::camera-stream
         argus::clients::tts
         argus::contracts::camera
+        argus::lib::auth
         argus::lib::errors
         argus::lib::http
         argus::lib::runtime

@@ -312,7 +312,9 @@ target_link_libraries(camera-change-transaction-test PRIVATE
 target_link_libraries(camera-privacy-state-test PRIVATE
     argus::camera-driver
     argus::camera-privacy-state
-    argus::contracts::sync)
+    argus::contracts::sync
+    argus::lib::sqlite
+    Drogon::Drogon)
 
 target_link_libraries(camera-clip-recorder-test PRIVATE
     argus::camera-driver
@@ -323,6 +325,9 @@ target_link_libraries(record-mode-migration-test PRIVATE
     argus::camera-feature)
 
 target_compile_definitions(camera-change-transaction-test PRIVATE
+    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_definitions(camera-privacy-state-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 
 add_executable(camera-talk-cutover-test
@@ -484,6 +489,7 @@ target_include_directories(camera-action-rpc-test PRIVATE
 
 target_link_libraries(camera-action-rpc-test PRIVATE
     argus::camera-actions
+    argus::camera-privacy-state
     argus::camera-stream
     argus::clients::camera-actions
     argus::lib::sqlite
@@ -522,6 +528,7 @@ add_executable(camera-status-announce-test
     tests/unit/camera-status-announce-test.cc)
 target_link_libraries(camera-status-announce-test PRIVATE
     argus::camera-control
+    argus::camera-privacy-state
     argus::lib::test-support
     doctest::doctest)
 target_compile_definitions(camera-status-announce-test PRIVATE

@@ -14,6 +14,7 @@ argus_module(NAME camera-feature
     DEPENDS
         argus::camera-catalog
         argus::camera-driver
+        argus::camera-privacy-state
         argus::camera-repositories
         argus::camera-stream
         argus::camera-tapo

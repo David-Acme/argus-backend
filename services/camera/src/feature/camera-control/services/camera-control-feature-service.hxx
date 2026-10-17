@@ -1,5 +1,6 @@
 #pragma once
 
+#include <camera/camera-privacy-state.hxx>
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <feature/camera-control/dtos/camera-preset-dto.hxx>
@@ -20,6 +21,14 @@
 
 using CameraControlResult = std::optional<DriverResult>;
 
+struct CameraSettingsInput
+{
+  int64_t cameraId{0};
+  CameraSettingsDto body{};
+  int64_t actorUserId{0};
+  std::string actorIp{};
+};
+
 class CameraControlFeatureService
 {
 public:
@@ -29,8 +38,7 @@ public:
                                          const CameraPtzDto& body) const;
   drogon::Task<CameraControlResult> preset(int64_t cameraId,
                                           const CameraPresetDto& body) const;
-  drogon::Task<CameraControlResult> settings(int64_t cameraId,
-                                            const CameraSettingsDto& body) const;
+  drogon::Task<CameraControlResult> settings(const CameraSettingsInput& input) const;
   drogon::Task<CameraControlResult> speak(int64_t cameraId,
                                           const CameraTalkDto& body) const;
   drogon::Task<CameraControlResult> capabilities(int64_t cameraId) const;
@@ -44,6 +52,12 @@ private:
            const std::function<DriverResult(ICameraDriver&)>& work) const;
 
   drogon::Task<void> announceStatus(int64_t cameraId) const;
+
+  drogon::Task<void> announcePrivacy(int64_t cameraId) const;
+
+  drogon::Task<void> recordPrivacyAction(const CameraSettingsInput& input,
+                                         CameraPrivacyState before,
+                                         CameraPrivacyState after) const;
 
   drogon::Task<std::optional<std::vector<uint8_t>>> masked(int64_t cameraId,
                                                            std::vector<uint8_t> jpeg) const;
