@@ -20,7 +20,7 @@
   session tables and the session-verdict RPC (7043) the filter chains ask
   for their verdict.
 - **`frontend/`** (sibling) — React Native app (Expo SDK 57 + Expo Router +
-  Tailwind v4 via Uniwind). Its HTTP, auth, WatermelonDB (15 tables) and
+  Tailwind v4 via Uniwind). Its HTTP, auth, WatermelonDB (12 tables) and
   autonomous `/sync` layers are implemented, plus the full screen set
   (dashboard, agenda/projects/cameras/people/users, welcome onboarding,
   cross-device QR login, voice, avatar reactions). The app must paint

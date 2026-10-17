@@ -380,7 +380,7 @@ argus-notification configuration. Copy to config.toml (gitignored) to run.
 | `notifications.fallback_min_score_median` | Degraded fallback sanity gate for hard signals while guard is absent. Absent wire keys fail open; a matched known identity never pages. |
 | `notifications.fallback_min_dwell_ms` | Minimum dwell a hard-signal track must show before the fallback forwards it (milliseconds). |
 | `notifications.fallback_suppress_known` | Whether a matched known identity suppresses a hard signal in the fallback path. |
-| `notifications.fallback_retention_days` | Fallback-record retention in days, matching the guard decision journal. Values <= 0 keep every row. |
+| `notifications.fallback_retention_days` | Fallback-record retention in days; the camera notifier's per-minute tick purges rows older than the window (`services/notification/src/feature/camera-notification/services/camera-object-notifier.cc`), and returns before computing a cutoff at a value <= 0, so those keep every row. Owner-editable and live (1-3650 days, default 90; `services/notification/src/feature/settings/notification-settings.cc` declares the same range and fallback). |
 | `notifications.lang` | Fallback language (`es`/`en`) of the camera-fallback alerts and digests for a recipient whose identity record carries no language; each recipient otherwise reads them in their own user language. |
 | `identity.target` | The identity roster the camera notifier resolves its recipients from. Empty keeps the fallback record but reaches no recipient. |
 | `identity.rpc_secret` | Fleet secret the roster call carries; same value in every service. |
