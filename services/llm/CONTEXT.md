@@ -1993,11 +1993,12 @@ readings recorded in the bundle) and its own golden vectors.
 `models/extract/bundle-gliner-pilot` is the GLiNER pilot bundle: the epoch-7 adapter's
 whole forward, embedding-only INT8 (`model.onnx` 540,153,983 B, sha256 `bd5841bb…`),
 its decode the pilot's `pairThreshold` 0.1 and `maxSpanWords` 16. It is the extractor
-that ships because the released `gliner-e4-int8.zip` carries an encoder-only ONNX
-graph (`input_ids`, `attention_mask` → `last_hidden_state`), not the six-input,
-four-output extraction graph `GlinerExtractor` runs; exporting the E4 whole forward,
-quantising its embedding and installing it in the same slot with the same command is
-the swap-by-replacement path, and nothing in the service changes when it lands.
+this batch ships, the final one: no re-export is awaited, and the released
+`gliner-e4-int8.zip` is not it (that artefact carries an encoder-only ONNX graph,
+`input_ids`, `attention_mask` → `last_hidden_state`, not the six-input, four-output
+extraction graph `GlinerExtractor` runs). A future retrain is a bundle swap like any
+other: export the whole forward, quantise its embedding, install it in the same slot
+with `install-bundle.sh`, and nothing in the service changes.
 
 Both bundles carry their base model's licence text and a NOTICE as `LICENSE` and
 `NOTICE`, listed in `sha256` and recorded in `manifest.json`; the loader reads neither,
