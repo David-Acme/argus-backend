@@ -51,7 +51,7 @@ argus::mcp::ToolOutcome shown(const argus::mcp::ToolInvocation& invocation, cons
   const bool english = invocation.caller.lang == "en";
   const bool snapshot = viewOf(invocation.arguments) == kSnapshot;
   const bool named = match.kind == CameraMatchKind::Exact;
-  const bool masked = named && match.camera.privacyState == CameraPrivacyState::On;
+  const bool masked = named && match.camera.privacyObeyed;
   argus::mcp::ToolOutcome outcome;
   if (masked)
     outcome.text =
@@ -79,6 +79,7 @@ argus::mcp::ToolOutcome shown(const argus::mcp::ToolInvocation& invocation, cons
     arguments["cameraId"] = match.camera.id;
     arguments["privacyState"] =
         cameraPrivacyStateToString(match.camera.privacyState);
+    arguments["privacyObeyed"] = match.camera.privacyObeyed;
   }
   outcome.structured = arguments;
   outcome.appAction = argus::mcp::AppAction{.name = "app.show_camera", .arguments = std::move(arguments)};
@@ -151,14 +152,33 @@ drogon::Task<argus::mcp::ToolOutcome> setPrivacy(PrivacyRequest request)
                                         .target = std::to_string(match.camera.id)};
   const std::string token =
       invocation.arguments.get("confirmation", "").asString();
-  const bool alreadyOn =
-      match.camera.privacyState == CameraPrivacyState::On;
-  if (unmasking && !alreadyOn)
+  const bool obeyed = match.camera.privacyObeyed;
+  const bool doubted =
+      obeyed && match.camera.privacyState == CameraPrivacyState::Unknown;
+  if (unmasking && doubted)
+    co_return privacyRefusal(invocation,
+                            "No puedo confirmar el estado de la cámara " +
+                                match.camera.name +
+                                "; la sigo tratando como tapada. Revísala en la app Tapo.",
+                            "I cannot confirm the state of the " +
+                                match.camera.name +
+                                " camera; I keep treating it as masked. Check it in the Tapo app.",
+                            "privacy_doubted");
+  if (!unmasking && doubted)
+    co_return privacyRefusal(invocation,
+                            "La cámara " + match.camera.name +
+                                " ya se está tratando como tapada: no puedo confirmar su estado, "
+                                "así que no la veo ni la grabo.",
+                            "The " + match.camera.name +
+                                " camera is already being treated as masked: Argus cannot confirm "
+                                "its state, so it neither sees nor records it.",
+                            "privacy_doubted");
+  if (unmasking && !obeyed)
     co_return privacyRefusal(invocation,
                             "La cámara " + match.camera.name + " ya está viendo: su privacidad está apagada.",
                             "The " + match.camera.name + " camera is already seeing: its privacy is off.",
                             "already_off");
-  if (!unmasking && alreadyOn)
+  if (!unmasking && obeyed)
     co_return privacyRefusal(invocation,
                             "La cámara " + match.camera.name + " ya está en modo privacidad.",
                             "The " + match.camera.name + " camera is already in privacy mode.",
@@ -232,20 +252,18 @@ drogon::Task<argus::mcp::ToolOutcome> setPrivacy(PrivacyRequest request)
                                 (applied->error.empty() ? std::string{"."} : ": " + applied->error),
                             "privacy_failed");
   }
-  const CameraPrivacyState now =
+  const bool obeyedNow = PrivacyStateService::instance().masked(match.camera.id);
+  const CameraPrivacyState reportedNow =
       PrivacyStateService::instance().stateOf(match.camera.id);
-  const CameraPrivacyState requested =
-      unmasking ? CameraPrivacyState::Off : CameraPrivacyState::On;
-  if (now != requested && now != CameraPrivacyState::Unknown)
+  if (obeyedNow == unmasking)
     co_return privacyRefusal(invocation,
                             "La cámara " + match.camera.name +
                                 " no quedó en el estado que pediste: sigue " +
-                                (now == CameraPrivacyState::On ? "en modo privacidad."
-                                                               : "viendo."),
+                                (obeyedNow ? "tratándose como tapada."
+                                           : "viendo."),
                             "The " + match.camera.name +
                                 " camera did not end up in the state you asked for: it is still " +
-                                (now == CameraPrivacyState::On ? "in privacy mode."
-                                                               : "seeing."),
+                                (obeyedNow ? "treated as masked." : "seeing."),
                             "privacy_not_applied");
   argus::mcp::ToolOutcome outcome;
   outcome.text = unmasking
@@ -257,7 +275,7 @@ drogon::Task<argus::mcp::ToolOutcome> setPrivacy(PrivacyRequest request)
                                       " camera; Argus neither sees nor records it."
                                 : "La cámara " + match.camera.name +
                                       " está en modo privacidad; Argus no la ve ni la graba.");
-  if (now == CameraPrivacyState::Unknown)
+  if (reportedNow == CameraPrivacyState::Unknown)
     outcome.text += english
                         ? " The camera did not confirm the change: Argus cannot read "
                           "its lens mask."
@@ -266,9 +284,10 @@ drogon::Task<argus::mcp::ToolOutcome> setPrivacy(PrivacyRequest request)
   outcome.structured["cameraId"] = match.camera.id;
   outcome.structured["camera"] = match.camera.name;
   outcome.structured["privacy"] = wanted;
-  outcome.structured["privacyState"] = cameraPrivacyStateToString(now);
+  outcome.structured["privacyState"] = cameraPrivacyStateToString(reportedNow);
+  outcome.structured["privacyObeyed"] = obeyedNow;
   outcome.structured["applied"] = true;
-  outcome.structured["confirmed"] = now == requested;
+  outcome.structured["confirmed"] = reportedNow != CameraPrivacyState::Unknown;
   co_return outcome;
 }
 }

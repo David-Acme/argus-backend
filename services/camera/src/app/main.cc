@@ -271,7 +271,8 @@ int main()
                for (const auto& camera : co_await repository->findEnabled())
                  cameras.push_back({.id = camera.id,
                                     .name = camera.name,
-                                    .privacyState = PrivacyStateService::instance().stateOf(camera.id)});
+                                    .privacyState = PrivacyStateService::instance().stateOf(camera.id),
+                                    .privacyObeyed = PrivacyStateService::instance().masked(camera.id)});
                co_return cameras;
              },
              .posture = [household = &householdPosture] {

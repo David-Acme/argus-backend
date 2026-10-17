@@ -17,6 +17,7 @@ struct CameraChoice
   int64_t id{0};
   std::string name;
   CameraPrivacyState privacyState{CameraPrivacyState::Unknown};
+  bool privacyObeyed{false};
 };
 
 using CameraCatalog = std::function<drogon::Task<std::vector<CameraChoice>>()>;

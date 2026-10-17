@@ -38,6 +38,7 @@ struct Harness
   std::shared_ptr<McpServer> server;
   HouseholdPosture posture;
   int64_t masked{0};
+  int64_t doubted{0};
 
   explicit Harness(std::vector<CameraChoice> cameras = defaultCameras())
   {
@@ -46,8 +47,14 @@ struct Harness
     server = cameraToolServer({.catalog = [this, cameras = std::move(cameras)]() -> drogon::Task<std::vector<CameraChoice>> {
                                  std::vector<CameraChoice> listed = cameras;
                                  for (auto& camera : listed) {
-                                   if (camera.id == masked)
+                                   if (camera.id == masked) {
                                      camera.privacyState = CameraPrivacyState::On;
+                                     camera.privacyObeyed = true;
+                                   }
+                                   if (camera.id == doubted) {
+                                     camera.privacyState = CameraPrivacyState::Unknown;
+                                     camera.privacyObeyed = true;
+                                   }
                                  }
                                  co_return listed;
                                },
@@ -299,4 +306,35 @@ TEST_CASE("the privacy tool carries its capability and asks for confirmation whe
                                     "camera.set_privacy");
   CHECK(unknown.isError);
   CHECK(unknown.structured["code"].asString() == "unknown_camera");
+}
+
+TEST_CASE("a camera Argus cannot confirm is shown as masked, and the mask is not lifted blindly")
+{
+  Harness harness;
+  harness.doubted = 1;
+  const auto shown = harness.call("resident", "es", args("garaje"));
+  CHECK_FALSE(shown.isError);
+  CHECK(shown.text ==
+        "La cámara Garaje está en modo privacidad: Argus no la ve. Quita el modo "
+        "privacidad en la cámara o en la app para volver a verla.");
+  const auto action = must(shown.appAction);
+  CHECK(action.arguments["privacyState"].asString() == "unknown");
+  CHECK(action.arguments["privacyObeyed"].asBool());
+
+  harness.posture = {.protects = true, .armed = false};
+  const auto unmask = harness.call("resident", "es",
+                                   privacyArgs("garaje", "off"),
+                                   "camera.set_privacy");
+  CHECK(unmask.isError);
+  CHECK(unmask.structured["code"].asString() == "privacy_doubted");
+  CHECK(unmask.text ==
+        "No puedo confirmar el estado de la cámara Garaje; la sigo tratando como "
+        "tapada. Revísala en la app Tapo.");
+
+  const auto maskAgain = harness.call("resident", "en",
+                                      privacyArgs("garaje", "on"),
+                                      "camera.set_privacy");
+  CHECK(maskAgain.isError);
+  CHECK(maskAgain.structured["code"].asString() == "privacy_doubted");
+  CHECK(maskAgain.text.find("already being treated as masked") != std::string::npos);
 }
