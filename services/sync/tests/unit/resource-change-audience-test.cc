@@ -78,6 +78,7 @@ camera/zones -> owner,resident,guard
 camera/status -> owner,resident,guard,guest
 camera/overview -> owner,resident,guard,guest
 camera/clips -> owner,guard
+camera/recording -> owner,guard
 guard/environments -> owner,resident,guard
 guard/incidents -> owner,resident,guard
 guard/episodes -> owner,resident,guard
@@ -105,6 +106,7 @@ camera/zones ->
 camera/status ->
 camera/overview ->
 camera/clips ->
+camera/recording ->
 guard/environments ->
 guard/incidents ->
 guard/episodes ->
