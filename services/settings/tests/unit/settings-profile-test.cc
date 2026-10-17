@@ -387,25 +387,23 @@ TEST_CASE("the shipped profile file parses, in owner display order")
     CHECK(profile.owners[0].owner == "llm");
     CHECK(profile.owners[1].owner == "tts");
     CHECK(profile.owners[2].owner == "vlm");
-    CHECK(profile.owners[0].withCapability.empty());
+    for (const auto& owner : profile.owners)
+      CHECK(owner.withCapability.empty());
   }
   const auto* quality = catalog.find("quality");
   REQUIRE(quality != nullptr);
   REQUIRE(quality->owners[0].changes.size() == 1);
   CHECK(quality->owners[0].changes[0].key == "llm.gpu_layers");
   CHECK(quality->owners[0].changes[0].value == "0");
-  REQUIRE(quality->owners[2].withCapability.size() == 1);
-  CHECK(quality->owners[2].withCapability[0].capability == "gpu");
-  CHECK(quality->owners[2].withCapability[0].change.key == "vision.gpu_layers");
-  CHECK(quality->owners[2].withCapability[0].change.value == "999");
-  CHECK(catalog.find("balanced")->owners[2].withCapability.empty());
+  const auto& vlm = quality->owners[2].changes;
+  CHECK(std::ranges::find(vlm, std::string("vision.gpu_layers"), &SettingChange::key)->value == "0");
   const auto& tts = quality->owners[1].changes;
   CHECK(std::ranges::find(tts, std::string("tts.pocket_variant_es"), &SettingChange::key)->value == "quality");
   CHECK(std::ranges::find(tts, std::string("tts.pocket_voice_es"), &SettingChange::key)->value == "jean");
   CHECK_FALSE(loadProfileFile("/nonexistent/argus-profiles.json").has_value());
 }
 
-TEST_CASE("the shipped profiles pin the RAM floors, the fast voice in balanced and gpu_layers = 0 explicit")
+TEST_CASE("the shipped profiles pin the RAM floors, the fast voice in balanced and both gpu_layers = 0 explicit")
 {
   const auto catalog = loadProfileFile(ARGUS_SETTINGS_PROFILES_FILE).value_or(ProfileCatalog{});
   REQUIRE(catalog.rules.size() == 2);
@@ -424,6 +422,12 @@ TEST_CASE("the shipped profiles pin the RAM floors, the fast voice in balanced a
     REQUIRE(layers != llm->changes.end());
     CHECK(layers->value == "0");
 
+    const auto vlm = std::ranges::find(profile.owners, std::string("vlm"), &ProfileOwnerChanges::owner);
+    REQUIRE(vlm != profile.owners.end());
+    const auto visionLayers = std::ranges::find(vlm->changes, std::string("vision.gpu_layers"), &SettingChange::key);
+    REQUIRE(visionLayers != vlm->changes.end());
+    CHECK(visionLayers->value == "0");
+
     const auto tts = std::ranges::find(profile.owners, std::string("tts"), &ProfileOwnerChanges::owner);
     REQUIRE(tts != profile.owners.end());
     const auto variant = std::ranges::find(tts->changes, std::string("tts.pocket_variant_es"), &SettingChange::key);
@@ -432,12 +436,16 @@ TEST_CASE("the shipped profiles pin the RAM floors, the fast voice in balanced a
   }
 }
 
-TEST_CASE("the llm product config writes gpu_layers = 0 explicitly")
+TEST_CASE("the engine product configs write gpu_layers = 0 explicitly")
 {
-  const toml::table config = toml::parse_file(ARGUS_LLM_CONFIG_TEMPLATE);
-  const auto layers = config["llm"]["gpu_layers"].value<int64_t>();
-  REQUIRE(layers.has_value());
-  CHECK(*layers == 0);
+  const toml::table llm = toml::parse_file(ARGUS_LLM_CONFIG_TEMPLATE);
+  const toml::table vlm = toml::parse_file(ARGUS_VLM_CONFIG_TEMPLATE);
+  const auto llmLayers = llm["llm"]["gpu_layers"].value<int64_t>();
+  const auto vlmLayers = vlm["vision"]["gpu_layers"].value<int64_t>();
+  REQUIRE(llmLayers.has_value());
+  REQUIRE(vlmLayers.has_value());
+  CHECK(*llmLayers == 0);
+  CHECK(*vlmLayers == 0);
 }
 
 TEST_CASE("a malformed profile file is refused with the place of the problem")

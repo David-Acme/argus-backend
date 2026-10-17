@@ -23,7 +23,7 @@ image_max_tokens = 0
 prompt = "Can you describe this image?"
 caption_cache_slots = 8
 threads = 0
-gpu_layers = -1
+gpu_layers = 0
 
 [components]
 models_dir = "models"

@@ -120,7 +120,8 @@ endforeach()
 
 target_compile_definitions(settings-profile-test PRIVATE
     ARGUS_SETTINGS_PROFILES_FILE="${CMAKE_CURRENT_SOURCE_DIR}/profiles.json"
-    ARGUS_LLM_CONFIG_TEMPLATE="${CMAKE_CURRENT_SOURCE_DIR}/../llm/config.toml.example")
+    ARGUS_LLM_CONFIG_TEMPLATE="${CMAKE_CURRENT_SOURCE_DIR}/../llm/config.toml.example"
+    ARGUS_VLM_CONFIG_TEMPLATE="${CMAKE_CURRENT_SOURCE_DIR}/../vlm/config.toml.example")
 
 foreach(TEST_NAME IN ITEMS settings-modules-test settings-module-engine-test settings-modules-http-test
                          settings-module-journal-test)

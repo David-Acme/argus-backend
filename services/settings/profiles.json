@@ -13,7 +13,8 @@
           "tts.pocket_variant_es": "fast"
         },
         "vlm": {
-          "vision.max_input_px": "256"
+          "vision.max_input_px": "256",
+          "vision.gpu_layers": "0"
         }
       }
     },
@@ -30,7 +31,8 @@
           "tts.pocket_variant_es": "fast"
         },
         "vlm": {
-          "vision.max_input_px": "384"
+          "vision.max_input_px": "384",
+          "vision.gpu_layers": "0"
         }
       }
     },
@@ -48,14 +50,8 @@
           "tts.pocket_voice_es": "jean"
         },
         "vlm": {
-          "vision.max_input_px": "512"
-        }
-      },
-      "withCapability": {
-        "gpu": {
-          "vlm": {
-            "vision.gpu_layers": "999"
-          }
+          "vision.max_input_px": "512",
+          "vision.gpu_layers": "0"
         }
       }
     }
