@@ -225,6 +225,50 @@ The Tauri commands `argus_rtc_devices` and `argus_rtc_select_device` and the cal
 | 9 | **Away from home** (relay route) and a slow tool | Any of the above over the relay | Same correctness. Latency reported, not gated |
 | 10 | **Barge-in mid-answer and a change of topic** | Interrupts and new topics | The new topic answered, the old context not repeated |
 
+**Two more axes (owner, 2026-10-16).**
+
+*A. Conversational quality.* The owner has noticed weak spots, so measure the multi-turn conversation itself:
+- coherence with earlier turns: refers back correctly, no contradiction, no repeated greeting;
+- follow-up questions answered in context ("¿y a qué hora?", "¿y él?");
+- staying on topic after a digression;
+- natural spoken Spanish: one to three sentences, no lists, no echo of the app note;
+- warmth without filler;
+- asking only when needed.
+
+Automated checks score what is measurable: back-reference, repetition, greeting count, length, language, echo. A blind sample of 40 replies per model and context variant is then scored by the reviewer on a 1–5 rubric (correct, natural, concise, helpful), with the variants shuffled.
+
+*B. Data handling from context.* How well the model uses the facts it receives:
+- selection among many facts, where one is relevant and 5–15 are distractors;
+- a stale fact against a fresh one (the newer wins);
+- conflicting facts (say so);
+- numbers, times and dates (exact or relative, owner's time zone);
+- entity resolution (names, "mi hijo", "la cocina");
+- partial facts (say what is missing);
+- facts the user must not hear (privacy);
+- a long context, near the per-turn budget.
+
+**Disentangling context from model size.** The owner does not discard size, so each case runs in three variants:
+
+| Variant | Setup | What a result tells |
+|---|---|---|
+| Production | The production context with the production model `LFM2.5-1.2B` | The baseline |
+| Oracle context | The same model with ONLY the relevant facts, clean and minimal | It isolates the context build. A case that passes here and fails in production is a context bug |
+| Larger model, diagnostic only | The production context with a larger compatible model, for example LFM2.5-2.6B, through the eval's `--llm-model` on the vendored runtime | A case that fails with the larger model too is context. A case only the larger model passes is capacity. It is never adopted under this plan |
+
+**The report gives:**
+- per scenario and axis, the three variants side by side;
+- a verdict per failing case: context, capacity, or both;
+- a fix unit list ranked by user impact.
+
+**Fix units go into the context build:**
+- rendering;
+- selection and gating;
+- ordering;
+- recency;
+- the user's language.
+
+A capacity verdict is reported to the owner as evidence, not acted on.
+
 **Acceptance.**
 - The scenario pack is committed and runs under ctest's `eval` label, with a smoke subset in `gates-smoke.json`.
 - The table is reported.
