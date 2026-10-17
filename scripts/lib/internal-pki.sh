@@ -244,6 +244,7 @@ internal_pki_native_dial_rows() {
   cat <<'ROWS'
 auth identity target identity
 camera identity target identity
+camera notifications target notification
 camera modules target settings
 guard camera actions_target camera
 guard notifications grpc_target notification

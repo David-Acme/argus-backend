@@ -46,10 +46,20 @@ void PrivacyStateService::seed(const std::vector<CameraSchema>& cameras)
   {
     if (camera.id <= 0)
       continue;
-    entries_[camera.id] = {.state = camera.privacyState,
-                           .confirmed = camera.privacyState,
-                           .persisted = camera.privacyState,
-                           .writing = false};
+    const CameraPrivacyState state = camera.privacyState;
+    const bool obeyedNow =
+        camera.privacyObeyed || state == CameraPrivacyState::On;
+    const CameraPrivacyState confirmed =
+        state == CameraPrivacyState::Unknown
+            ? (obeyedNow ? CameraPrivacyState::On : CameraPrivacyState::Unknown)
+            : state;
+    entries_[camera.id] = {
+        .state = state,
+        .confirmed = confirmed,
+        .persisted = state,
+        .noticed = obeyedNow && state == CameraPrivacyState::Unknown,
+        .persistedObeyed = obeyedNow,
+        .writing = false};
   }
 }
 
@@ -100,35 +110,38 @@ void PrivacyStateService::forget(int64_t cameraId)
   entries_.erase(cameraId);
 }
 
-drogon::Task<bool> PrivacyStateService::persistState(int64_t cameraId,
-                                                     CameraPrivacyState state)
+drogon::Task<bool> PrivacyStateService::persistState(PrivacyPersistInput input)
 {
   bool written = false;
   if (drogon::app().isRunning())
   {
     try
     {
-      const auto updated = co_await repository_.update(
-          cameraId, {.privacyState = state, .client = nullptr});
-      written = updated.id == cameraId;
+      CameraUpdateInput update;
+      update.privacyState = input.state;
+      update.privacyObeyed = input.obeyed;
+      const auto updated =
+          co_await repository_.update(input.cameraId, update);
+      written = updated.id == input.cameraId;
     }
     catch (const std::exception& error)
     {
-      LOG_WARN << "Camera privacy: the state of camera " << cameraId
+      LOG_WARN << "Camera privacy: the state of camera " << input.cameraId
                << " could not be persisted: " << error.what();
     }
   }
   std::scoped_lock lock(mutex_);
-  const auto it = entries_.find(cameraId);
+  const auto it = entries_.find(input.cameraId);
   if (it == entries_.end())
     co_return written;
   it->second.writing = false;
   if (written)
   {
-    it->second.persisted = state;
+    it->second.persisted = input.state;
+    it->second.persistedObeyed = input.obeyed;
     co_return true;
   }
-  if (it->second.state == state && it->second.persisted != state &&
+  if (it->second.state == input.state && it->second.persisted != input.state &&
       it->second.confirmed != CameraPrivacyState::On)
   {
     it->second.state = it->second.persisted;
@@ -155,6 +168,7 @@ drogon::Task<PrivacyTransition> PrivacyStateService::refresh(
   bool persist = false;
   bool noticed = false;
   bool obeyedBefore = false;
+  bool obeyedNow = false;
   {
     std::scoped_lock lock(mutex_);
     auto& entry = entries_[cameraId];
@@ -175,14 +189,19 @@ drogon::Task<PrivacyTransition> PrivacyStateService::refresh(
     {
       entry.noticed = false;
     }
-    persist = observed != entry.persisted && !entry.writing;
+    obeyedNow = obeyed(entry);
+    persist = (observed != entry.persisted ||
+               obeyedNow != entry.persistedObeyed) &&
+              !entry.writing;
     if (persist)
       entry.writing = true;
   }
 
   bool written = true;
   if (persist)
-    written = co_await persistState(cameraId, observed);
+    written = co_await persistState({.cameraId = cameraId,
+                                     .state = observed,
+                                     .obeyed = obeyedNow});
   const CameraPrivacyState after = written ? observed : stateOf(cameraId);
   bool obeyedAfter = false;
   {

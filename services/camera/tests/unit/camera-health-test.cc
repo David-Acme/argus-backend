@@ -74,16 +74,16 @@ TEST_CASE("Round15 healthy first tick and periodic ticks publish")
   SUBCASE("positive first timestamp") { firstStamp = 1000; }
   SUBCASE("zero first timestamp") { firstStamp = 0; }
   source.frame.capturedAtMs = firstStamp;
-  drogon::sync_wait(monitor.tick({.id = 1, .name = "Synthetic"}));
+  drogon::sync_wait(monitor.tick({.id = 1, .name = "Synthetic", .camera = {}}));
   CHECK(sink.events.size() == 1);
   source.frame.capturedAtMs = firstStamp + 999;
-  drogon::sync_wait(monitor.tick({.id = 1, .name = "Synthetic"}));
+  drogon::sync_wait(monitor.tick({.id = 1, .name = "Synthetic", .camera = {}}));
   CHECK(sink.events.size() == 1);
   source.frame.capturedAtMs = firstStamp + 1000;
-  drogon::sync_wait(monitor.tick({.id = 1, .name = "Synthetic"}));
+  drogon::sync_wait(monitor.tick({.id = 1, .name = "Synthetic", .camera = {}}));
   CHECK(sink.events.size() == 2);
   source.frame.capturedAtMs = firstStamp + 2000;
-  drogon::sync_wait(monitor.tick({.id = 1, .name = "Synthetic"}));
+  drogon::sync_wait(monitor.tick({.id = 1, .name = "Synthetic", .camera = {}}));
   REQUIRE(sink.events.size() == 3);
   CHECK(source.calls == 4);
   for (const auto& event : sink.events) {
@@ -107,23 +107,23 @@ TEST_CASE("one missed sample keeps the health state and two make the camera unre
                                .intervalMs = 1000,
                                .thresholds = {},
                                .rebaselineAfterMs = 900000});
-  drogon::sync_wait(monitor.tick({.id = 7, .name = "Synthetic"}));
+  drogon::sync_wait(monitor.tick({.id = 7, .name = "Synthetic", .camera = {}}));
   REQUIRE(sink.events.size() == 1);
   CHECK(sink.events.back().status == CameraHealthState::Ok);
 
   source.answering = false;
   source.frame.capturedAtMs = 2000;
-  drogon::sync_wait(monitor.tick({.id = 7, .name = "Synthetic"}));
+  drogon::sync_wait(monitor.tick({.id = 7, .name = "Synthetic", .camera = {}}));
   CHECK(sink.events.size() == 1);
 
   source.frame.capturedAtMs = 3000;
-  drogon::sync_wait(monitor.tick({.id = 7, .name = "Synthetic"}));
+  drogon::sync_wait(monitor.tick({.id = 7, .name = "Synthetic", .camera = {}}));
   REQUIRE(sink.events.size() == 2);
   CHECK(sink.events.back().status == CameraHealthState::Unreachable);
 
   source.answering = true;
   source.frame.capturedAtMs = 4000;
-  drogon::sync_wait(monitor.tick({.id = 7, .name = "Synthetic"}));
+  drogon::sync_wait(monitor.tick({.id = 7, .name = "Synthetic", .camera = {}}));
   REQUIRE(sink.events.size() == 3);
   CHECK(sink.events.back().status == CameraHealthState::Ok);
   CHECK(source.calls == 4);
@@ -138,18 +138,18 @@ TEST_CASE("a frame that does not decode is a miss, not a first strike")
                                .intervalMs = 1000,
                                .thresholds = {},
                                .rebaselineAfterMs = 900000});
-  drogon::sync_wait(monitor.tick({.id = 8, .name = "Synthetic"}));
+  drogon::sync_wait(monitor.tick({.id = 8, .name = "Synthetic", .camera = {}}));
   REQUIRE(sink.events.size() == 1);
   CHECK(sink.events.back().status == CameraHealthState::Ok);
 
   source.frame.jpeg = {0x01, 0x02, 0x03};
   source.frame.capturedAtMs = 2000;
-  drogon::sync_wait(monitor.tick({.id = 8, .name = "Synthetic"}));
+  drogon::sync_wait(monitor.tick({.id = 8, .name = "Synthetic", .camera = {}}));
   CHECK(sink.events.size() == 1);
 
   source.answering = false;
   source.frame.capturedAtMs = 3000;
-  drogon::sync_wait(monitor.tick({.id = 8, .name = "Synthetic"}));
+  drogon::sync_wait(monitor.tick({.id = 8, .name = "Synthetic", .camera = {}}));
   REQUIRE(sink.events.size() == 2);
   CHECK(sink.events.back().status == CameraHealthState::Unreachable);
 }
@@ -374,7 +374,7 @@ struct SceneRun
   {
     source.frame.jpeg = jpeg;
     source.frame.capturedAtMs = atMs;
-    drogon::sync_wait(monitor.tick({.id = cameraId, .name = "Scene"}));
+    drogon::sync_wait(monitor.tick({.id = cameraId, .name = "Scene", .camera = {}}));
     REQUIRE_FALSE(sink.events.empty());
     return sink.events.back().status;
   }
@@ -421,11 +421,11 @@ TEST_CASE("a camera in privacy mode is not checked")
   SceneRun run({.cameraId = 104, .rebaselineAfterMs = 900000});
   seedPrivacy(104, CameraPrivacyState::On);
   run.source.frame.capturedAtMs = 1000;
-  drogon::sync_wait(run.monitor.tick({.id = 104, .name = "Scene"}));
+  drogon::sync_wait(run.monitor.tick({.id = 104, .name = "Scene", .camera = {}}));
   CHECK(run.source.calls == 0);
   CHECK(run.sink.events.empty());
   seedPrivacy(104, CameraPrivacyState::Off);
-  drogon::sync_wait(run.monitor.tick({.id = 104, .name = "Scene"}));
+  drogon::sync_wait(run.monitor.tick({.id = 104, .name = "Scene", .camera = {}}));
   CHECK(run.source.calls == 1);
   PrivacyStateService::instance().forget(104);
 }
@@ -441,11 +441,11 @@ TEST_CASE("a preset that settles between samples is not moved")
 
   run.source.frame.jpeg = moving;
   run.source.frame.capturedAtMs = 1500;
-  drogon::sync_wait(run.monitor.tick({.id = 105, .name = "Scene"}));
+  drogon::sync_wait(run.monitor.tick({.id = 105, .name = "Scene", .camera = {}}));
 
   run.source.frame.jpeg = settled;
   run.source.frame.capturedAtMs = 2400;
-  drogon::sync_wait(run.monitor.tick({.id = 105, .name = "Scene"}));
+  drogon::sync_wait(run.monitor.tick({.id = 105, .name = "Scene", .camera = {}}));
   REQUIRE(run.sink.events.size() == 2);
   CHECK(run.sink.events.back().status == CameraHealthState::Ok);
 

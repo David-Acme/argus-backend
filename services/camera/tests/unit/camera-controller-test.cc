@@ -232,6 +232,7 @@ void seedCameraDb(const char* path)
       "is_enabled INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)), "
       "is_online INTEGER NOT NULL DEFAULT 0, "
       "privacy_state TEXT NOT NULL DEFAULT 'unknown', "
+      "privacy_obeyed INTEGER NOT NULL DEFAULT 0, "
       "tls_fingerprint TEXT NOT NULL DEFAULT '', "
       "tapo_secure INTEGER NOT NULL DEFAULT 0, "
       "control_credential TEXT NOT NULL DEFAULT '', "

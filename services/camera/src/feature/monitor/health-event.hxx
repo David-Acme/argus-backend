@@ -38,6 +38,7 @@ struct CameraPrivacyEvent
   int64_t cameraId{0};
   std::string cameraName{};
   CameraPrivacyState state{CameraPrivacyState::Unknown};
+  bool obeyed{false};
   int64_t detectedAtMs{0};
 };
 

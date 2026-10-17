@@ -32,6 +32,7 @@ argus-deploy argus-camera configuration. Copy to config.camera.toml (gitignored)
 | `identity.target` | argus-identity's fleet-secret RPC listener, dialled over mutual TLS as `tls:argus-identity:7240` (the plaintext port 7040 stays open beside it); the camera guard's face recognition and enrollment ride it. |
 | `identity.rpc_secret` | Must match argus-identity's [identity] rpc_secret, or every identity call fails. |
 | `grpc.caller_guard` | Capability credential for the guard -> camera edge (paired with guard's camera.actions_credential). |
+| `notifications.target` / `notifications.credential` | The camera -> notification edge: the doubt notice of an unconfirmed lens mask is created through it, paired by provisioning with argus-notification's `grpc.caller_camera`. |
 | `identity.identify` | Camera guard recognition; enroll/capture stay off until you enable them. `auto_enroll`, `capture_clear_faces`, `min_face_box_px`, `identify_interval_ms`, `enroll_cooldown_ms`, `best_shot_ms` and `improve_margin` ride the same table. |
 | `operator.zones_from_db` | Enabled zones live in camera.db (the app editor); false uses the JSON below only. |
 | `actions.enabled` | Audible/device actions from argus-guard; off until you enable them. |
@@ -139,6 +140,7 @@ argus-deploy argus-notification configuration. Copy to config.notification.toml 
 | `notification.host` / `notification.port` / `notification.plain` / `notification.min_protocol` | The app-facing listener (`0.0.0.0:7028`), TLS unless `plain = true`. It is the singular table: `[notifications]` below is the camera object policy and has no listener keys. `[cert] server_cert` / `server_key` are the certificate served. |
 | `mdns.enabled` / `mdns.name` | The LAN announcement: one `_argus-route._tcp` instance per logical route this service registers, each carrying its own SRV port and an `https="true"` TXT key. |
 | `grpc.caller_guard` | Capability credential for the guard -> notification edge (`CreateNotifications`), paired with guard's `notifications.credential`. |
+| `grpc.caller_camera` | Capability credential for the camera -> notification edge (`CreateNotifications`), paired with camera's `notifications.credential`; it carries the doubt notice of an unconfirmed lens mask. |
 | `grpc.caller_sync` | Capability credential for `PullNotifications`; provision-host.sh pairs it with argus-sync's `notifications.credential`, so both sides carry the same minted value. |
 | `notifications.budget_per_hour` and the `silent_*` / `guard_heartbeat_timeout_s` / `fallback_*` keys | The camera object policy (Phase 3d step 1), as documented for `services/notification/config.toml.example` below. |
 | `nats.url` | The bus the camera notifier subscribes on; the deploy endpoint is the `nats` service. |
@@ -295,6 +297,7 @@ argus-camera configuration. Copy to config.toml (gitignored) to run.
 | `operator.zones_from_db` | Enabled zones live in camera.db (the app editor); false uses the JSON below only. |
 | `actions.enabled` | Audible/device actions from argus-guard; off until you enable them. The siren is a lease the camera must be able to release by itself: enabling arm_siren requires a hardware-side alarm timeout or watchdog, because a crashed camera process cannot execute its own sweeper. |
 | `grpc.caller_guard` | Caller capability credential for the guard -> camera edge; generated per installation and shared only with argus-guard. |
+| `notifications.target` / `notifications.credential` | The camera -> notification edge (the doubt notice of an unconfirmed lens mask), paired by setup.sh and provision-host.sh with argus-notification's `grpc.caller_camera`. |
 | `health.enabled` | Occlusion/blur/moved detection from periodic image stats. |
 | `stt.remote_url` | Camera listen (guard agent) transcription through argus-stt. |
 | `streaming.hub_gop_cache_bytes` | Bytes of the current group of pictures each live upstream keeps (default 2 MiB). A viewer that subscribes with `fastStart` receives the init segment and that GOP at once, so its first frame paints without waiting for the camera's next keyframe; a GOP larger than the cap is not kept. |
@@ -386,6 +389,7 @@ argus-notification configuration. Copy to config.toml (gitignored) to run.
 | `identity.rpc_secret` | Fleet secret the roster call carries; same value in every service. |
 | `nats.url` | The event bus the camera notifier subscribes on (`argus.camera.v1.object_detected`, `argus.guard.v1.heartbeat`); empty leaves the bus disabled and camera notifications off. |
 | `grpc.caller_guard` | Capability credential for the guard -> notification edge (`CreateNotifications`). |
+| `grpc.caller_camera` | Capability credential for the camera -> notification edge (`CreateNotifications`), which presents it from its own `notifications.credential`. |
 | `grpc.caller_sync` | Capability credential for `PullNotifications`, which argus-sync presents from its own `notifications.credential`; provision-host.sh pairs the two. |
 
 ## `services/auth/config.toml.example`

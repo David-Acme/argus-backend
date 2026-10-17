@@ -40,6 +40,7 @@ bool NatsHealthEventSink::publishPrivacy(const CameraPrivacyEvent& event)
   json["cameraId"] = Json::Int64(event.cameraId);
   json["cameraName"] = event.cameraName;
   json["privacy"] = cameraPrivacyStateToString(event.state);
+  json["obeyed"] = event.obeyed;
   json["detectedAt"] = Json::Int64(event.detectedAtMs);
 
   return bus_->publish(nats_subject::kCameraPrivacy, json_util::toString(json));

@@ -17,6 +17,13 @@ struct PrivacyRefreshInput
   bool readable{false};
 };
 
+struct PrivacyPersistInput
+{
+  int64_t cameraId{0};
+  CameraPrivacyState state{CameraPrivacyState::Unknown};
+  bool obeyed{false};
+};
+
 struct PrivacyTransition
 {
   CameraPrivacyState before{CameraPrivacyState::Unknown};
@@ -45,6 +52,7 @@ private:
     CameraPrivacyState confirmed{CameraPrivacyState::Unknown};
     CameraPrivacyState persisted{CameraPrivacyState::Unknown};
     bool noticed{false};
+    bool persistedObeyed{false};
     bool writing{false};
   };
 
@@ -52,8 +60,7 @@ private:
 
   [[nodiscard]] static bool obeyed(const Entry& entry);
   [[nodiscard]] static bool doubted(const Entry& entry);
-  [[nodiscard]] drogon::Task<bool> persistState(int64_t cameraId,
-                                                CameraPrivacyState state);
+  [[nodiscard]] drogon::Task<bool> persistState(PrivacyPersistInput input);
 
   mutable std::mutex mutex_;
   std::unordered_map<int64_t, Entry> entries_;

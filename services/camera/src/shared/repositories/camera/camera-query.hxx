@@ -96,6 +96,10 @@ inline constexpr std::string_view ADD_PRIVACY_STATE =
     "DEFAULT 'unknown'";
 inline constexpr std::string_view UPDATE_COL_PRIVACY_STATE =
     "privacy_state = ?";
+inline constexpr std::string_view ADD_PRIVACY_OBEYED =
+    "ALTER TABLE camera ADD COLUMN privacy_obeyed INTEGER NOT NULL DEFAULT 0";
+inline constexpr std::string_view UPDATE_COL_PRIVACY_OBEYED =
+    "privacy_obeyed = ?";
 inline constexpr std::string_view ADD_TLS_FINGERPRINT =
     "ALTER TABLE camera ADD COLUMN tls_fingerprint TEXT NOT NULL DEFAULT ''";
 inline constexpr std::string_view ADD_TAPO_SECURE =
@@ -181,6 +185,7 @@ struct CameraUpdateInput
   std::optional<bool> isEnabled;
   std::optional<bool> isOnline;
   std::optional<CameraPrivacyState> privacyState;
+  std::optional<bool> privacyObeyed;
   bool resetTapoTrust{false};
   drogon::orm::DbClient* client{nullptr};
 };

@@ -1656,6 +1656,51 @@ TEST_CASE("queued and running deliveries are kept in progress until they settle"
   CHECK(queuedTouches.load() == 1);
 }
 
+TEST_CASE("an unconfirmed but obeyed mask while away is listed as not covering")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  ThreadHarness harness;
+  harness.config.defaultMode = GuardMode::Away;
+  auto service = harness.makeService();
+  const auto nowSeconds = static_cast<std::time_t>(testNowMs() / 1000);
+  std::tm local{};
+  localtime_r(&nowSeconds, &local);
+  local.tm_hour = 12;
+  local.tm_min = 0;
+  local.tm_sec = 0;
+  const int64_t base = static_cast<int64_t>(std::mktime(&local));
+
+  service->ingestPrivacy({.cameraId = 181,
+                          .cameraName = "Garaje",
+                          .state = CameraPrivacyState::Unknown,
+                          .obeyed = true});
+  service->ingestPrivacy({.cameraId = 182,
+                          .cameraName = "Sala",
+                          .state = CameraPrivacyState::Unknown,
+                          .obeyed = false});
+  REQUIRE(service->maskedCameras().size() == 1);
+  CHECK(service->maskedCameras().front().cameraId == 181);
+  CHECK(service->maskedCameras().front().name == "Garaje");
+
+  drogon::sync_wait(service->checkPrivacyCoverage(base));
+  REQUIRE(harness.notifications.calls == 1);
+  const auto& sent = harness.notifications.sent.front();
+  CHECK(sent.body.find("Garaje") != std::string::npos);
+  CHECK(sent.body.find("Sala") == std::string::npos);
+  const Json::Value data = json_util::fromString(sent.data);
+  CHECK(data["kind"].asString() == "camera_privacy_coverage");
+  CHECK(data["rule"].asString() == "camera_privacy_coverage");
+
+  service->ingestPrivacy({.cameraId = 181,
+                          .cameraName = "Garaje",
+                          .state = CameraPrivacyState::Off,
+                          .obeyed = false});
+  CHECK(service->maskedCameras().empty());
+  drogon::sync_wait(service->checkPrivacyCoverage(base + 60));
+  CHECK(harness.notifications.calls == 1);
+}
+
 TEST_CASE("a masked camera is never tamper and its open episode closes with the reason privacy")
 {
   SharedBoot& boot = sharedBoot();

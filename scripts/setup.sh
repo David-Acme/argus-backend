@@ -250,6 +250,8 @@ ensure_local_config() {
     "$ROOT/services/camera/config.toml" grpc caller_guard 32
   fill_config_pair "$ROOT/services/guard/config.toml" notifications credential \
     "$ROOT/services/notification/config.toml" grpc caller_guard 32
+  fill_config_pair "$ROOT/services/camera/config.toml" notifications credential \
+    "$ROOT/services/notification/config.toml" grpc caller_camera 32
   fill_config_pair "$ROOT/services/productivity/config.toml" notifications credential \
     "$ROOT/services/notification/config.toml" grpc caller_productivity 32
   fill_config_pair "$ROOT/services/llm/config.toml" notifications credential \

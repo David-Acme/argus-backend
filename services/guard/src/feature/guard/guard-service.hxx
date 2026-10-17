@@ -141,6 +141,13 @@ public:
     int64_t cameraId{0};
     std::string cameraName{};
     CameraPrivacyState state{CameraPrivacyState::Unknown};
+    bool obeyed{false};
+  };
+
+  struct CameraPrivacy
+  {
+    CameraPrivacyState state{CameraPrivacyState::Unknown};
+    bool obeyed{false};
   };
 
   void ingestPrivacy(const PrivacySample& sample);
@@ -697,7 +704,7 @@ private:
   std::map<int64_t, std::string> cameraNames_;
 
   mutable std::mutex privacyMutex_;
-  std::map<int64_t, CameraPrivacyState> privacyByCamera_;
+  std::map<int64_t, CameraPrivacy> privacyByCamera_;
   std::atomic<bool> householdProtects_{false};
   std::atomic<bool> householdArmed_{false};
 

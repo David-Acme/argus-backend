@@ -3,6 +3,7 @@
 
 #include <camera/camera-privacy-state.hxx>
 #include <drogon/drogon.h>
+#include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/schemas/camera/camera-schema.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <shared/services/privacy-notice/privacy-notice.hxx>
@@ -111,6 +112,13 @@ public:
         "SELECT privacy_state FROM camera WHERE id = ?", id);
     return rows.empty() ? std::string()
                         : rows.front()["privacy_state"].as<std::string>();
+  }
+
+  [[nodiscard]] bool obeyedOfRow(int64_t id) const
+  {
+    const auto rows = client_->execSqlSync(
+        "SELECT privacy_obeyed FROM camera WHERE id = ?", id);
+    return !rows.empty() && rows.front()["privacy_obeyed"].as<int>() != 0;
   }
 
 private:
@@ -289,10 +297,10 @@ TEST_CASE("a reply with no mask bool converges the row to unknown, once")
   CHECK(quiet.after == CameraPrivacyState::Unknown);
   CHECK_FALSE(service.masked(41));
   CHECK(rig.stateOfRow(41) == "unknown");
+  CHECK_FALSE(rig.obeyedOfRow(41));
   CHECK(sink.audits.size() == 1);
   CHECK(sink.resources.size() == 2);
 
-  CHECK_FALSE(service.masked(41));
   CHECK(notifier.notices.empty());
 
   for (int tick = 0; tick < 3; ++tick) {
@@ -397,6 +405,52 @@ TEST_CASE("a reply that cannot tell is not obeyed as a mask when nobody confirme
   CHECK(lostAgain.after == CameraPrivacyState::Unknown);
   CHECK(service.masked(46));
   CHECK(notifier.notices.size() == 2);
+  privacy_notice::setNotifier(nullptr);
+  camera_change::setSink(nullptr);
+}
+
+TEST_CASE("a doubt survives a restart: obeyed, not recording, and nobody told twice")
+{
+  REQUIRE(PrivacyRig::instance().booted());
+  auto& rig = PrivacyRig::instance();
+  FakeChangeSink sink;
+  camera_change::setSink(&sink);
+  FakePrivacyNotifier notifier;
+  privacy_notice::setNotifier(&notifier);
+  rig.resetCameras();
+  rig.addCamera(47, "on");
+  auto& service = PrivacyStateService::instance();
+  service.forget(47);
+  service.seed({cameraOf(47, CameraPrivacyState::On, "[]")});
+
+  const auto doubtful = read(47, statusWithout(), CameraPrivacyState::On);
+  CHECK(doubtful.after == CameraPrivacyState::Unknown);
+  CHECK(service.masked(47));
+  CHECK(rig.stateOfRow(47) == "unknown");
+  CHECK(rig.obeyedOfRow(47));
+  REQUIRE(notifier.notices.size() == 1);
+
+  service.forget(47);
+  CameraRepository repository;
+  const auto restored = drogon::sync_wait(repository.findById(47));
+  REQUIRE(restored.has_value());
+  CHECK(restored->privacyState == CameraPrivacyState::Unknown);
+  CHECK(restored->privacyObeyed);
+  service.seed({*restored});
+
+  CHECK(service.masked(47));
+  const auto afterRestart =
+      read(47, statusWithout(), CameraPrivacyState::Unknown);
+  CHECK_FALSE(afterRestart.changed);
+  CHECK(service.masked(47));
+  CHECK(notifier.notices.size() == 1);
+
+  const auto off = read(47, statusWith(false), CameraPrivacyState::Unknown);
+  CHECK(off.changed);
+  CHECK_FALSE(service.masked(47));
+  CHECK(rig.stateOfRow(47) == "off");
+  CHECK_FALSE(rig.obeyedOfRow(47));
+  CHECK(notifier.notices.size() == 1);
   privacy_notice::setNotifier(nullptr);
   camera_change::setSink(nullptr);
 }

@@ -32,6 +32,7 @@ CameraSchema::CameraSchema(const drogon::orm::Row& row)
   privacyState =
       cameraPrivacyStateFromString(row["privacy_state"].as<std::string>())
           .value_or(CameraPrivacyState::Unknown);
+  privacyObeyed = row["privacy_obeyed"].as<int>() != 0;
   tlsFingerprint = row["tls_fingerprint"].as<std::string>();
   tapoSecure = row["tapo_secure"].as<int>() != 0;
   controlCredential = row["control_credential"].as<std::string>();

@@ -313,6 +313,7 @@ void CameraHealthMonitor::publishPrivacyState(const CameraRef& camera)
       {.cameraId = camera.id,
        .cameraName = camera.name,
        .state = PrivacyStateService::instance().stateOf(camera.id),
+       .obeyed = PrivacyStateService::instance().masked(camera.id),
        .detectedAtMs = nowMs()});
 }
 

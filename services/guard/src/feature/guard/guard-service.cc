@@ -923,7 +923,8 @@ void GuardService::subscribePrivacy()
                        .cameraName = privacy.get("cameraName", "").asString(),
                        .state = cameraPrivacyStateFromString(
                                     privacy.get("privacy", "").asString())
-                                    .value_or(CameraPrivacyState::Unknown)});
+                                    .value_or(CameraPrivacyState::Unknown),
+                       .obeyed = privacy.get("obeyed", false).asBool()});
       });
   if (subscription) {
     privacySubscription_ = *subscription;
@@ -951,15 +952,16 @@ void GuardService::ingestPrivacy(const PrivacySample& sample)
   if (!sample.cameraName.empty())
     rememberCameraName(sample.cameraId, sample.cameraName);
   std::scoped_lock lock(privacyMutex_);
-  privacyByCamera_[sample.cameraId] = sample.state;
+  privacyByCamera_[sample.cameraId] = {
+      .state = sample.state,
+      .obeyed = sample.obeyed || sample.state == CameraPrivacyState::On};
 }
 
 bool GuardService::cameraMasked(int64_t cameraId) const
 {
   std::scoped_lock lock(privacyMutex_);
   const auto found = privacyByCamera_.find(cameraId);
-  return found != privacyByCamera_.end() &&
-         found->second == CameraPrivacyState::On;
+  return found != privacyByCamera_.end() && found->second.obeyed;
 }
 
 GuardService::HouseholdPosture GuardService::householdPosture() const
@@ -996,8 +998,8 @@ std::vector<GuardService::MaskedCamera> GuardService::maskedCameras() const
   std::vector<MaskedCamera> masked;
   {
     std::scoped_lock lock(privacyMutex_);
-    for (const auto& [cameraId, state] : privacyByCamera_) {
-      if (state == CameraPrivacyState::On)
+    for (const auto& [cameraId, privacy] : privacyByCamera_) {
+      if (privacy.obeyed)
         masked.push_back({.cameraId = cameraId, .name = {}});
     }
   }
