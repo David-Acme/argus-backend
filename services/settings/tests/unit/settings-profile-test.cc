@@ -14,6 +14,7 @@
 
 #include <grpcpp/grpcpp.h>
 #include <json/reader.h>
+#include <toml++/toml.h>
 
 #include <algorithm>
 #include <chrono>
@@ -382,26 +383,61 @@ TEST_CASE("the shipped profile file parses, in owner display order")
   CHECK(catalog.fallback == "performance");
   CHECK(catalog.owners() == std::vector<std::string>{"llm", "tts", "vlm"});
   for (const auto& profile : catalog.profiles) {
-    const auto offset = profile.id == "quality" ? 1U : 0U;
-    REQUIRE(profile.owners.size() == 2 + offset);
-    CHECK(profile.owners[offset].owner == "tts");
-    CHECK(profile.owners[offset + 1].owner == "vlm");
+    REQUIRE(profile.owners.size() == 3);
+    CHECK(profile.owners[0].owner == "llm");
+    CHECK(profile.owners[1].owner == "tts");
+    CHECK(profile.owners[2].owner == "vlm");
+    CHECK(profile.owners[0].withCapability.empty());
   }
   const auto* quality = catalog.find("quality");
   REQUIRE(quality != nullptr);
-  CHECK(quality->owners[0].owner == "llm");
-  CHECK(quality->owners[0].changes.empty());
-  REQUIRE(quality->owners[0].withCapability.size() == 1);
-  CHECK(quality->owners[0].withCapability[0].capability == "gpu");
-  CHECK(quality->owners[0].withCapability[0].change.key == "llm.gpu_layers");
-  CHECK(quality->owners[0].withCapability[0].change.value == "999");
+  REQUIRE(quality->owners[0].changes.size() == 1);
+  CHECK(quality->owners[0].changes[0].key == "llm.gpu_layers");
+  CHECK(quality->owners[0].changes[0].value == "0");
   REQUIRE(quality->owners[2].withCapability.size() == 1);
+  CHECK(quality->owners[2].withCapability[0].capability == "gpu");
   CHECK(quality->owners[2].withCapability[0].change.key == "vision.gpu_layers");
-  CHECK(catalog.find("balanced")->owners[0].withCapability.empty());
+  CHECK(quality->owners[2].withCapability[0].change.value == "999");
+  CHECK(catalog.find("balanced")->owners[2].withCapability.empty());
   const auto& tts = quality->owners[1].changes;
   CHECK(std::ranges::find(tts, std::string("tts.pocket_variant_es"), &SettingChange::key)->value == "quality");
   CHECK(std::ranges::find(tts, std::string("tts.pocket_voice_es"), &SettingChange::key)->value == "jean");
   CHECK_FALSE(loadProfileFile("/nonexistent/argus-profiles.json").has_value());
+}
+
+TEST_CASE("the shipped profiles pin the RAM floors, the fast voice in balanced and gpu_layers = 0 explicit")
+{
+  const auto catalog = loadProfileFile(ARGUS_SETTINGS_PROFILES_FILE).value_or(ProfileCatalog{});
+  REQUIRE(catalog.rules.size() == 2);
+  CHECK(catalog.rules[0].profile == "quality");
+  CHECK(catalog.rules[0].minCores == 8);
+  CHECK(catalog.rules[0].minRamGb == 14);
+  CHECK(catalog.rules[1].profile == "balanced");
+  CHECK(catalog.rules[1].minCores == 4);
+  CHECK(catalog.rules[1].minRamGb == 7);
+  CHECK(catalog.fallback == "performance");
+
+  for (const auto& profile : catalog.profiles) {
+    const auto llm = std::ranges::find(profile.owners, std::string("llm"), &ProfileOwnerChanges::owner);
+    REQUIRE(llm != profile.owners.end());
+    const auto layers = std::ranges::find(llm->changes, std::string("llm.gpu_layers"), &SettingChange::key);
+    REQUIRE(layers != llm->changes.end());
+    CHECK(layers->value == "0");
+
+    const auto tts = std::ranges::find(profile.owners, std::string("tts"), &ProfileOwnerChanges::owner);
+    REQUIRE(tts != profile.owners.end());
+    const auto variant = std::ranges::find(tts->changes, std::string("tts.pocket_variant_es"), &SettingChange::key);
+    REQUIRE(variant != tts->changes.end());
+    CHECK(variant->value == (profile.id == "quality" ? "quality" : "fast"));
+  }
+}
+
+TEST_CASE("the llm product config writes gpu_layers = 0 explicitly")
+{
+  const toml::table config = toml::parse_file(ARGUS_LLM_CONFIG_TEMPLATE);
+  const auto layers = config["llm"]["gpu_layers"].value<int64_t>();
+  REQUIRE(layers.has_value());
+  CHECK(*layers == 0);
 }
 
 TEST_CASE("a malformed profile file is refused with the place of the problem")
@@ -564,7 +600,7 @@ std::vector<SettingSpec> vlmGpuSpecs()
   return {integerSpec("vision.max_input_px"), gpuSpec("vision.gpu_layers")};
 }
 
-void loadVlmConfig(const std::string& body)
+void loadConfigBody(const std::string& body)
 {
   std::ofstream(configPath()) << body;
   ConfigService::load(configPath().string());
@@ -591,6 +627,28 @@ TEST_CASE("a capability key joins the profile only where the owner reports the c
   CHECK(settings_profile::preview(vlmOnly, {vlmCatalog("512", "999", true)}).current);
   CHECK(settings_profile::preview(vlmOnly, {vlmCatalog("512", "-1", false)}).current);
   CHECK(settings_profile::plan(vlmOnly, {vlmCatalog("512", "-1", false)}).size() == 1);
+}
+
+TEST_CASE("a profile carrying gpu_layers = 0 writes it into the llm product config")
+{
+  loadConfigBody("[llm]\ngpu_layers = -1\n");
+  const Owner llm("llm", {gpuSpec("llm.gpu_layers")});
+  CHECK(ConfigService::getInt("llm.gpu_layers") == -1);
+  const SettingsGatewayService gateway({.owners = {{.name = "llm", .target = llm.target(), .credential = kSecret}},
+                                        .timeouts = {.list = 1500ms, .update = 1500ms}});
+  const SettingsProfileService profiles(
+      {.gateway = gateway,
+       .catalog =
+           catalogOf({{.id = "balanced",
+                       .labelKey = "balanced",
+                       .owners = {{.owner = "llm", .changes = {{.key = "llm.gpu_layers", .value = "0"}}}}}}),
+       .hardware = hardware(4, 8, CpuIsa::Avx2)});
+
+  const auto outcome = profiles.apply({.profile = "balanced", .userId = 7});
+  REQUIRE(outcome.owners.size() == 1);
+  CHECK(resultOf(outcome.owners[0], "llm.gpu_layers").status == ProfileKeyStatus::Applied);
+  CHECK(ConfigService::getInt("llm.gpu_layers") == 0);
+  std::filesystem::remove(configPath());
 }
 
 TEST_CASE("a capability block is validated like the owners it names")
@@ -729,7 +787,7 @@ TEST_CASE("a profile marker rides every write with the keys applied so far, and 
 
 TEST_CASE("the first run applies the recommendation once, through a real owner, and the owner can undo it")
 {
-  loadVlmConfig("[vision]\nmax_input_px = 384\ngpu_layers = -1\n");
+  loadConfigBody("[vision]\nmax_input_px = 384\ngpu_layers = -1\n");
   Owner vlm("vlm", vlmGpuSpecs());
   vlm.registry.declareCapability("gpu");
   const SettingsGatewayService gateway({.owners = {{.name = "vlm", .target = vlm.target(), .credential = kSecret}},

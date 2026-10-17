@@ -4,6 +4,9 @@
       "id": "performance",
       "labelKey": "performance",
       "owners": {
+        "llm": {
+          "llm.gpu_layers": "0"
+        },
         "tts": {
           "tts.engine_es": "pocket",
           "tts.engine_en": "pocket",
@@ -18,6 +21,9 @@
       "id": "balanced",
       "labelKey": "balanced",
       "owners": {
+        "llm": {
+          "llm.gpu_layers": "0"
+        },
         "tts": {
           "tts.engine_es": "pocket",
           "tts.engine_en": "pocket",
@@ -32,6 +38,9 @@
       "id": "quality",
       "labelKey": "quality",
       "owners": {
+        "llm": {
+          "llm.gpu_layers": "0"
+        },
         "tts": {
           "tts.engine_es": "pocket",
           "tts.engine_en": "pocket",
@@ -46,9 +55,6 @@
         "gpu": {
           "vlm": {
             "vision.gpu_layers": "999"
-          },
-          "llm": {
-            "llm.gpu_layers": "999"
           }
         }
       }

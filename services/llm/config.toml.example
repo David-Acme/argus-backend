@@ -36,7 +36,7 @@ penalty_freq = 0.0
 penalty_present = 0.0
 seed = 0
 chat_template = "chatml"
-gpu_layers = -1
+gpu_layers = 0
 
 [intent]
 model_file = "models/intent/intent.bin"

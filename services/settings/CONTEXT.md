@@ -136,7 +136,8 @@ owner's own CONTEXT.md, measured on the reference host (Ryzen 7 5825U,
 | tts | `tts.pocket_variant_es` | fast | fast | quality | fast: RTF 0.097/0.103, 994 MB resident; quality (24 layers): RTF 0.297/0.320, 78/113 ms, 1.40 GB, the same WER on the test sentences, and the owner's choice ("utilizar calidad máxima"). |
 | tts | `tts.pocket_voice_es` | — | — | jean | The owner's voice for the house ("una voz M de Jean"); WER 0.00 on both Spanish models. |
 | vlm | `vision.max_input_px` | 256 | 384 | 512 | 256: 1.05–1.27 s and the same captions on the test scenes; 384: 1.35–1.70 s, the default because camera subjects are small; 512: 1.38–1.98 s, more detail. |
-| vlm, llm | `vision.gpu_layers`, `llm.gpu_layers` | — | — | 999 where the engine reports a GPU | VLM 0.61 s instead of 1.09 s per sentence on the Vega 8 iGPU (1.8x); see GPU offload. |
+| llm | `llm.gpu_layers` | 0 | 0 | 0 | CPU-only, written explicitly (owner decision of 2026-10-09): no profile offloads the LLM, so the value does not depend on the engine's probe. |
+| vlm | `vision.gpu_layers` | — | — | 999 where the engine reports a GPU | VLM 0.61 s instead of 1.09 s per sentence on the Vega 8 iGPU (1.8x); see GPU offload. |
 
 - **balanced keeps Spanish on `fast`.** It is recommended for 4–7 cores,
   where `ThreadBudget::ttsThreads()` gives Pocket half the hardware threads:
@@ -156,8 +157,9 @@ owner's own CONTEXT.md, measured on the reference host (Ryzen 7 5825U,
   `context_size` only costs RAM as history grows (the history cap is the real
   lever), `kv_type` is already chosen by RAM, the thread keys default to
   `ThreadBudget`, and none has a speed/quality measurement. `vision.gpu_layers`
-  and `llm.gpu_layers` are set only by Máxima calidad and only where the
-  engine reports a GPU (see "GPU offload"). `vision.max_tokens`: the
+  is set only by Máxima calidad and only where the engine reports a GPU, and
+  `llm.gpu_layers` is pinned at 0 by every profile (see "GPU offload").
+  `vision.max_tokens`: the
   image encoder dominates (a one-word answer costs 60–75 % of a sentence).
   `vision.image_max_tokens`: below 256 the model stops reading text.
   `tts.quality`/steps only shape Supertonic, the fallback engine. Voice turn
@@ -166,19 +168,23 @@ owner's own CONTEXT.md, measured on the reference host (Ryzen 7 5825U,
 
 ### GPU offload
 
-`vision.gpu_layers` and `llm.gpu_layers` (-1..999, -1 = the CPU probe, 999 =
-every layer) are restart keys. "Máxima calidad" sets both to 999 through a
-`withCapability.gpu` block in `profiles.json`: those keys join the profile only
-for an owner whose catalog reports the `gpu` capability, which argus-vlm and
-argus-llm declare when `llama_supports_gpu_offload()` finds a Vulkan device
-(in a container, only with `/dev/dri` passed through). Elsewhere the profile
-is exactly what it was. Measured on the reference host's Radeon Vega 8: the
-VLM describes in 0.61 s instead of 1.09 s per sentence (1.8x, services/vlm
-CONTEXT.md). The LLM, measured 2026-10-03 with the prod binary on the same
-iGPU (load 6-8, a 258-token prompt, 160 tokens out, three runs): prefill
-101 -> 182 tok/s (1.8x), decode 22.6 -> 25.1 tok/s (1.1x), so the turn's
-first token comes sooner and the CPU cores stay free for STT and TTS. Performance and
-Equilibrado never set them.
+`vision.gpu_layers` (-1..999, -1 = the CPU probe, 999 = every layer) is a
+restart key. "Máxima calidad" sets it to 999 through a `withCapability.gpu`
+block in `profiles.json`: the key joins the profile only for an owner whose
+catalog reports the `gpu` capability, which argus-vlm declares when
+`llama_supports_gpu_offload()` finds a Vulkan device (in a container, only
+with `/dev/dri` passed through). Elsewhere the profile is exactly what it
+was. Measured on the reference host's Radeon Vega 8: the VLM describes in
+0.61 s instead of 1.09 s per sentence (1.8x, services/vlm CONTEXT.md).
+
+`llm.gpu_layers` is the other half, and it is CPU-only: every profile pins it
+at 0 and the LLM product config ships `[llm] gpu_layers = 0`, both written
+explicitly (owner decision of 2026-10-09). `LlmService::init` takes a
+non-negative `llm.gpu_layers` over the probe, so the LLM offloads nothing
+from the shipped config or from a profile; the capability block carries no
+row for it. The measured LLM offload (2026-10-03, the prod binary on the same
+iGPU: prefill 101 -> 182 tok/s, decode 22.6 -> 25.1 tok/s) stays history:
+reopening CPU-only is a new owner decision, not a profile default.
 
 ### First run: the recommendation applied by default
 
