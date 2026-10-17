@@ -201,20 +201,32 @@ TEST_CASE("an unusable later crop keeps the cached known verdict")
                         .w = 40.0F,
                         .h = 40.0F};
   const auto known = matcher.match(good);
-  REQUIRE(known.has_value());
+  if (!known.has_value())
+  {
+    FAIL("the usable crop never matched");
+    return;
+  }
   CHECK(known->identity == PersonIdentity::Known);
   CHECK(known->personId == 7);
   CHECK(clientPtr->calls == 1);
 
   const auto knownAgain = matcher.match(good);
-  REQUIRE(knownAgain.has_value());
+  if (!knownAgain.has_value())
+  {
+    FAIL("the repeated crop never matched");
+    return;
+  }
   CHECK(knownAgain->identity == PersonIdentity::Known);
   CHECK(knownAgain->state == IdentityState::Known);
   CHECK(knownAgain->personId == 7);
   CHECK(clientPtr->calls == 1);
 
   const auto unusable = matcher.match(cropOn(rgb, 5, 10.0F, 10.0F, 6.0F, 6.0F));
-  REQUIRE(unusable.has_value());
+  if (!unusable.has_value())
+  {
+    FAIL("the unusable crop never matched");
+    return;
+  }
   CHECK(unusable->identity == PersonIdentity::Known);
   CHECK(unusable->state == IdentityState::Known);
   CHECK(unusable->personId == 7);
@@ -260,7 +272,11 @@ TEST_CASE("an unknown verdict can upgrade to known on a better crop")
                           .w = 20.0F,
                           .h = 24.0F};
   const auto unknown = matcher.match(blurry);
-  REQUIRE(unknown.has_value());
+  if (!unknown.has_value())
+  {
+    FAIL("the blurry crop never matched");
+    return;
+  }
   CHECK(unknown->identity == PersonIdentity::Unknown);
   CHECK(unknown->state == IdentityState::Unrecognized);
   CHECK(unknown->personId == 0);
@@ -280,7 +296,11 @@ TEST_CASE("an unknown verdict can upgrade to known on a better crop")
                          .w = 30.0F,
                          .h = 36.0F};
   const auto upgraded = matcher.match(sharp);
-  REQUIRE(upgraded.has_value());
+  if (!upgraded.has_value())
+  {
+    FAIL("the upgraded crop never matched");
+    return;
+  }
   CHECK(upgraded->identity == PersonIdentity::Known);
   CHECK(upgraded->state == IdentityState::Known);
   CHECK(upgraded->personId == 9);
@@ -1033,13 +1053,21 @@ TEST_CASE("an encode failure reports unobservable without scanning")
                         .w = 50.0F,
                         .h = 50.0F};
   const auto match = matcher.match(crop);
-  REQUIRE(match.has_value());
+  if (!match.has_value())
+  {
+    FAIL("the edge crop was not reported unobservable");
+    return;
+  }
   CHECK(match->identity == PersonIdentity::Unknown);
   CHECK(match->state == IdentityState::Unobservable);
   CHECK(match->personId == 0);
   CHECK(match->identifyAttempts == 0);
   const auto again = matcher.match(crop);
-  REQUIRE(again.has_value());
+  if (!again.has_value())
+  {
+    FAIL("the repeated edge crop was not reported unobservable");
+    return;
+  }
   CHECK(again->state == IdentityState::Unobservable);
 }
 
@@ -1064,7 +1092,11 @@ TEST_CASE("disabled identity reports unobservable without scanning")
                         .w = 20.0F,
                         .h = 30.0F};
   const auto match = matcher.match(crop);
-  REQUIRE(match.has_value());
+  if (!match.has_value())
+  {
+    FAIL("the disabled matcher did not answer");
+    return;
+  }
   CHECK(match->identity == PersonIdentity::Unknown);
   CHECK(match->state == IdentityState::Unobservable);
   CHECK(match->personId == 0);

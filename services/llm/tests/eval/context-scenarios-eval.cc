@@ -1055,8 +1055,16 @@ int main(int argc, char** argv)
     return item.duress.has_value();
   });
   std::optional<DuressRig> duress;
+  DuressRig* rig = nullptr;
   if (needsDuress) {
     duress = openDuressRig();
+    if (!duress.has_value()) {
+      std::cout << "[ERROR] the duress screen did not open\n";
+      controller.shutdownEngine();
+      llama_backend_free();
+      return 1;
+    }
+    rig = &duress.value();
     controller.useScreen(*duress->screen);
   }
   std::vector<CaseRun> runs;
@@ -1067,7 +1075,7 @@ int main(int argc, char** argv)
       const auto sealed = secret_phrase::seal({.phrase = item.duress->phrase,
                                                .salt = "context-scenarios-duress",
                                                .iterations = secret_phrase::kMinIterations});
-      if (!sealed || !armDuress(*duress, secret_phrase::encode(*sealed))) {
+      if (!sealed || !armDuress(*rig, secret_phrase::encode(*sealed))) {
         std::cout << "[ERROR] the duress screen did not take the phrase of " << item.id << "\n";
         controller.shutdownEngine();
         llama_backend_free();
@@ -1087,7 +1095,7 @@ int main(int argc, char** argv)
                             .roles = englishCase ? rolesEn : rolesEs,
                             .variant = options.variant,
                             .temperature = options.temperature}));
-    if (item.duress && !waitForRaises(*duress, raisesBefore + 1)) {
+    if (item.duress && !waitForRaises(*rig, raisesBefore + 1)) {
       std::cout << "[ERROR] the duress path did not fire for " << item.id << "\n";
       controller.shutdownEngine();
       llama_backend_free();

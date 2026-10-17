@@ -427,7 +427,11 @@ TEST_CASE("a legacy guard database migrates in place without data loss")
        .kind = "notify",
        .payload = {},
        .at = 200}));
-  REQUIRE(replayed.has_value());
+  if (!replayed.has_value())
+  {
+    FAIL("the legacy intent was not replayed");
+    return;
+  }
   CHECK(replayed->status == GuardIntentStatus::Pending);
   CHECK(guardIntentStatusIsResumable(replayed->status));
   CHECK(scalar("SELECT COUNT(*) FROM guard_evidence") == "0");

@@ -146,7 +146,11 @@ TEST_CASE("the widened check replaces the shipped one and only it")
                   "NOT NULL DEFAULT 'events' CHECK (record_mode IN ('events', "
                   "'continuous')))");
   const auto widened = record_mode_migration::withWidenedCheck(narrowed);
-  REQUIRE(widened.has_value());
+  if (!widened.has_value())
+  {
+    FAIL("the shipped check was not widened");
+    return;
+  }
   CHECK(widened->find(kWidenedCheck) != std::string::npos);
   CHECK(widened->find("('events', 'continuous')") == std::string::npos);
   CHECK(widened->find("record_mode TEXT NOT NULL DEFAULT 'events'") !=

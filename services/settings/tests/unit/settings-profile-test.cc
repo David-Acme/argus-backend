@@ -442,8 +442,16 @@ TEST_CASE("the engine product configs write gpu_layers = 0 explicitly")
   const toml::table vlm = toml::parse_file(ARGUS_VLM_CONFIG_TEMPLATE);
   const auto llmLayers = llm["llm"]["gpu_layers"].value<int64_t>();
   const auto vlmLayers = vlm["vision"]["gpu_layers"].value<int64_t>();
-  REQUIRE(llmLayers.has_value());
-  REQUIRE(vlmLayers.has_value());
+  if (!llmLayers.has_value())
+  {
+    FAIL("the llm template carries no gpu_layers");
+    return;
+  }
+  if (!vlmLayers.has_value())
+  {
+    FAIL("the vlm template carries no gpu_layers");
+    return;
+  }
   CHECK(*llmLayers == 0);
   CHECK(*vlmLayers == 0);
 }

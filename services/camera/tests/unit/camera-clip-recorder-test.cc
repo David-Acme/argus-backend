@@ -83,7 +83,11 @@ TEST_CASE("a clip opens at a keyframe covering the pre-roll and closes after the
   pushChunk(builder, chunkOf(22), false, triggerMs + 11000);
 
   const auto ready = builder.takeReady();
-  REQUIRE(ready.has_value());
+  if (!ready.has_value())
+  {
+    FAIL("the clip never surfaced");
+    return;
+  }
   CHECK(ready->trigger == CameraClipTrigger::Event);
   CHECK(ready->codec == "h264");
   CHECK(ready->body.starts_with(initBytes()));
@@ -114,7 +118,11 @@ TEST_CASE("a request with no keyframe in the ring waits for the next one")
   pushChunk(builder, chunkOf(4), false, 16000);
 
   const auto ready = builder.takeReady();
-  REQUIRE(ready.has_value());
+  if (!ready.has_value())
+  {
+    FAIL("the clip never surfaced on the next keyframe");
+    return;
+  }
   CHECK(ready->body == initBytes() + chunkOf(3) + chunkOf(4));
   CHECK(ready->startedAtMs == 1700000002000);
   CHECK(ready->durationMs == 8000);
@@ -138,7 +146,11 @@ TEST_CASE("motion reports extend the same clip instead of opening a second one")
   pushChunk(builder, chunkOf(4), false, 22000);
 
   const auto ready = builder.takeReady();
-  REQUIRE(ready.has_value());
+  if (!ready.has_value())
+  {
+    FAIL("the extended clip never surfaced");
+    return;
+  }
   CHECK(ready->trigger == CameraClipTrigger::Motion);
   CHECK(ready->body == initBytes() + chunkOf(1) + chunkOf(2) + chunkOf(3) + chunkOf(4));
   CHECK(ready->durationMs == 21000);
@@ -161,7 +173,11 @@ TEST_CASE("continuous recording closes one segment and opens the next at its key
   pushChunk(builder, chunkOf(2), false, 6000);
 
   const auto first = builder.takeReady();
-  REQUIRE(first.has_value());
+  if (!first.has_value())
+  {
+    FAIL("the first segment never surfaced");
+    return;
+  }
   CHECK(first->trigger == CameraClipTrigger::Continuous);
   CHECK(first->body == initBytes() + chunkOf(1) + chunkOf(2));
   CHECK(first->durationMs == 4000);
@@ -174,7 +190,11 @@ TEST_CASE("continuous recording closes one segment and opens the next at its key
   pushChunk(builder, chunkOf(5), false, 11500);
 
   const auto second = builder.takeReady();
-  REQUIRE(second.has_value());
+  if (!second.has_value())
+  {
+    FAIL("the second segment never surfaced");
+    return;
+  }
   CHECK(second->trigger == CameraClipTrigger::Continuous);
   CHECK(second->body == initBytes() + chunkOf(4) + chunkOf(5));
   CHECK(second->durationMs == 3500);
@@ -199,7 +219,11 @@ TEST_CASE("the ring keeps only the pre-roll window and the clip stays under its 
   pushChunk(builder, chunkOf(100), true, 10500);
 
   const auto ready = builder.takeReady();
-  REQUIRE(ready.has_value());
+  if (!ready.has_value())
+  {
+    FAIL("the capped clip never surfaced");
+    return;
+  }
   CHECK(ready->body == initBytes() + chunkOf(7) + chunkOf(8) + chunkOf(9));
   CHECK(ready->durationMs == 2000);
   pushChunk(builder, chunkOf(101), false, 10600);
