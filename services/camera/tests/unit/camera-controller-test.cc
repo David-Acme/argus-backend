@@ -231,6 +231,7 @@ void seedCameraDb(const char* path)
       "config TEXT NOT NULL DEFAULT '{}', "
       "is_enabled INTEGER NOT NULL DEFAULT 1 CHECK (is_enabled IN (0, 1)), "
       "is_online INTEGER NOT NULL DEFAULT 0, "
+      "privacy_state TEXT NOT NULL DEFAULT 'unknown', "
       "tls_fingerprint TEXT NOT NULL DEFAULT '', "
       "tapo_secure INTEGER NOT NULL DEFAULT 0, "
       "control_credential TEXT NOT NULL DEFAULT '', "
@@ -419,7 +420,8 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK_FALSE(cam["isOnline"].asBool());
   CHECK(cam["updatedAt"].isNull());
   CHECK(cam["deletedAt"].isNull());
-  CHECK(cam.getMemberNames().size() == 19);
+  CHECK(cam.getMemberNames().size() == 20);
+  CHECK(cam["privacyState"].asString() == "unknown");
   checkNoCredentials(cam);
 
   Json::Value toRtsp;

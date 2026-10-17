@@ -264,6 +264,7 @@ target_link_libraries(camera-controller-test PRIVATE
     argus::contracts::camera)
 
 target_link_libraries(camera-operator-test PRIVATE
+    argus::camera-driver
     argus::camera-operator
     argus::camera-motion
     argus::camera-stream)
@@ -314,6 +315,7 @@ target_link_libraries(camera-privacy-state-test PRIVATE
     argus::contracts::sync)
 
 target_link_libraries(camera-clip-recorder-test PRIVATE
+    argus::camera-driver
     argus::camera-recording
     argus::contracts::camera)
 
