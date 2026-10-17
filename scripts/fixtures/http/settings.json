@@ -2753,21 +2753,6 @@
                   {
                     "apply": "live",
                     "choices": [],
-                    "fallback": "false",
-                    "group": "alarm",
-                    "key": "guard.app_siren_enabled",
-                    "level": "basic",
-                    "max": 0.0,
-                    "min": 0.0,
-                    "pendingRestart": false,
-                    "step": 0.0,
-                    "type": "toggle",
-                    "unit": "",
-                    "value": "false"
-                  },
-                  {
-                    "apply": "live",
-                    "choices": [],
                     "fallback": "true",
                     "group": "visitors",
                     "key": "guard.greet_enabled",
