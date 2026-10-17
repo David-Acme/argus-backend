@@ -3630,6 +3630,7 @@
           "errors": null,
           "info": {
             "alertsReach": "others",
+            "appSirenEnabled": false,
             "duressEnabled": false,
             "hasPhrase": false,
             "hasPin": false
@@ -3658,6 +3659,7 @@
           "errors": null,
           "info": {
             "alertsReach": "others",
+            "appSirenEnabled": false,
             "duressEnabled": false,
             "hasPhrase": false,
             "hasPin": false
@@ -3686,6 +3688,7 @@
           "errors": null,
           "info": {
             "alertsReach": "others",
+            "appSirenEnabled": false,
             "duressEnabled": false,
             "hasPhrase": false,
             "hasPin": false
@@ -3927,6 +3930,7 @@
           "errors": null,
           "info": {
             "alertsReach": "others",
+            "appSirenEnabled": false,
             "duressEnabled": false,
             "hasPhrase": false,
             "hasPin": false
@@ -3981,6 +3985,7 @@
           "errors": null,
           "info": {
             "alertsReach": "others",
+            "appSirenEnabled": false,
             "duressEnabled": false,
             "hasPhrase": false,
             "hasPin": false
@@ -4186,6 +4191,178 @@
         "status": 200
       },
       "route": "/health",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/siren",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/guard/siren",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/siren",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/guard/siren",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/siren",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/guard/siren",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/siren",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "cameraId": [
+                "must be a positive integer"
+              ],
+              "enabled": [
+                "must be a boolean"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/guard/siren",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/siren",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/guard/siren",
+      "unit": "guard"
+    },
+    {
+      "method": "POST",
+      "path": "/guard/siren",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "cameraId": [
+                "must be a positive integer"
+              ],
+              "enabled": [
+                "must be a boolean"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/guard/siren",
       "unit": "guard"
     }
   ],
