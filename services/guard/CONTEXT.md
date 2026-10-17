@@ -575,7 +575,7 @@ owner page lists guard without a hand edit.
 | `guard.tamper_sustained_s` | advanced | live | health | 30-3600 | 300 |
 | `guard.offline_sustained_s` | advanced | live | health | 60-3600 | 240 |
 | `guard.health_stale_s` | advanced | live | health | 30-3600 | 300 |
-| `guard.journal_retention_days` | advanced | live | history | 1-3650 | 90 |
+| `guard.journal_retention_days` | advanced | live | history | 1-60 | 30 |
 
 The levels are danger ranks (1 low, 2 medium, 3 high, 4 critical): a response
 fires when the rank reaches its level. Announce and alarm accept 5, which no
