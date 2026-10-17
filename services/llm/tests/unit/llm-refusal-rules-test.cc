@@ -217,3 +217,17 @@ TEST_CASE("a relay with no name in front keeps the person out of the line")
   REQUIRE(tell.has_value());
   CHECK(tell->name == "María");
 }
+
+TEST_CASE("presence is the owner's alone")
+{
+  for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    const auto es = ask("¿quiénes están en casa ahora?", role);
+    REQUIRE(es.has_value());
+    CHECK(es->reason == turn::refusal::kPrivatePerson);
+    const auto en = ask("Who is home right now?", role, "en");
+    REQUIRE(en.has_value());
+    CHECK(en->reason == turn::refusal::kPrivatePerson);
+  }
+  CHECK_FALSE(ask("¿quiénes están en casa?", UserRole::Owner).has_value());
+  CHECK_FALSE(ask("Who is home?", UserRole::Owner, "en").has_value());
+}
