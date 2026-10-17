@@ -3,6 +3,7 @@
 #include <camera/camera-errors.hxx>
 #include <chrono>
 #include <errors/response-exception.hxx>
+#include <nats/nats-bus.hxx>
 #include <nats/nats-subject.hxx>
 #include <outbox/outbox-key.hxx>
 #include <shared/services/event-stream/event-stream.hxx>
@@ -29,12 +30,6 @@ std::string changeSubject(const std::string& configured)
                             : configured;
 }
 
-std::string actionSubject(const std::string& configured)
-{
-  return configured.empty() ? std::string(nats_subject::kCameraUserAction)
-                            : configured;
-}
-
 outbox::OutboxConfig outboxConfig(const std::shared_ptr<NatsBus>& bus,
                                   const NatsCameraChangeSink::Config& config)
 {
@@ -42,10 +37,8 @@ outbox::OutboxConfig outboxConfig(const std::shared_ptr<NatsBus>& bus,
       .streamName = config.streamName,
       .changeSubject = config.publishSubject,
       .objectSubject = {}};
-  const std::string actionStream = config.actionStreamName.empty()
-                                       ? std::string(nats_subject::kCameraActionStream)
-                                       : config.actionStreamName;
-  const std::string action = actionSubject(config.actionSubject);
+  const std::string actionStream = nats_subject::kCameraActionStream;
+  const std::string action = nats_subject::kCameraUserAction;
   return {.label = "Camera change outbox",
           .client = [] { return DbService::cameraClient(); },
           .defaultSubject = changeSubject(config.publishSubject),
@@ -74,7 +67,7 @@ outbox::OutboxConfig outboxConfig(const std::shared_ptr<NatsBus>& bus,
 NatsCameraChangeSink::NatsCameraChangeSink(
     const std::shared_ptr<NatsBus>& bus, const Config& config)
     : subject_(changeSubject(config.publishSubject)),
-      actionSubject_(actionSubject(config.actionSubject)),
+      actionSubject_(nats_subject::kCameraUserAction),
       outbox_(bus, outboxConfig(bus, config))
 {
 }

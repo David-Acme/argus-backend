@@ -49,7 +49,7 @@ TEST_CASE("camera schema applies cleanly to an in-memory database")
   const auto indexes = queryColumn(db.get(),
       "SELECT name FROM sqlite_master WHERE type = 'index' AND "
       "(name LIKE 'idx_camera%' OR name LIKE 'idx_zone%') ORDER BY name");
-  CHECK(indexes.size() == 13);
+  CHECK(indexes.size() == 14);
 }
 
 TEST_CASE("camera schema application is idempotent")

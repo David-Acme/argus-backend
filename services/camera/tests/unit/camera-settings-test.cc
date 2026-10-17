@@ -133,14 +133,18 @@ TEST_CASE("the camera catalog builds through the registry")
 {
   const auto catalog = cameraSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{cameraSettingsCatalog()});
-  CHECK(catalog.size() == 18);
-  CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) == 6);
+  CHECK(catalog.size() == 25);
+  CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) == 8);
 
   std::vector<std::string> live;
   for (const auto& spec : catalog)
     if (spec.apply == SettingApply::Live)
       live.push_back(spec.key);
-  CHECK(live == std::vector<std::string>{"actions.enabled", "streaming.max_viewers_per_camera",
+  CHECK(live == std::vector<std::string>{"actions.enabled", "recording.enabled",
+                                         "recording.retention_days", "recording.pre_roll_s",
+                                         "recording.post_roll_s", "recording.segment_s",
+                                         "recording.pre_roll_bytes", "recording.max_clip_bytes",
+                                         "streaming.max_viewers_per_camera",
                                          "streaming.max_total_viewers"});
   CHECK(specOf(catalog, "streaming.hub_window_bytes").apply == SettingApply::NextSession);
 }

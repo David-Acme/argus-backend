@@ -100,7 +100,6 @@ void ClipBuilder::begin(CameraClipTrigger trigger, int64_t atMs, int64_t epochMs
       clip.firstAtMs = clip.firstAtMs == 0 ? it->atMs : clip.firstAtMs;
       clip.lastAtMs = it->atMs;
     }
-    clip.anchorEpochMs = epochMs - (atMs - clip.firstAtMs);
   }
   active_ = std::move(clip);
 }

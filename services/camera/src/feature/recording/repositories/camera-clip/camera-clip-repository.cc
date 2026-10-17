@@ -74,7 +74,7 @@ drogon::Task<bool>
 CameraClipRepository::markDeleted(const CameraClipDeleteInput& input) const
 {
   const auto pooled = DbService::cameraClient();
-  auto* client = input.client != nullptr ? client : pooled.get();
+  auto* client = input.client != nullptr ? input.client : pooled.get();
   const auto rows =
       co_await client->execSqlCoro(MARK_DELETED.data(), input.deletedAt, input.id);
   co_return !rows.empty();
@@ -100,7 +100,7 @@ CameraClipRepository::countExpired(int64_t now, int64_t maxRetentionDays) const
       COUNT_EXPIRED_CLIPS.data(), now, now, maxRetentionDays);
   co_return rows.empty()
                 ? 0
-                : static_cast<int64_t>(rows.front()["total"].as<long long>());
+                : static_cast<int64_t>(rows.front()["total"].as<int64_t>());
 }
 
 drogon::Task<std::optional<int64_t>>
@@ -113,7 +113,7 @@ CameraClipRepository::retentionDaysOf(int64_t cameraId,
       co_await target->execSqlCoro(CAMERA_CLIP_RETENTION.data(), cameraId);
   if (rows.empty() || rows.front()["retention_days"].isNull())
     co_return std::nullopt;
-  co_return static_cast<int64_t>(rows.front()["retention_days"].as<long long>());
+  co_return static_cast<int64_t>(rows.front()["retention_days"].as<int64_t>());
 }
 
 drogon::Task<void> CameraClipRepository::purgeDeleted(int64_t before) const

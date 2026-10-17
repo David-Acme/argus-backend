@@ -152,7 +152,7 @@ int64_t ClipRecorder::release(int64_t bytes)
   return bytes;
 }
 
-void ClipRecorder::onClosed(const StreamClosedInput& input)
+void ClipRecorder::onClosed(const StreamHub::StreamClosedInput& input)
 {
   const auto slot = slotForSub(input.subId);
   if (!slot)

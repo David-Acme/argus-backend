@@ -19,8 +19,6 @@ public:
     int retryMs{outbox::kRetryMs};
     std::string publishSubject;
     std::string streamName;
-    std::string actionSubject;
-    std::string actionStreamName;
   };
 
   NatsCameraChangeSink(const std::shared_ptr<NatsBus>& bus,

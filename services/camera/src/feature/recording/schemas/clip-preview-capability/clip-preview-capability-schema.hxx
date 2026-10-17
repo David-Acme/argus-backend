@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <drogon/orm/Field.h>
 #include <drogon/orm/Row.h>
 #include <optional>
 #include <string>

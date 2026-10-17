@@ -181,7 +181,7 @@ TEST_CASE("an already widened table is left alone and no backup is written")
 
 TEST_CASE("applying on a database with rows keeps them and writes a backup")
 {
-  const TempDb fixture("old.db");
+  TempDb fixture("old.db");
   exec(fixture.db.get(), kOldCameraTable);
   exec(fixture.db.get(), kChildTables);
   exec(fixture.db.get(),
@@ -199,7 +199,7 @@ TEST_CASE("applying on a database with rows keeps them and writes a backup")
 
   CHECK(record_mode_migration::applyToFile(fixture.path));
 
-  const auto rebuilt = openFile(fixture.path);
+  auto rebuilt = openFile(fixture.path);
   CHECK(definitionOf(rebuilt.get(), "camera").find(kWidenedCheck) !=
         std::string::npos);
   CHECK(countOf(rebuilt.get(), "SELECT COUNT(*) FROM camera") == 2);

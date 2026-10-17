@@ -386,9 +386,11 @@ StreamHub::ViewerCount StreamHub::countViewers(int64_t cameraId)
 
 const char* StreamHub::viewerRefusal(const SubscribeInput& input)
 {
+  const ViewerCount counted = countViewers(input.cameraId);
+  const viewer_slots::Occupancy occupancy{.perCamera = counted.perCamera,
+                                          .total = counted.total};
   return viewer_slots::refusalMessage(viewer_slots::refusalOf(
-      {.perCamera = maxViewersPerCamera_, .total = maxTotalViewers_},
-      countViewers(input.cameraId),
+      {.perCamera = maxViewersPerCamera_, .total = maxTotalViewers_}, occupancy,
       {.recorder = input.recorder, .priority = input.priority}));
 }
 

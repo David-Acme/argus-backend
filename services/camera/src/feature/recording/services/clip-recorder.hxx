@@ -63,7 +63,7 @@ public:
   bool sendBinary(const uint8_t* data, size_t len) override;
   bool tryReserve(size_t bytes) override;
   int64_t release(int64_t bytes) override;
-  void onClosed(const StreamClosedInput& input) override;
+  void onClosed(const StreamHub::StreamClosedInput& input) override;
 
 private:
   ClipRecorder() = default;

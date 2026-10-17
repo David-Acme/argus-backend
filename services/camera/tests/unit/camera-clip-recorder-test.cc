@@ -139,7 +139,7 @@ TEST_CASE("motion reports extend the same clip instead of opening a second one")
   CHECK(ready->trigger == CameraClipTrigger::Motion);
   CHECK(ready->body == kInit + chunkOf(1) + chunkOf(2) + chunkOf(3) + chunkOf(4));
   CHECK(ready->durationMs == 21000);
-  CHECK(ready->startedAtMs == epochMs - 2000);
+  CHECK(ready->startedAtMs == epochMs - 1000);
 }
 
 TEST_CASE("continuous recording closes one segment and opens the next at its keyframe")

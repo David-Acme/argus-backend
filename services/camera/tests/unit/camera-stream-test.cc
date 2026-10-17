@@ -394,11 +394,12 @@ TEST_CASE("the total budget refuses a viewer before the camera budget does")
       {.cameraId = 7, .recorder = false},
       {.cameraId = 8, .recorder = false},
       {.cameraId = 9, .recorder = false},
+      {.cameraId = 10, .recorder = false},
   };
 
   const viewer_slots::Occupancy occupancy = viewer_slots::occupancyOf(viewers, 3);
   CHECK(occupancy.perCamera == 1);
-  CHECK(occupancy.total == 7);
+  CHECK(occupancy.total == 8);
 
   CHECK(viewer_slots::refusalOf(limits, occupancy,
                                 {.recorder = false, .priority = true}) ==

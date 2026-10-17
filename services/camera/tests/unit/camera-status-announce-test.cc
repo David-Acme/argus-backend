@@ -107,6 +107,12 @@ public:
     co_return;
   }
 
+  [[nodiscard]] drogon::Task<void>
+  publishAction(const ActionPublishInput&) const override
+  {
+    co_return;
+  }
+
   mutable std::vector<CameraResourceChange> notices;
 };
 
