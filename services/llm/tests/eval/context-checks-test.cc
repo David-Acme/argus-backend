@@ -99,6 +99,31 @@ TEST_CASE("a token group is hit by any of its words, accents and case aside")
   CHECK(missed.front() == 2);
 }
 
+TEST_CASE("a keep word matches its plural and singular, and nothing else")
+{
+  CHECK(context_checks::hasGroup("No tengo recordatorios pendientes.", TokenGroup{"recordatorio"}));
+  CHECK(context_checks::hasGroup("No tengo recordatorios pendientes.", TokenGroup{"pendiente"}));
+  CHECK(context_checks::hasGroup("Te quedan tareas.", TokenGroup{"tarea"}));
+  CHECK(context_checks::hasGroup("La reunion es el jueves.", TokenGroup{"reuniones"}));
+  CHECK(context_checks::hasGroup("Las cajas estan aqui.", TokenGroup{"caja"}));
+  CHECK_FALSE(context_checks::hasGroup("No hay nada por aqui.", TokenGroup{"recordatorio", "pendiente"}));
+  CHECK_FALSE(context_checks::hasGroup("nos vamos ahora", TokenGroup{"no"}));
+  CHECK_FALSE(context_checks::hasGroup("La casa esta sola.", TokenGroup{"caso"}));
+}
+
+TEST_CASE("a keep time matches the same clock read as digits, words or a day part")
+{
+  CHECK(context_checks::hasGroup("Son las cinco de la tarde.", TokenGroup{"17:00"}));
+  CHECK(context_checks::hasGroup("A las 5 PM.", TokenGroup{"17:00"}));
+  CHECK(context_checks::hasGroup("Sobre las 4:30 PM.", TokenGroup{"16:30"}));
+  CHECK(context_checks::hasGroup("El recordatorio fue a las 19:00.", TokenGroup{"7 pm"}));
+  CHECK(context_checks::hasGroup("A las nueve y media de la mañana.", TokenGroup{"09:30"}));
+  CHECK(context_checks::hasGroup("A las seis y veinte de la tarde.", TokenGroup{"18:20"}));
+  CHECK_FALSE(context_checks::hasGroup("Son las tres de la tarde.", TokenGroup{"17:00"}));
+  CHECK_FALSE(context_checks::hasGroup("Son las cinco de la mañana.", TokenGroup{"17:00"}));
+  CHECK_FALSE(context_checks::hasGroup("Ayer fue el 18:20 de la entrega.", TokenGroup{"23:52"}));
+}
+
 TEST_CASE("the first sentence is what the caller hears before anything else")
 {
   CHECK(context_checks::firstSentence("Tomás fue. Está en la cocina.") == "Tomás fue.");
@@ -110,11 +135,33 @@ TEST_CASE("the first sentence is what the caller hears before anything else")
   CHECK_FALSE(context_checks::missedFirstGroups("Tomás fue. Está en la cocina.", groups).empty());
 }
 
+TEST_CASE("a greeting or a date line before the answer is not the answer coming late")
+{
+  const std::vector<TokenGroup> groups{{"19:00"}};
+  CHECK(context_checks::missedFirstGroups("Hoy es sábado, David. El recordatorio de las plantas fue a las 19:00.",
+                                          groups, "David")
+            .empty());
+  CHECK(context_checks::missedFirstGroups("Hola, David. El recordatorio fue a las 19:00.", groups, "David").empty());
+  CHECK(context_checks::missedFirstGroups("Claro. El recordatorio fue a las 19:00.", groups).empty());
+  CHECK_FALSE(
+      context_checks::missedFirstGroups("Hoy es sábado, David. Está en la cocina. El recordatorio fue a las 19:00.",
+                                        groups, "David")
+          .empty());
+  const std::vector<TokenGroup> reason{{"tomás"}};
+  CHECK(context_checks::missedFirstGroups("Tomás fue. Está en la cocina.", reason).empty());
+  CHECK_FALSE(context_checks::missedFirstGroups("Está en la cocina. Tomás fue.", reason).empty());
+  CHECK_FALSE(context_checks::missedFirstGroups("Son las 19:00. Tomás fue.", reason).empty());
+}
+
 TEST_CASE("refusals, missing data and conflicts are read from what the reply says")
 {
   CHECK(context_checks::speaksRefusal({.reply = "No puedo decirte eso.", .lang = "es"}));
   CHECK(context_checks::speaksRefusal({.reply = "I cannot tell you that.", .lang = "en"}));
+  CHECK(context_checks::speaksRefusal({.reply = "María no ha mencionado su ubicación actual.", .lang = "es"}));
+  CHECK(context_checks::speaksRefusal({.reply = "No tengo información sobre su ubicación.", .lang = "es"}));
+  CHECK(context_checks::speaksRefusal({.reply = "I have no information about her whereabouts.", .lang = "en"}));
   CHECK_FALSE(context_checks::speaksRefusal({.reply = "David está en la cocina.", .lang = "es"}));
+  CHECK_FALSE(context_checks::speaksRefusal({.reply = "No tengo tiempo ahora mismo.", .lang = "es"}));
   CHECK(context_checks::speaksModuleOff({.reply = "La vigilancia está desactivada.", .lang = "es"}));
   CHECK(context_checks::speaksModuleOff({.reply = "Surveillance is off right now.", .lang = "en"}));
   CHECK(context_checks::speaksConflict({.reply = "Los datos no coinciden.", .lang = "es"}));
@@ -158,6 +205,37 @@ TEST_CASE("a number that is in no fact is an invented number")
   CHECK(context_checks::ungroundedNumbers({.reply = "A las 7.", .pool = "a las 07:00"}).empty());
 }
 
+TEST_CASE("a date and a clock the turn was handed as a reference are not invented numbers")
+{
+  const std::string reply = "Hoy es sábado, 17 de octubre de 2026, y son las 11:10.";
+  const std::string clock = "hoy es sábado 17 de octubre de 2026 y son las 11:10";
+  CHECK(context_checks::ungroundedNumbers({.reply = reply, .pool = "Agenda de hoy: sin eventos.", .clock = clock})
+            .empty());
+  const std::vector<std::string> without =
+      context_checks::ungroundedNumbers({.reply = reply, .pool = "Agenda de hoy: sin eventos."});
+  REQUIRE(without.size() == 4);
+  CHECK(without.front() == "17");
+}
+
+TEST_CASE("a reply time the pool carries in another clock reading is not an invented number")
+{
+  CHECK(context_checks::ungroundedNumbers({.reply = "El pago es a las 5 de la tarde.",
+                                           .pool = "Recordatorio: pagar la luz a las 17:00."})
+            .empty());
+  CHECK(context_checks::ungroundedNumbers({.reply = "Entrega a las 7 PM.", .pool = "Agenda: entrega a las 19:00."})
+            .empty());
+  CHECK(context_checks::ungroundedNumbers({.reply = "A las 4:30 PM.", .pool = "Agenda: colegio a las 16:30."}).empty());
+  CHECK(context_checks::ungroundedNumbers({.reply = "A las seis y veinte.", .pool = "Llegada a las 18:20."}).empty());
+  const std::vector<std::string> wrongHour =
+      context_checks::ungroundedNumbers({.reply = "Son las 9 de la noche.", .pool = "Recordatorio a las 17:00."});
+  REQUIRE(wrongHour.size() == 1);
+  CHECK(wrongHour.front() == "9");
+  const std::vector<std::string> wrongMinute =
+      context_checks::ungroundedNumbers({.reply = "Son las 17:30.", .pool = "Recordatorio a las 17:00."});
+  REQUIRE(wrongMinute.size() == 1);
+  CHECK(wrongMinute.front() == "30");
+}
+
 TEST_CASE("a barge-in answer does not carry the answered question back")
 {
   CHECK(context_checks::repeatsAny({.reply = "Está en modo casa.", .previous = {"reunión", "colegio"}}) == false);
@@ -182,6 +260,7 @@ TEST_CASE("a turn is scored on every dimension it is given")
                                                                                   .item = item,
                                                                                   .reply = "Tomás. No puedo decirte eso: los datos no coinciden y me falta la hora. ¿Quieres que lo apunte?",
                                                                                   .pool = "¿quién fue?",
+                                                                                  .clock = {},
                                                                                   .emittedAct = {},
                                                                                   .expectedAct = {},
                                                                                   .firstTurn = false,
@@ -194,6 +273,7 @@ TEST_CASE("a turn is scored on every dimension it is given")
                                                                                   .item = item,
                                                                                   .reply = "Tomás está en la cocina, ya le avisé a María; tiene una herida. La reunión era a las 17:00.",
                                                                                   .pool = "¿quién fue?",
+                                                                                  .clock = {},
                                                                                   .emittedAct = {},
                                                                                   .expectedAct = {},
                                                                                   .firstTurn = false,
@@ -220,6 +300,7 @@ TEST_CASE("a turn is scored on every dimension it is given")
                                                                                    .item = item,
                                                                                    .reply = "Desde aquí veo una persona en la puerta.",
                                                                                     .pool = "¿qué ves en la cámara?",
+                                                                                   .clock = {},
                                                                                    .emittedAct = {},
                                                                                    .expectedAct = {},
                                                                                    .firstTurn = false,
@@ -233,6 +314,7 @@ TEST_CASE("a turn is scored on every dimension it is given")
                                                                                    .item = item,
                                                                                    .reply = "La vigilancia está apagada; puedo activarla si quieres.",
                                                                                     .pool = "¿qué ves en la cámara?",
+                                                                                   .clock = {},
                                                                                    .emittedAct = {},
                                                                                    .expectedAct = {},
                                                                                    .firstTurn = false,
@@ -246,6 +328,7 @@ TEST_CASE("a turn is scored on every dimension it is given")
                                                                                  .item = item,
                                                                                  .reply = {},
                                                                                  .pool = {},
+                                                                                 .clock = {},
                                                                                  .emittedAct = {},
                                                                                  .expectedAct = {},
                                                                                  .firstTurn = false,
@@ -258,6 +341,7 @@ TEST_CASE("a turn is scored on every dimension it is given")
                                                                                    .item = item,
                                                                                    .reply = {},
                                                                                     .pool = {},
+                                                                                   .clock = {},
                                                                                    .emittedAct = {},
                                                                                    .expectedAct = {},
                                                                                    .firstTurn = false,

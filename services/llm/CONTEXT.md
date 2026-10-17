@@ -1069,13 +1069,23 @@ for.
 `turn::ContextSelector` (`services/turn/context-selector.{hxx,cc}`) decides,
 per turn, which context facets that turn may see. The facets are
 `ContextFacet` (`facet-lexicon.hxx`): `Camera`, `Agenda`, `Guard`,
-`Reminders`, `Memory`, `Modules`. The decision is one the turn already made:
-the decided tool's facet (`facetForTool`: `calendar.*` → agenda,
+`Reminders`, `Memory`, `Modules`, `People`, `Tasks`, `Projects` — the last
+three added 2026-10-17, when the N pack showed the people, task and project
+facts the app offers were unreachable by any utterance. The decision is one
+the turn already made: the decided tool's facet (`facetForTool`: `calendar.*`
+→ agenda, `task.*` → tasks, `project.*` → projects,
 `memory.remind`/`reminder.list` → reminders, `memory.*` → memory,
 `modules.*` → modules, `app.show_camera` → camera, `app.set_guard_mode` →
-guard; `task.*`/`project.*`/`app.open` imply nothing) unioned with the facet
-words and phrases the utterance itself names (`facetsInText`, es and en), so
-an agenda turn keeps the agenda fact and a greeting keeps none.
+guard; `app.open` implies nothing) unioned with the facet words and phrases
+the utterance itself names (`facetsInText`, es and en), so an agenda turn
+keeps the agenda fact and a greeting keeps none. The utterance is folded with
+`text_norm::folded` (punctuation becomes space), so the first word of
+`¿Vino sola?` is `vino` and not `¿vino`: the lexicon's single words match
+question-first words too. The guard lexicon carries the arrival and panic
+utterances (`llegada`/`llego`/`entrada`, `quién fue`/`qué hago`/`llama a la
+policía`), the singular forms of the agenda and reminder words (`cita`,
+`reunión`), and the obligation phrasings that name a reminder without the word
+(`tengo que`, `cuándo toca`, `cuándo vence` for a task), all es and en.
 
 The facts travel per turn, not in the history: `ChatRequest::contextFacts`
 (a `std::vector<ContextFact>{facet, text}`, additive). `LfmAdapter::chatTurn`
@@ -1083,7 +1093,13 @@ and `chatPlainTurn` select the facts the turn's facets cover, drop the rest
 (never blanked into empty headers), order them most-relevant-first, and compose
 them into one framed block — a frame that marks
 the text as data written by others, never instructions
-(`turn::contextBlock`, es and en, in `context-selector.cc`, its only consumer). A fact whose facet the build does not
+(`turn::contextBlock`, es and en, in `context-selector.cc`, its only consumer).
+The frame also states, in the user's language, that the people the data names
+are third parties and not the person talking to Argus, and the identity line
+the turn appends (`role_access::speakerLine`) now reads `Hablas con David (el
+propietario de la casa) en una llamada de voz.` — it names the second person
+the model speaks to, so the owner's profile can no longer be read as a fact
+about someone else and offered as an answer. A fact whose facet the build does not
 know is dropped rather than injected. The profile and the name stay in the
 static prefix and are always present; the clock note and the situation ride in the last user
 message, the clock at its head and the situation after the user's words. The composed block is what `LlmChatOutcome::contextBlock`

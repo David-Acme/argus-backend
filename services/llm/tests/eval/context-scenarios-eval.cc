@@ -652,6 +652,7 @@ CaseRun runCase(const CaseInput& input)
          .item = input.item,
          .reply = recorded.reply,
          .pool = pool,
+         .clock = LfmAdapter::clockNote(request.messages, input.item.lang),
          .emittedAct = recorded.act,
          .expectedAct = turn.act,
          .firstTurn = firstTurn,
