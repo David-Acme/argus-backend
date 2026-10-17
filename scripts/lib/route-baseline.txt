@@ -19,6 +19,7 @@ camera	POST	/camera	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services
 camera	GET	/camera/catalog	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera/controllers/camera-controller.hxx
 camera	GET	/camera/overview	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera/controllers/camera-controller.hxx
 camera	POST	/camera/probe	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera/controllers/camera-controller.hxx
+camera	GET	/camera/recording	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/recording/controllers/clip-controller.hxx
 camera	DELETE	/camera/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera/controllers/camera-controller.hxx
 camera	PATCH	/camera/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera/controllers/camera-controller.hxx
 camera	GET	/camera/{1}/capabilities	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
@@ -35,8 +36,8 @@ camera	GET	/camera/{1}/snapshot	DeviceFilter,JwtFilter,RoleFilter	-	services/cam
 camera	GET	/camera/{1}/status	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	POST	/camera/{1}/talk	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	POST	/camera/{1}/webrtc	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/webrtc/controllers/camera-webrtc-controller.hxx
-camera	WS	/media	DeviceFilter,JwtFilter	-	services/camera/src/feature/media/camera-media-socket.hxx
 camera	GET	/clip/{1}/content	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/recording/controllers/clip-controller.hxx
+camera	WS	/media	DeviceFilter,JwtFilter	-	services/camera/src/feature/media/camera-media-socket.hxx
 camera	POST	/zone	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/zone/controllers/zone-controller.hxx
 camera	DELETE	/zone/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/zone/controllers/zone-controller.hxx
 camera	PATCH	/zone/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/zone/controllers/zone-controller.hxx

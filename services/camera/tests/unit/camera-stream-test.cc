@@ -1,17 +1,28 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <config/config-service.hxx>
+#include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/gop-cache.hxx>
 #include <shared/services/stream/grab-backoff.hxx>
+#include <shared/services/stream/stream-hub.hxx>
 #include <shared/services/stream/upstream-http.hxx>
 #include <shared/services/stream/viewer-slots.hxx>
+#include <shared/services/stream/ws-frame.hxx>
 
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <cstdint>
+#include <fstream>
 #include <memory>
+#include <netinet/in.h>
 #include <string>
 #include <string_view>
+#include <sys/socket.h>
+#include <sys/stat.h>
+#include <thread>
+#include <unistd.h>
 #include <vector>
 
 namespace
@@ -432,4 +443,189 @@ TEST_CASE("the per-camera budget keeps a priority slot free and holds at one")
                                 viewer_slots::Occupancy{}, {.recorder = false,
                                                             .priority = false}) ==
         viewer_slots::Refusal::None);
+}
+
+namespace
+{
+int freePort()
+{
+  const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
+  sockaddr_in addr{};
+  addr.sin_family = AF_INET;
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  addr.sin_port = 0;
+  ::bind(fd, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+  socklen_t len = sizeof(addr);
+  ::getsockname(fd, reinterpret_cast<sockaddr*>(&addr), &len);
+  const int port = ntohs(addr.sin_port);
+  ::close(fd);
+  return port;
+}
+
+std::string testDir(const std::string& tag)
+{
+  const std::string dir = "/tmp/argus-camera-stream-test-" + std::to_string(::getpid()) + "-" + tag;
+  ::mkdir(dir.c_str(), 0700);
+  return dir;
+}
+
+class FakeGo2rtc
+{
+public:
+  explicit FakeGo2rtc(int port) : port_(port) {}
+
+  void start()
+  {
+    listenFd_ = ::socket(AF_INET, SOCK_STREAM, 0);
+    int one = 1;
+    ::setsockopt(listenFd_, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = htons(static_cast<uint16_t>(port_));
+    ::bind(listenFd_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+    ::listen(listenFd_, 4);
+    thread_ = std::thread([this]() { serve(); });
+  }
+
+  void stop()
+  {
+    running_.store(false);
+    ::shutdown(listenFd_, SHUT_RDWR);
+    if (thread_.joinable())
+      thread_.join();
+    ::close(listenFd_);
+    listenFd_ = -1;
+  }
+
+private:
+  void serve()
+  {
+    const std::string body = initSegment({trak(1, "vide")}) +
+                             fragment({.track = 1, .defaultFlags = kSyncSample}) +
+                             fragment({.track = 1, .defaultFlags = kDeltaSample}) +
+                             fragment({.track = 1, .defaultFlags = kDeltaSample}) +
+                             fragment({.track = 1, .defaultFlags = kSyncSample});
+    while (running_.load())
+    {
+      const int fd = ::accept(listenFd_, nullptr, nullptr);
+      if (fd < 0)
+        break;
+      char buffer[2048];
+      const ssize_t got = ::recv(fd, buffer, sizeof(buffer), 0);
+      if (got <= 0)
+      {
+        ::close(fd);
+        continue;
+      }
+      const std::string header =
+          "HTTP/1.1 200 OK\r\nContent-Type: video/mp4\r\nConnection: close\r\n\r\n";
+      ::send(fd, header.data(), header.size(), MSG_NOSIGNAL);
+      ::send(fd, body.data(), body.size(), MSG_NOSIGNAL);
+      std::this_thread::sleep_for(std::chrono::milliseconds(150));
+      ::close(fd);
+    }
+  }
+
+  int port_{0};
+  int listenFd_{-1};
+  std::atomic<bool> running_{true};
+  std::thread thread_;
+};
+
+struct OrderingSink : StreamHub::ISink
+{
+  bool sendBinary(const uint8_t* data, size_t len) override
+  {
+    if (!subscribed.load())
+      frameBeforeSubscribed.store(true);
+    if (frames.fetch_add(1) == 0)
+    {
+      const auto header = ws_frame::parse({.data = data, .len = len});
+      if (header.has_value())
+        firstType.store(static_cast<int>(header->type));
+    }
+    return true;
+  }
+  bool tryReserve(size_t) override { return true; }
+  int64_t release(int64_t bytes) override { return bytes; }
+  void onSubscribed(uint16_t id, int64_t camera) override
+  {
+    subId.store(id);
+    cameraId.store(camera);
+    subscribed.store(true);
+  }
+  void onClosed(const StreamHub::StreamClosedInput&) override {}
+
+  std::atomic<bool> subscribed{false};
+  std::atomic<bool> frameBeforeSubscribed{false};
+  std::atomic<int> frames{0};
+  std::atomic<int> firstType{-1};
+  std::atomic<uint16_t> subId{0};
+  std::atomic<int64_t> cameraId{0};
+};
+
+bool waitFor(const std::atomic<int>& counter, int target, int maxMs)
+{
+  for (int waited = 0; waited < maxMs; waited += 20)
+  {
+    if (counter.load() >= target)
+      return true;
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  return counter.load() >= target;
+}
+}
+
+TEST_CASE("a fastStart subscriber is told its subscription before the replayed frames reach it")
+{
+  const int apiPort = freePort();
+  const std::string dir = testDir("hub");
+  {
+    std::ofstream stub(dir + "/stub-go2rtc.sh");
+    stub << "#!/bin/sh\nsleep 30\n";
+  }
+  ::chmod((dir + "/stub-go2rtc.sh").c_str(), 0755);
+  {
+    std::ofstream config(dir + "/config.toml");
+    config << "[streaming]\n"
+           << "go2rtc_bin = \"" << dir << "/stub-go2rtc.sh\"\n"
+           << "go2rtc_config = \"" << dir << "/go2rtc.yaml\"\n"
+           << "go2rtc_api = \"127.0.0.1:" << apiPort << "\"\n"
+           << "go2rtc_rtsp = \"127.0.0.1:" << freePort() << "\"\n"
+           << "webrtc_listen = \"\"\n";
+  }
+  ConfigService::load(dir + "/config.toml");
+
+  FakeGo2rtc server(apiPort);
+  server.start();
+  Go2rtcManager::instance().init();
+  REQUIRE(Go2rtcManager::instance().isRunning());
+  StreamHub::instance().init();
+
+  auto first = std::make_shared<OrderingSink>();
+  std::string error;
+  const uint16_t firstId =
+      StreamHub::instance().subscribe({.sink = first, .cameraId = 9, .fastStart = true}, error);
+  REQUIRE(firstId != 0);
+  REQUIRE(waitFor(first->frames, 1, 5000));
+  CHECK(first->subscribed.load());
+  CHECK_FALSE(first->frameBeforeSubscribed.load());
+  CHECK(first->firstType.load() == static_cast<int>(ws_frame::kTypeInit));
+  REQUIRE(waitFor(first->frames, 5, 5000));
+
+  auto second = std::make_shared<OrderingSink>();
+  const uint16_t secondId =
+      StreamHub::instance().subscribe({.sink = second, .cameraId = 9, .fastStart = true}, error);
+  REQUIRE(secondId != 0);
+  CHECK(second->subscribed.load());
+  CHECK_FALSE(second->frameBeforeSubscribed.load());
+  CHECK(second->frames.load() > 0);
+  CHECK(second->firstType.load() == static_cast<int>(ws_frame::kTypeInit));
+  CHECK(second->cameraId.load() == 9);
+  CHECK(second->subId.load() == secondId);
+
+  StreamHub::instance().shutdown();
+  Go2rtcManager::instance().shutdown();
+  server.stop();
 }

@@ -3,6 +3,7 @@
 #include <config/config-service.hxx>
 
 #include <algorithm>
+#include <string>
 
 namespace
 {
@@ -34,5 +35,11 @@ RecordingConfig recording_config::resolve()
   config.sweepIntervalMs = positiveOr("recording.sweep_hours", 24) * 3600 * 1000;
   config.sweepInitialDelayMs = positiveOr("recording.sweep_start_s", 60) * 1000;
   config.minClipMs = positiveOr("recording.min_clip_s", 1) * 1000;
+  config.minFreeGb = std::max<int64_t>(0, ConfigService::getInt("recording.min_free_gb"));
+  if (!ConfigService::hasKey("recording.min_free_gb"))
+    config.minFreeGb = 20;
+  const std::string db = ConfigService::getString("camera.db");
+  const auto slash = db.find_last_of('/');
+  config.freeSpacePath = slash == std::string::npos ? std::string(".") : db.substr(0, slash);
   return config;
 }

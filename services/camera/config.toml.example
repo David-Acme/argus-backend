@@ -141,6 +141,7 @@ max_clip_bytes = 100663296
 rescan_s = 15
 sweep_hours = 24
 sweep_start_s = 60
+min_free_gb = 20
 
 [grpc]
 caller_guard = ""

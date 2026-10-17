@@ -6,6 +6,7 @@
 #include <chrono>
 #include <ctime>
 #include <drogon/drogon.h>
+#include <feature/recording/infra/disk-space.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/schemas/camera/camera-schema.hxx>
 #include <shared/services/stream/ws-frame.hxx>
@@ -20,6 +21,13 @@ namespace
 constexpr int kMaxSweepBatches = 50;
 constexpr int64_t kSweepBatch = 200;
 constexpr int64_t kPurgeDeletedSeconds = 7LL * 24 * 3600;
+constexpr int64_t kAssumedKeyframeIntervalMs = 3000;
+constexpr int64_t kRetryBackoffMinMs = 5000;
+constexpr int64_t kRetryBackoffMaxMs = 60000;
+constexpr int64_t kFloorPurgeBatch = 50;
+constexpr int kMaxFloorPurgeBatches = 50;
+constexpr double kWatchdogTickSeconds = 1.0;
+constexpr double kFloorTickSeconds = 5.0;
 }
 
 ClipRecorder& ClipRecorder::instance()
@@ -72,7 +80,8 @@ ClipRecorder::slotForSub(uint16_t subId) const
 
 bool ClipRecorder::requestClip(const ClipRequestInput& input)
 {
-  if (stopping_.load(std::memory_order_acquire) || !config_.enabled)
+  if (stopping_.load(std::memory_order_acquire) ||
+      paused_.load(std::memory_order_acquire) || !config_.enabled)
     return false;
   const auto slot = slotForCamera(input.cameraId);
   if (!slot)
@@ -101,6 +110,16 @@ void ClipRecorder::appendChunk(const std::shared_ptr<CameraSlot>& slot,
   std::optional<ReadyClip> ready;
   {
     std::scoped_lock lock(slot->mtx);
+    if (slot->stalled)
+    {
+      slot->stalled = false;
+      slot->retryBackoffMs = 0;
+      LOG_INFO << "Camera recording: camera " << slot->cameraId
+               << " streams again";
+    }
+    if (keyframe)
+      record_watchdog::observeKeyframe(slot->keyframes, atMs);
+    slot->lastFragmentMs = atMs;
     slot->builder.push({.payload = payload, .len = len, .keyframe = keyframe,
                         .atMs = atMs});
     ready = slot->builder.takeReady();
@@ -168,6 +187,15 @@ void ClipRecorder::onClosed(const StreamHub::StreamClosedInput& input)
   slot->builder.reset();
 }
 
+void ClipRecorder::onSubscribed(uint16_t subId, int64_t cameraId)
+{
+  std::scoped_lock lock(slotsMutex_);
+  const auto it = byCamera_.find(cameraId);
+  if (it == byCamera_.end())
+    return;
+  bySub_[subId] = it->second;
+}
+
 void ClipRecorder::attach(const std::shared_ptr<CameraSlot>& slot,
                           std::string& error)
 {
@@ -182,6 +210,9 @@ void ClipRecorder::attach(const std::shared_ptr<CameraSlot>& slot,
     bySub_[subId] = slot;
   }
   slot->subId.store(subId, std::memory_order_release);
+  std::scoped_lock lock(slot->mtx);
+  slot->lastFragmentMs = steadyNowMs();
+  slot->keyframes = {};
 }
 
 void ClipRecorder::detach(const std::shared_ptr<CameraSlot>& slot)
@@ -269,6 +300,7 @@ drogon::Task<void> ClipRecorder::reconcile()
       slot->mode = camera.recordMode;
     }
     const bool wanted = config_.enabled && surveillance &&
+                        !paused_.load(std::memory_order_acquire) &&
                         camera.recordMode != CameraRecordMode::Off;
     if (!wanted) {
       if (slot->subId.load(std::memory_order_acquire) != 0)
@@ -394,6 +426,13 @@ drogon::Task<void> ClipRecorder::uploadClip(ClipUpload upload)
   co_return;
 }
 
+RecordingState ClipRecorder::state() const
+{
+  return {.paused = paused_.load(std::memory_order_acquire),
+          .freeBytes = freeBytes_.load(std::memory_order_acquire),
+          .minFreeBytes = minFreeBytes_.load(std::memory_order_acquire)};
+}
+
 ClipRecorderStatus ClipRecorder::status() const
 {
   ClipRecorderStatus out;
@@ -481,6 +520,166 @@ void ClipRecorder::sweepTick()
   });
 }
 
+void ClipRecorder::watchdogTick()
+{
+  if (stopping_.load(std::memory_order_acquire) ||
+      paused_.load(std::memory_order_acquire))
+    return;
+  const int64_t now = steadyNowMs();
+  std::vector<std::shared_ptr<CameraSlot>> slots;
+  {
+    std::scoped_lock lock(slotsMutex_);
+    for (const auto& [cameraId, slot] : byCamera_)
+      slots.push_back(slot);
+  }
+  for (const auto& slot : slots)
+  {
+    bool resubscribe = false;
+    int64_t stalledMs = 0;
+    {
+      std::scoped_lock lock(slot->mtx);
+      if (slot->subId.load(std::memory_order_acquire) == 0 ||
+          slot->mode == CameraRecordMode::Off)
+        continue;
+      const auto verdict = record_watchdog::verdict(
+          {.lastFragmentMs = slot->lastFragmentMs,
+           .keyframeIntervalMs = slot->keyframes.intervalMs,
+           .retryAtMs = slot->retryAtMs,
+           .retryBackoffMs = slot->retryBackoffMs,
+           .stalled = slot->stalled},
+          now, {.assumedIntervalMs = kAssumedKeyframeIntervalMs,
+                .backoffMinMs = kRetryBackoffMinMs,
+                .backoffMaxMs = kRetryBackoffMaxMs});
+      if (!verdict.stalled)
+        continue;
+      if (verdict.warn)
+      {
+        slot->stalled = true;
+        stalledMs = now - slot->lastFragmentMs;
+        LOG_WARN << "Camera recording: camera " << slot->cameraId
+                 << " is recording but has sent no fragment for " << stalledMs
+                 << " ms (2x its "
+                 << (slot->keyframes.intervalMs > 0
+                         ? slot->keyframes.intervalMs
+                         : kAssumedKeyframeIntervalMs)
+                 << " ms keyframe interval); re-subscribing";
+      }
+      if (!verdict.retry)
+        continue;
+      slot->retryBackoffMs = verdict.backoffMs;
+      slot->retryAtMs = verdict.retryAtMs;
+      resubscribe = true;
+    }
+    if (!resubscribe)
+      continue;
+    std::string error;
+    detach(slot);
+    attach(slot, error);
+    if (slot->subId.load(std::memory_order_acquire) == 0 && !error.empty())
+      LOG_WARN << "Camera recording: camera " << slot->cameraId
+               << " could not re-subscribe (" << error << ")";
+  }
+}
+
+drogon::Task<void> ClipRecorder::setPaused(bool paused, int64_t freeBytes)
+{
+  if (paused_.exchange(paused, std::memory_order_acq_rel) == paused)
+    co_return;
+  if (paused)
+    LOG_WARN << "Camera recording: paused, " << freeBytes / (1024 * 1024 * 1024)
+             << " GB free is under the " << config_.minFreeGb
+             << " GB floor; no clip is opened until space returns";
+  else
+    LOG_INFO << "Camera recording: resumed, " << freeBytes / (1024 * 1024 * 1024)
+             << " GB free is back over the " << config_.minFreeGb << " GB floor";
+  if (const auto* sink = camera_change::getSink())
+    co_await sink->publishResource(
+        {.scope = ResourceScope::Recording, .ids = {}, .user = 0, .client = nullptr});
+}
+
+drogon::Task<int64_t> ClipRecorder::purgeOldestUntil(int64_t minBytes)
+{
+  int64_t removed = 0;
+  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  for (int batch = 0; batch < kMaxFloorPurgeBatches &&
+                      !stopping_.load(std::memory_order_acquire);
+       ++batch)
+  {
+    if (disk_space::freeBytesOf(config_.freeSpacePath) >= minBytes)
+      break;
+    std::vector<CameraClipSchema> clips;
+    try
+    {
+      clips = co_await clipRepository_.findOldest({.batch = kFloorPurgeBatch});
+    }
+    catch (const std::exception& error)
+    {
+      LOG_WARN << "Camera recording: the oldest clips could not be read: "
+               << error.what();
+      break;
+    }
+    if (clips.empty())
+      break;
+    for (const auto& clip : clips)
+    {
+      bool gone = clip.objectKey.empty();
+      if (!gone)
+      {
+        try
+        {
+          co_await storage_.remove(clip.objectKey);
+          gone = true;
+        }
+        catch (const std::exception& error)
+        {
+          LOG_WARN << "Camera recording: clip " << clip.id
+                   << " could not be removed: " << error.what();
+        }
+      }
+      if (!gone)
+        continue;
+      co_await clipRepository_.markDeleted({.id = clip.id, .deletedAt = now});
+      ++removed;
+    }
+  }
+  if (removed > 0)
+    LOG_WARN << "Camera recording: purged " << removed
+             << " oldest clip(s) to reach the disk floor";
+  co_return removed;
+}
+
+drogon::Task<void> ClipRecorder::floorTick()
+{
+  if (config_.minFreeGb <= 0 || stopping_.load(std::memory_order_acquire))
+    co_return;
+  const in_flight::Guard guard(inFlight_);
+  const int64_t minBytes = config_.minFreeGb * 1024 * 1024 * 1024;
+  minFreeBytes_.store(minBytes, std::memory_order_release);
+  int64_t freeBytes = disk_space::freeBytesOf(config_.freeSpacePath);
+  if (freeBytes < 0)
+    co_return;
+  freeBytes_.store(freeBytes, std::memory_order_release);
+  const bool paused = paused_.load(std::memory_order_acquire);
+  if (freeBytes >= minBytes)
+  {
+    if (paused)
+      co_await setPaused(false, freeBytes);
+    co_return;
+  }
+  co_await purgeOldestUntil(minBytes);
+  freeBytes = disk_space::freeBytesOf(config_.freeSpacePath);
+  if (freeBytes >= 0)
+    freeBytes_.store(freeBytes, std::memory_order_release);
+  if (freeBytes >= minBytes)
+  {
+    if (paused)
+      co_await setPaused(false, freeBytes);
+    co_return;
+  }
+  if (!paused)
+    co_await setPaused(true, freeBytes);
+}
+
 void ClipRecorder::start()
 {
   bool expected = false;
@@ -498,6 +697,12 @@ void ClipRecorder::start()
   sweepStartTimer_ = loop->runAfter(
       static_cast<double>(config_.sweepInitialDelayMs) / 1000.0,
       [this]() { sweepTick(); });
+  watchdogTimer_ = loop->runEvery(kWatchdogTickSeconds,
+                                  [this]() { watchdogTick(); });
+  floorTimer_ = loop->runEvery(kFloorTickSeconds, [this]() {
+    drogon::async_run([this]() { return floorTick(); });
+  });
+  drogon::async_run([this]() { return floorTick(); });
   drogon::async_run([this]() { return reconcile(); });
 }
 
@@ -511,6 +716,8 @@ void ClipRecorder::requestStop()
   invalidate(rescanTimer_);
   invalidate(sweepTimer_);
   invalidate(sweepStartTimer_);
+  invalidate(watchdogTimer_);
+  invalidate(floorTimer_);
   std::vector<std::shared_ptr<CameraSlot>> slots;
   {
     std::scoped_lock lock(slotsMutex_);

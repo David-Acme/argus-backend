@@ -18,6 +18,8 @@ public:
                 "DeviceFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(ClipController::content, "/clip/{1}/content", drogon::Get,
                 "DeviceFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(ClipController::recording, "/camera/recording", drogon::Get,
+                "DeviceFilter", "JwtFilter", "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> list(drogon::HttpRequestPtr req,
@@ -28,6 +30,7 @@ public:
                                                int64_t cameraId, int64_t clipId);
   drogon::Task<drogon::HttpResponsePtr> content(drogon::HttpRequestPtr req,
                                                 std::string token);
+  drogon::Task<drogon::HttpResponsePtr> recording(drogon::HttpRequestPtr req);
 
 private:
   ClipService service_;

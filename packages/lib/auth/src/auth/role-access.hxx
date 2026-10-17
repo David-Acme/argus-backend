@@ -279,6 +279,10 @@ inline constexpr std::array<ClipRouteAccess, 4> kClipAccess = {{
     {.path = "/clip/{id}/content", .method = drogon::Get, .roles = kOwnerAndGuard},
 }};
 
+inline constexpr std::array<AuthRouteAccess, 1> kRecordingStatusAccess = {{
+    {.path = "/camera/recording", .method = drogon::Get, .roles = kOwnerAndGuard},
+}};
+
 inline constexpr std::array<AuthRouteAccess, 5> kRouteOverrides = {{
     {.path = "/notification/delivery-summary", .method = drogon::Get, .roles = kOwnerOnly},
     {.path = "/notification/responses", .method = drogon::Delete, .roles = kOwnerOnly},
@@ -599,6 +603,10 @@ inline bool normalizedRouteAccess(const HasHttpAccessInput& input)
 
   if (const auto* clip = clipRouteOf(input.path, input.method))
     return roleGranted(clip->roles, input.role, input.roleActive);
+
+  if (const auto* route =
+          routeOf(kRecordingStatusAccess, input.path, input.method))
+    return roleGranted(route->roles, input.role, input.roleActive);
 
   if (const auto* route = routeOf(kRouteOverrides, input.path, input.method))
     return roleGranted(route->roles, input.role, input.roleActive);

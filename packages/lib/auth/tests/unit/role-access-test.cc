@@ -800,6 +800,31 @@ TEST_CASE("guards read named visitors and their pictures; only owners manage the
   CHECK(hasHttpAccess({.role = UserRole::Owner, .path = "/visitor-settings", .method = drogon::Patch}));
 }
 
+TEST_CASE("the recording state is Owner and Guard, and the module gate holds it too")
+{
+  const auto allows = [](UserRole role, const char* path, drogon::HttpMethod method,
+                         bool roleActive = true) {
+    return role_access::hasHttpAccess(
+        {.role = role, .path = path, .method = method, .roleActive = roleActive});
+  };
+
+  CHECK(allows(UserRole::Owner, "/camera/recording", drogon::Get));
+  CHECK(allows(UserRole::Guard, "/camera/recording", drogon::Get));
+  CHECK_FALSE(allows(UserRole::Resident, "/camera/recording", drogon::Get));
+  CHECK_FALSE(allows(UserRole::Guest, "/camera/recording", drogon::Get));
+  CHECK_FALSE(allows(UserRole::Unknown, "/camera/recording", drogon::Get));
+  CHECK_FALSE(allows(UserRole::Guard, "/camera/recording", drogon::Get, false));
+  CHECK_FALSE(allows(UserRole::Guard, "/camera/recording", drogon::Post));
+  CHECK(allows(UserRole::Resident, "/camera/4", drogon::Get));
+
+  const ModuleSnapshot modules = ModuleSnapshot{ModuleFlags{
+      {.id = "surveillance", .enabled = false, .roles = {"guard"}},
+  }};
+  CHECK(role_access::routeVerdict(
+            {.role = UserRole::Owner, .path = "/camera/recording", .method = drogon::Get,
+             .modules = modules}) == role_access::RouteVerdict::ModuleDisabled);
+}
+
 TEST_CASE("clip access follows the table exactly as the access rows")
 {
   const auto allows = [](UserRole role, const char* path, drogon::HttpMethod method,

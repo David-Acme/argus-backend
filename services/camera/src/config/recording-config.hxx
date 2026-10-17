@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 
 struct RecordingConfig
 {
@@ -18,6 +19,8 @@ struct RecordingConfig
   int64_t sweepIntervalMs{24LL * 3600 * 1000};
   int64_t sweepInitialDelayMs{60000};
   int64_t minClipMs{1000};
+  int64_t minFreeGb{20};
+  std::string freeSpacePath;
 };
 
 namespace recording_config

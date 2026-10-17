@@ -43,6 +43,10 @@ inline constexpr std::string_view COUNT_EXPIRED_CLIPS =
     "c.expires_at <= ? OR (cam.id IS NOT NULL AND cam.retention_days IS NOT NULL "
     "AND c.created_at <= ? - 86400 * MIN(cam.retention_days, ?)))";
 
+inline constexpr std::string_view OLDEST_CLIPS =
+    "SELECT * FROM camera_clip WHERE deleted_at = 0 "
+    "ORDER BY created_at ASC, id ASC LIMIT ?";
+
 inline constexpr std::string_view CAMERA_CLIP_RETENTION =
     "SELECT retention_days FROM camera WHERE id = ?";
 
@@ -84,6 +88,11 @@ struct CameraClipDeleteInput
   int64_t id{0};
   int64_t deletedAt{0};
   drogon::orm::DbClient* client{nullptr};
+};
+
+struct CameraClipOldestInput
+{
+  int64_t batch{50};
 };
 
 struct CameraClipSweepInput

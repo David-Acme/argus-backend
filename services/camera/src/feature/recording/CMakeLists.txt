@@ -4,15 +4,18 @@ argus_module(NAME camera-recording
         dtos/clip-page-dto.cc
         dtos/response-clip-content-dto.cc
         dtos/response-clip-preview-capability-dto.cc
+        dtos/response-recording-state-dto.cc
         dtos/response-clips-dto.cc
         repositories/camera-clip/camera-clip-repository.cc
         repositories/clip-preview-capability/clip-preview-capability-repository.cc
         schemas/camera-clip/camera-clip-schema.cc
         schemas/clip-preview-capability/clip-preview-capability-schema.cc
+        infra/disk-space.cc
         services/clip-builder.cc
         services/clip-recorder.cc
         services/clip-service.cc
         services/opaque-token.cc
+        services/record-watchdog.cc
     INCLUDES
         ../..
     DEPENDS

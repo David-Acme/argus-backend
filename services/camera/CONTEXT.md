@@ -2356,8 +2356,9 @@ an H.264 camera stays H.264 (the codec is read off the moov and stored on the ro
 **The modes.** `off` records nothing; `motion` opens a clip when the ONVIF motion board reports
 motion and keeps extending it while reports keep arriving; `events` does the same plus one clip per
 object event the operator publishes — the events the guard's episodes are built from; `continuous`
-closes a segment every `recording.segment_s` (2 min default) and opens the next at the following
-keyframe. A new camera is `events`. **Cameras that already existed store `events` and therefore
+closes a segment at the first KEYFRAME at or after `recording.segment_s` (2 min default) and opens
+the next segment on that same keyframe, so the two are back to back — no frame is dropped and none
+is stored twice, and a segment is a little longer than its target (up to one keyframe interval). A new camera is `events`. **Cameras that already existed store `events` and therefore
 start recording after this update** — the recorder logs one line per camera at boot,
 `Camera recording: camera <id> recording on: events`, and the disk the owner's cameras will spend
 is reported by the integration pass's measurement, not here.
@@ -2385,7 +2386,47 @@ sweep has.
 
 **Tests, with no camera.** `camera-clip-recorder-test` drives `ClipBuilder` directly: the
 byte-exact body, the pre-roll window, the wait for the first keyframe, the continuous seam, the
-size cap and the mode gate. `camera-stream-test` holds the viewer budgets, including four viewers
+size cap and the mode gate.
+
+## Recording, hardened (2026-10-17, Y)
+
+Three things the integration pass measured and the owner decided:
+
+**The seam.** A continuous segment used to close at the first fragment past
+`recording.segment_s` and the next one opened at the following keyframe, dropping the frames in
+between: measured on a live camera, every seam lost 1.44-1.60 s of video (36-40 frames), and the
+code's own test pinned it. `ClipBuilder::push` now closes only when a KEYFRAME crosses the target
+— and that keyframe opens the next segment (`close()`'s continuous re-begin finds it in the ring
+and includes it), so the boundary is exact: the new segment's first frame is the one after the old
+segment's last. `camera-clip-recorder-test` pins 0 gap and 0 overlap at 10, 30, 60 and 120 s, and
+the motion/event post-roll cut is unchanged (any fragment past the post-roll closes it).
+
+**The sub-id mapping and the watchdog.** A recorder that attached to an upstream which was already
+alive (the app watching the camera, or a `record_mode` flip off -> on while the service runs) got
+its init segment delivered by the hub's fastStart replay BEFORE `ClipRecorder::attach` had stored
+the new sub-id, so every frame was dropped and `ClipBuilder::close` discarded every segment
+silently: measured, a camera switched back to `continuous` recorded nothing for as long as it was
+left that way. The hub now tells the sink `onSubscribed(subId, cameraId)` inside `subscribe`,
+after the subscriber is on the upstream and before `replayGop` — atomically under
+`hubMutex_` -> `Upstream::mtx`, the documented order — and the recorder maps the sub-id there; the
+mapping `attach` stores after `subscribe` returns is now a formality. Two defences ride beside it:
+a clip whose body has no init is logged (never dropped silently), and a recorder WATCHDOG ticks
+every second: a camera in a recording mode that has sent no fragment for 2x its own measured
+keyframe interval (3 s assumed until one is measured) logs one WARN and re-subscribes, backing off
+5, 10, 20, 40 and 60 s and logging `streams again` when data returns. `camera-stream-test` drives a
+real `StreamHub` against a fake go2rtc (a stub binary plus a tiny fMP4 server) and pins the order:
+the sink is told its subscription before the first replayed frame arrives, and the first frame is
+the init.
+
+**The disk floor.** `recording.min_free_gb` (default 20, 0 disables) is checked every 5 s against
+the filesystem that holds the service's data — the database's directory, which in the compose
+deployment is the host's data volume, the same disk the objects land on. Below the floor the
+recorder purges its OLDEST clips (object first, then the row, bounded batches) until the space
+returns; if it cannot, recording PAUSES: no clip is opened, subscriptions are dropped, one WARN
+says why, and a `ResourceChanged` on the new `(camera, recording)` pair tells the app to reload
+`GET /camera/recording`, which answers `{paused, freeGb, minFreeGb, freeBytes}` (Owner and Guard,
+`kRecordingStatusAccess`). Space coming back resumes recording with the other WARN. The route's
+fixture masks `freeGb`/`freeBytes` as volatile: they are the answering host's numbers. `camera-stream-test` holds the viewer budgets, including four viewers
 and the recorder on one camera. `record-mode-migration-test` covers the rebuild that widens the
 old `record_mode` CHECK on an existing database: the rewrite, the idempotent no-op (no backup),
 and the row-preserving apply with its backup.

@@ -59,3 +59,10 @@ ClipController::content(drogon::HttpRequestPtr req, std::string token)
        .requesterRole = ctx.role});
   co_return ApiResponse::ok(result.toJson());
 }
+
+drogon::Task<drogon::HttpResponsePtr>
+ClipController::recording(drogon::HttpRequestPtr req)
+{
+  static_cast<void>(req);
+  co_return ApiResponse::ok(service_.recordingState().toJson());
+}

@@ -21,6 +21,8 @@ public:
   drogon::Task<bool> markDeleted(const CameraClipDeleteInput& input) const;
   drogon::Task<std::vector<CameraClipSchema>>
   findExpired(const CameraClipSweepInput& input) const;
+  drogon::Task<std::vector<CameraClipSchema>>
+  findOldest(const CameraClipOldestInput& input) const;
   drogon::Task<int64_t> countExpired(int64_t now, int64_t maxRetentionDays) const;
   drogon::Task<std::optional<int64_t>>
   retentionDaysOf(int64_t cameraId, drogon::orm::DbClient* client = nullptr) const;

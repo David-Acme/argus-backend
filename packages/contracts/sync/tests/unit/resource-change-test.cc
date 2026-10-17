@@ -12,7 +12,7 @@ TEST_CASE("the resource vocabulary round-trips and answers nothing unknown")
         const auto domain = static_cast<ResourceDomain>(value);
         CHECK(resourceDomainFromString(resourceDomainToString(domain)) == domain);
     }
-    for (int value = 0; value <= static_cast<int>(ResourceScope::Clips); ++value) {
+    for (int value = 0; value <= static_cast<int>(ResourceScope::Recording); ++value) {
         const auto scope = static_cast<ResourceScope>(value);
         CHECK(resourceScopeFromString(resourceScopeToString(scope)) == scope);
     }
@@ -24,7 +24,7 @@ TEST_CASE("the resource vocabulary round-trips and answers nothing unknown")
 
 TEST_CASE("every scope carries exactly one read route and every domain is used")
 {
-    for (int value = 0; value <= static_cast<int>(ResourceScope::Clips); ++value) {
+    for (int value = 0; value <= static_cast<int>(ResourceScope::Recording); ++value) {
         const auto scope = static_cast<ResourceScope>(value);
         const auto rows = std::ranges::count_if(
             kResourceRoutes, [scope](const ResourceRoute& route) {

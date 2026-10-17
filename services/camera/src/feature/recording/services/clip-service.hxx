@@ -5,6 +5,7 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/recording/dtos/response-clip-content-dto.hxx>
 #include <feature/recording/dtos/response-clip-preview-capability-dto.hxx>
+#include <feature/recording/dtos/response-recording-state-dto.hxx>
 #include <feature/recording/dtos/response-clips-dto.hxx>
 #include <feature/recording/repositories/camera-clip/camera-clip-repository.hxx>
 #include <feature/recording/repositories/clip-preview-capability/clip-preview-capability-repository.hxx>
@@ -54,6 +55,7 @@ public:
   drogon::Task<ResponseClipContentDto>
   consumePreview(const ClipPreviewConsumeInput& input) const;
   drogon::Task<void> remove(const ClipDeleteInput& input) const;
+  [[nodiscard]] ResponseRecordingStateDto recordingState() const;
 
   static constexpr int64_t kMaxPageSize = 200;
 

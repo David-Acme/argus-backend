@@ -148,6 +148,19 @@ static_box_frames = 8
 overlay = false
 overlay_dir = "bench-results/operator-overlay"
 
+[recording]
+enabled = true
+pre_roll_s = 10
+post_roll_s = 10
+segment_s = 120
+retention_days = 7
+pre_roll_bytes = 12582912
+max_clip_bytes = 100663296
+rescan_s = 15
+sweep_hours = 24
+sweep_start_s = 60
+min_free_gb = 20
+
 [actions]
 enabled = false
 

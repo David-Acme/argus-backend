@@ -28,6 +28,7 @@ public:
     virtual bool sendBinary(const uint8_t* data, size_t len) = 0;
     virtual bool tryReserve(size_t bytes) = 0;
     virtual int64_t release(int64_t bytes) = 0;
+    virtual void onSubscribed(uint16_t, int64_t) {}
     virtual void onClosed(const StreamClosedInput& input) = 0;
   };
 

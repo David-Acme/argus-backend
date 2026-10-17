@@ -1,5 +1,7 @@
 #include "clip-builder.hxx"
 
+#include <drogon/drogon.h>
+
 #include <algorithm>
 #include <string_view>
 
@@ -137,6 +139,11 @@ void ClipBuilder::push(const ClipChunkInput& input)
     clip.anchorEpochMs = clip.anchorEpochMs + (input.atMs - clip.anchorSteadyMs);
     clip.anchorSteadyMs = input.atMs;
   }
+  const bool continuous = clip.trigger == CameraClipTrigger::Continuous;
+  if (continuous && input.keyframe && input.atMs >= clip.postRollUntilMs) {
+    close();
+    return;
+  }
   if (clip.bytes + input.len > config_.maxClipBytes)
     clip.postRollUntilMs = input.atMs;
   else {
@@ -145,7 +152,7 @@ void ClipBuilder::push(const ClipChunkInput& input)
     clip.firstAtMs = clip.firstAtMs == 0 ? input.atMs : clip.firstAtMs;
     clip.lastAtMs = input.atMs;
   }
-  if (input.atMs >= clip.postRollUntilMs)
+  if (!continuous && input.atMs >= clip.postRollUntilMs)
     close();
 }
 
@@ -164,6 +171,11 @@ void ClipBuilder::close()
     ready.startedAtMs = clip.anchorEpochMs + (clip.firstAtMs - clip.anchorSteadyMs);
     ready.durationMs = std::max<int64_t>(0, clip.lastAtMs - clip.firstAtMs);
     ready_ = std::move(ready);
+  }
+  else if (!clip.body.empty())
+  {
+    LOG_WARN << "ClipBuilder: a " << clip.bytes
+             << " B clip was discarded because its init segment never arrived";
   }
   if (continuous) {
     begin({.trigger = CameraClipTrigger::Continuous,

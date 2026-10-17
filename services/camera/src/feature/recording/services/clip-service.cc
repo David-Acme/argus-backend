@@ -221,3 +221,8 @@ drogon::Task<void> ClipService::remove(const ClipDeleteInput& input) const
   }
   co_return;
 }
+
+ResponseRecordingStateDto ClipService::recordingState() const
+{
+  return ResponseRecordingStateDto::fromState(ClipRecorder::instance().state());
+}

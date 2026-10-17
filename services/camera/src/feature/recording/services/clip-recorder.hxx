@@ -9,6 +9,7 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/recording/repositories/camera-clip/camera-clip-repository.hxx>
 #include <feature/recording/services/clip-builder.hxx>
+#include <feature/recording/services/record-watchdog.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <memory>
 #include <mutex>
@@ -42,6 +43,13 @@ struct ClipRecorderStatus
   int64_t failed{0};
 };
 
+struct RecordingState
+{
+  bool paused{false};
+  int64_t freeBytes{0};
+  int64_t minFreeBytes{0};
+};
+
 class ClipRecorder final : public StreamHub::ISink
 {
 public:
@@ -55,6 +63,7 @@ public:
   bool requestClip(const ClipRequestInput& input);
   void notifyMotion(const CameraMotionReport& report);
   [[nodiscard]] ClipRecorderStatus status() const;
+  [[nodiscard]] RecordingState state() const;
 
   drogon::Task<void> reconcile();
   drogon::Task<ClipSweepReport> runRetentionSweep(int64_t now);
@@ -63,6 +72,7 @@ public:
   bool sendBinary(const uint8_t* data, size_t len) override;
   bool tryReserve(size_t bytes) override;
   int64_t release(int64_t bytes) override;
+  void onSubscribed(uint16_t subId, int64_t cameraId) override;
   void onClosed(const StreamHub::StreamClosedInput& input) override;
 
 private:
@@ -75,6 +85,11 @@ private:
     std::atomic<uint16_t> subId{0};
     CameraRecordMode mode{CameraRecordMode::Events};
     bool announced{false};
+    int64_t lastFragmentMs{0};
+    record_watchdog::Interval keyframes;
+    int64_t retryAtMs{0};
+    int64_t retryBackoffMs{0};
+    bool stalled{false};
     ClipBuilder builder;
   };
 
@@ -102,6 +117,10 @@ private:
   void attach(const std::shared_ptr<CameraSlot>& slot, std::string& error);
   void detach(const std::shared_ptr<CameraSlot>& slot);
   void sweepTick();
+  void watchdogTick();
+  drogon::Task<void> floorTick();
+  drogon::Task<int64_t> purgeOldestUntil(int64_t minBytes);
+  drogon::Task<void> setPaused(bool paused, int64_t freeBytes);
 
   RecordingConfig config_;
   CameraRepository cameraRepository_;
@@ -118,4 +137,9 @@ private:
   std::optional<uint64_t> rescanTimer_;
   std::optional<uint64_t> sweepTimer_;
   std::optional<uint64_t> sweepStartTimer_;
+  std::optional<uint64_t> watchdogTimer_;
+  std::optional<uint64_t> floorTimer_;
+  std::atomic<bool> paused_{false};
+  std::atomic<int64_t> freeBytes_{0};
+  std::atomic<int64_t> minFreeBytes_{0};
 };

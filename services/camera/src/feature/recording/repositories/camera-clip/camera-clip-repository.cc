@@ -93,6 +93,18 @@ CameraClipRepository::findExpired(const CameraClipSweepInput& input) const
   co_return clips;
 }
 
+drogon::Task<std::vector<CameraClipSchema>>
+CameraClipRepository::findOldest(const CameraClipOldestInput& input) const
+{
+  const auto rows = co_await DbService::cameraClient()->execSqlCoro(
+      std::string(OLDEST_CLIPS), input.batch);
+  std::vector<CameraClipSchema> clips;
+  clips.reserve(rows.size());
+  for (const auto& row : rows)
+    clips.emplace_back(row);
+  co_return clips;
+}
+
 drogon::Task<int64_t>
 CameraClipRepository::countExpired(int64_t now, int64_t maxRetentionDays) const
 {

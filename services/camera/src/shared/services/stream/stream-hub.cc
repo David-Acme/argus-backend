@@ -444,6 +444,7 @@ uint16_t StreamHub::subscribe(const SubscribeInput& input, std::string& error)
     {
       std::scoped_lock upLock(up->mtx);
       up->subs.push_back(sub);
+      sub->sink->onSubscribed(sub->subId, up->cameraId);
       if (input.fastStart)
         replayGop(*up, sub);
     }
