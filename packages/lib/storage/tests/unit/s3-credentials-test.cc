@@ -349,6 +349,7 @@ TEST_CASE("a request is signed with the credentials file's keys, and refused "
   const LoopRunner loop;
   REQUIRE(loop.running());
   const CaptureServer server;
+  const S3StorageService storage;
   const auto path =
       writeFile({.name = "signed.json", .body = credentialsJson(writerKeys())});
   useStorage({.endpoint = server.endpoint(), .credentialsFile = path});
