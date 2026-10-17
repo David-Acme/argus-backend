@@ -354,6 +354,9 @@ set_target_properties(llm-context-selector-test PROPERTIES EXCLUDE_FROM_ALL FALS
 
 add_test(NAME llm-context-selector-test COMMAND llm-context-selector-test)
 
+set_tests_properties(llm-context-selector-test PROPERTIES
+    ENVIRONMENT "ARGUS_TEST_CONTEXT_PACK=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/eval/context-scenarios.jsonl:${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/eval/context-axis.jsonl")
+
 add_executable(llm-bundle-loader-test tests/unit/llm-bundle-loader-test.cc)
 
 target_link_libraries(llm-bundle-loader-test PRIVATE argus::llm doctest::doctest)

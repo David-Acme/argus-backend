@@ -19,6 +19,9 @@ enum class ContextFacet : std::uint8_t
   Reminders,
   Memory,
   Modules,
+  People,
+  Tasks,
+  Projects,
   Count
 };
 
