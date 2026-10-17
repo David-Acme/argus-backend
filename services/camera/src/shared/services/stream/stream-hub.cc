@@ -17,7 +17,7 @@
 
 namespace
 {
-constexpr size_t kDefaultChunkBytes = 16 * 1024;
+constexpr size_t kDefaultChunkBytes = size_t{16} * 1024;
 constexpr int64_t kDefaultGraceMs = 2000;
 constexpr int64_t kStallMs = 10000;
 constexpr int64_t kFreshGopMs = 3000;

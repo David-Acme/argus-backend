@@ -19,7 +19,7 @@ CameraClipRepository::create(const CameraClipCreateInput& input) const
       input.durationMs, input.byteSize, input.expiresAt);
 
   CameraClipSchema schema;
-  schema.id = result.insertId();
+  schema.id = static_cast<int64_t>(result.insertId());
   schema.cameraId = input.cameraId;
   schema.trigger = input.trigger;
   schema.objectKey = input.objectKey;

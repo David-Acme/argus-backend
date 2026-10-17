@@ -179,7 +179,7 @@ NotificationRepository::create(const NotificationCreateInput& input) const
                                    json_util::toString(input.data));
 
   NotificationSchema schema;
-  schema.id = result.insertId();
+  schema.id = static_cast<int64_t>(result.insertId());
   schema.userId = input.userId;
   schema.type = input.type;
   schema.title = input.title;
@@ -424,7 +424,7 @@ drogon::Task<int64_t> NotificationRepository::ackDeliveries(
   auto client = DbService::client();
   const auto& argsRef = args;
   const auto result = co_await client->execSqlCoro(query, argsRef);
-  co_return result.affectedRows();
+  co_return static_cast<int64_t>(result.affectedRows());
 }
 
 drogon::Task<DeliverySummary> NotificationRepository::deliverySummary(
@@ -484,10 +484,10 @@ drogon::Task<ProbeInsertResult> NotificationRepository::insertProbe(
       co_await client->execSqlCoro(INSERT_PROBE.data());
   if (notification.insertId() <= 0)
     co_return inserted;
-  inserted.notificationId = notification.insertId();
+  inserted.notificationId = static_cast<int64_t>(notification.insertId());
   const auto delivery = co_await client->execSqlCoro(
       INSERT_PROBE_DELIVERY.data(), inserted.notificationId, at, atMs);
-  inserted.deliveryId = delivery.insertId();
+  inserted.deliveryId = static_cast<int64_t>(delivery.insertId());
   co_return inserted;
 }
 
@@ -531,7 +531,7 @@ drogon::Task<int64_t> NotificationRepository::purgeProbes(
   co_await client->execSqlCoro(PURGE_PROBE_DELIVERIES.data(), olderThan);
   const auto result =
       co_await client->execSqlCoro(PURGE_PROBES.data(), olderThan);
-  co_return result.affectedRows();
+  co_return static_cast<int64_t>(result.affectedRows());
 }
 
 drogon::Task<int64_t> NotificationRepository::purgeCommands(

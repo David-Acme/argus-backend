@@ -151,7 +151,7 @@ private:
   std::unordered_map<uint16_t, std::shared_ptr<Upstream>> subToUpstream_;
   std::vector<std::shared_ptr<Upstream>> retired_;
   uint16_t nextSubId_ = 1;
-  size_t chunkBytes_ = 16 * 1024;
+  size_t chunkBytes_ = size_t{16} * 1024;
   int64_t graceMs_ = 2000;
   size_t gopCacheBytes_ = kDefaultGopCacheBytes;
   int maxViewersPerCamera_ = kDefaultViewersPerCamera;

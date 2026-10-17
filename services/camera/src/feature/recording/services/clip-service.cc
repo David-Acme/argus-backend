@@ -126,9 +126,9 @@ ClipService::consumePreview(const ClipPreviewConsumeInput& input) const
 
     Json::Value event;
     event["event"] = "clip_view";
-    event["cameraId"] = Json::Int64(clip->cameraId);
-    event["clipId"] = Json::Int64(clip->id);
-    event["durationMs"] = Json::Int64(clip->durationMs);
+    event["cameraId"] = clip->cameraId;
+    event["clipId"] = clip->id;
+    event["durationMs"] = clip->durationMs;
     if (const auto* sink = camera_change::getSink()) {
       co_await sink->publishAction(
           {.event = {.userId = input.requesterUserId,
@@ -191,9 +191,9 @@ drogon::Task<void> ClipService::remove(const ClipDeleteInput& input) const
 
     Json::Value event;
     event["event"] = "clip_delete";
-    event["cameraId"] = Json::Int64(clip->cameraId);
-    event["clipId"] = Json::Int64(clip->id);
-    event["durationMs"] = Json::Int64(clip->durationMs);
+    event["cameraId"] = clip->cameraId;
+    event["clipId"] = clip->id;
+    event["durationMs"] = clip->durationMs;
     if (const auto* sink = camera_change::getSink()) {
       co_await sink->publishAction(
           {.event = {.userId = input.requesterUserId,

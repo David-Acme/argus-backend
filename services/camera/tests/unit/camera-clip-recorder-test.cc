@@ -31,8 +31,8 @@ ClipBuilderConfig testConfig()
   return {.preRollMs = 10000,
           .postRollMs = 10000,
           .segmentMs = 120000,
-          .preRollBytes = 1024 * 1024,
-          .maxClipBytes = 1024 * 1024};
+          .preRollBytes = size_t{1024} * 1024,
+          .maxClipBytes = size_t{1024} * 1024};
 }
 }
 
@@ -148,8 +148,8 @@ TEST_CASE("continuous recording closes one segment and opens the next at its key
   builder.configure({.preRollMs = 10000,
                      .postRollMs = 10000,
                      .segmentMs = 5000,
-                     .preRollBytes = 1024 * 1024,
-                     .maxClipBytes = 1024 * 1024});
+                     .preRollBytes = size_t{1024} * 1024,
+                     .maxClipBytes = size_t{1024} * 1024});
   builder.setInit(kInit);
   const int64_t epochMs = 1700000000000;
   CHECK(builder.request(CameraClipTrigger::Continuous, 1000, epochMs));

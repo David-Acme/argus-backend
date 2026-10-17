@@ -56,7 +56,7 @@ std::string personSignature(const cv::Mat& rgb, const DetectedObject& object)
   for (int row = 0; row < lab.rows; row += 2) {
     const uint8_t* pixel = lab.ptr<uint8_t>(row);
     for (int column = 0; column < lab.cols; column += 2) {
-      const uint8_t* value = pixel + column * 3;
+      const uint8_t* value = pixel + static_cast<std::ptrdiff_t>(column) * 3;
       ++bins[value[0] >> 5];
       ++bins[8 + (value[1] >> 5)];
       ++bins[16 + (value[2] >> 5)];
@@ -86,7 +86,9 @@ double CameraOperatorService::trackScoreMedian(
   if (scores.empty())
     return 0.0;
   const size_t middle = scores.size() / 2;
-  std::nth_element(scores.begin(), scores.begin() + middle, scores.end());
+  std::nth_element(scores.begin(),
+                   scores.begin() + static_cast<std::ptrdiff_t>(middle),
+                   scores.end());
   return scores[middle];
 }
 
@@ -373,7 +375,9 @@ std::vector<bool> CameraOperatorService::staticBoxMask(
   }
   for (auto& [name, tracks] : state.boxTracks) {
     if (tracks.size() > 32)
-      tracks.erase(tracks.begin(), tracks.begin() + (tracks.size() - 32));
+      tracks.erase(tracks.begin(),
+                   tracks.begin() +
+                       static_cast<std::ptrdiff_t>(tracks.size() - 32));
   }
   return result;
 }

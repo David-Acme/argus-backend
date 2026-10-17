@@ -55,16 +55,16 @@ drogon::Task<Json::Value> NotificationFeatureService::deliverySummary(
   const DeliverySummary summary = co_await notificationService_->deliverySummary(
       since > 0 ? since : now - kDefaultSummaryWindowS, NotificationConfig::resolveAckWindowS());
   Json::Value response(Json::objectValue);
-  response["pending"] = Json::Int64(summary.pending);
-  response["unacked"] = Json::Int64(summary.unacked);
-  response["unackedOld"] = Json::Int64(summary.unackedOld);
-  response["sent"] = Json::Int64(summary.sent);
-  response["acked"] = Json::Int64(summary.acked);
-  response["latencyMsP50"] = Json::Int64(summary.latencyMsP50);
-  response["latencyMsP95"] = Json::Int64(summary.latencyMsP95);
-  response["latencyMsMax"] = Json::Int64(summary.latencyMsMax);
-  response["probeAt"] = Json::Int64(summary.probeAt);
+  response["pending"] = summary.pending;
+  response["unacked"] = summary.unacked;
+  response["unackedOld"] = summary.unackedOld;
+  response["sent"] = summary.sent;
+  response["acked"] = summary.acked;
+  response["latencyMsP50"] = summary.latencyMsP50;
+  response["latencyMsP95"] = summary.latencyMsP95;
+  response["latencyMsMax"] = summary.latencyMsMax;
+  response["probeAt"] = summary.probeAt;
   response["probeOk"] = summary.probeOk;
-  response["probeMs"] = Json::Int64(summary.probeMs);
+  response["probeMs"] = summary.probeMs;
   co_return response;
 }

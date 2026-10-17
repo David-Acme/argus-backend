@@ -468,7 +468,7 @@ LlmController::engine(drogon::HttpRequestPtr)
   info["loaded"] = service_.isLoaded();
   info["defaultMaxTokens"] = service_.defaultMaxTokens();
   info["defaultTemperature"] = service_.defaultTemperature();
-  info["contextSize"] = Json::Value::Int64(service_.contextSize());
+  info["contextSize"] = service_.contextSize();
   info["lastPromptTokens"] = stats.promptTokens;
   info["lastReusedTokens"] = stats.reusedTokens;
   info["lastDecodedTokens"] = stats.decodedTokens;

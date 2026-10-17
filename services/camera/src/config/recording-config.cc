@@ -24,11 +24,13 @@ RecordingConfig recording_config::resolve()
       std::clamp<int64_t>(positiveOr("recording.retention_days", 7), 1, 90);
   config.rescanMs = positiveOr("recording.rescan_s", 15) * 1000;
   config.preRollBytes = static_cast<size_t>(
-      std::clamp<int64_t>(positiveOr("recording.pre_roll_bytes", 12 * 1024 * 1024),
-                          1024 * 1024, 256 * 1024 * 1024));
+      std::clamp<int64_t>(positiveOr("recording.pre_roll_bytes",
+                                     int64_t{12} * 1024 * 1024),
+                          int64_t{1024} * 1024, int64_t{256} * 1024 * 1024));
   config.maxClipBytes = static_cast<size_t>(
-      std::clamp<int64_t>(positiveOr("recording.max_clip_bytes", 96 * 1024 * 1024),
-                          4 * 1024 * 1024, 512 * 1024 * 1024));
+      std::clamp<int64_t>(positiveOr("recording.max_clip_bytes",
+                                     int64_t{96} * 1024 * 1024),
+                          int64_t{4} * 1024 * 1024, int64_t{512} * 1024 * 1024));
   config.sweepIntervalMs = positiveOr("recording.sweep_hours", 24) * 3600 * 1000;
   config.sweepInitialDelayMs = positiveOr("recording.sweep_start_s", 60) * 1000;
   config.minClipMs = positiveOr("recording.min_clip_s", 1) * 1000;

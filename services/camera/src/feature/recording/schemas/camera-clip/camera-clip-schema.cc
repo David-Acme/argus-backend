@@ -20,15 +20,15 @@ CameraClipSchema::CameraClipSchema(const drogon::orm::Row& row)
 Json::Value CameraClipSchema::toJson() const
 {
   Json::Value json;
-  json["id"] = Json::Int64(id);
-  json["cameraId"] = Json::Int64(cameraId);
+  json["id"] = id;
+  json["cameraId"] = cameraId;
   json["trigger"] = cameraClipTriggerToString(trigger);
   json["contentType"] = contentType;
   json["codec"] = codec;
-  json["startedAt"] = Json::Int64(startedAt);
-  json["durationMs"] = Json::Int64(durationMs);
-  json["byteSize"] = Json::Int64(byteSize);
-  json["createdAt"] = Json::Int64(createdAt);
-  json["expiresAt"] = Json::Int64(expiresAt);
+  json["startedAt"] = startedAt;
+  json["durationMs"] = durationMs;
+  json["byteSize"] = byteSize;
+  json["createdAt"] = createdAt;
+  json["expiresAt"] = expiresAt;
   return json;
 }

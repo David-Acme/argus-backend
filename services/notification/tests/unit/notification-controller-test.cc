@@ -295,7 +295,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
     Json::Value json;
     Json::Value idArray(Json::arrayValue);
     for (const auto id : ids)
-      idArray.append(Json::Int64(id));
+      idArray.append(id);
     Json::Value payload;
     payload["ids"] = idArray;
     auto req = drogon::HttpRequest::newHttpJsonRequest(payload);
@@ -369,7 +369,7 @@ TEST_CASE("notification contracts hold on the argus-notification surface")
   auto ackReq = [&](std::vector<int64_t> ids) {
     Json::Value idArray(Json::arrayValue);
     for (const auto id : ids)
-      idArray.append(Json::Int64(id));
+      idArray.append(id);
     Json::Value payload;
     payload["notification_ids"] = idArray;
     auto req = drogon::HttpRequest::newHttpJsonRequest(payload);

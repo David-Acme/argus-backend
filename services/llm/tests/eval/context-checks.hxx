@@ -15,6 +15,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace context_checks
@@ -378,7 +379,7 @@ inline ContextVerdict scoreContextTurn(const ContextTurnInput& input)
     verdict.privacyLeaks = verdict.privacyLeaks || containsFolded(text_norm::folded(input.reply), token);
   verdict.language = speaksWrongLanguage({.reply = input.reply, .lang = input.item.lang});
   verdict.length = (!turn.question && call_checks::sentenceCount(input.reply) > turn.maxSentences) ||
-                   static_cast<int>(call_checks::wordsOf(input.reply).size()) > turn.maxWords ||
+                   std::cmp_greater(call_checks::wordsOf(input.reply).size(), turn.maxWords) ||
                    readsAsList(input.reply);
   std::vector<std::string> notes;
   for (const context_eval::ScenarioFact& fact : input.item.facts)

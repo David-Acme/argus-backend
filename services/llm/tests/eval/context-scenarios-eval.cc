@@ -608,7 +608,7 @@ CaseRun runCase(const CaseInput& input)
   bool firstTurn = true;
   for (std::size_t index = 0; index < input.item.turns.size(); ++index) {
     const context_eval::ScenarioTurn& turn = input.item.turns[index];
-    const bool duressTurn = input.item.duress && static_cast<int>(index) == input.item.duress->turn;
+    const bool duressTurn = input.item.duress && std::cmp_equal(index, input.item.duress->turn);
     input.stubs.recorder->clear();
     ChatRequest request;
     request.messages = history;

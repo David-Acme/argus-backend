@@ -39,7 +39,7 @@ NotificationController::ack(drogon::HttpRequestPtr req)
 
   Json::Value result;
   result["acked"] =
-      Json::Int64(co_await service_.ackDeliveries(ctx.sub, body.notificationIds));
+      co_await service_.ackDeliveries(ctx.sub, body.notificationIds);
   co_return ApiResponse::ok(result);
 }
 

@@ -17,7 +17,7 @@ ClipPreviewCapabilityRepository::create(
                                                    input.requesterUserId,
                                                    input.expiresAt);
   ClipPreviewCapabilitySchema schema;
-  schema.id = result.insertId();
+  schema.id = static_cast<int64_t>(result.insertId());
   schema.tokenHash = input.tokenHash;
   schema.clipId = input.clipId;
   schema.requesterUserId = input.requesterUserId;
