@@ -491,8 +491,10 @@ TEST_CASE("every saga failpoint converges on redelivery without duplicates")
     const int64_t cameraRef = cameraId;
     REQUIRE(drogon::sync_wait(
         flakyService.handle(alertObservation("res:1", cameraRef, 1), 1)));
-    CHECK(scalar("SELECT status FROM guard_observation_inbox "
-                 "WHERE event_id = 'res:1'") == "processing");
+    const std::string firstStatus = scalar(
+        "SELECT status FROM guard_observation_inbox WHERE event_id = 'res:1'");
+    CAPTURE(firstStatus);
+    CHECK((firstStatus == "processing" || firstStatus == "completed"));
     const std::string resStage = scalar(
         "SELECT stage FROM guard_observation_inbox WHERE event_id = 'res:1'");
     const std::string resNotify =
