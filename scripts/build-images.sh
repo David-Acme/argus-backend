@@ -248,7 +248,9 @@ main() {
       stt) MODEL_ARGS=(--build-context "stt-models=$(model_context stt)") ;;
       vlm) MODEL_ARGS=(--build-context "vision-models=$(model_context vision)") ;;
       llm) MODEL_ARGS=(--build-context "memory-models=$(model_context memory)"
-                       --build-context "llm-models=$(model_context llm LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf)") ;;
+                       --build-context "llm-models=$(model_context llm LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf)"
+                       --build-context "decide-bundle=$(model_context decide/bundle-laya-mvp)"
+                       --build-context "extract-bundle=$(model_context extract/bundle-gliner-pilot)") ;;
     esac
 
     test_start="$(date +%s)"
