@@ -1,6 +1,8 @@
 #include <doctest/doctest.h>
 
 #include <feature/watch/camera-level.hxx>
+#include <feature/watch/conversation-policy.hxx>
+#include <feature/watch/watch-conversations.hxx>
 #include <feature/watch/echo-guard.hxx>
 #include <feature/watch/fire-log.hxx>
 #include <feature/watch/stage-two.hxx>
@@ -283,4 +285,66 @@ TEST_CASE("the conversation speaker's level is kept per camera")
   CHECK(levels.loudest() == 2);
   levels.clear();
   CHECK(levels.loudest() == 0);
+}
+
+TEST_CASE("a conversation closes on silence or length, and a slow reply is acknowledged then given up")
+{
+  CHECK(conversationDue({.now = 25000, .lastSpeech = 4000, .startedAt = 0, .idleCloseMs = 20000, .maxLengthMs = 600000, .busy = false}) ==
+        ConversationEnd::Silence);
+  CHECK(conversationDue({.now = 25000, .lastSpeech = 4000, .startedAt = 0, .idleCloseMs = 20000, .maxLengthMs = 600000, .busy = true}) ==
+        ConversationEnd::None);
+  CHECK(conversationDue({.now = 600000, .lastSpeech = 599000, .startedAt = 0, .idleCloseMs = 20000, .maxLengthMs = 600000, .busy = true}) ==
+        ConversationEnd::Limit);
+
+  const ReplyTimerInput waiting{.now = 1000, .userTurnAt = 0, .firstAudioAt = 0, .acked = false, .ackAfterMs = 1500, .failAfterMs = 8000};
+  CHECK(replyNudge(waiting) == ReplyNudge::None);
+  CHECK(replyNudge({.now = 2600, .userTurnAt = 1000, .firstAudioAt = 0, .acked = false, .ackAfterMs = 1500, .failAfterMs = 8000}) ==
+        ReplyNudge::Acknowledge);
+  CHECK(replyNudge({.now = 2600, .userTurnAt = 1000, .firstAudioAt = 0, .acked = true, .ackAfterMs = 1500, .failAfterMs = 8000}) ==
+        ReplyNudge::None);
+  CHECK(replyNudge({.now = 9100, .userTurnAt = 1000, .firstAudioAt = 0, .acked = true, .ackAfterMs = 1500, .failAfterMs = 8000}) ==
+        ReplyNudge::GiveUp);
+  CHECK(replyNudge({.now = 9100, .userTurnAt = 1000, .firstAudioAt = 1800, .acked = true, .ackAfterMs = 1500, .failAfterMs = 8000}) ==
+        ReplyNudge::None);
+
+  CHECK(acknowledgementLine(VoiceLang::Es) == "Un momento.");
+  CHECK(acknowledgementLine(VoiceLang::En) == "One moment.");
+  CHECK(giveUpLine(VoiceLang::Es) == "No pude responder ahora; inténtalo de nuevo o sigue en la app.");
+  CHECK(busyNotice(VoiceLang::Es, "Sala") ==
+        "Te escuché en la cámara Sala, pero alguien la está usando; sigue en la app.");
+  CHECK(cameraNote(VoiceLang::Es, "Sala").find("Sala") != std::string::npos);
+  CHECK(mintConversationId().size() == 32);
+  CHECK(conversationStateToString(ConversationState::Resumable) == "resumable");
+  CHECK(conversationHandoffToString(ConversationHandoff::Bridging) == "bridging");
+  CHECK(conversationAudienceToString(ConversationAudience::Discreet) == "discreet");
+  CHECK(conversationEndToString(ConversationEnd::BusyLine) == "busy");
+}
+
+TEST_CASE("a dropped or busy camera hands the conversation to a free talking camera of the same room")
+{
+  const std::map<int64_t, WatchCameraInfo> cameras{
+      {2, {.id = 2, .name = "Sala B", .talk = false, .panTilt = false, .tvExclusion = false}},
+      {3, {.id = 3, .name = "Sala C", .talk = true, .panTilt = false, .tvExclusion = false}},
+      {4, {.id = 4, .name = "Sala D", .talk = true, .panTilt = false, .tvExclusion = false}}};
+  const auto info = [&cameras](int64_t id) -> std::optional<WatchCameraInfo> {
+    const auto found = cameras.find(id);
+    if (found == cameras.end())
+      return std::nullopt;
+    return found->second;
+  };
+  const std::vector<int64_t> mates{1, 2, 3, 4};
+  const auto hop = chooseHop({.from = 1,
+                              .roommates = mates,
+                              .cameraInfo = info,
+                              .listening = [](int64_t) { return true; },
+                              .occupied = [](int64_t id) { return id == 3; }});
+  REQUIRE(hop.has_value());
+  CHECK(hop->cameraId == 4);
+  CHECK(hop->name == "Sala D");
+  CHECK_FALSE(chooseHop({.from = 1,
+                         .roommates = mates,
+                         .cameraInfo = info,
+                         .listening = [](int64_t) { return false; },
+                         .occupied = {}})
+                  .has_value());
 }

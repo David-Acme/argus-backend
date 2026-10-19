@@ -126,6 +126,16 @@ struct VoiceWatchConfig
   float weightStageTwo{1.0F};
   float gainWeight{0.5F};
   float gainAlpha{0.1F};
+  std::chrono::milliseconds endSilence{700};
+  std::chrono::milliseconds incompleteHold{2000};
+  std::chrono::milliseconds maxTurn{30000};
+  std::chrono::milliseconds ackAfter{1500};
+  std::chrono::milliseconds failAfter{8000};
+  std::chrono::milliseconds idleClose{20000};
+  std::chrono::milliseconds maxLength{600000};
+  std::chrono::milliseconds resumable{180000};
+  std::chrono::milliseconds replyGap{700};
+  std::chrono::milliseconds cameraDrop{3000};
 };
 
 class VoiceConfig

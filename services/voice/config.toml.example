@@ -70,6 +70,16 @@ weight_snr = 0.1
 weight_stage2 = 1.0
 gain_weight = 0.5
 gain_alpha = 0.1
+end_silence_ms = 700
+incomplete_hold_ms = 2000
+max_turn_ms = 30000
+ack_after_ms = 1500
+fail_after_ms = 8000
+idle_close_ms = 20000
+max_length_ms = 600000
+resumable_ms = 180000
+reply_gap_ms = 700
+camera_drop_ms = 3000
 
 [stt]
 remote_url = "127.0.0.1:7030"

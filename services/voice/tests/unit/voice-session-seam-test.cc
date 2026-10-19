@@ -653,7 +653,55 @@ struct VoiceSessionTestAccess
     std::scoped_lock lock(session->duplexMutex);
     return session->turn.running;
   }
+
+  struct HoldInput
+  {
+    VoiceSessionService& service;
+    VoiceSessionService::Session& session;
+    const std::vector<float>& samples;
+    std::string text;
+  };
+
+  static bool hold(const HoldInput& input)
+  {
+    VoiceSessionService::HeardTurn heard{.samples = input.samples,
+                                         .stt = input.samples,
+                                         .transcript = nullptr,
+                                         .detected = std::chrono::steady_clock::now(),
+                                         .text = input.text};
+    return input.service.holdIncomplete(input.session, heard);
+  }
+
+  static bool held(VoiceSessionService::Session& session) { return session.held.active; }
+
+  static void release(VoiceSessionService& service, VoiceSessionService::Session& session)
+  {
+    service.releaseHeld(session, true);
+  }
 };
+
+namespace
+{
+
+class ShapingSink final : public VoiceSessionSink
+{
+public:
+  [[nodiscard]] bool connected() const override { return true; }
+
+  void sendServerFrame(argus::voice::v1::ServerFrame frame) override
+  {
+    std::scoped_lock lock(mutex_);
+    frames_.push_back(std::move(frame));
+  }
+
+  [[nodiscard]] std::string shapeSpeech(const std::string& text) const override { return "[" + text + "]"; }
+
+private:
+  std::mutex mutex_;
+  std::vector<argus::voice::v1::ServerFrame> frames_;
+};
+
+}
 
 TEST_CASE("VoiceSessionService default-constructs on the remote seam")
 {
@@ -3429,4 +3477,44 @@ int main(int argc, char** argv)
     std::fprintf(stderr, "voice-session-seam-test: %s\n", failure.what());
     return 1;
   }
+}
+
+TEST_CASE("A camera session takes its own endpointing, never asks whether it is addressed, and its sink shapes speech")
+{
+  FakeStt stt;
+  FakeTts tts;
+  FakeLlm llm;
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
+  VoiceSessionService session(seam);
+  ShapingSink sink;
+  argus::voice::v1::VoiceStart start;
+  start.mutable_identity()->set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  start.set_mode(argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  session.start(sink, start,
+                VoiceSessionOptions{.minSilenceFrames = 22,
+                                    .maxTurnFrames = 937,
+                                    .askAddressed = false,
+                                    .incompleteHold = std::chrono::milliseconds(1300),
+                                    .incomplete = [](std::string_view text) { return text.ends_with(" y"); }});
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  CHECK(sess->vad.minSilenceFrames() == 22);
+  CHECK_FALSE(sess->askAddressed);
+  CHECK(waitFor([&] { return !sess->speaking.load(); }));
+
+  const std::vector<float> samples(1600, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+  CHECK(tts.lastText == "[Hola de nuevo.]");
+
+  const int before = llm.chatStreamCalls;
+  CHECK(VoiceSessionTestAccess::hold(
+      {.service = session, .session = *sess, .samples = samples, .text = "quiero ir a la tienda y"}));
+  CHECK(VoiceSessionTestAccess::held(*sess));
+  CHECK(llm.chatStreamCalls == before);
+  VoiceSessionTestAccess::release(session, *sess);
+  CHECK_FALSE(VoiceSessionTestAccess::held(*sess));
+  CHECK(llm.chatStreamCalls == before + 1);
+  CHECK_FALSE(VoiceSessionTestAccess::hold(
+      {.service = session, .session = *sess, .samples = samples, .text = "quiero ir a la tienda"}));
+  session.stop(sink);
 }

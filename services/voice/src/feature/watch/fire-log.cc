@@ -23,6 +23,8 @@ std::string_view wakeVerdictToString(WakeVerdict verdict)
       return "on_call";
     case WakeVerdict::BusyLine:
       return "busy_line";
+    case WakeVerdict::BargeIn:
+      return "barge_in";
     case WakeVerdict::Unconfirmed:
       return "unconfirmed";
   }

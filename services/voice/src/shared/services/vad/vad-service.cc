@@ -150,7 +150,12 @@ VadConfig resolveVadConfig()
 }
 
 VadService::VadService(std::unique_ptr<VadModel> model)
-    : cfg_(resolveVadConfig()), floor_(cfg_.near), model_(std::move(model)),
+    : VadService(std::move(model), resolveVadConfig())
+{
+}
+
+VadService::VadService(std::unique_ptr<VadModel> model, const VadConfig& config)
+    : cfg_(config), floor_(cfg_.near), model_(std::move(model)),
       pending_(static_cast<size_t>(kWindowSize) * 8), window_(kEffectiveWindow)
 {
   reset();

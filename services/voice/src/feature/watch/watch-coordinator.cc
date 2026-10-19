@@ -141,6 +141,13 @@ float WatchCoordinator::snrOf(int64_t cameraId) const
   return found == ears_.end() ? 0.0F : found->second->snrDb();
 }
 
+bool WatchCoordinator::listening(int64_t cameraId) const
+{
+  std::scoped_lock lock(mutex_);
+  const auto found = ears_.find(cameraId);
+  return found != ears_.end() && found->second->listening();
+}
+
 void WatchCoordinator::refreshLoop(const std::stop_token& stop)
 {
   std::mutex waitMutex;
@@ -330,7 +337,7 @@ WatchCoordinator::Evaluation WatchCoordinator::evaluate(const EarFire& fire, con
 {
   Evaluation out;
   if (fire.duringPlayback) {
-    out.verdict = WakeVerdict::SelfEcho;
+    out.verdict = input_.onPlaybackFire && input_.onPlaybackFire(fire) ? WakeVerdict::BargeIn : WakeVerdict::SelfEcho;
     return out;
   }
   int maxDistance = input_.config.wakeMaxDistance;

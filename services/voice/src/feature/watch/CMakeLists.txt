@@ -1,14 +1,17 @@
 argus_module(NAME voice-watch
     SOURCES
+        camera-conversation.cc
         camera-ear.cc
         camera-gains.cc
         camera-level.cc
+        conversation-policy.cc
         echo-guard.cc
         fire-log.cc
         room-directory.cc
         stage-two.cc
         wake-spotter.cc
         wake-words.cc
+        watch-conversations.cc
         watch-coordinator.cc
     INCLUDES
         ../..
@@ -19,6 +22,7 @@ argus_module(NAME voice-watch
         argus::clients::guard
         argus::clients::stt
         argus::contracts::voice
+        argus::lib::audio
         argus::lib::config
         Drogon::Drogon)
 

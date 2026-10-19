@@ -18,6 +18,7 @@ enum class WakeVerdict : uint8_t
   LowSnr,
   OnCall,
   BusyLine,
+  BargeIn,
   Unconfirmed
 };
 

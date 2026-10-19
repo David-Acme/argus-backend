@@ -56,6 +56,7 @@ struct WatchCoordinatorInput
   std::shared_ptr<const GuardPresenceClient> guard;
   std::shared_ptr<RoomDirectory> rooms;
   std::function<void(const ConfirmedWake&)> onWake;
+  std::function<bool(const EarFire&)> onPlaybackFire;
   std::function<void(const EarFrame&)> onFrame;
 };
 
@@ -111,6 +112,7 @@ public:
   [[nodiscard]] std::vector<WatchCameraInfo> cameras() const;
   [[nodiscard]] const FireLog& fireLog() const { return fireLog_; }
   [[nodiscard]] float snrOf(int64_t cameraId) const;
+  [[nodiscard]] bool listening(int64_t cameraId) const;
   [[nodiscard]] const std::shared_ptr<RoomDirectory>& rooms() const { return input_.rooms; }
   [[nodiscard]] CameraGains& gains() { return gains_; }
 

@@ -147,6 +147,16 @@ VoiceWatchConfig VoiceConfig::resolveWatch()
   config.weightStageTwo = decimalOf("watch.weight_stage2", config.weightStageTwo);
   config.gainWeight = std::clamp(decimalOf("watch.gain_weight", config.gainWeight), 0.0F, 1.0F);
   config.gainAlpha = std::clamp(decimalOf("watch.gain_alpha", config.gainAlpha), 0.01F, 1.0F);
+  config.endSilence = positiveMs("watch.end_silence_ms", config.endSilence);
+  config.incompleteHold = std::max(config.endSilence, positiveMs("watch.incomplete_hold_ms", config.incompleteHold));
+  config.maxTurn = positiveMs("watch.max_turn_ms", config.maxTurn);
+  config.ackAfter = positiveMs("watch.ack_after_ms", config.ackAfter);
+  config.failAfter = std::max(config.ackAfter, positiveMs("watch.fail_after_ms", config.failAfter));
+  config.idleClose = positiveMs("watch.idle_close_ms", config.idleClose);
+  config.maxLength = positiveMs("watch.max_length_ms", config.maxLength);
+  config.resumable = positiveMs("watch.resumable_ms", config.resumable);
+  config.replyGap = positiveMs("watch.reply_gap_ms", config.replyGap);
+  config.cameraDrop = positiveMs("watch.camera_drop_ms", config.cameraDrop);
   return config;
 }
 

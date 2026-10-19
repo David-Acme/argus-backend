@@ -4,6 +4,7 @@
 #include <feature/rtc/rtc-agent-service.hxx>
 #include <feature/settings/voice-settings.hxx>
 #include <feature/voice/voice-rpc-service.hxx>
+#include <feature/watch/watch-conversations.hxx>
 #include <feature/watch/watch-coordinator.hxx>
 #include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
@@ -192,18 +193,40 @@ int main()
         GuardPresenceClientConfig{.target = guardConfig.target, .credential = guardConfig.credential});
   const auto rooms = std::make_shared<RoomDirectory>();
   SttWakeSpotter wakeSpotter;
-  WatchCoordinator watch({.config = watchConfig,
-                          .camera = watchCameras,
-                          .spotter = &wakeSpotter,
-                          .stt = &voiceStt(),
-                          .vad = &voiceVad(),
-                          .language = voiceLangToString(voiceSystemLang()),
-                          .echo = echo,
-                          .guard = guardPresence,
-                          .rooms = rooms,
-                          .onWake = {},
-                          .onFrame = {}});
-  watch.start();
+  std::unique_ptr<WatchCoordinator> watch;
+  ConversationManager conversations({.config = watchConfig,
+                                     .sessions = &sessions,
+                                     .camera = watchCameras,
+                                     .echo = echo,
+                                     .rooms = rooms,
+                                     .tts = &voiceTts(),
+                                     .stt = &voiceStt(),
+                                     .lang = voiceSystemLang(),
+                                     .cameraInfo = [&watch](int64_t cameraId) -> std::optional<WatchCameraInfo> {
+                                       return watch ? watch->camera(cameraId) : std::nullopt;
+                                     },
+                                     .listening = [&watch](int64_t cameraId) {
+                                       return watch && watch->listening(cameraId);
+                                     },
+                                     .resolve = {},
+                                     .sameSpeaker = {},
+                                     .onUpdate = {},
+                                     .onEnded = {}});
+  watch = std::make_unique<WatchCoordinator>(WatchCoordinatorInput{
+      .config = watchConfig,
+      .camera = watchCameras,
+      .spotter = &wakeSpotter,
+      .stt = &voiceStt(),
+      .vad = &voiceVad(),
+      .language = voiceLangToString(voiceSystemLang()),
+      .echo = echo,
+      .guard = guardPresence,
+      .rooms = rooms,
+      .onWake = [&conversations](const ConfirmedWake& wake) { conversations.onWake(wake); },
+      .onFrame = [&conversations](const EarFrame& frame) { conversations.onFrame(frame); },
+      .onPlaybackFire = [&conversations](const EarFire& fire) { return conversations.onPlaybackFire(fire); }});
+  conversations.start();
+  watch->start();
 
   HealthRpcService healthRpc;
   SettingsRegistry settings(voiceSettingsCatalog());
@@ -261,7 +284,8 @@ int main()
       .run();
 
   serverDrain.finish();
-  watch.shutdown();
+  watch->shutdown();
+  conversations.shutdown();
   if (rtc)
     livekit::shutdown();
   return 0;

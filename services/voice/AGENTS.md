@@ -28,7 +28,11 @@ that apply to voice-service code; when in doubt, the root file wins.
    chain, which is where the voice session is started). Because that
    identity is trusted as sent, `Connect` first requires argus-sync's caller
    credential (`x-argus-credential` = `[grpc] caller_sync`, paired with
-   sync's `[voice] credential` by the provisioning scripts).
+   sync's `[voice] credential` by the provisioning scripts). The one
+   other opener is the watchman (`src/feature/watch/`): a camera
+   conversation starts a half-duplex session itself after a confirmed wake,
+   with the identity the watch resolves from the camera (CC5), never from a
+   client.
 4. **Remote-only engines** — STT/TTS/LLM resolve through the remote HTTP
    adapters only; no in-process engine compiles here.
 5. **Parameter structs for 3+ params** — any function with 3+ parameters
