@@ -207,7 +207,11 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
     if (const auto* refused = std::get_if<turn::speech::Refused>(&act))
       return turn::speech::refusalLine({.refused = *refused, .lang = lang});
     if (const auto* ask = std::get_if<turn::speech::AskSlot>(&act))
-      return turn::speech::slotQuestion({.ask = *ask, .lang = lang});
+      return turn::speech::slotQuestion({.ask = *ask, .lang = lang, .now = input.speech.now});
+    if (const auto* choose = std::get_if<turn::speech::Choose>(&act))
+      return turn::speech::chooseQuestion({.choose = *choose, .lang = lang});
+    if (const auto* confirm = std::get_if<turn::speech::Confirm>(&act))
+      return turn::speech::confirmQuestion({.confirm = *confirm, .lang = lang, .now = input.speech.now});
     return std::nullopt;
   }();
   if (fixed) {

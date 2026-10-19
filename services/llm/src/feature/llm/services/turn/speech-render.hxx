@@ -39,9 +39,29 @@ struct SlotQuestion
 {
   const AskSlot& ask;
   std::string_view lang;
+  int64_t now{0};
 };
 
 [[nodiscard]] std::optional<std::string> slotQuestion(const SlotQuestion& input);
+
+struct ChooseQuestion
+{
+  const Choose& choose;
+  std::string_view lang;
+};
+
+[[nodiscard]] std::optional<std::string> chooseQuestion(const ChooseQuestion& input);
+
+[[nodiscard]] std::string subjectOf(const Json::Value& args);
+
+struct ConfirmQuestion
+{
+  const Confirm& confirm;
+  std::string_view lang;
+  int64_t now{0};
+};
+
+[[nodiscard]] std::optional<std::string> confirmQuestion(const ConfirmQuestion& input);
 
 [[nodiscard]] std::string ungroundedLine(std::string_view lang);
 

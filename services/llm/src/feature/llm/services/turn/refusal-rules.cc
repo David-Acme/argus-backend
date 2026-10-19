@@ -25,21 +25,40 @@ struct Word
   std::string folded;
 };
 
+bool punctuationAt(std::string_view text, std::size_t at)
+{
+  if (at + 1 >= text.size() || static_cast<unsigned char>(text[at]) != 0xC2)
+    return false;
+  const auto next = static_cast<unsigned char>(text[at + 1]);
+  return next == 0xA1 || next == 0xBF || next == 0xAB || next == 0xBB;
+}
+
+std::string lowerAscii(std::string text)
+{
+  std::ranges::transform(text, text.begin(), [](char c) {
+    return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  });
+  return text;
+}
+
 std::vector<Word> wordsOf(std::string_view utterance)
 {
   std::vector<Word> words;
   std::string raw;
-  std::string folded;
   const auto close = [&] {
     if (!raw.empty())
-      words.push_back({.raw = raw, .folded = text_norm::stripAccents(folded)});
+      words.push_back({.raw = raw, .folded = lowerAscii(text_norm::stripAccents(raw))});
     raw.clear();
-    folded.clear();
   };
-  for (const char c : utterance) {
-    if (std::isalnum(static_cast<unsigned char>(c)) != 0) {
-      raw += c;
-      folded += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  for (std::size_t at = 0; at < utterance.size(); ++at) {
+    if (punctuationAt(utterance, at)) {
+      close();
+      ++at;
+      continue;
+    }
+    const auto c = static_cast<unsigned char>(utterance[at]);
+    if (std::isalnum(c) != 0 || c >= 0x80) {
+      raw += utterance[at];
       continue;
     }
     close();
@@ -80,6 +99,8 @@ std::optional<Hit> firstPhrase(const std::vector<Word>& words, std::span<const s
 bool anyStem(const std::vector<Word>& words, std::span<const std::string_view> stems)
 {
   return std::ranges::any_of(stems, [&words](std::string_view stem) {
+    if (stem.find(' ') != std::string_view::npos)
+      return firstHit(words, stem).has_value();
     return std::ranges::any_of(words, [stem](const Word& word) { return word.folded.starts_with(stem); });
   });
 }
@@ -136,6 +157,22 @@ constexpr std::array<std::string_view, 10> kPrivacyVerbEs{
     "activa", "activo", "apaga", "quita", "quitale", "pon", "ponle", "enciende", "desactiva", "configura"};
 constexpr std::array<std::string_view, 9> kPrivacyVerbEn{
     "on", "off", "enable", "disable", "turn", "remove", "activate", "set", "switch"};
+
+constexpr std::array<std::string_view, 6> kMoveVerbsEs{"pas", "muev", "mov", "dej", "cambi", "corr"};
+constexpr std::array<std::string_view, 5> kMoveVerbsEn{"move", "push", "leave", "shift", "put"};
+
+bool postponeAsked(const std::vector<Word>& words, bool english)
+{
+  const std::span<const std::string_view> phrases =
+      english ? std::span<const std::string_view>(kPostponeEn) : std::span<const std::string_view>(kPostponeEs);
+  const std::span<const std::string_view> verbs =
+      english ? std::span<const std::string_view>(kMoveVerbsEn) : std::span<const std::string_view>(kMoveVerbsEs);
+  return std::ranges::any_of(phrases, [&](std::string_view phrase) {
+    if (phrase.find(' ') == std::string_view::npos)
+      return std::ranges::any_of(words, [phrase](const Word& word) { return word.folded.starts_with(phrase); });
+    return firstHit(words, phrase).has_value() && anyStem(words, verbs);
+  });
+}
 
 std::optional<std::string> nameAt(const std::vector<Word>& words, std::size_t start, std::size_t most)
 {
@@ -246,8 +283,7 @@ std::optional<Refusal> refusalFor(const Ask& ask)
                                  : std::span<const std::string_view>(kOtherPrivateEs)))
     return Refusal{.reason = std::string(kPrivatePerson), .name = {}};
 
-  if (anyStem(words, english ? std::span<const std::string_view>(kPostponeEn)
-                             : std::span<const std::string_view>(kPostponeEs)))
+  if (postponeAsked(words, english))
     return Refusal{.reason = std::string(kNoAction), .name = {}};
 
   return std::nullopt;

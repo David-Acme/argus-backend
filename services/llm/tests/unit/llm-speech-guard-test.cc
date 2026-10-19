@@ -411,7 +411,7 @@ TEST_CASE("hard failures are fatal and soft ones are not")
   CHECK_FALSE(hardFailure(GuardVerdict::OptionsIncomplete, askOptions));
 }
 
-TEST_CASE("a choose whose options are incomplete is released on its last attempt and the verdict is kept")
+TEST_CASE("a choose is asked by the app itself, naming every option, and never reaches the model")
 {
   const Speech speech{.acts = {Choose{.options = {"calendar.create_event", "task.create"}}}, .lang = "es", .now = kNow};
   CHECK(check({.speech = speech, .reply = "¿Quieres que lo haga?", .asked = true}) == GuardVerdict::OptionsIncomplete);
@@ -451,13 +451,12 @@ TEST_CASE("a choose whose options are incomplete is released on its last attempt
                     .opened = false,
                     .callsConfirmed = false},
                    output);
-  CHECK(output.attempts.size() == 2);
-  CHECK(output.softRelease);
-  CHECK(output.softVerdict == "options_incomplete");
-  CHECK(output.reply == "¿Qué prefieres?");
-  CHECK(output.reply == output.attempts.back().reply);
-  CHECK(output.attempts.back().verdict == "options_incomplete");
-  CHECK_FALSE(output.attempts.back().prompt.empty());
+  CHECK(output.attempts.size() == 1);
+  CHECK_FALSE(output.softRelease);
+  CHECK(output.reply == "¿Prefieres un evento en el calendario o una tarea?");
+  CHECK(output.attempts.back().verdict == "pass");
+  CHECK(output.attempts.back().prompt.empty());
+  CHECK(check({.speech = speech, .reply = output.reply, .asked = true}) == GuardVerdict::Pass);
 }
 
 TEST_CASE("speaking as another person fails the guard")
@@ -478,6 +477,37 @@ TEST_CASE("speaking as another person fails the guard")
                .wrote = false,
                .asked = false,
                .callsConfirmed = false}) == GuardVerdict::Impersonated);
+}
+
+TEST_CASE("outside a relay, greeting the user by name is not impersonation, a self-introduction still is")
+{
+  const Speech plain{.acts = {}, .lang = "es", .now = kNow};
+  CHECK(check({.speech = plain,
+               .reply = "María, estoy revisando tu agenda.",
+               .wrote = false,
+               .asked = false,
+               .callsConfirmed = false}) != GuardVerdict::Impersonated);
+  CHECK(check({.speech = plain,
+               .reply = "¡Hola María! Estoy aquí para ayudarte.",
+               .wrote = false,
+               .asked = false,
+               .callsConfirmed = false}) != GuardVerdict::Impersonated);
+  CHECK(check({.speech = plain,
+               .reply = "Soy María, ya llegué.",
+               .wrote = false,
+               .asked = false,
+               .callsConfirmed = false}) == GuardVerdict::Impersonated);
+  CHECK(selfIdentifies("This is David, tell her I left.", "en"));
+  CHECK_FALSE(selfIdentifies("María, I'm on my way!", "en"));
+}
+
+TEST_CASE("a sentence that starts with a common word is not a person's location")
+{
+  const std::string grounded = "Botón de pánico: Tomás, en la cocina, hoy a las 21:14.";
+  CHECK(withoutUngroundedClaims({.reply = "Todo está en orden.", .lang = "es", .grounding = grounded}) ==
+        "Todo está en orden.");
+  CHECK(withoutUngroundedClaims({.reply = "Everything is in order.", .lang = "en", .grounding = grounded}) ==
+        "Everything is in order.");
 }
 
 TEST_CASE("a person location no fact grounds is dropped and replaced")
@@ -503,4 +533,37 @@ TEST_CASE("an ask turn may not report done")
                .wrote = false,
                .asked = false,
                .callsConfirmed = false}) == GuardVerdict::ClaimedWithoutTool);
+}
+
+TEST_CASE("a sentence where Argus introduces itself as a person of the house is dropped")
+{
+  CHECK(withoutUngroundedClaims({.reply = "Hola, soy David. Tu recordatorio es a las 19:00.", .lang = "es", .grounding = {}}) ==
+        " Tu recordatorio es a las 19:00.");
+  CHECK(withoutUngroundedClaims({.reply = "Soy Argus. Tu recordatorio es a las 19:00.", .lang = "es", .grounding = {}}) ==
+        "Soy Argus. Tu recordatorio es a las 19:00.");
+  CHECK(withoutUngroundedClaims({.reply = "This is David. Your reminder is at 7 pm.", .lang = "en", .grounding = {}}) ==
+        " Your reminder is at 7 pm.");
+}
+
+TEST_CASE("a relay refusal names a proper name and never repeats the user's own words for someone")
+{
+  const auto line = [](std::string name) {
+    return refusalLine({.refused = Refused{.tool = {}, .reason = std::string(refusal_reason::kNoRelay), .name = std::move(name)},
+                        .lang = "es"});
+  };
+  CHECK(line("María") == "Todavía no puedo pasarle un mensaje a María. ¿Quieres que te ponga un recordatorio?");
+  CHECK(line("Ángela") == "Todavía no puedo pasarle un mensaje a Ángela. ¿Quieres que te ponga un recordatorio?");
+  CHECK(line("mi chibolo") == "Todavía no puedo pasar mensajes. ¿Quieres que te ponga un recordatorio?");
+  CHECK(line("mi hijo") == "Todavía no puedo pasar mensajes. ¿Quieres que te ponga un recordatorio?");
+}
+
+TEST_CASE("only a person who is the subject of the sentence has a location to guard")
+{
+  const std::string grounded = "Botón de pánico: Tomás, en la cocina, hoy a las 21:14.";
+  CHECK(withoutUngroundedClaims({.reply = "La reunión con Andrea está en la agenda.", .lang = "es", .grounding = grounded}) ==
+        "La reunión con Andrea está en la agenda.");
+  CHECK(withoutUngroundedClaims({.reply = "Ella está en el patio.", .lang = "es", .grounding = grounded}) ==
+        "No puedo decirte eso: es información de otra persona.");
+  CHECK(withoutUngroundedClaims({.reply = "She is at the office.", .lang = "en", .grounding = grounded}) ==
+        "I cannot tell you that: it is somebody else's information.");
 }

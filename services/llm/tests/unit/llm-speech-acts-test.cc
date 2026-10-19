@@ -191,9 +191,13 @@ TEST_CASE("every act renders a situation in both languages, without a command or
 TEST_CASE("the ask situation is the missing fact plus the one thing to do")
 {
   CHECK(tailOf(askSlot(), "es") ==
-        "Nota de la app: falta la fecha y hora; pregunta solo por la fecha y hora, en una sola pregunta corta.");
+        "Nota de la app: falta la fecha y hora. No se hizo nada y nada quedó listo. Escribe solo una pregunta corta que "
+        "termine en signo de interrogación, sin saludo, sin preámbulo y nunca con las palabras \"listo\" ni \"hecho\". "
+        "La pregunta pide solo la fecha y hora.");
   CHECK(tailOf(askSlot(), "en") ==
-        "App note: missing the date and time; ask for the date and time in one short question.");
+        "App note: missing the date and time. Nothing was done and nothing is set. Write only one short question that "
+        "ends with a question mark, with no greeting, no preamble and never the words \"done\" or \"all set\". The "
+        "question asks for the date and time only.");
   const Act title = AskSlot{.slot = "title",
                             .tool = "task.create",
                             .knownArgs = Json::Value(Json::objectValue),
@@ -201,7 +205,9 @@ TEST_CASE("the ask situation is the missing fact plus the one thing to do")
                             .dates = {},
                             .options = {}};
   CHECK(tailOf(title, "es") ==
-        "Nota de la app: falta el nombre de la tarea; pregunta solo por el nombre de la tarea, en una sola pregunta corta.");
+        "Nota de la app: falta el nombre de la tarea. No se hizo nada y nada quedó listo. Escribe solo una pregunta corta "
+        "que termine en signo de interrogación, sin saludo, sin preámbulo y nunca con las palabras \"listo\" ni "
+        "\"hecho\". La pregunta pide solo el nombre de la tarea.");
 }
 
 TEST_CASE("the slot is rendered as a human label, never as its name or its tool")
@@ -241,7 +247,7 @@ TEST_CASE("each act renders its own fields and nothing of another act's")
   CHECK(tailOf(unactionable(), "es").find("acción de Argus") != std::string::npos);
   CHECK(tailOf(capability(), "es") == "Nota de la app: puedes ayudar con la agenda y las tareas.");
   CHECK(tailOf(capability(), "en") == "App note: puedes ayudar con la agenda y las tareas.");
-  CHECK(tailOf(declined(), "es").find("el usuario dijo que no.") != std::string::npos);
+  CHECK(tailOf(declined(), "es").find("El usuario dijo que no y nada se hizo.") != std::string::npos);
   CHECK(tailOf(misunderstood(), "en").find("the user was not understood.") != std::string::npos);
   CHECK(tailOf(done(), "es").find("el nombre de la tarea") == std::string::npos);
   CHECK(tailOf(choose(), "es").find("Agendé") == std::string::npos);

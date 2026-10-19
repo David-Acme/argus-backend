@@ -125,6 +125,15 @@ TEST_CASE("asking for a reminder that has no way to be postponed refuses")
 
   CHECK_FALSE(ask("¿a qué hora era el recordatorio de las plantas?", UserRole::Owner).has_value());
   CHECK_FALSE(ask("¿qué tengo hoy en la agenda?", UserRole::Owner).has_value());
+
+  const auto phrase = ask("¿por qué no lo pasas para más tarde?", UserRole::Owner);
+  REQUIRE(phrase.has_value());
+  CHECK(phrase->reason == turn::refusal::kNoAction);
+  const auto later = ask("can you move it for later", UserRole::Owner, "en");
+  REQUIRE(later.has_value());
+  CHECK(later->reason == turn::refusal::kNoAction);
+  CHECK_FALSE(ask("pon un recordatorio para después de comer", UserRole::Owner).has_value());
+  CHECK_FALSE(ask("remind me to call mom for later tonight", UserRole::Owner, "en").has_value());
 }
 
 TEST_CASE("a deterministic refusal is rendered without the model")
@@ -168,7 +177,8 @@ TEST_CASE("a verbless privacy phrase asks instead of acting")
                                     .reason = turn::speech::AskReason::Missing,
                                     .dates = {},
                                     .options = {}},
-       .lang = "es"});
+       .lang = "es",
+       .now = 0});
   REQUIRE(question.has_value());
   CHECK(*question == "¿La activo o la quito?");
   CHECK(turn::speech::slotQuestion(
@@ -178,7 +188,8 @@ TEST_CASE("a verbless privacy phrase asks instead of acting")
                                           .reason = turn::speech::AskReason::Missing,
                                           .dates = {},
                                           .options = {}},
-             .lang = "es"})
+             .lang = "es",
+             .now = 0})
             .has_value() == false);
   const auto english = turn::refusal::polarityAskFor({.utterance = "the garage camera privacy",
                                                       .audience = audienceFor(UserRole::Owner, true),

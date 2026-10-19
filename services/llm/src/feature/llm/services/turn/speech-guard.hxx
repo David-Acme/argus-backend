@@ -52,6 +52,8 @@ struct ReleaseWindow
 
 [[nodiscard]] bool impersonates(std::string_view reply, std::string_view lang);
 
+[[nodiscard]] bool selfIdentifies(std::string_view reply, std::string_view lang);
+
 struct ScrubInput
 {
   std::string reply;

@@ -6,6 +6,7 @@
 #include <text/spoken-time.hxx>
 
 #include <array>
+#include <cctype>
 #include <json/json.h>
 #include <span>
 #include <string>
@@ -241,18 +242,18 @@ std::string askSituation(const AskSlot& ask, std::string_view lang, int64_t now)
   else if (ask.reason != AskReason::Missing)
     line += " (" + std::string(reasonText(ask.reason, lang)) + ")";
   line += ". ";
-  line += english ? "Nothing was done and nothing is set. Answer with the question only: one short "
-                    "sentence, no greeting, no preamble, never the words \"done\" or \"all set\". "
-                  : "No se hizo nada y nada quedó listo. Responde solo con la pregunta: una frase "
-                    "corta, sin saludo, sin preámbulo, nunca las palabras \"listo\" ni \"hecho\". ";
+  line += english ? "Nothing was done and nothing is set. Write only one short question that ends with a "
+                    "question mark, with no greeting, no preamble and never the words \"done\" or \"all set\". "
+                  : "No se hizo nada y nada quedó listo. Escribe solo una pregunta corta que termine en signo "
+                    "de interrogación, sin saludo, sin preámbulo y nunca con las palabras \"listo\" ni \"hecho\". ";
   if (!ask.options.empty()) {
-    line += english ? "Name every choice in it: " : "Nombra en ella cada opción: ";
+    line += english ? "In the question, ask which one: " : "En la pregunta, pregunta cuál: ";
     line += joinNamed(ask.options, lang, english ? " or " : " o ");
     line += '.';
     return line;
   }
   if (!ask.dates.empty()) {
-    line += english ? "Name the possibilities in it: " : "Nombra en ella las posibilidades: ";
+    line += english ? "In the question, ask which one: " : "En la pregunta, pregunta cuál: ";
     bool first = true;
     for (const DatePart& part : ask.dates) {
       if (!first)
@@ -263,7 +264,7 @@ std::string askSituation(const AskSlot& ask, std::string_view lang, int64_t now)
     line += '.';
     return line;
   }
-  line += english ? "Ask for " + label + " only." : "Pide solo " + label + ".";
+  line += english ? "The question asks for " + label + " only." : "La pregunta pide solo " + label + ".";
   return line;
 }
 
@@ -311,10 +312,10 @@ std::string chooseSituation(const Choose& choose, std::string_view lang)
 {
   const bool english = lang == "en";
   std::string line = english
-                         ? "The user must still choose and nothing was done. Answer with the question "
-                           "only: one short sentence, no greeting, naming: "
-                         : "Falta que el usuario elija y no se hizo nada. Responde solo con la pregunta: "
-                           "una frase corta, sin saludo, nombrando: ";
+                         ? "The user must still choose and nothing was done. Write only one short question "
+                           "that ends with a question mark, with no greeting, asking which one: "
+                         : "Falta que el usuario elija y no se hizo nada. Escribe solo una pregunta corta que "
+                           "termine en signo de interrogación, sin saludo, preguntando cuál: ";
   line += joinNamed(choose.options, lang, english ? " or " : " o ");
   line += '.';
   return line;
@@ -391,10 +392,10 @@ std::string offerSituation(const Offer& offer, std::string_view lang)
     line += " " + offer.facts;
   if (!offer.pendingIntent.empty())
     line += (english ? " Pending: " : " Pendiente: ") + offer.pendingIntent + ".";
-  line += english ? " Nothing was done. Answer with the question only: one short sentence, no greeting, "
-                    "offering to turn it on and waiting for their answer."
-                  : " Nada se hizo. Responde solo con la pregunta: una frase corta, sin saludo, "
-                    "ofreciéndole activarlo y esperando su respuesta.";
+  line += english ? " Nothing was done. Write only one short question that ends with a question mark, "
+                    "with no greeting, offering to turn it on."
+                  : " Nada se hizo. Escribe solo una pregunta corta que termine en signo de interrogación, "
+                    "sin saludo, ofreciéndole activarlo.";
   return line;
 }
 
@@ -487,12 +488,117 @@ std::span<const ExampleLine> exampleLines(const Act& act, std::string_view lang)
   return lang == "en" ? std::span<const ExampleLine>(set.en) : std::span<const ExampleLine>(set.es);
 }
 
+namespace
+{
+
+constexpr std::size_t kNamedOptions = 3;
+
+std::string withoutArticle(std::string label)
+{
+  for (const std::string_view article : {"el ", "la ", "los ", "las ", "the ", "a ", "an "})
+    if (label.starts_with(article))
+      return label.substr(article.size());
+  return label;
+}
+
+std::string listed(const std::vector<std::string>& items, std::string_view lang)
+{
+  const bool english = lang == "en";
+  const std::size_t named = std::min(items.size(), kNamedOptions);
+  std::string out;
+  for (std::size_t index = 0; index < named; ++index) {
+    if (index > 0)
+      out += (index + 1 == named && items.size() <= kNamedOptions) ? (english ? " or " : " o ") : ", ";
+    out += items.at(index);
+  }
+  if (items.size() > kNamedOptions)
+    out += english ? " or another" : " u otro";
+  return out;
+}
+
+std::string whichQuestion(const std::string& label, const std::vector<std::string>& items, std::string_view lang)
+{
+  const std::string noun = withoutArticle(label);
+  return lang == "en" ? "Which " + noun + " do you prefer: " + listed(items, lang) + "?"
+                      : "¿Qué " + noun + " prefieres: " + listed(items, lang) + "?";
+}
+
+}
+
 std::optional<std::string> slotQuestion(const SlotQuestion& input)
 {
-  if (input.ask.slot != "privacy")
+  if (input.ask.slot == "privacy")
+    return input.lang == "en" ? std::string("Do you want me to turn it on or remove it?")
+                              : std::string("¿La activo o la quito?");
+  const std::string label = slotLabelOf(input.ask.slot, input.lang);
+  if (label.empty())
     return std::nullopt;
-  return input.lang == "en" ? std::string("Do you want me to turn it on or remove it?")
-                            : std::string("¿La activo o la quito?");
+  if (!input.ask.options.empty()) {
+    std::vector<std::string> names;
+    names.reserve(input.ask.options.size());
+    for (const std::string& option : input.ask.options)
+      names.push_back(optionNameOf(option, input.lang));
+    return whichQuestion(label, names, input.lang);
+  }
+  if (!input.ask.dates.empty()) {
+    std::vector<std::string> names;
+    names.reserve(input.ask.dates.size());
+    for (const DatePart& part : input.ask.dates)
+      names.push_back(dateSurface(part, input.lang, input.now));
+    return whichQuestion(label, names, input.lang);
+  }
+  return std::nullopt;
+}
+
+std::string subjectOf(const Json::Value& args)
+{
+  constexpr std::size_t kLongestSubject = 60;
+  for (const char* key : {"title", "name", "text", "query"}) {
+    const Json::Value& value = args[key];
+    if (value.isString() && !value.asString().empty() && value.asString().size() <= kLongestSubject)
+      return value.asString();
+  }
+  return {};
+}
+
+std::optional<std::string> confirmQuestion(const ConfirmQuestion& input)
+{
+  if (!input.confirm.module.empty())
+    return std::nullopt;
+  const bool english = input.lang == "en";
+  const std::string_view action = actionPhrase(input.confirm.action, input.lang);
+  if (action.empty())
+    return std::nullopt;
+  std::string line = english ? "Do you want me to " : "¿Confirmas ";
+  line += action;
+  const std::string subject = subjectOf(input.confirm.args);
+  if (!subject.empty())
+    line += " " + quoted(subject, input.lang);
+  for (const char* key : {"starts_at", "due_at"}) {
+    const Json::Value& value = input.confirm.args[key];
+    if (!value.isString())
+      continue;
+    const auto at = iso_time::parse(value.asString());
+    if (!at)
+      continue;
+    const spoken_time::When when{.epoch = *at, .now = input.now, .lang = input.lang, .day = spoken_time::Day::Relative};
+    line += ", " + spoken_time::day(when) + (english ? " at " : " a las ") + spoken_time::clock(when);
+    break;
+  }
+  line += "?";
+  return line;
+}
+
+std::optional<std::string> chooseQuestion(const ChooseQuestion& input)
+{
+  if (input.choose.options.size() < 2)
+    return std::nullopt;
+  std::vector<std::string> names;
+  names.reserve(input.choose.options.size());
+  for (const std::string& option : input.choose.options)
+    names.push_back(optionNameOf(option, input.lang));
+  return input.lang == "en" ? "Do you want " + listed(names, input.lang) + "?"
+                            : "¿Prefieres " + listed(names, input.lang) + "?";
 }
 
 std::string ungroundedLine(std::string_view lang)
@@ -500,10 +606,29 @@ std::string ungroundedLine(std::string_view lang)
   return lang == "en" ? "I do not have that information." : "No tengo ese dato.";
 }
 
+namespace
+{
+
+bool properName(std::string_view name)
+{
+  if (name.empty())
+    return false;
+  const auto first = static_cast<unsigned char>(name.front());
+  if (first < 0x80)
+    return std::isupper(first) != 0;
+  if (first == 0xC3 && name.size() > 1) {
+    const auto second = static_cast<unsigned char>(name[1]);
+    return second >= 0x80 && second <= 0x9E && second != 0x97;
+  }
+  return false;
+}
+
+}
+
 std::optional<std::string> refusalLine(const RefusalSpeech& input)
 {
   const bool english = input.lang == "en";
-  const std::string& name = input.refused.name;
+  const std::string name = properName(input.refused.name) ? input.refused.name : std::string();
   const std::string_view reason = input.refused.reason;
   if (reason == refusal_reason::kPrivatePerson)
     return english ? (name.empty() ? std::string("I cannot tell you that: it is somebody else's information.")

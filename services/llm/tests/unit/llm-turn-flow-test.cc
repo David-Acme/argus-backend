@@ -914,7 +914,7 @@ TEST_CASE("a question is rendered by the model, sync and streamed, and the act r
   CHECK(output.act == "ask_slot");
   CHECK(sync.script.requests.front().messages.back().role == "user");
   CHECK(sync.script.requests.front().messages.back().content.find(
-            "Nota de la app: falta la fecha y hora; pregunta solo por la fecha y hora, en una sola pregunta corta.") !=
+            "Nota de la app: falta la fecha y hora. No se hizo nada y nada quedó listo.") !=
         std::string::npos);
 
   Spoken streamed;
@@ -989,10 +989,9 @@ TEST_CASE("a preview is not a deed, so a claim of it is cut, and a tool that onl
   preview.world.scripted.next = cancel;
   preview.script.replies = {"Listo, cancelé la cena con Marta.", "Listo, cancelé la cena con Marta."};
   const auto output = preview.sync("cancela la cena con Marta");
-  CHECK(output.reply.empty());
-  CHECK(output.speech == "unavailable");
-  REQUIRE(preview.script.requests.size() == 2);
-  CHECK(preview.script.requests.front().messages.back().content.find(std::string(kCode)) == std::string::npos);
+  CHECK(output.reply == "¿Confirmas cancelar el evento «Cena con Marta»?");
+  CHECK(output.reply.find("cancelé") == std::string::npos);
+  CHECK(preview.script.requests.empty());
 
   Spoken reading;
   reading.adapter.flow().useDecider(reading.world.scripted);
