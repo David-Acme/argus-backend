@@ -22,7 +22,7 @@ public:
             argus::camera::v1::PullTableResponse* response) override
   {
     {
-      const std::lock_guard<std::mutex> lock(mutex_);
+      const std::scoped_lock lock(mutex_);
       seen_.clear();
       for (const auto& [key, value] : context->client_metadata())
         seen_.emplace(std::string(key.begin(), key.end()),

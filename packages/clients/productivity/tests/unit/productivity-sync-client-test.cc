@@ -7,6 +7,7 @@
 #include <memory>
 #include <productivity/productivity-sync-client.hxx>
 #include <string>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -76,8 +77,7 @@ TEST_CASE("a pull sends the requested branch and the identity untouched")
   v1::PullTableRequest request;
   request.mutable_project_task()->set_required_create(true);
   request.mutable_project_task()->mutable_created()->set_start_id(40);
-  const auto rows = client.pullTable(request, identityFor(7));
-  REQUIRE(rows.has_value());
+  const auto rows = valueOf(client.pullTable(request, identityFor(7)));
   CHECK(service.seen.table_case() == v1::PullTableRequest::kProjectTask);
   CHECK(service.seen.project_task().required_create());
   CHECK(service.seen.project_task().created().start_id() == 40);
@@ -85,20 +85,19 @@ TEST_CASE("a pull sends the requested branch and the identity untouched")
   CHECK(service.metadata.at("x-argus-role") == "owner");
   CHECK(service.metadata.at("x-argus-device") == "abc123");
   CHECK(service.metadata.count("x-argus-credential") == 0);
-  CHECK(rows->project_task().created(0).title() == "Ship the release");
-  CHECK(rows->project_task().created(0).sort_order() == doctest::Approx(1.5));
-  CHECK(rows->project_task().deleted(0).deleted_at() == 900);
-  CHECK(rows->project_task().last_created().id() == 88);
+  CHECK(rows.project_task().created(0).title() == "Ship the release");
+  CHECK(rows.project_task().created(0).sort_order() == doctest::Approx(1.5));
+  CHECK(rows.project_task().deleted(0).deleted_at() == 900);
+  CHECK(rows.project_task().last_created().id() == 88);
 
   service.rows.clear_project_task();
   service.rows.mutable_reminder()->add_created()->set_id(3);
   v1::PullTableRequest other;
   other.mutable_reminder()->set_required_deleted(true);
-  const auto later = client.pullTable(other, identityFor(7));
-  REQUIRE(later.has_value());
+  const auto later = valueOf(client.pullTable(other, identityFor(7)));
   CHECK(service.seen.table_case() == v1::PullTableRequest::kReminder);
   CHECK(service.seen.reminder().required_deleted());
-  CHECK(later->reminder().created(0).id() == 3);
+  CHECK(later.reminder().created(0).id() == 3);
 
   server->Shutdown();
 }
@@ -123,9 +122,8 @@ TEST_CASE("a refusal and an unreachable receiver both answer no rows")
   CHECK_FALSE(client.pullTable(request, identityFor(7)).has_value());
 
   service.status = grpc::Status::OK;
-  const auto rows = client.pullTable(request, identityFor(7));
-  REQUIRE(rows.has_value());
-  CHECK(rows->reminder().created(0).id() == 3);
+  const auto rows = valueOf(client.pullTable(request, identityFor(7)));
+  CHECK(rows.reminder().created(0).id() == 3);
 
   const ProductivitySyncClient dead({.target = "127.0.0.1:1", .credential = ""});
   CHECK_FALSE(dead.pullTable(request, identityFor(7)).has_value());

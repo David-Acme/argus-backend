@@ -99,8 +99,16 @@ private:
   std::filesystem::path path_;
 };
 
-void writeConfig(const std::string& path, const std::string& dbPath)
+struct ConfigFiles
 {
+  std::string path;
+  std::string dbPath;
+};
+
+void writeConfig(const ConfigFiles& files)
+{
+  const std::string& path = files.path;
+  const std::string& dbPath = files.dbPath;
   std::ofstream out(path, std::ios::trunc);
   out << "[database]\nfile = \"" << dbPath << "\"\n"
       << "[memory]\nschema_file = \"" << ARGUS_TEST_MEMORY_SCHEMA << "\"\n"
@@ -222,7 +230,7 @@ TEST_CASE("encounter fan-out captures exactly once with inbox dedup" *
   const char* url = broker.c_str();
 
   const TempDir dir(uniqueStem("encounter-closed-live-test"));
-  writeConfig(dir.file("config.toml"), dir.file("memory.db"));
+  writeConfig({.path = dir.file("config.toml"), .dbPath = dir.file("memory.db")});
   ConfigService::load(dir.file("config.toml"));
 
   SqliteGraph graph;

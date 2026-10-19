@@ -67,13 +67,13 @@ void PtzLease::release(const PtzClaim& claim)
   vacate(entry, claim.atMs);
 }
 
-PtzLeaseState PtzLease::stateOf(int64_t cameraId, int64_t atMs)
+PtzLeaseState PtzLease::stateOf(const PtzInstant& instant)
 {
   std::scoped_lock lock(mutex_);
-  const auto it = entries_.find(cameraId);
+  const auto it = entries_.find(instant.cameraId);
   if (it == entries_.end())
     return {};
-  expire(it->second, atMs);
+  expire(it->second, instant.atMs);
   return {.holder = it->second.holder,
           .userId = it->second.userId,
           .sinceMs = it->second.sinceMs,

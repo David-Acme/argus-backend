@@ -416,7 +416,7 @@ TEST_CASE("a view Argus aimed is the reference at once")
 {
   SceneRun run({.cameraId = 103, .rebaselineAfterMs = 900000});
   CHECK(run.show(texturedJpeg({.seed = 21, .gain = 1.0, .offset = 0.0}), 1000) == CameraHealthState::Ok);
-  CameraSceneLog::instance().noteAimed(103, 1500);
+  CameraSceneLog::instance().noteAimed({.cameraId = 103, .atMs = 1500});
   CHECK(run.show(texturedJpeg({.seed = 22, .gain = 1.0, .offset = 0.0}), 2000) == CameraHealthState::Ok);
   CHECK(run.show(texturedJpeg({.seed = 21, .gain = 1.0, .offset = 0.0}), 4000) == CameraHealthState::Moved);
   CameraSceneLog::instance().forget(103);
@@ -443,7 +443,7 @@ TEST_CASE("a preset that settles between samples is not moved")
   const auto settled = texturedJpeg({.seed = 43, .gain = 1.0, .offset = 0.0});
   SceneRun run({.cameraId = 105, .rebaselineAfterMs = 900000});
   CHECK(run.show(before, 1000) == CameraHealthState::Ok);
-  CameraSceneLog::instance().noteAimed(105, 1400);
+  CameraSceneLog::instance().noteAimed({.cameraId = 105, .atMs = 1400});
 
   run.source.frame.jpeg = moving;
   run.source.frame.capturedAtMs = 1500;
@@ -480,7 +480,7 @@ TEST_CASE("a move in flight pauses the check, and a return home keeps the refere
   CHECK(run.show(home, 1000) == CameraHealthState::Ok);
 
   CameraSceneLog::instance().beginMove({.cameraId = 107, .startMs = 1200, .expectedEndMs = 4000, .returnsHome = true});
-  CHECK(CameraSceneLog::instance().moving(107, 1500));
+  CHECK(CameraSceneLog::instance().moving({.cameraId = 107, .atMs = 1500}));
   const std::size_t published = run.sink.events.size();
   CHECK(run.show(away, 1500) == CameraHealthState::Ok);
   CHECK(run.show(away, 2500) == CameraHealthState::Ok);
@@ -488,7 +488,7 @@ TEST_CASE("a move in flight pauses the check, and a return home keeps the refere
                              [](const auto& event) { return event.status == CameraHealthState::Moved; }));
 
   CameraSceneLog::instance().endMove({.cameraId = 107, .atMs = 3000});
-  CHECK_FALSE(CameraSceneLog::instance().moving(107, 3100));
+  CHECK_FALSE(CameraSceneLog::instance().moving({.cameraId = 107, .atMs = 3100}));
   CHECK(CameraSceneLog::instance().sceneOf(107).aimedAtMs == 0);
   CHECK(run.show(home, 3500) == CameraHealthState::Ok);
   CHECK(run.show(home, 5500) == CameraHealthState::Ok);

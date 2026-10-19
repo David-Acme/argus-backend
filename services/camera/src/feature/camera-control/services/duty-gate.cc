@@ -28,11 +28,11 @@ void DutyGate::configure(DutyGateConfig config)
   entries_.clear();
 }
 
-std::optional<bool> DutyGate::cached(int64_t userId, int64_t atMs)
+std::optional<bool> DutyGate::cached(const DutyInstant& instant)
 {
   const std::scoped_lock lock(mutex_);
-  const auto found = entries_.find(userId);
-  if (found == entries_.end() || found->second.expiresAtMs <= atMs)
+  const auto found = entries_.find(instant.userId);
+  if (found == entries_.end() || found->second.expiresAtMs <= instant.atMs)
     return std::nullopt;
   return found->second.onDuty;
 }
@@ -45,7 +45,7 @@ void DutyGate::remember(const DutyAnswer& answer)
 
 drogon::Task<bool> DutyGate::onDuty(int64_t userId)
 {
-  if (const auto known = cached(userId, nowMs()))
+  if (const auto known = cached({.userId = userId, .atMs = nowMs()}))
     co_return *known;
   std::shared_ptr<const GuardPresenceClient> client;
   {

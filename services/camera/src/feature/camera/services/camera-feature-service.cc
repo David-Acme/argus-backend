@@ -226,7 +226,7 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
   CameraDriverRegistry::instance().forget(id);
   if (before.ip != row.ip || before.port != row.port)
     CameraSceneLog::instance().noteAimed(
-        id, static_cast<int64_t>(std::time(nullptr)) * 1000);
+        {.cameraId = id, .atMs = static_cast<int64_t>(std::time(nullptr)) * 1000});
   co_await syncSource(row);
   co_return row;
 }

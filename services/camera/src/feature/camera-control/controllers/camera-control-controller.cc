@@ -74,7 +74,7 @@ CameraControlController::settings(drogon::HttpRequestPtr req, int64_t id)
   const auto& device =
       req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
   co_return respond(co_await service_.settings(
-      {.cameraId = id, .body = std::move(body), .actorUserId = jwt.sub,
+      {.cameraId = id, .body = body, .actorUserId = jwt.sub,
        .actorIp = device.ip}));
 }
 

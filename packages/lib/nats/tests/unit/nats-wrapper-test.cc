@@ -23,6 +23,7 @@
 
 #include <trantor/utils/Logger.h>
 #include <stdexcept>
+#include <test-support/value-of.hxx>
 
 template <typename T>
 const T& requireValue(const std::optional<T>& value)
@@ -452,11 +453,10 @@ TEST_CASE("ensureStream reconciles an existing stream instead of assuming it" *
                                     .duplicatesNs = 60LL * 1000000000};
   REQUIRE(bus.ensureStream(create));
 
-  const auto created = bus.streamInfo(stream);
-  REQUIRE(created.has_value());
-  REQUIRE(created->subjects.size() == 1);
-  CHECK(created->subjects.front() == subject);
-  CHECK(created->maxAgeNs == 60LL * 1000000000);
+  const auto created = valueOf(bus.streamInfo(stream));
+  REQUIRE(created.subjects.size() == 1);
+  CHECK(created.subjects.front() == subject);
+  CHECK(created.maxAgeNs == 60LL * 1000000000);
 
   CHECK(bus.ensureStream(create));
 
@@ -465,19 +465,17 @@ TEST_CASE("ensureStream reconciles an existing stream instead of assuming it" *
                                   .maxAgeNs = 120LL * 1000000000,
                                   .duplicatesNs = 60LL * 1000000000};
   CHECK(bus.ensureStream(aged));
-  const auto updated = bus.streamInfo(stream);
-  REQUIRE(updated.has_value());
-  CHECK(updated->maxAgeNs == 120LL * 1000000000);
+  const auto updated = valueOf(bus.streamInfo(stream));
+  CHECK(updated.maxAgeNs == 120LL * 1000000000);
 
   const NatsBus::StreamInput foreign{.name = stream,
                                      .subjects = {subject + "-other"},
                                      .maxAgeNs = 120LL * 1000000000,
                                      .duplicatesNs = 60LL * 1000000000};
   CHECK_FALSE(bus.ensureStream(foreign));
-  const auto intact = bus.streamInfo(stream);
-  REQUIRE(intact.has_value());
-  REQUIRE(intact->subjects.size() == 1);
-  CHECK(intact->subjects.front() == subject);
+  const auto intact = valueOf(bus.streamInfo(stream));
+  REQUIRE(intact.subjects.size() == 1);
+  CHECK(intact.subjects.front() == subject);
 
   bus.drain();
 }
@@ -963,9 +961,8 @@ TEST_CASE("a quiet durable stays silent while every failed attempt of its peer i
                     .maxAckPending = NatsBus::kDefaultMaxAckPending,
                     .handler = {}}});
   REQUIRE(feed.has_value());
-  const auto created = bus.streamInfo(ensured);
-  REQUIRE(created.has_value());
-  CHECK(requireValue(created).subjects == std::vector<std::string>{subject});
+  const auto created = valueOf(bus.streamInfo(ensured));
+  CHECK(created.subjects == std::vector<std::string>{subject});
   CHECK(bus.unsubscribe(requireValue(feed)));
   bus.drain();
 }

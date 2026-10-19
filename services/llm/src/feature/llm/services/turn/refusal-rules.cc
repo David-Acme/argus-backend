@@ -174,9 +174,16 @@ bool postponeAsked(const std::vector<Word>& words, bool english)
   });
 }
 
-std::optional<std::string> nameAt(const std::vector<Word>& words, std::size_t start, std::size_t most)
+struct NameWindow
 {
-  std::size_t index = start;
+  std::size_t start{0};
+  std::size_t most{0};
+};
+
+std::optional<std::string> nameAt(const std::vector<Word>& words, const NameWindow& window)
+{
+  const std::size_t most = window.most;
+  std::size_t index = window.start;
   while (index < words.size() && inList(words.at(index).folded, kRelaySkip))
     ++index;
   if (index >= words.size())
@@ -212,7 +219,7 @@ std::optional<std::string> relayTarget(const std::vector<Word>& words, bool engl
       if (!inList(words.at(at).folded, kRelayWordsEn))
         continue;
       const std::size_t start = words.at(at + 1).folded == "on" ? at + 2 : at + 1;
-      if (const auto name = nameAt(words, start, kMaxNameWords))
+      if (const auto name = nameAt(words, {.start = start, .most = kMaxNameWords}))
         return name;
     }
   }
@@ -220,9 +227,9 @@ std::optional<std::string> relayTarget(const std::vector<Word>& words, bool engl
     for (const std::string_view stem : kRelayStemsEs)
       for (std::size_t at = 0; at < words.size(); ++at)
         if (words.at(at).folded.starts_with(stem))
-          return nameAt(words, at + 1, kMaxNameWords);
+          return nameAt(words, {.start = at + 1, .most = kMaxNameWords});
     if (const auto hit = firstPhrase(words, kRelayAsksEs))
-      return nameAt(words, hit->at + hit->size, 0);
+      return nameAt(words, {.start = hit->at + hit->size, .most = 0});
   }
   return std::nullopt;
 }
@@ -276,7 +283,7 @@ std::optional<Refusal> refusalFor(const Ask& ask)
     if (owner)
       return std::nullopt;
     return Refusal{.reason = std::string(kPrivatePerson),
-                   .name = nameAt(words, hit->at + hit->size, 1).value_or(std::string())};
+                   .name = nameAt(words, {.start = hit->at + hit->size, .most = 1}).value_or(std::string())};
   }
 
   if (firstPhrase(words, english ? std::span<const std::string_view>(kOtherPrivateEn)

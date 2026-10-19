@@ -252,7 +252,7 @@ drogon::Task<PrivacyTransition> PrivacyStateService::refresh(
   }
   if (obeyedBefore && !obeyedAfter)
   {
-    CameraSceneLog::instance().noteAimed(cameraId, epochNowMs());
+    CameraSceneLog::instance().noteAimed({.cameraId = cameraId, .atMs = epochNowMs()});
     LOG_INFO << "Camera privacy: camera " << cameraId
              << " is unmasked; Argus sees it again";
   }

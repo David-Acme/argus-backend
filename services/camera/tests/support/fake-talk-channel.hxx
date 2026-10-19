@@ -189,7 +189,11 @@ public:
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     addr.sin_port = 0;
-    ::bind(listen_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+    if (::bind(listen_, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) != 0) {
+      ::close(listen_);
+      listen_ = -1;
+      return;
+    }
     ::listen(listen_, 8);
     socklen_t len = sizeof(addr);
     ::getsockname(listen_, reinterpret_cast<sockaddr*>(&addr), &len);

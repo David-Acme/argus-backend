@@ -1,5 +1,5 @@
 tool 23.1.1
-tus 1355
+tus 1368
 modernize-use-nodiscard 350
 modernize-avoid-c-style-cast 283
 bugprone-suspicious-stringview-data-usage 250
@@ -7,14 +7,14 @@ bugprone-signed-bitwise 185
 modernize-use-designated-initializers 158
 modernize-use-scoped-lock 116
 performance-use-std-move 73
-bugprone-implicit-widening-of-multiplication-result 56
-modernize-avoid-c-arrays 53
-bugprone-unchecked-optional-access 52
+bugprone-implicit-widening-of-multiplication-result 55
+modernize-avoid-c-arrays 52
 bugprone-narrowing-conversions 49
 modernize-use-ranges 46
-modernize-return-braced-init-list 44
+bugprone-unchecked-optional-access 43
+modernize-return-braced-init-list 43
 performance-unnecessary-value-param 43
-bugprone-easily-swappable-parameters 41
+bugprone-easily-swappable-parameters 40
 modernize-use-auto 36
 bugprone-throwing-static-initialization 33
 modernize-use-emplace 29
@@ -25,8 +25,8 @@ bugprone-unused-return-value 20
 performance-enum-size 20
 performance-unnecessary-copy-initialization 20
 modernize-raw-string-literal 18
-performance-faster-string-find 16
-performance-prefer-single-char-overloads 16
+performance-faster-string-find 15
+performance-prefer-single-char-overloads 15
 modernize-use-integer-sign-comparison 13
 performance-inefficient-string-concatenation 12
 performance-move-const-arg 9

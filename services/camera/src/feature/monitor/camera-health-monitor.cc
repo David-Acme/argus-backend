@@ -101,7 +101,7 @@ CameraHealthState health_monitor::classify(const HealthMetrics& metrics,
   return CameraHealthState::Ok;
 }
 
-std::string health_monitor::statusName(CameraHealthState status)
+std::string_view health_monitor::statusName(CameraHealthState status)
 {
   switch (status) {
     case CameraHealthState::Ok:
@@ -462,7 +462,7 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
 
   CameraLiveBoard::instance().recordSample({.cameraId = camera.id,
                                             .reachable = reachable,
-                                            .health = health_monitor::statusName(status),
+                                            .health = std::string(health_monitor::statusName(status)),
                                             .atMs = capturedAt,
                                             .width = frameWidth,
                                             .height = frameHeight});

@@ -314,7 +314,7 @@ add_test(NAME llm-speech-guard-test COMMAND llm-speech-guard-test)
 
 add_executable(llm-refusal-rules-test tests/unit/llm-refusal-rules-test.cc)
 
-target_link_libraries(llm-refusal-rules-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-refusal-rules-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-refusal-rules-test PRIVATE -Wall -Wextra)
 

@@ -18,6 +18,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -223,10 +224,9 @@ TEST_CASE("the camera-talk route synthesizes over the argus-tts wire")
 
   CameraControlFeatureService service;
   const auto result =
-      drogon::sync_wait(service.speak(1, CameraTalkDto::fromJson(
-                                             talkBody("Hola camera"))));
-  REQUIRE(result);
-  CHECK(result->ok);
+      valueOf(drogon::sync_wait(service.speak(1, CameraTalkDto::fromJson(
+                                             talkBody("Hola camera")))));
+  CHECK(result.ok);
 
   const auto requests = server.requests();
   CHECK(requests.at("POST /tts/v1/synthesize") == 1);
@@ -243,21 +243,19 @@ TEST_CASE("the camera-talk route synthesizes over the argus-tts wire")
   CHECK(envelope["status"].asInt() == 200);
   CHECK(envelope["errors"].isNull());
 
-  const auto missing = refusalOf(controller.talk(
-      drogon::HttpRequest::newHttpJsonRequest(talkBody("Hola camera")), 99));
-  REQUIRE(missing);
-  CHECK(missing->status == 404);
-  CHECK(missing->code == "NOT_FOUND");
+  const auto missing = valueOf(refusalOf(controller.talk(
+      drogon::HttpRequest::newHttpJsonRequest(talkBody("Hola camera")), 99)));
+  CHECK(missing.status == 404);
+  CHECK(missing.code == "NOT_FOUND");
 
   ConfigService::setRuntimeString("tts.remote_url",
                                   "http://127.0.0.1:" +
                                       std::to_string(deadPort()));
-  const auto dead = refusalOf(controller.talk(
-      drogon::HttpRequest::newHttpJsonRequest(talkBody("Hola camera")), 1));
-  REQUIRE(dead);
-  CHECK(dead->status == 502);
-  CHECK(dead->code == "CAMERA_UNREACHABLE");
-  CHECK(dead->message.find("Text-to-speech unavailable") != std::string::npos);
+  const auto dead = valueOf(refusalOf(controller.talk(
+      drogon::HttpRequest::newHttpJsonRequest(talkBody("Hola camera")), 1)));
+  CHECK(dead.status == 502);
+  CHECK(dead.code == "CAMERA_UNREACHABLE");
+  CHECK(dead.message.find("Text-to-speech unavailable") != std::string::npos);
   CHECK(speaker->speakCalls == 2);
 
   ConfigService::setRuntimeString("tts.remote_url", "");

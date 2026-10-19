@@ -102,8 +102,16 @@ std::string scalarText(sqlite3* db, const std::string& sql)
   return stmt.columnText(0);
 }
 
-void writeConfig(const std::string& path, const std::string& dbPath)
+struct ConfigFiles
 {
+  std::string path;
+  std::string dbPath;
+};
+
+void writeConfig(const ConfigFiles& files)
+{
+  const std::string& path = files.path;
+  const std::string& dbPath = files.dbPath;
   std::ofstream out(path, std::ios::trunc);
   out << "[database]\nfile = \"" << dbPath << "\"\n"
       << "[memory]\nschema_file = \"" << ARGUS_TEST_MEMORY_SCHEMA << "\"\n"
@@ -146,7 +154,7 @@ EncounterClosedConsumer::Config consumerConfig()
 TEST_CASE("the encounter consumer captures exactly once per receipt")
 {
   const TempDir dir("encounter-consumer-test");
-  writeConfig(dir.file("config.toml"), dir.file("memory.db"));
+  writeConfig({.path = dir.file("config.toml"), .dbPath = dir.file("memory.db")});
   ConfigService::load(dir.file("config.toml"));
 
   SqliteGraph graph;

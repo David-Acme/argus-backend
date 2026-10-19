@@ -171,7 +171,7 @@ std::vector<ChatMessage> LfmAdapter::spokenMessages(const SpokenMessagesInput& i
   std::vector<ChatMessage> messages = input.history;
   if (!messages.empty() && messages.front().role == "system") {
     std::string head(languageDirective(input.lang));
-    head += "\n";
+    head += '\n';
     head += messages.front().content;
     messages.front().content = std::move(head);
   }
@@ -182,11 +182,11 @@ std::vector<ChatMessage> LfmAdapter::spokenMessages(const SpokenMessagesInput& i
   std::string content;
   if (!input.clock.empty()) {
     content += input.clock;
-    content += "\n";
+    content += '\n';
   }
   content += lastUser->content;
   if (!input.notes.empty()) {
-    content += "\n";
+    content += '\n';
     content += input.notes;
   }
   lastUser->content = std::move(content);

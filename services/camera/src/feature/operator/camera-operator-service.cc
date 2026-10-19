@@ -632,7 +632,7 @@ CameraOperatorService::analyse(const ProcessFrameInput& input)
     masked = privacy_mask::apply(rgb, zones);
   }
 
-  if (CameraSceneLog::instance().moving(cameraId, nowMs())) {
+  if (CameraSceneLog::instance().moving({.cameraId = cameraId, .atMs = nowMs()})) {
     std::lock_guard<std::mutex> lock(stateMutex_);
     CameraState& moving = states_[cameraId];
     moving.motionGray.clear();

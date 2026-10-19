@@ -16,7 +16,7 @@ CameraMediaService::CameraMediaService()
 
 int64_t CameraMediaService::streamWindowBytes()
 {
-  constexpr int64_t kDefaultWindowBytes = 128 * 1024;
+  constexpr int64_t kDefaultWindowBytes = int64_t{128} * 1024;
   const int64_t configured = ConfigService::getInt("streaming.hub_window_bytes");
   return configured > 0 ? configured : kDefaultWindowBytes;
 }
@@ -102,7 +102,7 @@ drogon::Task<bool> CameraMediaService::handleText(const SyncFrameInput& input)
          .priority = ctx.role == UserRole::Owner || ctx.role == UserRole::Resident},
         error);
     if (subId == 0) {
-      const bool viewerLimit = error.rfind("too_many_viewers", 0) == 0;
+      const bool viewerLimit = error.starts_with("too_many_viewers");
       auto subscriptionError = viewerLimit ? CameraErrors::TooManyViewers
                                            : CameraErrors::SubscribeFailed;
       if (!error.empty())

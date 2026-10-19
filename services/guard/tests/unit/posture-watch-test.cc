@@ -87,8 +87,16 @@ void clearGuardTables()
   DbService::client()->execSqlSync("DELETE FROM guard_environment");
 }
 
-std::tm localAt(int hour, int minute)
+struct ClockTime
 {
+  int hour{0};
+  int minute{0};
+};
+
+std::tm localAt(const ClockTime& time)
+{
+  const int hour = time.hour;
+  const int minute = time.minute;
   std::tm local{};
   local.tm_year = 126;
   local.tm_mon = 5;
@@ -112,7 +120,7 @@ TEST_CASE("a scheduled transition is announced without touching the manual mode"
   const auto bus = std::make_shared<NatsBus>();
   const ResourceChangeOutbox outbox(bus);
   int64_t at = 1780000000;
-  std::tm local = localAt(23, 0);
+  std::tm local = localAt({.hour = 23, .minute = 0});
   const PostureWatch watch(
       {.changes = &outbox},
       {.intervalSeconds = 30,
@@ -130,7 +138,7 @@ TEST_CASE("a scheduled transition is announced without touching the manual mode"
   CHECK(changeRows() == before + 1);
 
   at += 3600;
-  local = localAt(10, 0);
+  local = localAt({.hour = 10, .minute = 0});
   drogon::sync_wait(watch.evaluate());
   CHECK(changeRows() == before + 2);
   CHECK(scalarText("SELECT mode FROM guard_environment WHERE id = " +
@@ -190,7 +198,7 @@ TEST_CASE("the first evaluation after a restart reconciles, and only when the po
   const auto bus = std::make_shared<NatsBus>();
   const ResourceChangeOutbox outbox(bus);
   int64_t at = 1780000000;
-  std::tm local = localAt(23, 0);
+  std::tm local = localAt({.hour = 23, .minute = 0});
   const PostureWatch watch(
       {.changes = &outbox},
       {.intervalSeconds = 30,

@@ -87,7 +87,7 @@ CameraControlFeatureService::status(int64_t cameraId) const
 {
   auto result = co_await onDevice(
       cameraId, [](ICameraDriver& driver) { return driver.status(); });
-  if (succeeded(result))
+  if (result && result->ok)
   {
     CameraRepository repository;
     const auto camera = co_await repository.findById(cameraId);
@@ -137,7 +137,7 @@ CameraControlFeatureService::move(const CameraMoveInput& input) const
     return driver.move({.x = body.x, .y = body.y, .angle = body.angle, .stop = body.stop});
   });
   if (succeeded(result))
-    CameraSceneLog::instance().noteAimed(cameraId, nowMs());
+    CameraSceneLog::instance().noteAimed({.cameraId = cameraId, .atMs = nowMs()});
   co_return result;
 }
 
@@ -180,7 +180,7 @@ drogon::Task<void> CameraControlFeatureService::recordPrivacyAction(
   oldData["privacyState"] = cameraPrivacyStateToString(before);
   Json::Value newData(Json::objectValue);
   newData["privacyState"] = cameraPrivacyStateToString(after);
-  newData["requested"] = *input.body.privacy;
+  newData["requested"] = input.body.privacy.value_or(false);
   co_await sink->publishAction(
       {.event = {.userId = input.actorUserId,
                  .recordId = input.cameraId,
@@ -218,7 +218,7 @@ CameraControlFeatureService::preset(const CameraPresetInput& input) const
     return driver.preset({.action = body.action, .id = body.id, .name = body.name});
   });
   if (succeeded(result) && body.action != "save" && body.action != "delete")
-    CameraSceneLog::instance().noteAimed(cameraId, nowMs());
+    CameraSceneLog::instance().noteAimed({.cameraId = cameraId, .atMs = nowMs()});
   if (succeeded(result) && (body.action == "save" || body.action == "delete"))
     co_await announceStatus(cameraId);
   co_return result;
@@ -393,7 +393,7 @@ CameraControlFeatureService::settings(const CameraSettingsInput& input) const
       const auto probe = co_await onDevice(
           cameraId, [](ICameraDriver& driver) { return driver.status(); });
       const bool claims =
-          succeeded(probe) && probe->data["privacyEnabled"].isBool();
+          probe && probe->ok && probe->data["privacyEnabled"].isBool();
       if (!claims)
         co_return DriverResult{.ok = false,
                                 .error = "This camera model does not support "
@@ -420,7 +420,7 @@ CameraControlFeatureService::settings(const CameraSettingsInput& input) const
   {
     const auto readBack = co_await onDevice(
         cameraId, [](ICameraDriver& driver) { return driver.status(); });
-    if (succeeded(readBack))
+    if (readBack && readBack->ok)
     {
       CameraRepository repository;
       const auto camera = co_await repository.findById(cameraId);
@@ -433,7 +433,7 @@ CameraControlFeatureService::settings(const CameraSettingsInput& input) const
   }
   auto& scenes = CameraSceneLog::instance();
   if ((body.privacy && !*body.privacy) || body.dayNight)
-    scenes.noteAimed(cameraId, nowMs());
+    scenes.noteAimed({.cameraId = cameraId, .atMs = nowMs()});
   if (body.privacy)
     co_await announcePrivacy(cameraId);
   else

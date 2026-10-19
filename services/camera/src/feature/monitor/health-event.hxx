@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 struct HealthMetrics
 {
@@ -48,7 +49,7 @@ namespace health_monitor
 {
 CameraHealthState classify(const HealthMetrics& metrics,
                       const HealthThresholds& thresholds);
-std::string statusName(CameraHealthState status);
+std::string_view statusName(CameraHealthState status);
 }
 
 class IHealthEventSink

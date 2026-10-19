@@ -26,6 +26,12 @@ struct PtzClaim
   int64_t atMs{0};
 };
 
+struct PtzInstant
+{
+  int64_t cameraId{0};
+  int64_t atMs{0};
+};
+
 struct PtzLeaseState
 {
   PtzHolder holder{PtzHolder::None};
@@ -49,7 +55,7 @@ public:
   void configure(PtzLeaseConfig config);
   [[nodiscard]] PtzClaimResult claim(const PtzClaim& claim);
   void release(const PtzClaim& claim);
-  [[nodiscard]] PtzLeaseState stateOf(int64_t cameraId, int64_t atMs);
+  [[nodiscard]] PtzLeaseState stateOf(const PtzInstant& instant);
   [[nodiscard]] bool holds(const PtzClaim& claim);
   void forget(int64_t cameraId);
 

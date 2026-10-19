@@ -15,6 +15,12 @@ struct DutyGateConfig
   int64_t ttlMs{15000};
 };
 
+struct DutyInstant
+{
+  int64_t userId{0};
+  int64_t atMs{0};
+};
+
 struct DutyAnswer
 {
   int64_t userId{0};
@@ -29,7 +35,7 @@ public:
 
   void configure(DutyGateConfig config);
   drogon::Task<bool> onDuty(int64_t userId);
-  [[nodiscard]] std::optional<bool> cached(int64_t userId, int64_t atMs);
+  [[nodiscard]] std::optional<bool> cached(const DutyInstant& instant);
   void remember(const DutyAnswer& answer);
 
 private:

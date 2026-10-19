@@ -6,11 +6,11 @@ CameraSceneLog& CameraSceneLog::instance()
   return log;
 }
 
-void CameraSceneLog::noteAimed(int64_t cameraId, int64_t atMs)
+void CameraSceneLog::noteAimed(const CameraInstant& aimed)
 {
   std::scoped_lock lock(mutex_);
-  CameraScene& scene = scenes_[cameraId];
-  scene.aimedAtMs = atMs;
+  CameraScene& scene = scenes_[aimed.cameraId];
+  scene.aimedAtMs = aimed.atMs;
   scene.returnsHome = false;
 }
 
@@ -42,11 +42,11 @@ CameraScene CameraSceneLog::sceneOf(int64_t cameraId) const
   return it == scenes_.end() ? CameraScene{} : it->second;
 }
 
-bool CameraSceneLog::moving(int64_t cameraId, int64_t atMs) const
+bool CameraSceneLog::moving(const CameraInstant& instant) const
 {
   std::scoped_lock lock(mutex_);
-  const auto it = scenes_.find(cameraId);
-  return it != scenes_.end() && it->second.moving(atMs);
+  const auto it = scenes_.find(instant.cameraId);
+  return it != scenes_.end() && it->second.moving(instant.atMs);
 }
 
 void CameraSceneLog::forget(int64_t cameraId)

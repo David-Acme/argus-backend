@@ -643,11 +643,11 @@ drogon::Task<void> ClipRecorder::setPaused(bool paused, int64_t freeBytes)
   if (paused_.exchange(paused, std::memory_order_acq_rel) == paused)
     co_return;
   if (paused)
-    LOG_WARN << "Camera recording: paused, " << freeBytes / (1024 * 1024 * 1024)
+    LOG_WARN << "Camera recording: paused, " << freeBytes / (int64_t{1024} * 1024 * 1024)
              << " GB free is under the " << config_.minFreeGb
              << " GB floor; no clip is opened until space returns";
   else
-    LOG_INFO << "Camera recording: resumed, " << freeBytes / (1024 * 1024 * 1024)
+    LOG_INFO << "Camera recording: resumed, " << freeBytes / (int64_t{1024} * 1024 * 1024)
              << " GB free is back over the " << config_.minFreeGb << " GB floor";
   if (const auto* sink = camera_change::getSink())
     co_await sink->publishResource(

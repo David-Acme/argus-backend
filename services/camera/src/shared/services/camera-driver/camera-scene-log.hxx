@@ -26,6 +26,12 @@ struct CameraMoveStart
   bool returnsHome{false};
 };
 
+struct CameraInstant
+{
+  int64_t cameraId{0};
+  int64_t atMs{0};
+};
+
 struct CameraMoveEnd
 {
   int64_t cameraId{0};
@@ -37,11 +43,11 @@ class CameraSceneLog
 public:
   static CameraSceneLog& instance();
 
-  void noteAimed(int64_t cameraId, int64_t atMs);
+  void noteAimed(const CameraInstant& aimed);
   void beginMove(const CameraMoveStart& move);
   void endMove(const CameraMoveEnd& move);
   [[nodiscard]] CameraScene sceneOf(int64_t cameraId) const;
-  [[nodiscard]] bool moving(int64_t cameraId, int64_t atMs) const;
+  [[nodiscard]] bool moving(const CameraInstant& instant) const;
   void forget(int64_t cameraId);
 
 private:

@@ -89,9 +89,7 @@ CameraRepository::create(const CameraCreateInput& input) const
                                    sealCloudPassword(input.cloudPassword),
                                    cameraDriverToString(input.driver), input.icon,
                                    cameraRecordModeToString(input.recordMode),
-                                   input.retentionDays
-                                       ? *input.retentionDays
-                                       : std::optional<int64_t>{},
+                                   input.retentionDays,
                                    input.capabilities, input.config, 1);
 
   CameraSchema schema;

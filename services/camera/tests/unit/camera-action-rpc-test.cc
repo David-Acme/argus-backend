@@ -156,7 +156,7 @@ int freePort()
   addr.sin_family = AF_INET;
   addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   addr.sin_port = 0;
-  ::bind(probe, reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
+  REQUIRE(::bind(probe, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == 0);
   socklen_t len = sizeof(addr);
   ::getsockname(probe, reinterpret_cast<sockaddr*>(&addr), &len);
   const int port = ntohs(addr.sin_port);
