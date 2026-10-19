@@ -28,6 +28,7 @@ struct ConversationOpening
   ConversationAudience audience{ConversationAudience::Guest};
   ConversationSurface surface{ConversationSurface::CameraVisitor};
   std::vector<std::string> notes;
+  bool faceSeen{false};
 };
 
 struct ConversationManagerInput
@@ -47,6 +48,7 @@ struct ConversationManagerInput
   std::function<void(const ConversationSnapshot&)> onUpdate;
   std::function<void(const ConversationEnded&)> onEnded;
   std::function<void(const CameraPanicCall&)> panic;
+  std::function<void(const WatchAimInput&)> aim;
 };
 
 struct HopChoiceInput
@@ -100,5 +102,6 @@ private:
   std::map<std::string, ConversationSnapshot> finished_;
   std::map<std::string, std::shared_ptr<SpeakerLevels>> levels_;
   std::map<std::string, VoiceSessionCarry> carries_;
+  std::map<std::string, int64_t> aimed_;
   std::jthread reaper_;
 };

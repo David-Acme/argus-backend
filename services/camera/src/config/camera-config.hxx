@@ -51,6 +51,15 @@ struct CameraWatchConfig
   int64_t boardRefreshMs{2000};
   int64_t faceWindowMaxMs{3000};
   int64_t faceWindowMaxCrops{6};
+  int64_t sightingHoldMs{45000};
+  int64_t aimInFrameMs{3000};
+  int64_t aimHorizontalFovDegrees{100};
+  int64_t aimVerticalFovDegrees{56};
+  int64_t aimDeadZonePercent{5};
+  int64_t aimSettleMs{1500};
+  int64_t aimLookMs{2000};
+  int64_t aimMaxPresets{4};
+  int64_t aimReturnMs{30000};
 };
 
 struct GuardDutyConfig

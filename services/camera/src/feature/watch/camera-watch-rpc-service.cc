@@ -5,6 +5,7 @@
 #include <feature/watch/services/watch-gate.hxx>
 
 #include <runtime/blocking-pool.hxx>
+#include <shared/services/stream/person-sightings.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
 #include <trantor/utils/Logger.h>
 
@@ -423,11 +424,18 @@ CameraWatchRpcService::CameraWatchRpcService(CameraWatchServiceInput input)
       board_(std::move(input.board)),
       gate_(std::move(input.gate)),
       config_(input.config),
-      identify_(std::move(input.identify))
+      identify_(std::move(input.identify)),
+      aimer_(std::move(input.aimer))
 {
 }
 
 bool CameraWatchRpcService::authorized(const grpc::CallbackServerContext* context) const
+{
+  const std::optional<std::string> caller = argus::client::authorizeCaller(context, callers_);
+  return caller && *caller == kWatchVoiceCaller;
+}
+
+bool CameraWatchRpcService::readsSightings(const grpc::CallbackServerContext* context) const
 {
   return argus::client::authorizeCaller(context, callers_).has_value();
 }
@@ -437,7 +445,7 @@ grpc::ServerUnaryReactor* CameraWatchRpcService::ListWatch(grpc::CallbackServerC
                                                            v1::ListWatchResponse* response)
 {
   auto* reactor = context->DefaultReactor();
-  if (!authorized(context)) {
+  if (!readsSightings(context)) {
     reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "argus-voice caller credential required"));
     return reactor;
   }
@@ -539,6 +547,63 @@ grpc::ServerUnaryReactor* CameraWatchRpcService::FaceWindow(grpc::CallbackServer
       face->set_matched(found->matched());
     }
     response->set_crops(static_cast<int32_t>(crops.size()));
+    reactor->Finish(grpc::Status::OK);
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* CameraWatchRpcService::Sightings(grpc::CallbackServerContext* context,
+                                                           const v1::SightingsRequest* request,
+                                                           v1::SightingsResponse* response)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!readsSightings(context)) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "camera watch caller credential required"));
+    return reactor;
+  }
+  const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+  const int64_t since = std::max(request->since_ms(), now - config_.sightingHoldMs);
+  for (const PersonSighting& seen : PersonSightings::instance().since(since)) {
+    auto* sighting = response->add_sightings();
+    sighting->set_camera_id(seen.cameraId);
+    sighting->set_track_id(seen.trackId);
+    sighting->set_person_id(seen.personId);
+    sighting->set_known(seen.known);
+    sighting->set_center_x(seen.centerX);
+    sighting->set_center_y(seen.centerY);
+    sighting->set_width(seen.width);
+    sighting->set_height(seen.height);
+    sighting->set_night(seen.night);
+    sighting->set_at_ms(seen.atMs);
+  }
+  reactor->Finish(grpc::Status::OK);
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* CameraWatchRpcService::Aim(grpc::CallbackServerContext* context,
+                                                     const v1::AimRequest* request,
+                                                     v1::AimResponse* response)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!authorized(context)) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "argus-voice caller credential required"));
+    return reactor;
+  }
+  if (request->camera_id() <= 0 || request->conversation_id().empty()) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "camera_id and conversation_id are required"));
+    return reactor;
+  }
+  if (!aimer_ || stopping_.load()) {
+    response->set_outcome(v1::AIM_OUTCOME_NO_PTZ);
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+  }
+  const AimTarget target{.cameraId = request->camera_id(), .conversationId = request->conversation_id()};
+  const v1::AimMode mode = request->mode();
+  blocking_pool::submit(BlockingLane::Light, [aimer = aimer_, reactor, response, target, mode] {
+    *response = mode == v1::AIM_MODE_RELEASE ? aimer->release(target) : aimer->find(target);
     reactor->Finish(grpc::Status::OK);
   });
   return reactor;

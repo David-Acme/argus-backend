@@ -121,10 +121,66 @@ message FaceWindowResponse
   int32 crops = 2;
 }
 
+message SightingsRequest
+{
+  int64 since_ms = 1;
+}
+
+message Sighting
+{
+  int64 camera_id = 1;
+  int64 track_id = 2;
+  int64 person_id = 3;
+  bool known = 4;
+  float center_x = 5;
+  float center_y = 6;
+  float width = 7;
+  float height = 8;
+  bool night = 9;
+  int64 at_ms = 10;
+}
+
+message SightingsResponse
+{
+  repeated Sighting sightings = 1;
+}
+
+enum AimMode
+{
+  AIM_MODE_FIND = 0;
+  AIM_MODE_RELEASE = 1;
+}
+
+enum AimOutcome
+{
+  AIM_OUTCOME_UNSPECIFIED = 0;
+  AIM_OUTCOME_CENTERED = 1;
+  AIM_OUTCOME_IN_FRAME = 2;
+  AIM_OUTCOME_NOT_FOUND = 3;
+  AIM_OUTCOME_REFUSED = 4;
+  AIM_OUTCOME_NO_PTZ = 5;
+  AIM_OUTCOME_RELEASED = 6;
+}
+
+message AimRequest
+{
+  int64 camera_id = 1;
+  string conversation_id = 2;
+  AimMode mode = 3;
+}
+
+message AimResponse
+{
+  AimOutcome outcome = 1;
+  string detail = 2;
+}
+
 service CameraWatchService
 {
   rpc ListWatch(ListWatchRequest) returns (ListWatchResponse) {}
   rpc OpenMicrophone(MicrophoneRequest) returns (stream MicrophoneFrame) {}
   rpc Speak(stream SpeakFrame) returns (stream SpeakEvent) {}
   rpc FaceWindow(FaceWindowRequest) returns (FaceWindowResponse) {}
+  rpc Sightings(SightingsRequest) returns (SightingsResponse) {}
+  rpc Aim(AimRequest) returns (AimResponse) {}
 }

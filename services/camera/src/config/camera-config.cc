@@ -100,6 +100,18 @@ CameraWatchConfig CameraConfig::resolveWatch()
   config.boardRefreshMs = positive("watch.board_refresh_ms", config.boardRefreshMs);
   config.faceWindowMaxMs = positive("watch.face_window_max_ms", config.faceWindowMaxMs);
   config.faceWindowMaxCrops = positive("watch.face_window_max_crops", config.faceWindowMaxCrops);
+  config.sightingHoldMs = positive("watch.sighting_hold_ms", config.sightingHoldMs);
+  config.aimInFrameMs = positive("watch.aim_in_frame_ms", config.aimInFrameMs);
+  config.aimHorizontalFovDegrees =
+      std::clamp<int64_t>(positive("watch.aim_hfov_degrees", config.aimHorizontalFovDegrees), 20, 180);
+  config.aimVerticalFovDegrees =
+      std::clamp<int64_t>(positive("watch.aim_vfov_degrees", config.aimVerticalFovDegrees), 10, 120);
+  config.aimDeadZonePercent =
+      std::clamp<int64_t>(nonNegative("watch.aim_dead_zone_percent", config.aimDeadZonePercent), 0, 40);
+  config.aimSettleMs = nonNegative("watch.aim_settle_ms", config.aimSettleMs);
+  config.aimLookMs = positive("watch.aim_look_ms", config.aimLookMs);
+  config.aimMaxPresets = nonNegative("watch.aim_max_presets", config.aimMaxPresets);
+  config.aimReturnMs = nonNegative("watch.aim_return_ms", config.aimReturnMs);
   return config;
 }
 

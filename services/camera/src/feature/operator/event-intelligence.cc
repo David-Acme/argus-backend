@@ -1,6 +1,8 @@
 #include <feature/operator/event-intelligence.hxx>
+#include <shared/services/stream/person-sightings.hxx>
 
 #include <algorithm>
+#include <chrono>
 #include <string>
 
 bool objectCenterInZone(const ObjectZoneInput& input)
@@ -189,6 +191,28 @@ EventIntelligence::evaluate(const EventIntelligenceInput& input)
       entry.identifyAttempts = match->identifyAttempts;
       if (entry.known && isPrimary(entry.object.trackId) && !knownPersonId)
         knownPersonId = match->personId;
+    }
+  }
+
+  if (input.frameWidth > 0 && input.frameHeight > 0) {
+    const int64_t seenAt = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::system_clock::now().time_since_epoch())
+                               .count();
+    const auto width = static_cast<float>(input.frameWidth);
+    const auto height = static_cast<float>(input.frameHeight);
+    for (const auto& entry : evaluated) {
+      if (entry.object.name != "person")
+        continue;
+      PersonSightings::instance().note({.cameraId = input.cameraId,
+                                        .trackId = entry.object.trackId,
+                                        .personId = entry.personId.value_or(0),
+                                        .known = entry.known,
+                                        .centerX = (entry.object.x + (entry.object.w / 2.0F)) / width,
+                                        .centerY = (entry.object.y + (entry.object.h / 2.0F)) / height,
+                                        .width = entry.object.w / width,
+                                        .height = entry.object.h / height,
+                                        .night = input.night,
+                                        .atMs = seenAt});
     }
   }
 

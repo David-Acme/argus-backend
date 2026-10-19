@@ -7,6 +7,7 @@ argus_module(NAME camera-stream
         gop-cache.cc
         go2rtc-manager.cc
         grab-backoff.cc
+        person-sightings.cc
         snapshot-store.cc
         stream-hub.cc
         upstream-http.cc

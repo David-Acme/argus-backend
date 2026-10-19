@@ -44,6 +44,13 @@ struct WatchSpeakInput
   std::function<void(const argus::camera::v1::SpeakEvent&)> onEvent;
 };
 
+struct WatchAimInput
+{
+  int64_t cameraId{0};
+  std::string conversationId;
+  argus::camera::v1::AimMode mode{argus::camera::v1::AIM_MODE_FIND};
+};
+
 class WatchSpeakerStream
 {
 public:
@@ -75,7 +82,12 @@ public:
   [[nodiscard]] virtual std::optional<argus::camera::v1::FaceWindowResponse> faceWindow(int64_t cameraId,
                                                                                         int windowMs) const;
 
+  [[nodiscard]] virtual std::optional<std::vector<argus::camera::v1::Sighting>> sightings(int64_t sinceMs) const;
+
+  [[nodiscard]] virtual std::optional<argus::camera::v1::AimResponse> aim(const WatchAimInput& input) const;
+
   static constexpr int kListTimeoutMs = 3000;
+  static constexpr int kAimTimeoutMs = 30000;
 
 private:
   std::shared_ptr<grpc::Channel> channel_;

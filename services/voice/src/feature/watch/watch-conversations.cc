@@ -168,6 +168,14 @@ void ConversationManager::onWake(const ConfirmedWake& wake)
     levels_[id] = std::make_shared<SpeakerLevels>(input_.config.gainAlpha);
   }
   conversation->open(wake.capture ? wake.capture->snapshot() : std::vector<float>{});
+  const std::optional<WatchCameraInfo> info = input_.cameraInfo ? input_.cameraInfo(wake.cameraId) : std::nullopt;
+  if (input_.aim && info && info->panTilt && !opening.faceSeen) {
+    {
+      std::scoped_lock lock(mutex_);
+      aimed_[id] = wake.cameraId;
+    }
+    input_.aim({.cameraId = wake.cameraId, .conversationId = id, .mode = argus::camera::v1::AIM_MODE_FIND});
+  }
 }
 
 void ConversationManager::onFrame(const EarFrame& frame)
@@ -371,12 +379,21 @@ void ConversationManager::heard(const std::string& conversationId, const std::st
 
 void ConversationManager::ended(const ConversationEnded& ended)
 {
+  std::optional<int64_t> aimedCamera;
   {
     std::scoped_lock lock(mutex_);
     finished_[ended.snapshot.conversationId] = ended.snapshot;
     if (ended.carry && ended.snapshot.userId > 0 && ended.snapshot.state == ConversationState::Resumable)
       carries_[ended.snapshot.conversationId] = *ended.carry;
+    if (const auto found = aimed_.find(ended.snapshot.conversationId); found != aimed_.end()) {
+      aimedCamera = found->second;
+      aimed_.erase(found);
+    }
   }
+  if (aimedCamera && input_.aim)
+    input_.aim({.cameraId = *aimedCamera,
+                .conversationId = ended.snapshot.conversationId,
+                .mode = argus::camera::v1::AIM_MODE_RELEASE});
   if (input_.onEnded)
     input_.onEnded(ended);
 }

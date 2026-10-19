@@ -4,7 +4,9 @@
 #include <feature/watch/services/microphone-hub.hxx>
 #include <feature/watch/services/speaker-program.hxx>
 #include <feature/watch/services/speaker-session.hxx>
+#include <feature/watch/services/watch-aim.hxx>
 #include <feature/watch/services/watch-gate.hxx>
+#include <shared/services/stream/person-sightings.hxx>
 
 #include <algorithm>
 #include <atomic>
@@ -330,4 +332,123 @@ TEST_CASE("a camera in use answers busy and a free one plays prologue, body and 
   CHECK(log->closed == 1);
   REQUIRE(log->packets.size() == 8);
   CHECK(std::ranges::all_of(log->packets, [](size_t samples) { return samples == 320; }));
+}
+
+TEST_CASE("a person already in the middle of the frame needs no move")
+{
+  const AimGeometry geometry{.horizontalFovDegrees = 100.0, .verticalFovDegrees = 56.0, .deadZone = 0.05};
+  const PersonSighting centered{.cameraId = 1,
+                                .trackId = 1,
+                                .personId = 0,
+                                .known = false,
+                                .centerX = 0.52F,
+                                .centerY = 0.6F,
+                                .width = 0.1F,
+                                .height = 0.6F,
+                                .night = false,
+                                .atMs = 1000};
+  const AimStep step = aimStepFor(centered, geometry);
+  CHECK(step.centered);
+  CHECK(step.pan == 0);
+  CHECK(step.tilt == 0);
+}
+
+TEST_CASE("a person on the right turns the camera right by the share of the field of view")
+{
+  const AimGeometry geometry{.horizontalFovDegrees = 100.0, .verticalFovDegrees = 56.0, .deadZone = 0.05};
+  const PersonSighting right{.cameraId = 1,
+                             .trackId = 1,
+                             .personId = 0,
+                             .known = false,
+                             .centerX = 0.9F,
+                             .centerY = 0.6F,
+                             .width = 0.1F,
+                             .height = 0.6F,
+                             .night = false,
+                             .atMs = 1000};
+  const AimStep step = aimStepFor(right, geometry);
+  CHECK_FALSE(step.centered);
+  CHECK(step.pan == 40);
+  CHECK(step.tilt == 0);
+}
+
+TEST_CASE("a person high in the frame tilts the camera up toward the face")
+{
+  const AimGeometry geometry{.horizontalFovDegrees = 100.0, .verticalFovDegrees = 56.0, .deadZone = 0.05};
+  const PersonSighting high{.cameraId = 1,
+                            .trackId = 1,
+                            .personId = 0,
+                            .known = false,
+                            .centerX = 0.5F,
+                            .centerY = 0.2F,
+                            .width = 0.1F,
+                            .height = 0.2F,
+                            .night = false,
+                            .atMs = 1000};
+  const AimStep step = aimStepFor(high, geometry);
+  CHECK_FALSE(step.centered);
+  CHECK(step.pan == 0);
+  CHECK(step.tilt > 0);
+}
+
+TEST_CASE("the aim takes the newest sighting and ignores those before the camera last moved")
+{
+  const std::vector<PersonSighting> seen{
+      {.cameraId = 1, .trackId = 1, .personId = 0, .known = false, .centerX = 0.1F, .centerY = 0.5F,
+       .width = 0.1F, .height = 0.5F, .night = false, .atMs = 1000},
+      {.cameraId = 1, .trackId = 2, .personId = 0, .known = false, .centerX = 0.8F, .centerY = 0.5F,
+       .width = 0.1F, .height = 0.5F, .night = false, .atMs = 3000},
+      {.cameraId = 1, .trackId = 3, .personId = 0, .known = false, .centerX = 0.3F, .centerY = 0.5F,
+       .width = 0.3F, .height = 0.6F, .night = false, .atMs = 3000}};
+  const auto best = bestSighting({.sightings = seen, .notBeforeMs = 2000});
+  REQUIRE(best.has_value());
+  CHECK(best->trackId == 3);
+  CHECK_FALSE(bestSighting({.sightings = seen, .notBeforeMs = 4000}).has_value());
+}
+
+TEST_CASE("preset ids are read from both the ONVIF and the Tapo shapes")
+{
+  Json::Value onvif(Json::objectValue);
+  onvif["preset"]["id"].append("a");
+  onvif["preset"]["id"].append("b");
+  CHECK(presetIdsOf(onvif) == std::vector<std::string>{"a", "b"});
+  Json::Value tapo(Json::objectValue);
+  tapo["preset"]["preset"]["id"].append("1");
+  tapo["preset"]["preset"]["id"].append(2);
+  CHECK(presetIdsOf(tapo) == std::vector<std::string>{"1", "2"});
+  CHECK(presetIdsOf(Json::Value()).empty());
+}
+
+TEST_CASE("the sightings book keeps a camera's people for the hold and forgets them after")
+{
+  PersonSightings& book = PersonSightings::instance();
+  book.forget(901);
+  book.configure(45000);
+  book.note({.cameraId = 901, .trackId = 1, .personId = 7, .known = true, .centerX = 0.5F, .centerY = 0.5F,
+             .width = 0.1F, .height = 0.5F, .night = true, .atMs = 1000});
+  book.note({.cameraId = 901, .trackId = 2, .personId = 0, .known = false, .centerX = 0.5F, .centerY = 0.5F,
+             .width = 0.1F, .height = 0.5F, .night = false, .atMs = 60000});
+  const std::vector<PersonSighting> recent = book.recent({.cameraId = 901, .sinceMs = 0});
+  REQUIRE(recent.size() == 1);
+  CHECK(recent.front().trackId == 2);
+  book.forget(901);
+  CHECK(book.recent({.cameraId = 901, .sinceMs = 0}).empty());
+}
+
+TEST_CASE("the aimer refuses a camera the gate closes and one without pan and tilt")
+{
+  auto board = std::make_shared<WatchCameraBoard>();
+  board->put({.id = 5, .name = "sala", .enabled = true, .watchman = true, .noAudio = false, .talk = true,
+              .panTilt = false, .tvExclusion = false});
+  WatchAimer closed({.board = board,
+                     .gate = [](int64_t) { return v1::WATCH_REFUSAL_MASKED; },
+                     .config = {},
+                     .schedule = {}});
+  CHECK(closed.find({.cameraId = 5, .conversationId = "c1"}).outcome() == v1::AIM_OUTCOME_REFUSED);
+  WatchAimer open({.board = board,
+                   .gate = [](int64_t) { return v1::WATCH_REFUSAL_NONE; },
+                   .config = {},
+                   .schedule = {}});
+  CHECK(open.find({.cameraId = 5, .conversationId = "c1"}).outcome() == v1::AIM_OUTCOME_NO_PTZ);
+  CHECK(open.release({.cameraId = 5, .conversationId = "c1"}).detail() == "not_held");
 }

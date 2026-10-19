@@ -31,6 +31,7 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+#include <runtime/blocking-pool.hxx>
 #include <runtime/log-output.hxx>
 #include <runtime/shutdown-signal.hxx>
 
@@ -268,6 +269,18 @@ int main()
       .panic = [guardDuress](const CameraPanicCall& call) {
         if (!guardDuress || !guardDuress->raiseCameraPanic(call))
           LOG_WARN << "Voice watch: the panic heard on camera " << call.cameraId << " did not reach argus-guard";
+      },
+      .aim = [watchCameras](const WatchAimInput& aim) {
+        if (!watchCameras)
+          return;
+        blocking_pool::submit(BlockingLane::Light, [watchCameras, aim] {
+          const auto answer = watchCameras->aim(aim);
+          if (!answer)
+            LOG_WARN << "Voice watch: camera " << aim.cameraId << " did not answer the aim request";
+          else
+            LOG_INFO << "Voice watch: camera " << aim.cameraId << " aim "
+                     << argus::camera::v1::AimOutcome_Name(answer->outcome());
+        });
       }});
   ConversationManager& conversations = *conversationsHolder;
   watch = std::make_unique<WatchCoordinator>(WatchCoordinatorInput{

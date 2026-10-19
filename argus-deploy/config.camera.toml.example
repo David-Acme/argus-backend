@@ -193,6 +193,15 @@ speak_queue_ms = 60000
 speak_idle_ms = 15000
 face_window_max_ms = 3000
 face_window_max_crops = 6
+sighting_hold_ms = 45000
+aim_in_frame_ms = 3000
+aim_hfov_degrees = 100
+aim_vfov_degrees = 56
+aim_dead_zone_percent = 5
+aim_settle_ms = 1500
+aim_look_ms = 2000
+aim_max_presets = 4
+aim_return_ms = 30000
 
 [stt]
 remote_url = ""

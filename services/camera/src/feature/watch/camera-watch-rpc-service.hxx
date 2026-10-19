@@ -1,6 +1,7 @@
 #pragma once
 
 #include <feature/watch/services/microphone-hub.hxx>
+#include <feature/watch/services/watch-aim.hxx>
 #include <feature/watch/services/watch-camera-board.hxx>
 
 #include <argus/camera/v1/watch.grpc.pb.h>
@@ -15,8 +16,12 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
+
+inline constexpr std::string_view kWatchVoiceCaller = "argus-voice";
+inline constexpr std::string_view kWatchGuardCaller = "argus-guard";
 
 struct CameraWatchServiceInput
 {
@@ -26,6 +31,7 @@ struct CameraWatchServiceInput
   std::function<argus::camera::v1::WatchRefusal(int64_t)> gate;
   CameraWatchConfig config;
   std::function<std::optional<argus::identity::v1::IdentifyPersonResponse>(const CameraIdentifyInput&)> identify;
+  std::shared_ptr<WatchAimer> aimer;
 };
 
 class WatchReactorRegistry
@@ -59,11 +65,20 @@ public:
                                        const argus::camera::v1::FaceWindowRequest* request,
                                        argus::camera::v1::FaceWindowResponse* response) override;
 
+  grpc::ServerUnaryReactor* Sightings(grpc::CallbackServerContext* context,
+                                      const argus::camera::v1::SightingsRequest* request,
+                                      argus::camera::v1::SightingsResponse* response) override;
+
+  grpc::ServerUnaryReactor* Aim(grpc::CallbackServerContext* context,
+                                const argus::camera::v1::AimRequest* request,
+                                argus::camera::v1::AimResponse* response) override;
+
   void requestStop();
   [[nodiscard]] bool drained() const;
 
 private:
   [[nodiscard]] bool authorized(const grpc::CallbackServerContext* context) const;
+  [[nodiscard]] bool readsSightings(const grpc::CallbackServerContext* context) const;
 
   std::vector<argus::client::CallerCredential> callers_;
   std::shared_ptr<MicrophoneHub> hub_;
@@ -71,6 +86,7 @@ private:
   std::function<argus::camera::v1::WatchRefusal(int64_t)> gate_;
   CameraWatchConfig config_;
   std::function<std::optional<argus::identity::v1::IdentifyPersonResponse>(const CameraIdentifyInput&)> identify_;
+  std::shared_ptr<WatchAimer> aimer_;
   std::shared_ptr<WatchReactorRegistry> reactors_{std::make_shared<WatchReactorRegistry>()};
   std::atomic<uint64_t> nextId_{1};
   std::atomic<bool> stopping_{false};

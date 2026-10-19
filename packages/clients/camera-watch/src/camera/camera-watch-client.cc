@@ -203,3 +203,33 @@ std::optional<v1::FaceWindowResponse> CameraWatchClient::faceWindow(int64_t came
     return std::nullopt;
   return response;
 }
+
+std::optional<std::vector<v1::Sighting>> CameraWatchClient::sightings(int64_t sinceMs) const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kListTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+  v1::SightingsRequest request;
+  request.set_since_ms(sinceMs);
+  v1::SightingsResponse response;
+  if (const grpc::Status status = stub_->Sightings(&context, request, &response); !status.ok())
+    return std::nullopt;
+  return std::vector<v1::Sighting>(response.sightings().begin(), response.sightings().end());
+}
+
+std::optional<v1::AimResponse> CameraWatchClient::aim(const WatchAimInput& input) const
+{
+  if (input.cameraId <= 0 || input.conversationId.empty())
+    return std::nullopt;
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kAimTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+  v1::AimRequest request;
+  request.set_camera_id(input.cameraId);
+  request.set_conversation_id(input.conversationId);
+  request.set_mode(input.mode);
+  v1::AimResponse response;
+  if (const grpc::Status status = stub_->Aim(&context, request, &response); !status.ok())
+    return std::nullopt;
+  return response;
+}

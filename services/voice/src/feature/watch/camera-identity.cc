@@ -84,6 +84,7 @@ std::optional<ConversationOpening> CameraIdentityResolver::resolve(const Confirm
   opening.audience = resolution.audience;
   opening.surface = resolution.surface;
   opening.notes = resolution.notes;
+  opening.faceSeen = !input.faces.empty();
   opening.identity.set_language(languageOf(input_.lang));
   if (resolution.userId > 0) {
     opening.identity.set_user_id(resolution.userId);

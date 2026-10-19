@@ -22,6 +22,8 @@
 #include <feature/actions/camera-action-rpc-service.hxx>
 #include <feature/watch/camera-watch-rpc-service.hxx>
 #include <feature/watch/infra/ffmpeg-microphone-source.hxx>
+#include <feature/watch/services/watch-aim.hxx>
+#include <shared/services/stream/person-sightings.hxx>
 #include <feature/watch/services/watch-gate.hxx>
 #include <feature/health/health-rpc-service.hxx>
 #include <feature/module-data/services/camera-module-data.hxx>
@@ -314,10 +316,19 @@ int main()
     watchIdentity = std::make_shared<IdentityClient>(
         identity.target,
         argus::client::PeerCredential{.credential = identity.credential, .fleetSecret = identity.rpcSecret});
+  PersonSightings::instance().configure(watchConfig.sightingHoldMs);
+  const auto watchAimer = std::make_shared<WatchAimer>(WatchAimerInput{
+      .board = watchBoard,
+      .gate = watchGate,
+      .config = watchConfig,
+      .schedule = [](std::chrono::milliseconds delay, std::function<void()> work) {
+        drogon::app().getLoop()->runAfter(static_cast<double>(delay.count()) / 1000.0, std::move(work));
+      }});
   CameraWatchRpcService cameraWatchRpc(
-      {.callers = {argus::client::CallerCredential{
-           .service = "argus-voice",
-           .secret = CameraConfig::resolveVoiceCallerSecret()}},
+      {.callers = {argus::client::CallerCredential{.service = std::string(kWatchVoiceCaller),
+                                                   .secret = CameraConfig::resolveVoiceCallerSecret()},
+                   argus::client::CallerCredential{.service = std::string(kWatchGuardCaller),
+                                                   .secret = CameraConfig::resolveGuardCallerSecret()}},
        .hub = microphoneHub,
        .board = watchBoard,
        .gate = watchGate,
@@ -327,7 +338,8 @@ int main()
          if (!watchIdentity)
            return std::nullopt;
          return watchIdentity->identifyForCamera(input);
-       }});
+       },
+       .aimer = watchAimer});
   HealthRpcService healthRpc;
   SettingsRegistry settings(cameraSettingsCatalog());
   settings.onChange([](const std::vector<std::string>&) {
