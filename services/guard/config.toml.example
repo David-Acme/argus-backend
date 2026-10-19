@@ -25,6 +25,7 @@ sync = ""
 notification = ""
 llm = ""
 camera = ""
+voice = ""
 
 [presence]
 enabled = true

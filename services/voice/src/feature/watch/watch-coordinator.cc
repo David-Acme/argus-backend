@@ -32,6 +32,12 @@ bool broadcastBurst(const WakeDecisionInput& input)
          highest - lowest <= input.config.broadcastSpreadDb;
 }
 
+float wakeScore(const WakeScoreInput& input, const VoiceWatchConfig& config)
+{
+  return (config.weightWake * input.wake) + (config.weightSnr * input.normalizedSnr) +
+         (config.weightStageTwo * input.stageTwo);
+}
+
 WakeDecision decideWakes(const WakeDecisionInput& input)
 {
   WakeDecision decision;
@@ -39,8 +45,7 @@ WakeDecision decideWakes(const WakeDecisionInput& input)
     decision.broadcast = true;
     return decision;
   }
-  std::optional<size_t> best;
-  std::vector<std::pair<size_t, float>> passing;
+  std::vector<WakeCandidate> passing;
   for (size_t index = 0; index < input.fires.size(); ++index) {
     const EarFire& fire = input.fires[index];
     const auto camera = input.cameras.find(fire.cameraId);
@@ -50,15 +55,21 @@ WakeDecision decideWakes(const WakeDecisionInput& input)
       decision.quiet.push_back(index);
       continue;
     }
-    passing.emplace_back(index, threshold);
-    if (!best || fire.snrDb > input.fires[*best].snrDb)
-      best = index;
+    const float normalized = input.normalize ? input.normalize(fire.cameraId, fire.snrDb) : fire.snrDb;
+    passing.push_back({.fire = index, .threshold = threshold, .normalizedSnr = normalized});
   }
-  for (const auto& [index, threshold] : passing) {
-    if (best && index == *best)
-      decision.candidates.push_back({.fire = index, .threshold = threshold});
-    else
-      decision.duplicates.push_back(index);
+  std::ranges::stable_sort(passing, std::ranges::greater{}, &WakeCandidate::normalizedSnr);
+  std::vector<int64_t> seen;
+  for (const WakeCandidate& candidate : passing) {
+    const int64_t cameraId = input.fires[candidate.fire].cameraId;
+    const bool repeat = std::ranges::find(seen, cameraId) != seen.end();
+    if (!repeat && std::cmp_less(decision.candidates.size(), input.config.stageTwoCandidates)) {
+      decision.candidates.push_back(candidate);
+      seen.push_back(cameraId);
+    }
+    else {
+      decision.duplicates.push_back(candidate.fire);
+    }
   }
   return decision;
 }
@@ -66,7 +77,8 @@ WakeDecision decideWakes(const WakeDecisionInput& input)
 WatchCoordinator::WatchCoordinator(WatchCoordinatorInput input)
     : input_(std::move(input)),
       stageTwo_(*input_.stt),
-      fireLog_(static_cast<size_t>(input_.config.fireLogSize))
+      fireLog_(static_cast<size_t>(input_.config.fireLogSize)),
+      gains_(input_.config.gainAlpha)
 {
 }
 
@@ -142,6 +154,18 @@ void WatchCoordinator::refreshLoop(const std::stop_token& stop)
 
 void WatchCoordinator::refresh()
 {
+  if (input_.guard && input_.rooms) {
+    if (const auto rooms = input_.guard->cameraRooms()) {
+      std::vector<CameraPlace> places;
+      places.reserve(rooms->size());
+      for (const auto& room : *rooms)
+        places.push_back({.cameraId = room.camera_id(),
+                          .environmentId = room.environment_id(),
+                          .room = room.room(),
+                          .outdoor = room.outdoor()});
+      input_.rooms->replace(places);
+    }
+  }
   const auto listed = input_.camera->listWatch();
   if (!listed)
     return;
@@ -218,7 +242,7 @@ void WatchCoordinator::workerLoop(const std::stop_token& stop)
         return;
       window.push_back(std::move(queue_.front()));
       queue_.pop_front();
-      const auto closeAt = window.front().at + input_.config.broadcastWindow;
+      const auto closeAt = window.front().at + input_.config.arbitrationWindow;
       static_cast<void>(queueReady_.wait_until(lock, stop, closeAt, [] { return false; }));
       while (!queue_.empty() && queue_.front().at <= closeAt) {
         window.push_back(std::move(queue_.front()));
@@ -231,6 +255,11 @@ void WatchCoordinator::workerLoop(const std::stop_token& stop)
   }
 }
 
+bool WatchCoordinator::sameEnvironment(int64_t left, int64_t right) const
+{
+  return !input_.rooms || input_.rooms->sameEnvironment(left, right);
+}
+
 void WatchCoordinator::decide(std::vector<EarFire> fires)
 {
   std::map<int64_t, WatchCameraInfo> cameras;
@@ -238,7 +267,13 @@ void WatchCoordinator::decide(std::vector<EarFire> fires)
     std::scoped_lock lock(mutex_);
     cameras = cameras_;
   }
-  const WakeDecision decision = decideWakes({.fires = fires, .cameras = cameras, .config = input_.config});
+  const WakeDecision decision = decideWakes(
+      {.fires = fires,
+       .cameras = cameras,
+       .config = input_.config,
+       .normalize = [this](int64_t cameraId, float snr) {
+         return gains_.normalize(cameraId, snr, input_.config.gainWeight);
+       }});
   if (decision.broadcast) {
     for (const EarFire& fire : fires)
       record(fire, WakeVerdict::Broadcast, nullptr);
@@ -248,66 +283,95 @@ void WatchCoordinator::decide(std::vector<EarFire> fires)
     record(fires[index], WakeVerdict::LowSnr, nullptr);
   for (const size_t index : decision.duplicates)
     record(fires[index], WakeVerdict::DuplicateWake, nullptr);
-  for (const WakeCandidate& candidate : decision.candidates)
-    confirm(fires[candidate.fire], candidate.threshold);
-}
+  if (decision.candidates.empty())
+    return;
 
-void WatchCoordinator::confirm(const EarFire& fire, float threshold)
-{
-  if (fire.duringPlayback) {
-    record(fire, WakeVerdict::SelfEcho, nullptr);
+  std::vector<Evaluation> evaluations(decision.candidates.size());
+  {
+    std::vector<std::jthread> jobs;
+    jobs.reserve(decision.candidates.size());
+    for (size_t index = 0; index < decision.candidates.size(); ++index)
+      jobs.emplace_back([this, &fires, &decision, &evaluations, index] {
+        evaluations[index] = evaluate(fires[decision.candidates[index].fire], decision.candidates[index]);
+      });
+  }
+  std::optional<size_t> winner;
+  for (size_t index = 0; index < evaluations.size(); ++index) {
+    if (evaluations[index].verdict != WakeVerdict::Accepted)
+      continue;
+    if (!winner || evaluations[index].score > evaluations[*winner].score)
+      winner = index;
+  }
+  for (size_t index = 0; index < evaluations.size(); ++index) {
+    const EarFire& fire = fires[decision.candidates[index].fire];
+    if (winner && index != *winner && evaluations[index].verdict == WakeVerdict::Accepted)
+      record(fire, WakeVerdict::DuplicateWake, &evaluations[index]);
+    else
+      record(fire, evaluations[index].verdict, &evaluations[index]);
+  }
+  if (!winner)
     return;
-  }
-  int maxDistance = input_.config.wakeMaxDistance;
-  if (input_.echo) {
-    const EchoQuery query{.cameraId = fire.cameraId,
-                          .micEnvelope = fire.envelope,
-                          .micStart = fire.envelopeStart,
-                          .sameEnvironment = input_.sameEnvironment};
-    if (input_.echo->othersPlaying(query, fire.at)) {
-      if (fire.snrDb < threshold + input_.config.echoRaiseDb ||
-          input_.echo->correlationWithOthers(query) >= input_.config.echoCorrelation) {
-        record(fire, WakeVerdict::CrossEcho, nullptr);
-        return;
-      }
-      maxDistance = std::max(0, maxDistance - 1);
-    }
-  }
-  StageTwoResult result;
-  if (fire.transcript) {
-    result = judgeWake(*fire.transcript, maxDistance);
-  }
-  else {
-    static_cast<void>(fire.capture->wait(input_.config.postRoll + kStageTwoGrace));
-    const std::vector<float> samples = fire.capture->snapshot();
-    result = stageTwo_.confirm({.samples = samples, .language = input_.language, .maxDistance = maxDistance});
-  }
-  if (!result.accepted) {
-    record(fire, WakeVerdict::Rejected, &result);
-    return;
-  }
-  record(fire, WakeVerdict::Accepted, &result);
+  const EarFire& fire = fires[decision.candidates[*winner].fire];
+  gains_.observe(fire.cameraId, fire.snrDb);
   if (input_.onWake) {
     std::string name;
     if (const auto info = camera(fire.cameraId))
       name = info->name;
     input_.onWake({.cameraId = fire.cameraId,
                    .cameraName = name,
-                   .stageTwo = result,
+                   .stageTwo = evaluations[*winner].stageTwo,
                    .capture = fire.capture,
                    .snrDb = fire.snrDb,
                    .at = fire.at});
   }
 }
 
-void WatchCoordinator::record(const EarFire& fire, WakeVerdict verdict, const StageTwoResult* stageTwo)
+WatchCoordinator::Evaluation WatchCoordinator::evaluate(const EarFire& fire, const WakeCandidate& candidate)
+{
+  Evaluation out;
+  if (fire.duringPlayback) {
+    out.verdict = WakeVerdict::SelfEcho;
+    return out;
+  }
+  int maxDistance = input_.config.wakeMaxDistance;
+  if (input_.echo) {
+    const EchoQuery query{.cameraId = fire.cameraId,
+                          .micEnvelope = fire.envelope,
+                          .micStart = fire.envelopeStart,
+                          .sameEnvironment = [this](int64_t left, int64_t right) {
+                            return sameEnvironment(left, right);
+                          }};
+    if (input_.echo->othersPlaying(query, fire.at)) {
+      if (fire.snrDb < candidate.threshold + input_.config.echoRaiseDb ||
+          input_.echo->correlationWithOthers(query) >= input_.config.echoCorrelation) {
+        out.verdict = WakeVerdict::CrossEcho;
+        return out;
+      }
+      maxDistance = std::max(0, maxDistance - 1);
+    }
+  }
+  if (fire.transcript) {
+    out.stageTwo = judgeWake(*fire.transcript, maxDistance);
+  }
+  else if (fire.capture) {
+    static_cast<void>(fire.capture->wait(input_.config.postRoll + kStageTwoGrace));
+    const std::vector<float> samples = fire.capture->snapshot();
+    out.stageTwo = stageTwo_.confirm({.samples = samples, .language = input_.language, .maxDistance = maxDistance});
+  }
+  out.verdict = out.stageTwo.accepted ? WakeVerdict::Accepted : WakeVerdict::Rejected;
+  out.score = wakeScore({.wake = 1.0F, .normalizedSnr = candidate.normalizedSnr, .stageTwo = out.stageTwo.confidence},
+                        input_.config);
+  return out;
+}
+
+void WatchCoordinator::record(const EarFire& fire, WakeVerdict verdict, const Evaluation* evaluation)
 {
   fireLog_.record({.cameraId = fire.cameraId,
                    .at = std::chrono::system_clock::now(),
                    .verdict = verdict,
                    .source = fire.source,
                    .snrDb = fire.snrDb,
-                   .distance = stageTwo != nullptr ? stageTwo->match.distance : -1,
-                   .stageTwo = stageTwo != nullptr ? stageTwo->confidence : 0.0F,
-                   .score = fire.snrDb});
+                   .distance = evaluation != nullptr ? evaluation->stageTwo.match.distance : -1,
+                   .stageTwo = evaluation != nullptr ? evaluation->stageTwo.confidence : 0.0F,
+                   .score = evaluation != nullptr ? evaluation->score : 0.0F});
 }

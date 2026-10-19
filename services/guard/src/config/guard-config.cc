@@ -140,7 +140,8 @@ GuardRpcConfig GuardConfig::resolveRpc()
   std::vector<std::pair<std::string, std::string>> presence;
   std::string tools;
   for (const auto& caller : callers) {
-    if (caller.first == "sync" || caller.first == "notification" || caller.first == "camera")
+    if (caller.first == "sync" || caller.first == "notification" || caller.first == "camera" ||
+        caller.first == "voice")
       presence.push_back(caller);
     if (caller.first == "llm")
       tools = caller.second;

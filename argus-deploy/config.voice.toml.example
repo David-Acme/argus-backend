@@ -31,6 +31,10 @@ credential = "CHANGE_ME_VOICE_NOTIFICATION"
 grpc_target = "tls:argus-camera:7236"
 credential = "CHANGE_ME_VOICE_CAMERA"
 
+[guard]
+presence_target = "tls:argus-guard:7339"
+presence_credential = "CHANGE_ME_GUARD_VOICE"
+
 [watch]
 enabled = true
 list_refresh_ms = 10000
@@ -57,6 +61,13 @@ echo_max_lag_ms = 1000
 floor_rise_db_per_s = 0.5
 floor_fall_db_per_s = 10.0
 fire_log_size = 200
+arbitration_window_ms = 400
+stage2_candidates = 2
+weight_wake = 1.0
+weight_snr = 0.1
+weight_stage2 = 1.0
+gain_weight = 0.5
+gain_alpha = 0.1
 
 [stt]
 remote_url = ""

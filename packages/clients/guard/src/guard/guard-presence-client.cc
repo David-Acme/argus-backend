@@ -43,3 +43,16 @@ std::optional<bool> GuardPresenceClient::onDuty(int64_t userId) const
     return std::nullopt;
   return response.on_duty();
 }
+
+std::optional<std::vector<argus::guard::v1::CameraRoom>> GuardPresenceClient::cameraRooms() const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+
+  const argus::guard::v1::CameraRoomsRequest request;
+  argus::guard::v1::CameraRoomsResponse response;
+  if (const grpc::Status status = stub_->CameraRooms(&context, request, &response); !status.ok())
+    return std::nullopt;
+  return std::vector<argus::guard::v1::CameraRoom>(response.cameras().begin(), response.cameras().end());
+}

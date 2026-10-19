@@ -86,6 +86,12 @@ struct VoiceCameraConfig
   std::string credential;
 };
 
+struct VoiceGuardConfig
+{
+  std::string target;
+  std::string credential;
+};
+
 struct VoiceWatchConfig
 {
   bool enabled{true};
@@ -113,6 +119,13 @@ struct VoiceWatchConfig
   int fireLogSize{200};
   std::chrono::milliseconds fireDebounce{1500};
   std::chrono::milliseconds kwsRetry{5000};
+  std::chrono::milliseconds arbitrationWindow{400};
+  int stageTwoCandidates{2};
+  float weightWake{1.0F};
+  float weightSnr{0.1F};
+  float weightStageTwo{1.0F};
+  float gainWeight{0.5F};
+  float gainAlpha{0.1F};
 };
 
 class VoiceConfig
@@ -139,4 +152,6 @@ public:
   [[nodiscard]] static VoiceCameraConfig resolveCamera();
 
   [[nodiscard]] static VoiceWatchConfig resolveWatch();
+
+  [[nodiscard]] static VoiceGuardConfig resolveGuard();
 };

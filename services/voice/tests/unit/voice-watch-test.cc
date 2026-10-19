@@ -194,19 +194,18 @@ TEST_CASE("one wake at a similar level on three cameras at once is broadcast aud
   const std::vector<EarFire> tv{fireAt(1, 12.0F, std::chrono::milliseconds(0)),
                                 fireAt(2, 13.0F, std::chrono::milliseconds(40)),
                                 fireAt(3, 14.0F, std::chrono::milliseconds(90))};
-  CHECK(decideWakes({.fires = tv, .cameras = cameras, .config = config}).broadcast);
+  CHECK(decideWakes({.fires = tv, .cameras = cameras, .config = config, .normalize = {}}).broadcast);
 
   const std::vector<EarFire> person{fireAt(1, 6.0F, std::chrono::milliseconds(0)),
                                     fireAt(2, 18.0F, std::chrono::milliseconds(30))};
-  const WakeDecision decision = decideWakes({.fires = person, .cameras = cameras, .config = config});
+  const WakeDecision decision = decideWakes({.fires = person, .cameras = cameras, .config = config, .normalize = {}});
   CHECK_FALSE(decision.broadcast);
-  REQUIRE(decision.candidates.size() == 1);
+  REQUIRE(decision.candidates.size() == 2);
   CHECK(person[decision.candidates.front().fire].cameraId == 2);
-  REQUIRE(decision.duplicates.size() == 1);
-  CHECK(person[decision.duplicates.front()].cameraId == 1);
+  CHECK(decision.duplicates.empty());
 
   const std::vector<EarFire> nearTv{fireAt(3, 7.0F, std::chrono::milliseconds(0))};
-  const WakeDecision raised = decideWakes({.fires = nearTv, .cameras = cameras, .config = config});
+  const WakeDecision raised = decideWakes({.fires = nearTv, .cameras = cameras, .config = config, .normalize = {}});
   CHECK(raised.candidates.empty());
   CHECK(raised.quiet.size() == 1);
 }
@@ -227,4 +226,61 @@ TEST_CASE("the fire log keeps scores and verdicts, never audio")
   REQUIRE(recent.size() == 2);
   CHECK(recent.front().cameraId == 2);
   CHECK(wakeVerdictToString(WakeVerdict::DuplicateWake) == "duplicate_wake");
+}
+
+TEST_CASE("arbitration ranks by signal over each camera's typical level, not by who fired first")
+{
+  VoiceWatchConfig config;
+  config.stageTwoCandidates = 1;
+  const std::map<int64_t, WatchCameraInfo> cameras{
+      {1, {.id = 1, .name = "Sala", .talk = true, .panTilt = false, .tvExclusion = false}},
+      {2, {.id = 2, .name = "Cocina", .talk = true, .panTilt = false, .tvExclusion = false}}};
+  const std::vector<EarFire> fires{fireAt(1, 14.0F, std::chrono::milliseconds(0)),
+                                   fireAt(2, 16.0F, std::chrono::milliseconds(200))};
+  const WakeDecision plain = decideWakes({.fires = fires, .cameras = cameras, .config = config, .normalize = {}});
+  REQUIRE(plain.candidates.size() == 1);
+  CHECK(fires[plain.candidates.front().fire].cameraId == 2);
+
+  CameraGains gains(1.0F);
+  gains.observe(1, 4.0F);
+  gains.observe(2, 20.0F);
+  CHECK(gains.typical(2) == doctest::Approx(20.0F));
+  const WakeDecision normalized =
+      decideWakes({.fires = fires,
+                   .cameras = cameras,
+                   .config = config,
+                   .normalize = [&gains](int64_t camera, float snr) { return gains.normalize(camera, snr, 0.5F); }});
+  REQUIRE(normalized.candidates.size() == 1);
+  CHECK(fires[normalized.candidates.front().fire].cameraId == 1);
+  CHECK(normalized.duplicates.size() == 1);
+  CHECK(normalizedSnr({.snrDb = 10.0F, .typicalDb = 20.0F, .meanTypicalDb = 12.0F, .weight = 0.5F}) ==
+        doctest::Approx(6.0F));
+  CHECK(wakeScore({.wake = 1.0F, .normalizedSnr = 10.0F, .stageTwo = 0.75F}, config) == doctest::Approx(2.75F));
+}
+
+TEST_CASE("rooms come from the guard's camera context, and unknown cameras share the environment")
+{
+  RoomDirectory rooms;
+  CHECK(rooms.sameEnvironment(1, 2));
+  CHECK_FALSE(rooms.sameRoom(1, 2));
+  rooms.replace({{.cameraId = 1, .environmentId = 1, .room = "1:living", .outdoor = false},
+                 {.cameraId = 2, .environmentId = 1, .room = "1:living", .outdoor = false},
+                 {.cameraId = 3, .environmentId = 2, .room = "2:office", .outdoor = false}});
+  CHECK(rooms.sameRoom(1, 2));
+  CHECK_FALSE(rooms.sameRoom(1, 3));
+  CHECK_FALSE(rooms.sameEnvironment(2, 3));
+  CHECK(rooms.roommates(1) == std::vector<int64_t>{2});
+  CHECK(rooms.roomOf(9) == "camera:9");
+}
+
+TEST_CASE("the conversation speaker's level is kept per camera")
+{
+  SpeakerLevels levels(0.5F);
+  levels.observe({.cameraId = 1, .snrDb = 10.0F});
+  levels.observe({.cameraId = 2, .snrDb = 20.0F});
+  levels.observe({.cameraId = 2, .snrDb = 10.0F});
+  CHECK(levels.snapshot().at(2) == doctest::Approx(15.0F));
+  CHECK(levels.loudest() == 2);
+  levels.clear();
+  CHECK(levels.loudest() == 0);
 }

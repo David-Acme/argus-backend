@@ -281,6 +281,7 @@ camera guard duty_target guard
 sync modules target settings
 voice identity target identity
 voice camera grpc_target camera
+voice guard presence_target guard
 voice notification target notification
 ROWS
   local owner

@@ -185,6 +185,12 @@ int main()
                                                                 .maxLag = watchConfig.echoMaxLag,
                                                                 .history = std::chrono::milliseconds(10000),
                                                                 .sampleRate = 16000});
+  const VoiceGuardConfig guardConfig = VoiceConfig::resolveGuard();
+  std::shared_ptr<const GuardPresenceClient> guardPresence;
+  if (!guardConfig.target.empty())
+    guardPresence = std::make_shared<GuardPresenceClient>(
+        GuardPresenceClientConfig{.target = guardConfig.target, .credential = guardConfig.credential});
+  const auto rooms = std::make_shared<RoomDirectory>();
   SttWakeSpotter wakeSpotter;
   WatchCoordinator watch({.config = watchConfig,
                           .camera = watchCameras,
@@ -193,7 +199,8 @@ int main()
                           .vad = &voiceVad(),
                           .language = voiceLangToString(voiceSystemLang()),
                           .echo = echo,
-                          .sameEnvironment = {},
+                          .guard = guardPresence,
+                          .rooms = rooms,
                           .onWake = {},
                           .onFrame = {}});
   watch.start();

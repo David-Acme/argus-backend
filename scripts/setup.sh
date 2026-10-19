@@ -272,6 +272,8 @@ ensure_local_config() {
     "$ROOT/services/guard/config.toml" rpc.callers camera 32
   fill_config_pair "$ROOT/services/voice/config.toml" camera credential \
     "$ROOT/services/camera/config.toml" grpc caller_voice 32
+  fill_config_pair "$ROOT/services/voice/config.toml" guard presence_credential \
+    "$ROOT/services/guard/config.toml" rpc.callers voice 32
   fill_config_pair "$ROOT/services/guard/config.toml" vlm grpc_credential \
     "$ROOT/services/vlm/config.toml" rpc.callers guard 32
   ensure_fleet_callers native "$ROOT"

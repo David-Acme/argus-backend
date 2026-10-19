@@ -2018,3 +2018,7 @@ areas, its urgency is `passive`, and the call-trigger classifier does not
 whitelist the kind, so it is never a phone call. Putting the mask on is the
 camera's own act (the Tapo app, a preset, the button) or the app's
 (`camera.set_privacy`, Owner and Resident); the guard only reports.
+
+## Camera rooms for the watchman (2026-10, CC3 of the camera call plan)
+
+`PresenceService.CameraRooms` answers `{camera_id, environment_id, room, outdoor}` for every configured camera context, admitted for the presence callers plus argus-voice (`rpc.callers.voice`). There is no room table: the room key is derived from the context the Owner already keeps (`feature/guard/services/camera-room`), `<environment>:<role>` for an indoor camera whose role names a room and `<environment>:camera:<id>` otherwise, so two indoor cameras the Owner marks "living" in one environment are one room. Voice uses it for cross-camera echo and for moving a conversation to another camera of the same room.

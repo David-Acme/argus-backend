@@ -1,7 +1,9 @@
 #include <app/rpc/duress-rpc-service.hxx>
 #include <app/rpc/guard-rpc-server.hxx>
 #include <app/rpc/presence-rpc-service.hxx>
+#include <feature/guard/repositories/camera-context/camera-context-repository.hxx>
 #include <feature/guard/repositories/response/response-repository.hxx>
+#include <feature/guard/services/camera-room.hxx>
 #include <feature/guard/repositories/environment/environment-repository.hxx>
 #include <feature/mcp/services/guard-tools.hxx>
 #include <mcp/mcp-rpc.hxx>
@@ -177,6 +179,16 @@ RpcListener startRpcListener(const RpcListenerInput& input)
                          .duty = [](int64_t userId) -> drogon::Task<std::vector<int64_t>> {
                            const ResponseRepository responses;
                            co_return co_await responses.dutyEnvironments(userId);
+                         },
+                         .rooms = []() -> drogon::Task<std::vector<CameraRoomRow>> {
+                           const CameraContextRepository contexts;
+                           std::vector<CameraRoomRow> rows;
+                           for (const GuardCameraContext& context : co_await contexts.list())
+                             rows.push_back({.cameraId = context.cameraId,
+                                             .environmentId = context.environmentId,
+                                             .room = cameraRoomKey(context),
+                                             .outdoor = context.outdoor});
+                           co_return rows;
                          }});
     services.push_back(listener.presence.get());
   }

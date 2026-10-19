@@ -139,5 +139,19 @@ VoiceWatchConfig VoiceConfig::resolveWatch()
   config.fireLogSize = positiveInt("watch.fire_log_size", config.fireLogSize);
   config.fireDebounce = positiveMs("watch.fire_debounce_ms", config.fireDebounce);
   config.kwsRetry = positiveMs("watch.kws_retry_ms", config.kwsRetry);
+  config.arbitrationWindow = std::max(config.broadcastWindow,
+                                      positiveMs("watch.arbitration_window_ms", config.arbitrationWindow));
+  config.stageTwoCandidates = std::clamp(positiveInt("watch.stage2_candidates", config.stageTwoCandidates), 1, 4);
+  config.weightWake = decimalOf("watch.weight_wake", config.weightWake);
+  config.weightSnr = decimalOf("watch.weight_snr", config.weightSnr);
+  config.weightStageTwo = decimalOf("watch.weight_stage2", config.weightStageTwo);
+  config.gainWeight = std::clamp(decimalOf("watch.gain_weight", config.gainWeight), 0.0F, 1.0F);
+  config.gainAlpha = std::clamp(decimalOf("watch.gain_alpha", config.gainAlpha), 0.01F, 1.0F);
   return config;
+}
+
+VoiceGuardConfig VoiceConfig::resolveGuard()
+{
+  return {.target = ConfigService::getString("guard.presence_target"),
+          .credential = ConfigService::getString("guard.presence_credential")};
 }

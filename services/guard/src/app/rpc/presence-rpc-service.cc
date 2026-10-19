@@ -136,3 +136,39 @@ grpc::ServerUnaryReactor* PresenceRpcService::GetDuty(
   });
   return reactor;
 }
+
+grpc::ServerUnaryReactor* PresenceRpcService::CameraRooms(
+    grpc::CallbackServerContext* context,
+    const v1::CameraRoomsRequest*, v1::CameraRoomsResponse* response)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!argus::client::authorizeCaller(context, input_.credentials)) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Caller credential missing or invalid"));
+    return reactor;
+  }
+  if (!input_.rooms) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "Rooms are not wired"));
+    return reactor;
+  }
+  CameraRoomLookup rooms = input_.rooms;
+  drogon::app().getLoop()->queueInLoop([rooms = std::move(rooms), reactor, response]() {
+    drogon::async_run([rooms, reactor, response]() -> drogon::Task<void> {
+      try {
+        for (const CameraRoomRow& row : co_await rooms()) {
+          auto* camera = response->add_cameras();
+          camera->set_camera_id(row.cameraId);
+          camera->set_environment_id(row.environmentId);
+          camera->set_room(row.room);
+          camera->set_outdoor(row.outdoor);
+        }
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Presence RPC: CameraRooms failed: " << error.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, "Rooms failed"));
+      }
+    });
+  });
+  return reactor;
+}

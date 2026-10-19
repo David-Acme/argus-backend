@@ -31,6 +31,8 @@ public:
 
   [[nodiscard]] virtual std::optional<bool> onDuty(int64_t userId) const;
 
+  [[nodiscard]] virtual std::optional<std::vector<argus::guard::v1::CameraRoom>> cameraRooms() const;
+
 private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::guard::v1::PresenceService::StubInterface> stub_;

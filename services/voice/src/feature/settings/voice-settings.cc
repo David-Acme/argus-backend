@@ -99,6 +99,10 @@ void appendWatch(std::vector<SettingSpec>& catalog)
        .range = {.min = 100, .max = 3000, .step = 50}, .fallback = "1000"},
       {.key = "watch.fire_log_size", .group = "watchman", .level = SettingLevel::Advanced,
        .range = {.min = 10, .max = 5000, .step = 10}, .fallback = "200"},
+      {.key = "watch.arbitration_window_ms", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 100, .max = 2000, .step = 50}, .fallback = "400"},
+      {.key = "watch.stage2_candidates", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 1, .max = 4, .step = 1}, .fallback = "2"},
   };
   const std::vector<NumericSetting> decimals{
       {.key = "watch.stt_stage1_min_snr_db", .group = "watchman", .level = SettingLevel::Advanced,
@@ -117,6 +121,16 @@ void appendWatch(std::vector<SettingSpec>& catalog)
        .range = {.min = 0.05, .max = 10, .step = 0.05}, .fallback = "0.5"},
       {.key = "watch.floor_fall_db_per_s", .group = "watchman", .level = SettingLevel::Advanced,
        .range = {.min = 0.5, .max = 60, .step = 0.5}, .fallback = "10.0"},
+      {.key = "watch.weight_wake", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 0, .max = 5, .step = 0.1}, .fallback = "1.0"},
+      {.key = "watch.weight_snr", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 0, .max = 1, .step = 0.01}, .fallback = "0.1"},
+      {.key = "watch.weight_stage2", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 0, .max = 5, .step = 0.1}, .fallback = "1.0"},
+      {.key = "watch.gain_weight", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 0, .max = 1, .step = 0.05}, .fallback = "0.5"},
+      {.key = "watch.gain_alpha", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 0.01, .max = 1, .step = 0.01}, .fallback = "0.1"},
   };
   for (const NumericSetting& setting : integers)
     catalog.push_back(watchInteger(setting));
