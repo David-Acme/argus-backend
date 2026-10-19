@@ -17,7 +17,9 @@ object-store reader uses its own bucket-scoped credentials instead of the
 shared key pair. One line per check per service, starting green or red; a line
 starting with "expected" names a gap only a provisioning pass on the deployed
 configs can close (the check counts it apart from the reds and never changes
-anything). The exit status is the number of red lines. It changes nothing: it reads the
+anything). A deploy config whose compose service belongs to a profile the stack does not
+enable (the tunnel profile, say) is reported as not deployed and checked no further.
+The exit status is the number of red lines. It changes nothing: it reads the
 deploy configs and the host state, opens read-only probes (a mutual TLS
 handshake, a bucket listing), and asks the broker's monitor what is connected.
 
@@ -114,6 +116,7 @@ trap 'rm -rf "$WORK"' EXIT
 GREEN=0
 RED=0
 EXPECTED=0
+SKIPPED=0
 
 report() {
   local service="$1" leg="$2" state="$3" detail="$4"
@@ -557,8 +560,20 @@ if [ -z "${services// /}" ]; then
   exit 2
 fi
 
+deployed_services=""
+if [ "$USE_DOCKER" -eq 1 ]; then
+  deployed_services=" $(docker compose -f "$COMPOSE_FILE" -p "$PROJECT" config --services 2>/dev/null | tr '\n' ' ') "
+  [ "${deployed_services// /}" ] || deployed_services=""
+fi
+
 for service in $services; do
   config="$(config_of "$service")"
+  if [ -n "$deployed_services" ] && [[ "$deployed_services" != *" argus-$service "* ]] \
+     && [[ "$deployed_services" != *" argus-$service-client "* ]]; then
+    printf '%-13s %-12s %-8s %s\n' "$service" "all" "skipped" "not deployed: its compose service belongs to a profile this stack does not enable"
+    SKIPPED=$(( SKIPPED + 1 ))
+    continue
+  fi
   if toml_key_exists "$config" internal_tls address; then
     leg_internal_tls "$service" "$config"
   else
@@ -588,5 +603,5 @@ if [ "$PROBE" -eq 1 ] && [ -n "$monitor_answer" ]; then
   done <<<"$connected_keys"
 fi
 
-printf 'deploy-security-check: %s green, %s expected, %s red\n' "$GREEN" "$EXPECTED" "$RED"
+printf 'deploy-security-check: %s green, %s expected, %s red, %s not deployed\n' "$GREEN" "$EXPECTED" "$RED" "$SKIPPED"
 exit "$RED"
