@@ -7,6 +7,7 @@ address = "127.0.0.1:7241"
 identity = ""
 notification = ""
 settings = ""
+voice = ""
 
 [drogon.app]
 number_of_threads = 0

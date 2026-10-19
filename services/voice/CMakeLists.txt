@@ -74,6 +74,10 @@ if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
+if(NOT TARGET argus::clients::sync)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/sync
+                     ${CMAKE_BINARY_DIR}/clients/sync EXCLUDE_FROM_ALL)
+endif()
 if(NOT TARGET argus::clients::guard)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/guard
                      ${CMAKE_BINARY_DIR}/clients/guard EXCLUDE_FROM_ALL)

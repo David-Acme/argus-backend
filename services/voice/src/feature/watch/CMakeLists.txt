@@ -12,6 +12,8 @@ argus_module(NAME voice-watch
         speaker-resolution.cc
         stage-two.cc
         wake-spotter.cc
+        watch-directory.cc
+        watch-sync.cc
         wake-words.cc
         watch-conversations.cc
         watch-coordinator.cc
@@ -23,6 +25,8 @@ argus_module(NAME voice-watch
         argus::clients::camera-watch
         argus::clients::guard
         argus::clients::identity
+        argus::clients::notification
+        argus::clients::sync
         argus::clients::stt
         argus::contracts::voice
         argus::lib::audio

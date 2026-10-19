@@ -22,6 +22,7 @@
 #include <feature/rtc/infra/notification-call-claimer.hxx>
 #include <feature/rtc/infra/notification-call-decliner.hxx>
 #include <feature/rtc/infra/voice-room-joiner.hxx>
+#include <feature/rtc/infra/voice-watch-relay.hxx>
 #include <feature/rtc/services/rtc-session-revoker.hxx>
 #include <feature/transport/infra/cached-user-directory.hxx>
 #include <feature/transport/infra/camera-sync-gateway.hxx>
@@ -233,6 +234,10 @@ int main()
   if (!voice.target.empty())
     rtcVoice = std::make_shared<VoiceRoomJoiner>(std::make_shared<VoiceClient>(
         VoiceClientConfig{.target = voice.target, .credential = voice.credential}));
+  std::shared_ptr<const RtcWatchDirectory> rtcWatch;
+  if (!voice.target.empty())
+    rtcWatch = std::make_shared<VoiceWatchRelay>(std::make_shared<VoiceClient>(
+        VoiceClientConfig{.target = voice.target, .credential = voice.credential}));
   std::shared_ptr<const RtcCallClaimer> rtcCalls;
   std::shared_ptr<const RtcCallDecliner> rtcDecliner;
   if (!upstreams.notification.empty()) {
@@ -248,7 +253,8 @@ int main()
         LiveKitAdminConfig{.serverUrl = rtc.serverUrl, .apiKey = rtc.apiKey, .apiSecret = rtc.apiSecret});
   drogon::app().registerController(std::make_shared<RtcController>(RtcTokenServiceInput{
       .config = rtc, .voice = rtcVoice, .calls = rtcCalls, .directory = userDirectory, .rooms = rtcRooms,
-      .decliner = rtcDecliner}));
+      .decliner = rtcDecliner,
+      .watch = rtcWatch}));
   if (rtcRooms) {
     const auto revoker = std::make_shared<RtcSessionRevoker>(rtcRooms, rtcVoice);
     sync_fan_out::onSessionEnd([revoker](const sync_fan_out::SessionEndNotice& notice) {

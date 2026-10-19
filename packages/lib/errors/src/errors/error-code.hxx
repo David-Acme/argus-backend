@@ -50,6 +50,8 @@ enum class ErrorCode
   CameraControlLocked,
   CameraControlRefused,
   AppSirenDisabled,
+  WatchNotFound,
+  WatchExpired,
   RouteNotFound
 };
 
@@ -101,6 +103,8 @@ constexpr std::string_view toString(ErrorCode code)
   case ErrorCode::CameraControlLocked: return "CAMERA_CONTROL_LOCKED";
   case ErrorCode::CameraControlRefused: return "CAMERA_CONTROL_REFUSED";
   case ErrorCode::AppSirenDisabled: return "APP_SIREN_DISABLED";
+  case ErrorCode::WatchNotFound: return "WATCH_NOT_FOUND";
+  case ErrorCode::WatchExpired: return "WATCH_EXPIRED";
   case ErrorCode::RouteNotFound: return "ROUTE_NOT_FOUND";
   }
   throw std::invalid_argument("Unknown response error code");

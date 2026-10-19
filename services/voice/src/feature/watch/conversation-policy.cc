@@ -133,6 +133,16 @@ std::string busyNotice(VoiceLang lang, std::string_view cameraName)
          ", pero alguien la está usando; sigue en la app.";
 }
 
+std::string handoffLine(VoiceLang lang)
+{
+  return lang == VoiceLang::En ? "I'll pass it to your phone." : "Te lo paso al celular.";
+}
+
+std::string continueLine(VoiceLang lang)
+{
+  return lang == VoiceLang::En ? "We're continuing here." : "Seguimos aquí.";
+}
+
 std::string mintConversationId()
 {
   constexpr std::string_view kHex = "0123456789abcdef";

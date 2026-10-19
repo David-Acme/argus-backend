@@ -11,6 +11,7 @@ struct RtcTokenDto
   bool resume{false};
   bool resumeIsBoolean{true};
   std::optional<std::string> mode;
+  std::string watchConversationId;
 
   static RtcTokenDto fromJson(const Json::Value& json);
 };

@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 #include <auth/user-role.hxx>
 
 class VoiceStreamObserver
@@ -77,8 +78,15 @@ public:
 
   [[nodiscard]] virtual bool farewell(const argus::voice::v1::RtcFarewell& farewell, int deadlineMs) const;
 
+  [[nodiscard]] virtual std::optional<std::vector<argus::voice::v1::WatchConversation>>
+  watchConversations(int64_t userId) const;
+
+  [[nodiscard]] virtual std::optional<bool> endWatchConversation(int64_t userId,
+                                                                 const std::string& conversationId) const;
+
   static constexpr int kJoinRoomDeadlineMs = 6000;
   static constexpr int kAnnounceDeadlineMs = 1500;
+  static constexpr int kWatchDeadlineMs = 3000;
 
 private:
   std::shared_ptr<grpc::Channel> channel_;

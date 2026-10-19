@@ -5,6 +5,8 @@ argus_module(NAME sync-rtc
         dtos/response-rtc-token-dto.cc
         dtos/rtc-decline-dto.cc
         dtos/response-rtc-decline-dto.cc
+        dtos/response-rtc-watch-dto.cc
+        dtos/rtc-watch-dto.cc
         services/livekit-token.cc
         services/rtc-naming.cc
         services/rtc-token-service.cc
@@ -13,6 +15,7 @@ argus_module(NAME sync-rtc
         infra/voice-room-joiner.cc
         infra/notification-call-claimer.cc
         infra/notification-call-decliner.cc
+        infra/voice-watch-relay.cc
     INCLUDES ../..
     DEPENDS
         argus::sync-config

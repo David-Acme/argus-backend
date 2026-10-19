@@ -714,6 +714,7 @@ settings auth credential auth
 sync auth credential auth
 identity sync control_credential sync
 notification sync control_credential sync
+voice sync control_credential sync
 auth modules credential settings
 camera modules credential settings
 guard modules credential settings

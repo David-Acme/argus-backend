@@ -7,6 +7,7 @@ address = "0.0.0.0:7241"
 identity = "CHANGE_ME_IDENTITY_SYNC"
 notification = "CHANGE_ME_NOTIFICATION_SYNC"
 settings = "CHANGE_ME_SETTINGS_SYNC"
+voice = "CHANGE_ME_VOICE_SYNC_CONTROL"
 
 [drogon.app]
 number_of_threads = 0

@@ -31,6 +31,10 @@ credential = "CHANGE_ME_VOICE_NOTIFICATION"
 grpc_target = "tls:argus-camera:7236"
 credential = "CHANGE_ME_VOICE_CAMERA"
 
+[sync]
+control_target = "tls:argus-sync:7241"
+control_credential = "CHANGE_ME_VOICE_SYNC_CONTROL"
+
 [guard]
 presence_target = "tls:argus-guard:7339"
 presence_credential = "CHANGE_ME_GUARD_VOICE"

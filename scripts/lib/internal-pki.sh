@@ -282,6 +282,7 @@ sync modules target settings
 voice identity target identity
 voice camera grpc_target camera
 voice guard presence_target guard
+voice sync control_target sync
 voice notification target notification
 ROWS
   local owner

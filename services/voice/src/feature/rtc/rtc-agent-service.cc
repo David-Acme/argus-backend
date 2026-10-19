@@ -7,7 +7,9 @@
 RtcAgentService::RtcAgentService(RtcAgentInput input)
     : sessions_(*input.sessions),
       config_(std::move(input.config)),
-      onCallEnded_(std::move(input.onCallEnded))
+      onCallEnded_(std::move(input.onCallEnded)),
+      bridgeWatch_(std::move(input.bridgeWatch)),
+      claimWatch_(std::move(input.claimWatch))
 {
 }
 
@@ -60,7 +62,8 @@ void RtcAgentService::joinCall(const argus::voice::v1::RtcJoin& join,
           .url = config_.url,
           .timings = config_.timings,
           .onJoined = [done](bool joined) { done({.joined = joined, .already = false}); },
-          .onEnded = onCallEnded_});
+          .onEnded = onCallEnded_,
+          .claimWatch = claimWatch_});
       calls_.emplace(join.room(), call);
     }
   }
@@ -83,6 +86,11 @@ void RtcAgentService::joinRoom(const argus::voice::v1::RtcJoin& join,
   if (validate(join) != RtcJoinRefusal::None) {
     done({grpc::StatusCode::INVALID_ARGUMENT, "room, agent token and a matching user identity are required"},
          {});
+    return;
+  }
+  if (!join.watch_conversation_id().empty() &&
+      (!bridgeWatch_ || !bridgeWatch_(join.identity().user_id(), join.watch_conversation_id()))) {
+    done({grpc::StatusCode::NOT_FOUND, "WATCH_NOT_FOUND"}, {});
     return;
   }
   joinCall(join, [done = std::move(done)](RtcJoinOutcome outcome) {

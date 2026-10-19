@@ -555,6 +555,11 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
                     std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
                                        std::chrono::system_clock::now().time_since_epoch())
                                        .count());
+  if (options.carry) {
+    if (!options.carry->callId.empty())
+      session->callId = options.carry->callId;
+    session->history.adoptTurns(options.carry->entries);
+  }
   const VoiceListeningConfig listening = resolveVoiceListeningConfig();
   session->denoise = listening.denoise;
   session->denoiseGateRms = listening.denoiseGateRms;
@@ -701,12 +706,25 @@ bool VoiceSessionService::announce(int64_t userId, const std::string& text)
 
 void VoiceSessionService::stop(VoiceSessionSink& sink)
 {
+  static_cast<void>(halt(sink));
+}
+
+std::optional<VoiceSessionCarry> VoiceSessionService::stopWithCarry(VoiceSessionSink& sink)
+{
+  const auto session = halt(sink);
+  if (!session)
+    return std::nullopt;
+  return VoiceSessionCarry{.callId = session->callId, .entries = session->history.entries()};
+}
+
+std::shared_ptr<VoiceSessionService::Session> VoiceSessionService::halt(VoiceSessionSink& sink)
+{
   std::shared_ptr<Session> session;
   {
     std::scoped_lock lock(mutex_);
     auto it = sessions_.find(&sink);
     if (it == sessions_.end())
-      return;
+      return nullptr;
     session = it->second;
     sessions_.erase(it);
   }
@@ -735,6 +753,7 @@ void VoiceSessionService::stop(VoiceSessionSink& sink)
     done.mutable_done()->set_session_id(0);
     sendFrame(*session, std::move(done));
   }
+  return session;
 }
 
 bool VoiceSessionService::nextBatch(Session& session)

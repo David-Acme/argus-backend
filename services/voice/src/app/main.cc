@@ -6,6 +6,8 @@
 #include <feature/voice/voice-rpc-service.hxx>
 #include <feature/watch/camera-identity.hxx>
 #include <feature/watch/watch-conversations.hxx>
+#include <feature/watch/watch-directory.hxx>
+#include <feature/watch/watch-sync.hxx>
 #include <feature/watch/watch-coordinator.hxx>
 #include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
@@ -149,10 +151,13 @@ int main()
   const GrpcListenerConfig grpcListener = VoiceConfig::resolveGrpcListener();
 
   VoiceSessionService sessions;
+  std::unique_ptr<ConversationManager> conversationsHolder;
+  ConversationDirectory watchDirectory(conversationsHolder);
+  const VoiceLang systemLang = voiceSystemLang();
   const VoiceNotificationConfig notificationConfig = VoiceConfig::resolveNotification();
-  std::unique_ptr<NotificationClient> notifications;
+  std::shared_ptr<NotificationClient> notifications;
   if (!notificationConfig.target.empty())
-    notifications = std::make_unique<NotificationClient>(NotificationClientConfig{
+    notifications = std::make_shared<NotificationClient>(NotificationClientConfig{
         .target = notificationConfig.target, .credential = notificationConfig.credential});
 
   const VoiceRtcConfig rtcConfig = VoiceConfig::resolveRtc();
@@ -168,6 +173,18 @@ int main()
                                .connectTimeout = RtcCallTimings{}.connectTimeout}},
         .onCallEnded = [client = notifications.get()](const RtcCallReport& report) {
           reportCallEnd(client, report);
+        },
+        .bridgeWatch = [&conversationsHolder](int64_t userId, const std::string& conversationId) {
+          return conversationsHolder && conversationsHolder->bridge(userId, conversationId);
+        },
+        .claimWatch = [&conversationsHolder, systemLang](int64_t userId, const std::string& conversationId)
+            -> std::optional<RtcWatchResume> {
+          if (!conversationsHolder)
+            return std::nullopt;
+          auto carry = conversationsHolder->claim(userId, conversationId);
+          if (!carry)
+            return std::nullopt;
+          return RtcWatchResume{.carry = std::move(*carry), .openingLine = continueLine(systemLang)};
         }});
     LOG_INFO << "Voice: realtime calls join LiveKit at " << rtcConfig.url;
   }
@@ -176,7 +193,8 @@ int main()
                             .syncCallerSecret = VoiceConfig::resolveSyncCallerSecret(),
                             .notificationCallerSecret = VoiceConfig::resolveNotificationCallerSecret(),
                             .rooms = rtc.get(),
-                            .dispatchCleanup = {}});
+                            .dispatchCleanup = {},
+                            .watch = &watchDirectory});
   const VoiceWatchConfig watchConfig = VoiceConfig::resolveWatch();
   const VoiceCameraConfig cameraConfig = VoiceConfig::resolveCamera();
   std::shared_ptr<const CameraWatchClient> watchCameras;
@@ -205,7 +223,20 @@ int main()
   if (!guardConfig.target.empty())
     guardDuress = std::make_shared<GuardDuressClient>(
         GuardDuressClientConfig{.target = guardConfig.target, .credential = guardConfig.credential});
-  std::unique_ptr<ConversationManager> conversationsHolder;
+  std::shared_ptr<const IdentityClient> watchIdentity;
+  if (const std::string identityTarget = ConfigService::getString("identity.target"); !identityTarget.empty())
+    watchIdentity = std::make_shared<IdentityClient>(
+        identityTarget, argus::client::PeerCredential{.credential = ConfigService::getString("identity.credential"),
+                                                      .fleetSecret = ConfigService::getString("identity.rpc_secret")});
+  const VoiceSyncConfig syncConfig = VoiceConfig::resolveSync();
+  std::shared_ptr<const SyncClient> watchSync;
+  if (!syncConfig.target.empty())
+    watchSync = std::make_shared<SyncClient>(
+        SyncClientConfig{.target = syncConfig.target, .credential = syncConfig.credential, .fleetSecret = {}});
+  const WatchPublisher watchPublisher({.sync = watchSync,
+                                      .notifications = notifications,
+                                      .identity = watchIdentity,
+                                      .lang = systemLang});
   const CameraIdentityResolver speakers({.camera = watchCameras,
                                          .voiceprint = watchVoiceprint,
                                          .faceWindow = watchConfig.faceWindow,
@@ -232,8 +263,8 @@ int main()
       .sameSpeaker = [&speakers](int64_t userId, const std::vector<float>& samples) {
         return speakers.sameSpeaker(userId, samples);
       },
-      .onUpdate = {},
-      .onEnded = {},
+      .onUpdate = [&watchPublisher](const ConversationSnapshot& snapshot) { watchPublisher.update(snapshot); },
+      .onEnded = [&watchPublisher](const ConversationEnded& ended) { watchPublisher.ended(ended); },
       .panic = [guardDuress](const CameraPanicCall& call) {
         if (!guardDuress || !guardDuress->raiseCameraPanic(call))
           LOG_WARN << "Voice watch: the panic heard on camera " << call.cameraId << " did not reach argus-guard";

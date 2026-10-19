@@ -284,14 +284,79 @@ void ConversationManager::forget(const std::string& conversationId)
 {
   std::scoped_lock lock(mutex_);
   finished_.erase(conversationId);
+  carries_.erase(conversationId);
+}
+
+bool ConversationManager::bridge(int64_t userId, const std::string& conversationId)
+{
+  if (userId <= 0)
+    return false;
+  if (const auto conversation = live(conversationId); conversation && !conversation->closed()) {
+    if (conversation->userId() != userId)
+      return false;
+    conversation->markHandoff(ConversationHandoff::Bridging);
+    return true;
+  }
+  ConversationSnapshot snapshot;
+  {
+    std::scoped_lock lock(mutex_);
+    const auto found = finished_.find(conversationId);
+    if (found == finished_.end() || found->second.userId != userId ||
+        found->second.state != ConversationState::Resumable || epochSeconds() > found->second.resumableUntil ||
+        !carries_.contains(conversationId))
+      return false;
+    found->second.handoff = ConversationHandoff::Bridging;
+    found->second.updatedAt = epochSeconds();
+    snapshot = found->second;
+  }
+  if (input_.onUpdate)
+    input_.onUpdate(snapshot);
+  return true;
+}
+
+std::optional<VoiceSessionCarry> ConversationManager::claim(int64_t userId, const std::string& conversationId)
+{
+  if (userId <= 0)
+    return std::nullopt;
+  if (const auto conversation = live(conversationId); conversation && !conversation->closed()) {
+    if (conversation->userId() != userId)
+      return std::nullopt;
+    return conversation->handOver(std::chrono::milliseconds(5000));
+  }
+  std::optional<VoiceSessionCarry> carry;
+  ConversationSnapshot snapshot;
+  {
+    std::scoped_lock lock(mutex_);
+    const auto found = finished_.find(conversationId);
+    const auto kept = carries_.find(conversationId);
+    if (found == finished_.end() || kept == carries_.end() || found->second.userId != userId ||
+        found->second.state != ConversationState::Resumable || epochSeconds() > found->second.resumableUntil)
+      return std::nullopt;
+    carry = std::move(kept->second);
+    carries_.erase(kept);
+    found->second.state = ConversationState::Ended;
+    found->second.handoff = ConversationHandoff::Device;
+    found->second.endReason = ConversationEnd::Handoff;
+    found->second.resumableUntil = 0;
+    found->second.updatedAt = epochSeconds();
+    snapshot = found->second;
+  }
+  if (input_.onUpdate)
+    input_.onUpdate(snapshot);
+  return carry;
 }
 
 void ConversationManager::heard(const std::string& conversationId, const std::string& text)
 {
-  if (!input_.panic || !panicPhrase(text))
-    return;
   const auto conversation = live(conversationId);
   if (!conversation)
+    return;
+  if (conversation->userId() > 0 && handoffRequest(text)) {
+    LOG_INFO << "Voice watch: conversation " << conversationId << " is asked onto the phone";
+    conversation->requestEnd(ConversationEnd::Handoff);
+    return;
+  }
+  if (!input_.panic || !panicPhrase(text))
     return;
   const ConversationSnapshot snapshot = conversation->snapshot();
   const std::string speaker = input_.lang == VoiceLang::En ? "Someone at the " + snapshot.cameraName + " camera"
@@ -309,6 +374,8 @@ void ConversationManager::ended(const ConversationEnded& ended)
   {
     std::scoped_lock lock(mutex_);
     finished_[ended.snapshot.conversationId] = ended.snapshot;
+    if (ended.carry && ended.snapshot.userId > 0 && ended.snapshot.state == ConversationState::Resumable)
+      carries_[ended.snapshot.conversationId] = *ended.carry;
   }
   if (input_.onEnded)
     input_.onEnded(ended);
@@ -346,6 +413,8 @@ void ConversationManager::reap(const std::stop_token& stop)
           snapshot.updatedAt = now;
           expired.push_back(snapshot);
         }
+        if (snapshot.state == ConversationState::Ended)
+          carries_.erase(it->first);
         if (snapshot.state == ConversationState::Ended && now - snapshot.updatedAt > kKeepEndedSeconds) {
           levels_.erase(it->first);
           it = finished_.erase(it);

@@ -5,7 +5,9 @@
 
 #include <chrono>
 #include <cstdint>
+#include <optional>
 #include <string>
+#include <vector>
 
 enum class RtcClaimStatus : uint8_t
 {
@@ -83,4 +85,18 @@ public:
   virtual ~RtcVoiceJoiner() = default;
   virtual drogon::Task<bool> join(argus::voice::v1::RtcJoin join) const = 0;
   virtual drogon::Task<bool> farewell(RtcFarewellInput input) const = 0;
+};
+
+struct RtcWatchEnd
+{
+  int64_t userId{0};
+  std::string conversationId;
+};
+
+class RtcWatchDirectory
+{
+public:
+  virtual ~RtcWatchDirectory() = default;
+  virtual drogon::Task<std::optional<std::vector<argus::voice::v1::WatchConversation>>> list(int64_t userId) const = 0;
+  virtual drogon::Task<std::optional<bool>> end(RtcWatchEnd input) const = 0;
 };

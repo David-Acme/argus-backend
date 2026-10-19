@@ -24,6 +24,15 @@ public:
 
 using VoiceCleanupDispatch = std::function<void(std::function<void()>)>;
 
+class VoiceWatchDirectory
+{
+public:
+  virtual ~VoiceWatchDirectory() = default;
+
+  [[nodiscard]] virtual std::vector<argus::voice::v1::WatchConversation> conversations(int64_t userId) const = 0;
+  [[nodiscard]] virtual bool end(int64_t userId, const std::string& conversationId) = 0;
+};
+
 struct VoiceRpcInput
 {
   VoiceSessionService* sessions{nullptr};
@@ -31,6 +40,7 @@ struct VoiceRpcInput
   std::string notificationCallerSecret;
   VoiceRoomJoiner* rooms{nullptr};
   VoiceCleanupDispatch dispatchCleanup;
+  VoiceWatchDirectory* watch{nullptr};
 };
 
 class VoiceRpcService final
@@ -55,6 +65,16 @@ public:
                                      const argus::voice::v1::AnnounceRequest* request,
                                      argus::voice::v1::AnnounceResponse* reply) override;
 
+  grpc::ServerUnaryReactor*
+  ListWatchConversations(grpc::CallbackServerContext* context,
+                         const argus::voice::v1::ListWatchConversationsRequest* request,
+                         argus::voice::v1::ListWatchConversationsResponse* reply) override;
+
+  grpc::ServerUnaryReactor*
+  EndWatchConversation(grpc::CallbackServerContext* context,
+                       const argus::voice::v1::EndWatchConversationRequest* request,
+                       argus::voice::v1::EndWatchConversationResponse* reply) override;
+
   [[nodiscard]] bool idle() const { return live_->load() == 0; }
 
 private:
@@ -68,4 +88,5 @@ private:
   std::atomic<std::uint64_t> nextStreamId_{1};
   std::shared_ptr<Streams> streams_;
   VoiceCleanupDispatch dispatchCleanup_;
+  VoiceWatchDirectory* watch_{nullptr};
 };

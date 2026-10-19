@@ -54,6 +54,12 @@ struct PcmFrame
   size_t size{0};
 };
 
+struct VoiceSessionCarry
+{
+  std::string callId;
+  std::vector<CallEntry> entries;
+};
+
 struct VoiceSessionOptions
 {
   ConversationSurface surface{ConversationSurface::App};
@@ -62,6 +68,7 @@ struct VoiceSessionOptions
   bool askAddressed{true};
   std::chrono::milliseconds incompleteHold{0};
   std::function<bool(std::string_view)> incomplete;
+  std::optional<VoiceSessionCarry> carry;
 };
 
 inline constexpr std::chrono::milliseconds kSessionActivityWindow{10000};
@@ -101,6 +108,7 @@ public:
   [[nodiscard]] static VoiceLang langOf(const argus::voice::v1::VoiceIdentity& identity);
   [[nodiscard]] static bool openingWillBeSpoken(const argus::voice::v1::VoiceStart& request);
   void stop(VoiceSessionSink& sink);
+  [[nodiscard]] std::optional<VoiceSessionCarry> stopWithCarry(VoiceSessionSink& sink);
   void skip(VoiceSessionSink& sink);
   void context(VoiceSessionSink& sink, const argus::voice::v1::VoiceContext& context);
   void actionResult(VoiceSessionSink& sink, const argus::voice::v1::VoiceActionResult& result);
@@ -327,6 +335,7 @@ private:
   };
 
   std::shared_ptr<Session> sessionOf(VoiceSessionSink& sink) const;
+  std::shared_ptr<Session> halt(VoiceSessionSink& sink);
   void workerLoop(const std::shared_ptr<Session>& session);
   void duplexLoop(const std::shared_ptr<Session>& session);
   static bool nextBatch(Session& session);

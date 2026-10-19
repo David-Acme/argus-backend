@@ -303,7 +303,8 @@ VoiceRpcService::VoiceRpcService(VoiceRpcInput input)
           .service = "argus-notification", .secret = std::move(input.notificationCallerSecret)}}),
       rooms_(input.rooms),
       streams_(std::make_shared<Streams>()),
-      dispatchCleanup_(cleanupDispatchOf(input.dispatchCleanup))
+      dispatchCleanup_(cleanupDispatchOf(input.dispatchCleanup)),
+      watch_(input.watch)
 {
 }
 
@@ -390,6 +391,46 @@ grpc::ServerUnaryReactor* VoiceRpcService::Announce(grpc::CallbackServerContext*
   reply->set_delivered(sessions_.announce(request->user_id(), request->text()));
   LOG_INFO << "Voice: announce kind=" << request->kind() << " call=" << request->call_id()
            << " delivered=" << reply->delivered();
+  reactor->Finish(grpc::Status::OK);
+  return reactor;
+}
+
+grpc::ServerUnaryReactor*
+VoiceRpcService::ListWatchConversations(grpc::CallbackServerContext* context,
+                                        const argus::voice::v1::ListWatchConversationsRequest* request,
+                                        argus::voice::v1::ListWatchConversationsResponse* reply)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!argus::client::authorizeCaller(context, syncCallers_).has_value()) {
+    reactor->Finish({grpc::StatusCode::UNAUTHENTICATED, "argus-sync caller credential required"});
+    return reactor;
+  }
+  if (request->user_id() <= 0) {
+    reactor->Finish({grpc::StatusCode::INVALID_ARGUMENT, "user_id is required"});
+    return reactor;
+  }
+  if (watch_ != nullptr)
+    for (auto& conversation : watch_->conversations(request->user_id()))
+      *reply->add_conversations() = std::move(conversation);
+  reactor->Finish(grpc::Status::OK);
+  return reactor;
+}
+
+grpc::ServerUnaryReactor*
+VoiceRpcService::EndWatchConversation(grpc::CallbackServerContext* context,
+                                      const argus::voice::v1::EndWatchConversationRequest* request,
+                                      argus::voice::v1::EndWatchConversationResponse* reply)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!argus::client::authorizeCaller(context, syncCallers_).has_value()) {
+    reactor->Finish({grpc::StatusCode::UNAUTHENTICATED, "argus-sync caller credential required"});
+    return reactor;
+  }
+  if (request->user_id() <= 0 || request->conversation_id().empty()) {
+    reactor->Finish({grpc::StatusCode::INVALID_ARGUMENT, "user_id and conversation_id are required"});
+    return reactor;
+  }
+  reply->set_ended(watch_ != nullptr && watch_->end(request->user_id(), request->conversation_id()));
   reactor->Finish(grpc::Status::OK);
   return reactor;
 }

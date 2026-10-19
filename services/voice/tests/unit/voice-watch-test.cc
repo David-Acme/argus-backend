@@ -5,6 +5,8 @@
 #include <feature/watch/conversation-policy.hxx>
 #include <feature/watch/speaker-resolution.hxx>
 #include <feature/watch/watch-conversations.hxx>
+#include <feature/watch/watch-directory.hxx>
+#include <feature/watch/watch-sync.hxx>
 #include <feature/watch/echo-guard.hxx>
 #include <feature/watch/fire-log.hxx>
 #include <feature/watch/stage-two.hxx>
@@ -412,4 +414,103 @@ TEST_CASE("the face window's answer keeps only the quality the matcher accepted"
   CHECK_FALSE(faces[1].accepted);
   CHECK(delegationPhrase("Argus, puedes hablar con ella"));
   CHECK_FALSE(delegationPhrase("hablamos luego"));
+}
+
+namespace
+{
+
+ConversationSnapshot snapshotOf(ConversationAudience audience, ConversationState state)
+{
+  ConversationSnapshot snapshot;
+  snapshot.conversationId = "0123456789abcdef0123456789abcdef";
+  snapshot.userId = audience == ConversationAudience::Visitor ? 0 : 7;
+  snapshot.cameraId = 3;
+  snapshot.cameraName = "Sala";
+  snapshot.state = state;
+  snapshot.audience = audience;
+  snapshot.startedAt = 100;
+  snapshot.updatedAt = 120;
+  snapshot.resumableUntil = state == ConversationState::Resumable ? 300 : 0;
+  snapshot.turns = {{.id = 1, .role = "user", .text = "¿Está David?", .at = 101, .final = true},
+                    {.id = 2, .role = "argus", .text = "Te dejo un mensaje.", .at = 102, .final = true}};
+  return snapshot;
+}
+
+}
+
+TEST_CASE("the live transcript frame carries the shape the app reads")
+{
+  ConversationSnapshot snapshot = snapshotOf(ConversationAudience::Member, ConversationState::Resumable);
+  snapshot.endReason = ConversationEnd::CameraLost;
+  const Json::Value info = watchUpdateInfo(snapshot);
+  CHECK(info["conversationId"] == "0123456789abcdef0123456789abcdef");
+  CHECK(info["cameraId"].asInt64() == 3);
+  CHECK(info["cameraName"] == "Sala");
+  CHECK(info["state"] == "resumable");
+  CHECK(info["handoff"] == "camera");
+  CHECK(info["audience"] == "member");
+  CHECK(info["startedAt"].asInt64() == 100);
+  CHECK(info["updatedAt"].asInt64() == 120);
+  CHECK(info["resumableUntil"].asInt64() == 300);
+  CHECK(info["endReason"] == "camera_lost");
+  REQUIRE(info["turns"].size() == 2);
+  CHECK(info["turns"][0]["role"] == "user");
+  CHECK(info["turns"][1]["text"] == "Te dejo un mensaje.");
+  CHECK(info["turns"][1]["final"].asBool());
+  CHECK(info.getMemberNames().size() == 11);
+  CHECK(watchUpdateInfo(snapshotOf(ConversationAudience::Member, ConversationState::Listening))["endReason"].isNull());
+
+  const argus::voice::v1::WatchConversation wire = watchConversationOf(snapshot);
+  CHECK(wire.state() == "resumable");
+  CHECK(wire.end_reason() == "camera_lost");
+  CHECK(wire.turns_size() == 2);
+}
+
+TEST_CASE("an ended camera conversation leaves the notices the plan names")
+{
+  const auto lost = watchNoticesFor({.snapshot = snapshotOf(ConversationAudience::Member, ConversationState::Resumable),
+                                     .reason = ConversationEnd::CameraLost,
+                                     .carry = std::nullopt},
+                                    VoiceLang::Es, {});
+  REQUIRE(lost.size() == 1);
+  CHECK(lost.front().type == "watch_resume");
+  CHECK(lost.front().data["conversationId"] == "0123456789abcdef0123456789abcdef");
+
+  const auto busy = watchNoticesFor({.snapshot = snapshotOf(ConversationAudience::Member, ConversationState::Resumable),
+                                     .reason = ConversationEnd::BusyLine,
+                                     .carry = std::nullopt},
+                                    VoiceLang::Es, {});
+  REQUIRE(busy.size() == 1);
+  CHECK(busy.front().type == "watch_busy");
+  CHECK(busy.front().body == "Te escuché en la cámara Sala, pero alguien la está usando; sigue en la app.");
+
+  const auto visitor = watchNoticesFor({.snapshot = snapshotOf(ConversationAudience::Visitor, ConversationState::Ended),
+                                        .reason = ConversationEnd::Silence,
+                                        .carry = std::nullopt},
+                                       VoiceLang::Es, {1, 2});
+  REQUIRE(visitor.size() == 2);
+  CHECK(visitor.front().type == "watch_message");
+  CHECK(visitor.front().userId == 1);
+  CHECK(visitor.front().body == "¿Está David?");
+
+  const auto discreet = watchNoticesFor({.snapshot = snapshotOf(ConversationAudience::Discreet, ConversationState::Ended),
+                                         .reason = ConversationEnd::Silence,
+                                         .carry = std::nullopt},
+                                        VoiceLang::Es, {});
+  REQUIRE(discreet.size() == 1);
+  CHECK(discreet.front().type == "watch_details");
+  CHECK(discreet.front().body == "Te dejo un mensaje.");
+}
+
+TEST_CASE("a carried conversation keeps its turns and drops the camera's notes")
+{
+  CallHistory camera(VoiceLang::Es);
+  camera.addNote("Estás hablando por el altavoz de la cámara Sala.");
+  camera.addUser("Argus, ¿qué tengo hoy?");
+  camera.addAssistant("Tienes dos cosas.");
+  CallHistory phone(VoiceLang::Es);
+  phone.adoptTurns(camera.entries());
+  CHECK(phone.userTurns() == 1);
+  CHECK(phone.entries().back().message.content == "Tienes dos cosas.");
+  CHECK(std::ranges::none_of(phone.entries(), [](const CallEntry& entry) { return entry.kind == CallEntryKind::Note; }));
 }

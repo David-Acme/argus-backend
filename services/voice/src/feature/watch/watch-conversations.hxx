@@ -84,6 +84,8 @@ public:
   [[nodiscard]] std::shared_ptr<CameraConversation> live(const std::string& conversationId) const;
   [[nodiscard]] std::map<int64_t, float> speakerLevels(const std::string& conversationId) const;
   void forget(const std::string& conversationId);
+  [[nodiscard]] bool bridge(int64_t userId, const std::string& conversationId);
+  [[nodiscard]] std::optional<VoiceSessionCarry> claim(int64_t userId, const std::string& conversationId);
 
 private:
   void reap(const std::stop_token& stop);
@@ -97,5 +99,6 @@ private:
   std::map<std::string, std::shared_ptr<CameraConversation>> live_;
   std::map<std::string, ConversationSnapshot> finished_;
   std::map<std::string, std::shared_ptr<SpeakerLevels>> levels_;
+  std::map<std::string, VoiceSessionCarry> carries_;
   std::jthread reaper_;
 };

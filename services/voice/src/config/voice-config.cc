@@ -166,3 +166,9 @@ VoiceGuardConfig VoiceConfig::resolveGuard()
   return {.target = ConfigService::getString("guard.presence_target"),
           .credential = ConfigService::getString("guard.presence_credential")};
 }
+
+VoiceSyncConfig VoiceConfig::resolveSync()
+{
+  return {.target = ConfigService::getString("sync.control_target"),
+          .credential = ConfigService::getString("sync.control_credential")};
+}

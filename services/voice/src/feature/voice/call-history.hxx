@@ -67,6 +67,7 @@ public:
   void addNotice(const std::string& spoken);
   void addSpeakerNote(const CallSpeakerNote& note);
   void rollbackUser();
+  void adoptTurns(const std::vector<CallEntry>& entries);
   bool trim();
 
   [[nodiscard]] std::vector<ChatMessage> request();

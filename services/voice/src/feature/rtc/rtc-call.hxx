@@ -43,6 +43,14 @@ struct RtcCallReport
   bool openingSpoken{false};
 };
 
+struct RtcWatchResume
+{
+  VoiceSessionCarry carry;
+  std::string openingLine;
+};
+
+using RtcWatchClaim = std::function<std::optional<RtcWatchResume>(int64_t, const std::string&)>;
+
 struct RtcCallInput
 {
   VoiceSessionService* sessions{nullptr};
@@ -51,6 +59,7 @@ struct RtcCallInput
   RtcCallTimings timings;
   std::function<void(bool)> onJoined;
   std::function<void(const RtcCallReport&)> onEnded;
+  RtcWatchClaim claimWatch{};
 };
 
 class RtcCall final : public VoiceSessionSink, public livekit::RoomDelegate
@@ -126,6 +135,7 @@ private:
   RtcCallTimings timings_;
   std::function<void(bool)> onJoined_;
   std::function<void(const RtcCallReport&)> onEnded_;
+  RtcWatchClaim claimWatch_;
 
   std::unique_ptr<livekit::Room> room_;
   std::shared_ptr<livekit::AudioSource> source_;

@@ -152,6 +152,31 @@ void CameraConversation::requestEnd(ConversationEnd reason)
     requested_ = reason;
 }
 
+std::optional<VoiceSessionCarry> CameraConversation::handOver(std::chrono::milliseconds wait)
+{
+  {
+    std::scoped_lock lock(mutex_);
+    deviceHandoff_ = true;
+    if (requested_ == ConversationEnd::None)
+      requested_ = ConversationEnd::Handoff;
+  }
+  const auto until = std::chrono::steady_clock::now() + wait;
+  while (!closed_.load() && std::chrono::steady_clock::now() < until)
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  std::scoped_lock lock(mutex_);
+  return std::exchange(carry_, std::nullopt);
+}
+
+void CameraConversation::markHandoff(ConversationHandoff handoff)
+{
+  {
+    std::scoped_lock lock(mutex_);
+    snapshot_.handoff = handoff;
+    snapshot_.updatedAt = epochSeconds();
+  }
+  publish();
+}
+
 ConversationSnapshot CameraConversation::snapshot() const
 {
   std::scoped_lock lock(mutex_);
@@ -523,21 +548,34 @@ void CameraConversation::tick(const std::stop_token& stop)
 
 void CameraConversation::close(ConversationEnd reason)
 {
+  bool device = false;
+  {
+    std::scoped_lock lock(mutex_);
+    device = deviceHandoff_;
+  }
+  if (reason == ConversationEnd::Handoff && !device && !closed_.load())
+    sayDirect(handoffLine(input_.lang));
   if (closed_.exchange(true))
     return;
-  finishSpeaker(reason != ConversationEnd::Closing && reason != ConversationEnd::Silence);
+  finishSpeaker(reason != ConversationEnd::Closing && reason != ConversationEnd::Silence &&
+                reason != ConversationEnd::Handoff);
+  std::optional<VoiceSessionCarry> carry;
   if (started_.load())
-    input_.sessions->stop(*this);
-  const bool resumable = reason == ConversationEnd::CameraLost || reason == ConversationEnd::BusyLine;
+    carry = input_.sessions->stopWithCarry(*this);
+  const bool resumable = reason == ConversationEnd::CameraLost || reason == ConversationEnd::BusyLine ||
+                         (reason == ConversationEnd::Handoff && !device);
   ConversationEnded ended;
   {
     std::scoped_lock lock(mutex_);
+    carry_ = carry;
+    if (reason == ConversationEnd::Handoff)
+      snapshot_.handoff = device ? ConversationHandoff::Device : ConversationHandoff::Offering;
     snapshot_.state = resumable ? ConversationState::Resumable : ConversationState::Ended;
     snapshot_.endReason = reason;
     snapshot_.updatedAt = epochSeconds();
     snapshot_.resumableUntil =
         resumable ? snapshot_.updatedAt + (input_.config.resumable.count() / 1000) : 0;
-    ended = {.snapshot = snapshot_, .reason = reason};
+    ended = {.snapshot = snapshot_, .reason = reason, .carry = device ? std::nullopt : carry};
   }
   LOG_INFO << "Voice watch: conversation " << input_.id << " ends (" << conversationEndToString(reason) << ")";
   publish();

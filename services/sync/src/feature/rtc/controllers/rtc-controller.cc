@@ -51,3 +51,18 @@ drogon::Task<drogon::HttpResponsePtr> RtcController::decline(drogon::HttpRequest
   const auto result = co_await service_.decline({.body = body, .caller = caller});
   co_return ApiResponse::ok(result.toJson());
 }
+
+drogon::Task<drogon::HttpResponsePtr> RtcController::watch(drogon::HttpRequestPtr req)
+{
+  const auto& caller = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const auto result = co_await service_.watchConversations(caller);
+  co_return ApiResponse::ok(result.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr> RtcController::endWatch(drogon::HttpRequestPtr req, std::string conversationId)
+{
+  const auto body = RtcWatchEndDto::fromPath(conversationId);
+  const auto& caller = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const auto result = co_await service_.endWatch({.body = body, .caller = caller});
+  co_return ApiResponse::ok(result.toJson());
+}

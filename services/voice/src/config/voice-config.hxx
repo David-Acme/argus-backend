@@ -86,6 +86,12 @@ struct VoiceCameraConfig
   std::string credential;
 };
 
+struct VoiceSyncConfig
+{
+  std::string target;
+  std::string credential;
+};
+
 struct VoiceGuardConfig
 {
   std::string target;
@@ -165,4 +171,6 @@ public:
   [[nodiscard]] static VoiceWatchConfig resolveWatch();
 
   [[nodiscard]] static VoiceGuardConfig resolveGuard();
+
+  [[nodiscard]] static VoiceSyncConfig resolveSync();
 };

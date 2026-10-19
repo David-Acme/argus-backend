@@ -33,6 +33,10 @@ credential = ""
 grpc_target = "tls:127.0.0.1:7236"
 credential = ""
 
+[sync]
+control_target = "tls:127.0.0.1:7241"
+control_credential = ""
+
 [guard]
 presence_target = "tls:127.0.0.1:7339"
 presence_credential = ""

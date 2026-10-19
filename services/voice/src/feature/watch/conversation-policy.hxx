@@ -115,5 +115,7 @@ enum class ReplyNudge : uint8_t
 [[nodiscard]] std::string giveUpLine(VoiceLang lang);
 [[nodiscard]] std::string cameraNote(VoiceLang lang, std::string_view cameraName);
 [[nodiscard]] std::string busyNotice(VoiceLang lang, std::string_view cameraName);
+[[nodiscard]] std::string handoffLine(VoiceLang lang);
+[[nodiscard]] std::string continueLine(VoiceLang lang);
 [[nodiscard]] std::string mintConversationId();
 [[nodiscard]] int64_t epochSeconds();

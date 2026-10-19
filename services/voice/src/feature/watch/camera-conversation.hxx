@@ -11,6 +11,7 @@
 #include <config/voice-config.hxx>
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -31,6 +32,7 @@ struct ConversationEnded
 {
   ConversationSnapshot snapshot;
   ConversationEnd reason{ConversationEnd::None};
+  std::optional<VoiceSessionCarry> carry;
 };
 
 struct CameraConversationInput
@@ -71,6 +73,8 @@ public:
   void feed(const EarFrame& frame);
   void bargeIn(const std::vector<float>& heard);
   void requestEnd(ConversationEnd reason);
+  [[nodiscard]] std::optional<VoiceSessionCarry> handOver(std::chrono::milliseconds wait);
+  void markHandoff(ConversationHandoff handoff);
   void join();
 
   [[nodiscard]] bool closed() const { return closed_.load(); }
@@ -119,6 +123,8 @@ private:
   bool acked_{false};
   bool closeAfterReply_{false};
   bool delegated_{false};
+  bool deviceHandoff_{false};
+  std::optional<VoiceSessionCarry> carry_;
   ConversationEnd requested_{ConversationEnd::None};
   std::atomic<bool> started_{false};
   std::atomic<bool> closed_{false};
