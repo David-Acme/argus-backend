@@ -35,7 +35,7 @@ std::vector<SettingSpec> sttSettingsCatalog()
        .range = {.min = 0.5, .max = 5.0, .step = 0.1},
        .choices = {},
        .fallback = "1.5"},
-      {.key = "kws.max_active_paths",
+      {.key = "kws.active_beams",
        .group = "watchman",
        .type = SettingType::Integer,
        .level = SettingLevel::Advanced,

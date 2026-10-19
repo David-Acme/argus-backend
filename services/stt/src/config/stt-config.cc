@@ -46,7 +46,7 @@ SttSpotConfig SttConfig::resolveSpot()
     config.threshold = static_cast<float>(std::min(threshold, 1.0));
   if (const double score = ConfigService::getDouble("kws.score"); score > 0.0)
     config.score = static_cast<float>(score);
-  if (const int paths = ConfigService::getInt("kws.max_active_paths"); paths > 0)
+  if (const int paths = ConfigService::getInt("kws.active_beams"); paths > 0)
     config.maxActivePaths = paths;
   if (const int blanks = ConfigService::getInt("kws.trailing_blanks"); blanks > 0)
     config.trailingBlanks = blanks;

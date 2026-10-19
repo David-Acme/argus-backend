@@ -8,9 +8,8 @@
 namespace sync_control_callers
 {
 
-inline constexpr std::array<std::string_view, 3> kExpected{"identity",
-                                                           "notification",
-                                                           "voice"};
+inline constexpr std::array<std::string_view, 2> kExpected{"identity",
+                                                           "notification"};
 
 inline constexpr std::array<std::string_view, 1> kRoomControl{"identity"};
 inline constexpr std::array<std::string_view, 1> kCloseCallRoom{"notification"};

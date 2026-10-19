@@ -26,7 +26,7 @@ tokens = "tokens.txt"
 keywords_file = "keywords.txt"
 threshold = 0.25
 score = 1.5
-max_active_paths = 4
+active_beams = 4
 trailing_blanks = 1
 threads = 1
 

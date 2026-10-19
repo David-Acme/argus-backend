@@ -225,7 +225,7 @@ void seedCameraDb()
       "is_online INTEGER NOT NULL DEFAULT 0, "
       "privacy_state TEXT NOT NULL DEFAULT 'unknown', "
       "privacy_obeyed INTEGER NOT NULL DEFAULT 0, "
-      "watchman INTEGER NOT NULL DEFAULT 0, no_audio INTEGER NOT NULL DEFAULT 0, "
+      "watchman INTEGER NOT NULL DEFAULT 0, no_audio INTEGER NOT NULL DEFAULT 0, tv_exclusion INTEGER NOT NULL DEFAULT 0, "
       "tls_fingerprint TEXT NOT NULL DEFAULT '', "
       "tapo_secure INTEGER NOT NULL DEFAULT 0, "
       "control_credential TEXT NOT NULL DEFAULT '', "

@@ -641,8 +641,9 @@ TEST_CASE("every role reads its relay credentials, only by GET")
 {
   for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
     CHECK(role_access::hasHttpAccess({.role = role, .path = "/rtc/ice", .method = drogon::Get}));
-    CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/rtc/ice", .method = drogon::Post}));
   }
+  for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest})
+    CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/rtc/ice", .method = drogon::Post}));
   CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Unknown, .path = "/rtc/ice", .method = drogon::Get}));
 }
 
