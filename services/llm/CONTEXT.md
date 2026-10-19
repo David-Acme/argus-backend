@@ -2557,3 +2557,22 @@ user turn and the model's last user message are the same text: the screen's text
 The reply is stored as the assistant turn on the same leg, only when it is not
 empty. Test: llm-controller-conversation-test (the rewriting screen case, and the
 withheld case).
+
+## The messenger and the app's conversation thread (F8/F9, 2026-10-19)
+
+- **One conversation per person.** The `conversation` feature (from `track/b4-conversations`) keeps the turns, the
+  active leg and the switch note per user; `voice.use_conversation` stays off until the conversation path passes
+  its tests (ruling Q16). Memory facts carry a scope (`personal` by default, `household` by cue) and recall reads
+  the listener's personal facts and the household's, never another person's.
+- **The app's thread.** Every identified turn (a `userId` bound by the `voice` caller, not withheld by the duress
+  screen) is mirrored to argus-notification's inbox through `ConversationTranscript` (`AppendTurns`), off the turn
+  and best effort, with `expires_at` from `conversation.retention_days`.
+- **The relay.** `message.relay` is chosen by the rules tier (`relay_command`: "llama a X y dile que", "dile a X
+  que", "avísale a", "mándale a", "cuéntale a", "tell X that", "let X know that"; "dile que" alone is an answer) and
+  never by the LLM. The refusal leg lets it through when the tool is offered and refuses impersonation in any case
+  (`impersonation`: on behalf of someone else, hiding the sender). The tool resolves the recipient without side
+  effects and reads the words back; only the sender's yes in the next turn, with the one-use code bound to that
+  recipient and those words, sends it (consent). `RelayService` keeps the reply window in `relay_thread` and hands
+  the letter to the `MessageCourier`, argus-notification's `RelayMessage`; a message said in a live session is also
+  noted in the recipient's conversation. Answers name the message they answer; the hourly sweep settles expired
+  threads in the inbox.
