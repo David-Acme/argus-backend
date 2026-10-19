@@ -69,6 +69,10 @@ if(NOT APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"
   message(STATUS "argus debug info: split DWARF")
 endif()
 
+if(NOT APPLE)
+  add_link_options(LINKER:--exclude-libs,libssl.a:libcrypto.a)
+endif()
+
 if(APPLE)
   set(ARGUS_RPATH_ORIGIN "@loader_path")
 else()
