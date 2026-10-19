@@ -394,3 +394,34 @@ GuardPresenceConfig GuardConfig::resolvePresence()
   config.retentionSeconds = configInt64Or("presence.retention_days", 30) * kDay;
   return config;
 }
+
+GuardProximityConfig GuardConfig::resolveProximity()
+{
+  GuardProximityConfig config;
+  const auto bounded = [](const std::string& key, int64_t fallback, int64_t low, int64_t high) {
+    return std::clamp<int64_t>(configInt64Or(key, fallback), low, high);
+  };
+  const auto share = [](const std::string& key, double fallback) {
+    return std::clamp(configDoubleOr(key, fallback), 0.0, 1.0);
+  };
+  config.enabled = configBoolOr("guard.proximity.enabled", config.enabled);
+  config.pollMs = bounded("guard.proximity.poll_ms", config.pollMs, 500, 60000);
+  config.rotateSeconds = bounded("guard.proximity.rotate_seconds", config.rotateSeconds, 60, 86400);
+  config.bleRssiFloor = bounded("guard.proximity.ble_rssi_floor", config.bleRssiFloor, 50, 120);
+  config.offlineAfterMs = bounded("guard.proximity.offline_after_ms", config.offlineAfterMs, 1000, 600000);
+  config.requestTimeoutMs = bounded("guard.proximity.request_timeout_ms", config.requestTimeoutMs, 200, 10000);
+  config.sightingWindowMs = bounded("guard.proximity.sighting_window_ms", config.sightingWindowMs, 5000, 300000);
+  if (const std::string entity = ConfigService::getString("guard.proximity.ble_entity"); !entity.empty())
+    config.bleEntity = entity;
+  config.homeAssistantToken = ConfigService::getString("guard.proximity.home_assistant_token");
+  config.weightFace = share("guard.proximity.weight_face", config.weightFace);
+  config.weightRadarBox = share("guard.proximity.weight_radar_box", config.weightRadarBox);
+  config.weightVoice = share("guard.proximity.weight_voice", config.weightVoice);
+  config.weightBle = share("guard.proximity.weight_ble", config.weightBle);
+  config.nightFaceFactor = share("guard.proximity.night_face_factor", config.nightFaceFactor);
+  config.halfLifeMs = bounded("guard.proximity.half_life_ms", config.halfLifeMs, 1000, 600000);
+  config.switchMargin = share("guard.proximity.switch_margin", config.switchMargin);
+  config.switchHoldMs = bounded("guard.proximity.switch_hold_ms", config.switchHoldMs, 0, 60000);
+  config.forgetMs = bounded("guard.proximity.forget_ms", config.forgetMs, 10000, 3600000);
+  return config;
+}

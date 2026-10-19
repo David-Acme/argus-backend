@@ -9,6 +9,15 @@
 #include <string>
 #include <vector>
 
+struct VoiceEvidenceReport
+{
+  int64_t userId{0};
+  int64_t cameraId{0};
+  float snrDb{0.0F};
+  bool voiceprint{false};
+  int64_t atMs{0};
+};
+
 struct GuardPresenceClientConfig
 {
   std::string target;
@@ -32,6 +41,8 @@ public:
   [[nodiscard]] virtual std::optional<bool> onDuty(int64_t userId) const;
 
   [[nodiscard]] virtual std::optional<std::vector<argus::guard::v1::CameraRoom>> cameraRooms() const;
+
+  [[nodiscard]] virtual bool reportVoice(const VoiceEvidenceReport& report) const;
 
 private:
   std::shared_ptr<grpc::Channel> channel_;

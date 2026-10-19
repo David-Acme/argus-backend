@@ -109,7 +109,7 @@ inline constexpr RoleMask kResidentGuardGuest =
 inline constexpr RoleMask kResidentGuardGuestBaseline =
     static_cast<RoleMask>(kResidentGuardGuest | kBaselineBit);
 
-inline constexpr std::array<GuardRouteAccess, 14> kGuardAccess = {{
+inline constexpr std::array<GuardRouteAccess, 16> kGuardAccess = {{
     {.path = "/guard/environments", .method = drogon::Get, .roles = kResidentAndGuard},
     {.path = "/guard/episodes", .method = drogon::Get, .roles = kResidentAndGuard},
     {.path = "/guard/mode", .method = drogon::Post, .roles = roleBit(UserRole::Resident)},
@@ -124,6 +124,8 @@ inline constexpr std::array<GuardRouteAccess, 14> kGuardAccess = {{
     {.path = "/guard/safety/pin", .method = drogon::Put, .roles = roleBit(UserRole::Resident)},
     {.path = "/guard/safety/pin", .method = drogon::Delete, .roles = roleBit(UserRole::Resident)},
     {.path = "/guard/siren", .method = drogon::Post, .roles = kResidentAndGuard},
+    {.path = "/guard/proximity/me", .method = drogon::Get, .roles = kResidentGuardGuest},
+    {.path = "/guard/proximity/me", .method = drogon::Put, .roles = kResidentGuardGuest},
 }};
 
 enum class CameraAction : std::uint8_t

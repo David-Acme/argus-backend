@@ -73,9 +73,24 @@ message CameraRoomsResponse
   repeated CameraRoom cameras = 1;
 }
 
+message VoiceEvidenceRequest
+{
+  int64 user_id = 1;
+  int64 camera_id = 2;
+  float snr_db = 3;
+  bool voiceprint = 4;
+  int64 at_ms = 5;
+}
+
+message VoiceEvidenceResponse
+{
+  bool accepted = 1;
+}
+
 service PresenceService
 {
   rpc ListPresence(ListPresenceRequest) returns (ListPresenceResponse) {}
   rpc GetDuty(DutyRequest) returns (DutyResponse) {}
   rpc CameraRooms(CameraRoomsRequest) returns (CameraRoomsResponse) {}
+  rpc ReportVoiceEvidence(VoiceEvidenceRequest) returns (VoiceEvidenceResponse) {}
 }

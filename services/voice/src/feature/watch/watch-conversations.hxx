@@ -10,6 +10,7 @@
 
 #include <camera/camera-watch-client.hxx>
 #include <guard/guard-duress-client.hxx>
+#include <guard/guard-presence-client.hxx>
 #include <config/voice-config.hxx>
 
 #include <cstdint>
@@ -49,6 +50,7 @@ struct ConversationManagerInput
   std::function<void(const ConversationEnded&)> onEnded;
   std::function<void(const CameraPanicCall&)> panic;
   std::function<void(const WatchAimInput&)> aim;
+  std::function<void(const VoiceEvidenceReport&)> locate;
 };
 
 struct HopChoiceInput

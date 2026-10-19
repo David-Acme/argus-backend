@@ -1,4 +1,6 @@
 #include <doctest/doctest.h>
+
+#include <atomic>
 #include <app/rpc/presence-rpc-service.hxx>
 #include <feature/presence/dtos/response-presence-dto.hxx>
 #include <feature/presence/services/presence-engine.hxx>
@@ -585,4 +587,36 @@ TEST_CASE("a presence transition reaches the screens that list everyone, once")
   CHECK(changeRows() > announced);
   CHECK(lastPayload().find("\"scope\":\"presence\"") != std::string::npos);
   CHECK(lastPayload().find(idsOf({73})) != std::string::npos);
+}
+
+TEST_CASE("only argus-voice reports a speaker's camera, and the report reaches the proximity sink")
+{
+  static_cast<void>(boot());
+  std::atomic<int64_t> heardUser{0};
+  PresenceRpcService rpc({.presence = nullptr,
+                          .credentials = {{.service = "sync", .secret = "sync-presence-secret"},
+                                          {.service = "voice", .secret = "voice-presence-secret"}},
+                          .duty = {},
+                          .rooms = {},
+                          .voice = [&heardUser](VoiceEvidenceRow row) -> drogon::Task<bool> {
+                            heardUser.store(row.userId);
+                            co_return row.cameraId == 3;
+                          }});
+  int port = 0;
+  grpc::ServerBuilder builder;
+  builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+  builder.RegisterService(&rpc);
+  const std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
+  REQUIRE(server);
+  const std::string target = "127.0.0.1:" + std::to_string(port);
+
+  const GuardPresenceClient sync({.target = target, .credential = "sync-presence-secret"});
+  CHECK_FALSE(sync.reportVoice({.userId = 7, .cameraId = 3, .snrDb = 15.0F, .voiceprint = false, .atMs = 1}));
+  CHECK(heardUser.load() == 0);
+
+  const GuardPresenceClient voice({.target = target, .credential = "voice-presence-secret"});
+  CHECK(voice.reportVoice({.userId = 7, .cameraId = 3, .snrDb = 15.0F, .voiceprint = false, .atMs = 1}));
+  CHECK(heardUser.load() == 7);
+  CHECK_FALSE(voice.reportVoice({.userId = 7, .cameraId = 4, .snrDb = 15.0F, .voiceprint = false, .atMs = 1}));
+  server->Shutdown();
 }

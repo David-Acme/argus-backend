@@ -891,3 +891,19 @@ TEST_CASE("clip access follows the table exactly as the access rows")
              .modules = modules}) == role_access::RouteVerdict::ModuleDisabled);
   CHECK(role_access::moduleOfPath("/clip/abc/content") == role_access::kSurveillanceModule);
 }
+
+TEST_CASE("every member keeps their own proximity beacon and only the Owner sees the receivers, sensors and rooms")
+{
+  for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CAPTURE(userRoleToString(role));
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/guard/proximity/me", .method = drogon::Get}));
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/guard/proximity/me", .method = drogon::Put}));
+    CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/guard/proximity/people", .method = drogon::Get}));
+    CHECK_FALSE(
+        role_access::hasHttpAccess({.role = role, .path = "/guard/proximity/receivers", .method = drogon::Get}));
+    CHECK_FALSE(
+        role_access::hasHttpAccess({.role = role, .path = "/guard/proximity/sensors/3", .method = drogon::Delete}));
+  }
+  CHECK(role_access::hasHttpAccess({.role = UserRole::Owner, .path = "/guard/proximity/people", .method = drogon::Get}));
+  CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Unknown, .path = "/guard/proximity/me", .method = drogon::Get}));
+}

@@ -8,6 +8,7 @@
 #include <feature/mcp/services/guard-tools.hxx>
 #include <mcp/mcp-rpc.hxx>
 #include <camera/camera-action-client.hxx>
+#include <camera/camera-watch-client.hxx>
 #include <config/guard-config.hxx>
 #include <drogon/drogon.h>
 #include <feature/guard/controllers/guard-controller.hxx>
@@ -36,6 +37,10 @@
 #include <feature/safety/services/siren-service.hxx>
 #include <feature/presence/infra/nats-presence-publisher.hxx>
 #include <feature/presence/services/presence-service.hxx>
+#include <feature/proximity/controllers/proximity-controller.hxx>
+#include <feature/proximity/infra/fleet-proximity-world.hxx>
+#include <feature/proximity/infra/http-proximity-probe.hxx>
+#include <feature/proximity/services/proximity-service.hxx>
 #include <feature/settings/guard-settings.hxx>
 #include <shared/vocabulary/masked-camera.hxx>
 #include <auth/auth-access.hxx>
@@ -105,6 +110,18 @@ Json::Value drogonConfig(const GuardDrogonConfig& input)
   return config;
 }
 
+drogon::Task<std::vector<CameraRoomRow>> cameraRoomRows()
+{
+  const CameraContextRepository contexts;
+  std::vector<CameraRoomRow> rows;
+  for (const GuardCameraContext& context : co_await contexts.list())
+    rows.push_back({.cameraId = context.cameraId,
+                    .environmentId = context.environmentId,
+                    .room = cameraRoomKey(context),
+                    .outdoor = context.outdoor});
+  co_return rows;
+}
+
 struct RpcListener
 {
   std::unique_ptr<SettingsRpcService> settings;
@@ -127,6 +144,7 @@ struct RpcListenerInput
   const SafetyActorDirectory* actors{nullptr};
   std::string tlsAddress;
   std::optional<argus::client::InternalTlsMaterial> tls;
+  ProximityService* proximity{nullptr};
 };
 
 std::unique_ptr<argus::mcp::McpRpcService> toolsService(const RpcListenerInput& input, const GuardRpcConfig& rpc)
@@ -180,15 +198,15 @@ RpcListener startRpcListener(const RpcListenerInput& input)
                            const ResponseRepository responses;
                            co_return co_await responses.dutyEnvironments(userId);
                          },
-                         .rooms = []() -> drogon::Task<std::vector<CameraRoomRow>> {
-                           const CameraContextRepository contexts;
-                           std::vector<CameraRoomRow> rows;
-                           for (const GuardCameraContext& context : co_await contexts.list())
-                             rows.push_back({.cameraId = context.cameraId,
-                                             .environmentId = context.environmentId,
-                                             .room = cameraRoomKey(context),
-                                             .outdoor = context.outdoor});
-                           co_return rows;
+                         .rooms = cameraRoomRows,
+                         .voice = [proximity = input.proximity](VoiceEvidenceRow row) -> drogon::Task<bool> {
+                           if (proximity == nullptr)
+                             co_return false;
+                           co_return co_await proximity->reportVoice({.userId = row.userId,
+                                                                      .cameraId = row.cameraId,
+                                                                      .snrDb = row.snrDb,
+                                                                      .voiceprint = row.voiceprint,
+                                                                      .atMs = row.atMs});
                          }});
     services.push_back(listener.presence.get());
   }
@@ -451,11 +469,33 @@ int main()
        }},
       GuardConfig::resolvePresence());
 
+  const GuardProximityConfig proximityConfig = GuardConfig::resolveProximity();
+  std::unique_ptr<CameraWatchClient> watchCameras;
+  if (!actionsPeer.target.empty())
+    watchCameras = std::make_unique<CameraWatchClient>(
+        CameraWatchClientConfig{.target = actionsPeer.target, .credential = actionsPeer.secret});
+  const HttpProximityProbe proximityProbe(
+      {.bleEntity = proximityConfig.bleEntity,
+       .homeAssistantToken = proximityConfig.homeAssistantToken,
+       .timeoutSeconds = static_cast<double>(proximityConfig.requestTimeoutMs) / 1000.0});
+  const FleetProximityWorld proximityWorld(
+      {.camera = watchCameras.get(),
+       .identity = identity.get(),
+       .rooms = []() -> drogon::Task<std::vector<ProximityCameraRoom>> {
+         std::vector<ProximityCameraRoom> rooms;
+         for (const CameraRoomRow& row : co_await cameraRoomRows())
+           if (!row.outdoor)
+             rooms.push_back({.cameraId = row.cameraId, .room = row.room});
+         co_return rooms;
+       }});
+  ProximityService proximity({.probe = &proximityProbe, .world = &proximityWorld, .config = proximityConfig});
+
   SettingsRegistry settings(guardSettingsCatalog());
-  settings.onChange([&guardService, &presence, &siren,
+  settings.onChange([&guardService, &presence, &proximity, &siren,
                      &resourceChanges](const std::vector<std::string>& changed) {
     guardService.refresh(GuardConfig::resolveService());
     presence.refresh(GuardConfig::resolvePresence());
+    proximity.refresh(GuardConfig::resolveProximity());
     siren->refresh(GuardConfig::resolveSiren());
     if (std::ranges::find(changed, kAppSirenEnabledKey) == changed.end())
       return;
@@ -495,7 +535,8 @@ int main()
        .safety = safety,
        .actors = &safetyActors,
        .tlsAddress = internalTlsConfig.address,
-       .tls = internalTls});
+       .tls = internalTls,
+       .proximity = &proximity});
 
   registerHealth({.certificatePem = loadedTls.certificatePem,
                   .trustBundlePem = loadedTls.trustBundlePem});
@@ -513,6 +554,7 @@ int main()
   drogon::app().registerController(std::make_shared<SirenController>(siren));
   drogon::app().registerController(
       std::make_shared<PresenceController>(&presence));
+  drogon::app().registerController(std::make_shared<ProximityController>(&proximity));
   drogon::app().registerController(std::make_shared<ResponseController>(
       ResponseFeatureDependencies{.directory = responseDirectory,
                                   .clock = {},
@@ -557,9 +599,10 @@ int main()
            << listener.certPath << "); guard database " << db.dbPath;
 
   drogon::app().registerBeginningAdvice(
-      [&guardService, &presence, &postureWatch, &episodeChanges, windDown]() {
+      [&guardService, &presence, &proximity, &postureWatch, &episodeChanges, windDown]() {
         guardService.start();
         presence.start();
+        proximity.start();
         postureWatch.start();
         episodeChanges.start();
         if (!moduleGate().enabled(role_access::kSurveillanceModule))
@@ -573,6 +616,7 @@ int main()
   shutdown_signal::onStop(shutdown_signal::drainOf(rpcDrain, "guard-rpc"));
   shutdown_signal::onStop(shutdown_signal::drainOf(verdictFeed, "guard-verdicts"));
   shutdown_signal::onStop(shutdown_signal::drainOf(presence, "guard-presence"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(proximity, "guard-proximity"));
   shutdown_signal::onStop(shutdown_signal::drainOf(*safety, "guard-safety"));
   shutdown_signal::onStop(shutdown_signal::drainOf(resourceChanges, "guard-changes"));
   shutdown_signal::onStop(shutdown_signal::drainOf(postureWatch, "guard-posture"));

@@ -440,6 +440,40 @@ CREATE TABLE IF NOT EXISTS guard_safety_alert (
 CREATE INDEX IF NOT EXISTS idx_guard_safety_alert_user_kind
     ON guard_safety_alert(user_id, kind, created_at);
 
+CREATE TABLE IF NOT EXISTS guard_proximity_beacon (
+    user_id     INTEGER PRIMARY KEY,
+    seed        TEXT    NOT NULL,
+    enabled     INTEGER NOT NULL DEFAULT 0 CHECK (enabled IN (0, 1)),
+    created_at  INTEGER NOT NULL,
+    updated_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS guard_proximity_receiver (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    name        TEXT    NOT NULL,
+    room        TEXT    NOT NULL DEFAULT '',
+    kind        TEXT    NOT NULL CHECK (kind IN ('esphome')),
+    host        TEXT    NOT NULL,
+    port        INTEGER NOT NULL CHECK (port > 0 AND port < 65536),
+    created_at  INTEGER NOT NULL,
+    deleted_at  INTEGER
+);
+
+CREATE TABLE IF NOT EXISTS guard_proximity_sensor (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    name            TEXT    NOT NULL,
+    room            TEXT    NOT NULL DEFAULT '',
+    model           TEXT    NOT NULL CHECK (model IN ('ld2410', 'ld2450', 'fp2')),
+    source          TEXT    NOT NULL CHECK (source IN ('esphome', 'home_assistant')),
+    host            TEXT    NOT NULL,
+    port            INTEGER NOT NULL CHECK (port > 0 AND port < 65536),
+    entity_id       TEXT    NOT NULL DEFAULT '',
+    camera_id       INTEGER,
+    pan_offset_deg  REAL,
+    created_at      INTEGER NOT NULL,
+    deleted_at      INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS change_outbox (
     event_id    TEXT    NOT NULL  PRIMARY KEY,
     fingerprint TEXT    NOT NULL  DEFAULT '',

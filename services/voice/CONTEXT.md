@@ -1433,3 +1433,7 @@ A confirmed wake opens a `CameraConversation` (`camera-conversation`, held by `C
 ## Aiming a pan-tilt camera at the speaker (2026-10, CC7)
 
 When a camera conversation opens on a pan-tilt camera and the face window found no face, `ConversationManager` asks argus-camera to `Aim` FIND (a light-lane job, so the conversation never waits for the motor) and, when that conversation ends (closed, resumable or handed to the phone), `Aim` RELEASE for the camera it aimed; argus-camera returns it home 30 s later. The aim is best effort: its outcome is logged, never spoken. A hop to a roommate camera does not aim the new camera.
+
+## The speaker's room for proximity (2026-10, CC8)
+
+On every user turn of a camera conversation with an identified member, voice reports the camera that hears the member loudest and its level to argus-guard (`PresenceService.ReportVoiceEvidence`, the existing `[guard] presence_target`/`presence_credential`), as proximity layer 0's evidence for the room belief. The voiceprint is not checked per turn (per-turn re-identification is not built), so the report says `voiceprint: false` and guard counts it half.

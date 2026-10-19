@@ -217,7 +217,10 @@ Guard sound a camera's siren from the app (`POST /guard/siren`, the camera
 action `CameraAction::Siren`, behind the Owner's `guard.app_siren_enabled`,
 `services/guard/CONTEXT.md` "The app siren"); every role presses
 panic (`POST /guard/panic`) and reads its safety state (`GET /guard/safety`),
-and those two are the only guard routes a Guest has; creating, editing and
+and those two are the only guard routes a Guest has besides its own proximity
+beacon (`GET`/`PUT /guard/proximity/me`, every role, opt-in); the proximity
+receivers, sensors and the room each person is in (`/guard/proximity/people`)
+are the Owner's alone, like household presence; creating, editing and
 removing environments, episode detail and review, camera context, decision
 review, feedback and person promotion stay Owner-only.
 
@@ -691,6 +694,12 @@ Raw pointers only for non-owning access (`.get()`).
   module gate, or only the target's room when the payload carries `user`. The
   frame is never persisted and never replayed: the client reloads on it and
   catches up on reconnect (`services/sync/CONTEXT.md`, "Resource changes").
+  `WatchUpdate=15` (additive, `watch_update`) carries a camera conversation
+  with Argus to the speaker's own user room only, emitted by argus-voice
+  through `SyncControlService.EmitToUser` (admitted for that operation alone):
+  `info {conversationId, cameraId, cameraName, state, handoff, audience,
+  startedAt, updatedAt, resumableUntil, endReason, turns[]}`
+  (`services/voice/CONTEXT.md`, "The conversation on the phone").
 - **Normal rows are creation-only after bootstrap**: `Synchronize` pages by
   `created_at`; do not switch it to `updated_at`/`syncAt` to represent an
   update. Every persisted update/revocation must instead publish a granular

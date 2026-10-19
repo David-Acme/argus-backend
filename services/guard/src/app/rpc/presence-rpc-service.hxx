@@ -7,6 +7,7 @@
 #include <drogon/utils/coroutine.h>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 class PresenceService;
@@ -23,12 +24,26 @@ struct CameraRoomRow
 
 using CameraRoomLookup = std::function<drogon::Task<std::vector<CameraRoomRow>>()>;
 
+struct VoiceEvidenceRow
+{
+  int64_t userId{0};
+  int64_t cameraId{0};
+  double snrDb{0.0};
+  bool voiceprint{false};
+  int64_t atMs{0};
+};
+
+using VoiceEvidenceSink = std::function<drogon::Task<bool>(VoiceEvidenceRow)>;
+
+inline constexpr std::string_view kVoiceEvidenceCaller = "voice";
+
 struct PresenceRpcInput
 {
   const PresenceService* presence{nullptr};
   std::vector<argus::client::CallerCredential> credentials;
   DutyLookup duty{};
   CameraRoomLookup rooms{};
+  VoiceEvidenceSink voice{};
 };
 
 class PresenceRpcService final
@@ -51,6 +66,11 @@ public:
   CameraRooms(grpc::CallbackServerContext* context,
               const argus::guard::v1::CameraRoomsRequest* request,
               argus::guard::v1::CameraRoomsResponse* response) override;
+
+  grpc::ServerUnaryReactor*
+  ReportVoiceEvidence(grpc::CallbackServerContext* context,
+                      const argus::guard::v1::VoiceEvidenceRequest* request,
+                      argus::guard::v1::VoiceEvidenceResponse* response) override;
 
 private:
   PresenceRpcInput input_;

@@ -116,3 +116,11 @@ TEST_CASE("the presence client dials the mutual TLS port with the internal certi
       {.target = endpoint.plaintextToTlsPortTarget(), .credential = kCredential});
   CHECK_FALSE(plaintext.listPresence({7}).has_value());
 }
+
+TEST_CASE("a voice report without a person or a camera is not sent, and an absent guard accepts none")
+{
+  const GuardPresenceClient client({.target = "127.0.0.1:1", .credential = kCredential});
+  CHECK_FALSE(client.reportVoice({.userId = 0, .cameraId = 3, .snrDb = 12.0F, .voiceprint = true, .atMs = 1}));
+  CHECK_FALSE(client.reportVoice({.userId = 7, .cameraId = 0, .snrDb = 12.0F, .voiceprint = true, .atMs = 1}));
+  CHECK_FALSE(client.reportVoice({.userId = 7, .cameraId = 3, .snrDb = 12.0F, .voiceprint = true, .atMs = 1}));
+}

@@ -4,6 +4,7 @@
 
 #include <trantor/utils/Logger.h>
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <utility>
@@ -359,6 +360,23 @@ void ConversationManager::heard(const std::string& conversationId, const std::st
   const auto conversation = live(conversationId);
   if (!conversation)
     return;
+  if (conversation->userId() > 0 && input_.locate) {
+    const std::map<int64_t, float> levels = speakerLevels(conversationId);
+    int64_t cameraId = conversation->cameraId();
+    float snrDb = 0.0F;
+    if (const auto loudest = std::ranges::max_element(levels, {}, [](const auto& entry) { return entry.second; });
+        loudest != levels.end()) {
+      cameraId = loudest->first;
+      snrDb = loudest->second;
+    }
+    input_.locate({.userId = conversation->userId(),
+                   .cameraId = cameraId,
+                   .snrDb = snrDb,
+                   .voiceprint = false,
+                   .atMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::system_clock::now().time_since_epoch())
+                               .count()});
+  }
   if (conversation->userId() > 0 && handoffRequest(text)) {
     LOG_INFO << "Voice watch: conversation " << conversationId << " is asked onto the phone";
     conversation->requestEnd(ConversationEnd::Handoff);

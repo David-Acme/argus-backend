@@ -141,6 +141,26 @@ weight_identity_unavailable = 0
 weight_identity_known = -3
 weight_camera_health_degraded = -2
 
+[guard.proximity]
+enabled = true
+poll_ms = 2000
+rotate_seconds = 900
+ble_entity = "argus_ble"
+ble_rssi_floor = 95
+offline_after_ms = 10000
+request_timeout_ms = 1500
+sighting_window_ms = 45000
+home_assistant_token = ""
+weight_face = 1.0
+weight_radar_box = 0.8
+weight_voice = 0.6
+weight_ble = 0.4
+night_face_factor = 0.5
+half_life_ms = 20000
+switch_margin = 0.2
+switch_hold_ms = 3000
+forget_ms = 300000
+
 [guard.assess]
 enabled = true
 mode = "agent"

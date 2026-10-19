@@ -281,6 +281,14 @@ int main()
             LOG_INFO << "Voice watch: camera " << aim.cameraId << " aim "
                      << argus::camera::v1::AimOutcome_Name(answer->outcome());
         });
+      },
+      .locate = [guardPresence](const VoiceEvidenceReport& report) {
+        if (!guardPresence)
+          return;
+        blocking_pool::submit(BlockingLane::Light, [guardPresence, report] {
+          if (!guardPresence->reportVoice(report))
+            LOG_DEBUG << "Voice watch: argus-guard did not take the voice evidence for camera " << report.cameraId;
+        });
       }});
   ConversationManager& conversations = *conversationsHolder;
   watch = std::make_unique<WatchCoordinator>(WatchCoordinatorInput{
