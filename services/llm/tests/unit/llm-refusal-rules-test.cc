@@ -35,7 +35,7 @@ ModuleSnapshot modulesWith(std::string_view id, bool enabled)
 
 ToolAudience audienceFor(UserRole role, bool surveillance)
 {
-  return {.role = role, .modules = modulesWith("surveillance", surveillance)};
+  return {.role = role, .modules = modulesWith("surveillance", surveillance), .surface = ConversationSurface::App};
 }
 
 std::optional<Refusal> ask(std::string_view utterance, UserRole role, std::string_view lang = "es")

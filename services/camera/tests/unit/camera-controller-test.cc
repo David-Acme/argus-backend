@@ -421,9 +421,10 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK_FALSE(cam["isOnline"].asBool());
   CHECK(cam["updatedAt"].isNull());
   CHECK(cam["deletedAt"].isNull());
-  CHECK(cam.getMemberNames().size() == 23);
+  CHECK(cam.getMemberNames().size() == 24);
   CHECK_FALSE(cam["watchman"].asBool());
   CHECK_FALSE(cam["noAudio"].asBool());
+  CHECK_FALSE(cam["tvExclusion"].asBool());
   CHECK(cam["privacyState"].asString() == "unknown");
   CHECK_FALSE(cam["privacyObeyed"].asBool());
   checkNoCredentials(cam);

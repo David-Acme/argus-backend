@@ -512,7 +512,7 @@ TEST_CASE("the executor offers the module when a tool of a module that is off is
 
   ModuleFlag off{.id = "productivity", .enabled = false};
   off.name = {.es = "Productividad", .en = "Productivity"};
-  const ToolAudience audience{.role = UserRole::Owner, .modules = ModuleSnapshot({off})};
+  const ToolAudience audience{.role = UserRole::Owner, .modules = ModuleSnapshot({off}), .surface = ConversationSurface::App};
 
   tools::ToolCall ask;
   ask.name = "calendar.create_event";

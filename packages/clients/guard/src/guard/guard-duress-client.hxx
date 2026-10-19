@@ -31,6 +31,15 @@ struct SpokenDuressCall
   int64_t saidAt{0};
 };
 
+struct CameraPanicCall
+{
+  int64_t cameraId{0};
+  int64_t userId{0};
+  std::string speaker;
+  int64_t saidAt{0};
+  std::string conversationId;
+};
+
 class GuardDuressClient
 {
 public:
@@ -45,6 +54,8 @@ public:
   [[nodiscard]] virtual std::optional<std::string> phraseKey() const;
 
   [[nodiscard]] virtual SpokenDuressReply raiseSpoken(const SpokenDuressCall& call) const;
+
+  [[nodiscard]] virtual bool raiseCameraPanic(const CameraPanicCall& call) const;
 
 private:
   std::shared_ptr<grpc::Channel> channel_;

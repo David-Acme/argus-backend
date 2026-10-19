@@ -27,6 +27,63 @@ first_join_wait_ms = 60000
 target = "tls:argus-notification:7238"
 credential = "CHANGE_ME_VOICE_NOTIFICATION"
 
+[camera]
+grpc_target = "tls:argus-camera:7236"
+credential = "CHANGE_ME_VOICE_CAMERA"
+
+[sync]
+control_target = "tls:argus-sync:7241"
+control_credential = "CHANGE_ME_VOICE_SYNC_CONTROL"
+
+[guard]
+presence_target = "tls:argus-guard:7339"
+presence_credential = "CHANGE_ME_GUARD_VOICE"
+
+[watch]
+enabled = true
+list_refresh_ms = 10000
+reconnect_ms = 2000
+stage1 = "auto"
+ring_ms = 2000
+post_roll_ms = 1000
+wake_max_distance = 2
+stt_stage1_max_ms = 2500
+stt_stage1_min_ms = 300
+stt_stage1_min_snr_db = 6.0
+kws_hangover_ms = 400
+kws_retry_ms = 5000
+min_wake_snr_db = 3.0
+fire_debounce_ms = 1500
+broadcast_window_ms = 150
+broadcast_min_cameras = 3
+broadcast_spread_db = 6.0
+tv_raise_db = 6.0
+echo_tail_ms = 800
+echo_correlation = 0.6
+echo_raise_db = 6.0
+echo_max_lag_ms = 1000
+floor_rise_db_per_s = 0.5
+floor_fall_db_per_s = 10.0
+fire_log_size = 200
+arbitration_window_ms = 400
+stage2_candidates = 2
+weight_wake = 1.0
+weight_snr = 0.1
+weight_stage2 = 1.0
+gain_weight = 0.5
+gain_alpha = 0.1
+end_silence_ms = 700
+incomplete_hold_ms = 2000
+max_turn_ms = 30000
+ack_after_ms = 1500
+fail_after_ms = 8000
+idle_close_ms = 20000
+max_length_ms = 600000
+resumable_ms = 180000
+reply_gap_ms = 700
+camera_drop_ms = 3000
+face_window_ms = 1500
+
 [stt]
 remote_url = ""
 grpc_target = "tls:argus-stt:7330"

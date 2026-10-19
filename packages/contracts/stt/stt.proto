@@ -6,6 +6,7 @@ service Transcription {
   rpc Capabilities(CapabilitiesRequest) returns (CapabilitiesResponse);
   rpc Transcribe(TranscribeRequest) returns (TranscribeResponse);
   rpc TranscribeStream(stream TranscribeChunk) returns (stream TranscribeUpdate);
+  rpc Spot(stream SpotChunk) returns (stream SpotEvent);
 }
 
 message CapabilitiesRequest {}
@@ -40,4 +41,16 @@ message TranscribeUpdate {
   bool final = 2;
   uint64 samples = 3;
   uint32 decode_ms = 4;
+}
+
+message SpotChunk {
+  repeated float samples = 1;
+  uint32 sample_rate = 2;
+  bool reset = 3;
+}
+
+message SpotEvent {
+  string keyword = 1;
+  uint64 at_sample = 2;
+  float start_time = 3;
 }

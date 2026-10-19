@@ -25,4 +25,12 @@ inline constexpr ErrorDefinition CallExpired{
     .code = ErrorCode::CallExpired,
     .status = 410,
     .message = "The call has expired"};
+inline constexpr ErrorDefinition WatchNotFound{
+    .code = ErrorCode::WatchNotFound,
+    .status = 404,
+    .message = "No camera conversation of yours by that id"};
+inline constexpr ErrorDefinition WatchExpired{
+    .code = ErrorCode::WatchExpired,
+    .status = 410,
+    .message = "The camera conversation can no longer be continued"};
 }

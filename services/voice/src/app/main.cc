@@ -4,6 +4,11 @@
 #include <feature/rtc/rtc-agent-service.hxx>
 #include <feature/settings/voice-settings.hxx>
 #include <feature/voice/voice-rpc-service.hxx>
+#include <feature/watch/camera-identity.hxx>
+#include <feature/watch/watch-conversations.hxx>
+#include <feature/watch/watch-directory.hxx>
+#include <feature/watch/watch-sync.hxx>
+#include <feature/watch/watch-coordinator.hxx>
 #include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
@@ -26,6 +31,7 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+#include <runtime/blocking-pool.hxx>
 #include <runtime/log-output.hxx>
 #include <runtime/shutdown-signal.hxx>
 
@@ -146,10 +152,13 @@ int main()
   const GrpcListenerConfig grpcListener = VoiceConfig::resolveGrpcListener();
 
   VoiceSessionService sessions;
+  std::unique_ptr<ConversationManager> conversationsHolder;
+  ConversationDirectory watchDirectory(conversationsHolder);
+  const VoiceLang systemLang = voiceSystemLang();
   const VoiceNotificationConfig notificationConfig = VoiceConfig::resolveNotification();
-  std::unique_ptr<NotificationClient> notifications;
+  std::shared_ptr<NotificationClient> notifications;
   if (!notificationConfig.target.empty())
-    notifications = std::make_unique<NotificationClient>(NotificationClientConfig{
+    notifications = std::make_shared<NotificationClient>(NotificationClientConfig{
         .target = notificationConfig.target, .credential = notificationConfig.credential});
 
   const VoiceRtcConfig rtcConfig = VoiceConfig::resolveRtc();
@@ -165,6 +174,18 @@ int main()
                                .connectTimeout = RtcCallTimings{}.connectTimeout}},
         .onCallEnded = [client = notifications.get()](const RtcCallReport& report) {
           reportCallEnd(client, report);
+        },
+        .bridgeWatch = [&conversationsHolder](int64_t userId, const std::string& conversationId) {
+          return conversationsHolder && conversationsHolder->bridge(userId, conversationId);
+        },
+        .claimWatch = [&conversationsHolder, systemLang](int64_t userId, const std::string& conversationId)
+            -> std::optional<RtcWatchResume> {
+          if (!conversationsHolder)
+            return std::nullopt;
+          auto carry = conversationsHolder->claim(userId, conversationId);
+          if (!carry)
+            return std::nullopt;
+          return RtcWatchResume{.carry = std::move(*carry), .openingLine = continueLine(systemLang)};
         }});
     LOG_INFO << "Voice: realtime calls join LiveKit at " << rtcConfig.url;
   }
@@ -173,7 +194,119 @@ int main()
                             .syncCallerSecret = VoiceConfig::resolveSyncCallerSecret(),
                             .notificationCallerSecret = VoiceConfig::resolveNotificationCallerSecret(),
                             .rooms = rtc.get(),
-                            .dispatchCleanup = {}});
+                            .dispatchCleanup = {},
+                            .watch = &watchDirectory});
+  const VoiceWatchConfig watchConfig = VoiceConfig::resolveWatch();
+  const VoiceCameraConfig cameraConfig = VoiceConfig::resolveCamera();
+  std::shared_ptr<const CameraWatchClient> watchCameras;
+  if (!cameraConfig.target.empty())
+    watchCameras = std::make_shared<CameraWatchClient>(
+        CameraWatchClientConfig{.target = cameraConfig.target, .credential = cameraConfig.credential});
+  const auto echo = std::make_shared<EchoGuard>(EchoGuardConfig{.tail = watchConfig.echoTail,
+                                                                .maxLag = watchConfig.echoMaxLag,
+                                                                .history = std::chrono::milliseconds(10000),
+                                                                .sampleRate = 16000});
+  const VoiceGuardConfig guardConfig = VoiceConfig::resolveGuard();
+  std::shared_ptr<const GuardPresenceClient> guardPresence;
+  if (!guardConfig.target.empty())
+    guardPresence = std::make_shared<GuardPresenceClient>(
+        GuardPresenceClientConfig{.target = guardConfig.target, .credential = guardConfig.credential});
+  const auto rooms = std::make_shared<RoomDirectory>();
+  SttWakeSpotter wakeSpotter;
+  std::unique_ptr<WatchCoordinator> watch;
+  std::shared_ptr<const VoiceprintClient> watchVoiceprint;
+  if (const std::string identityTarget = ConfigService::getString("identity.target"); !identityTarget.empty())
+    watchVoiceprint = std::make_shared<VoiceprintClient>(
+        VoiceprintClientConfig{.target = identityTarget,
+                               .credential = ConfigService::getString("identity.credential"),
+                               .fleetSecret = ConfigService::getString("identity.rpc_secret")});
+  std::shared_ptr<const GuardDuressClient> guardDuress;
+  if (!guardConfig.target.empty())
+    guardDuress = std::make_shared<GuardDuressClient>(
+        GuardDuressClientConfig{.target = guardConfig.target, .credential = guardConfig.credential});
+  std::shared_ptr<const IdentityClient> watchIdentity;
+  if (const std::string identityTarget = ConfigService::getString("identity.target"); !identityTarget.empty())
+    watchIdentity = std::make_shared<IdentityClient>(
+        identityTarget, argus::client::PeerCredential{.credential = ConfigService::getString("identity.credential"),
+                                                      .fleetSecret = ConfigService::getString("identity.rpc_secret")});
+  const VoiceSyncConfig syncConfig = VoiceConfig::resolveSync();
+  std::shared_ptr<const SyncClient> watchSync;
+  if (!syncConfig.target.empty())
+    watchSync = std::make_shared<SyncClient>(
+        SyncClientConfig{.target = syncConfig.target, .credential = syncConfig.credential, .fleetSecret = {}});
+  const WatchPublisher watchPublisher({.sync = watchSync,
+                                      .notifications = notifications,
+                                      .identity = watchIdentity,
+                                      .lang = systemLang});
+  const CameraIdentityResolver speakers({.camera = watchCameras,
+                                         .voiceprint = watchVoiceprint,
+                                         .faceWindow = watchConfig.faceWindow,
+                                         .lang = voiceSystemLang(),
+                                         .inCall = [&sessions, &conversationsHolder](int64_t userId) {
+                                           const size_t camera =
+                                               conversationsHolder ? conversationsHolder->liveFor(userId) : 0;
+                                           return sessions.liveSessions(userId) > camera;
+                                         }});
+  conversationsHolder = std::make_unique<ConversationManager>(ConversationManagerInput{
+      .config = watchConfig,
+      .sessions = &sessions,
+      .camera = watchCameras,
+      .echo = echo,
+      .rooms = rooms,
+      .tts = &voiceTts(),
+      .stt = &voiceStt(),
+      .lang = voiceSystemLang(),
+      .cameraInfo = [&watch](int64_t cameraId) -> std::optional<WatchCameraInfo> {
+        return watch ? watch->camera(cameraId) : std::nullopt;
+      },
+      .listening = [&watch](int64_t cameraId) { return watch && watch->listening(cameraId); },
+      .resolve = [&speakers](const ConfirmedWake& wake) { return speakers.resolve(wake); },
+      .sameSpeaker = [&speakers](int64_t userId, const std::vector<float>& samples) {
+        return speakers.sameSpeaker(userId, samples);
+      },
+      .onUpdate = [&watchPublisher](const ConversationSnapshot& snapshot) { watchPublisher.update(snapshot); },
+      .onEnded = [&watchPublisher](const ConversationEnded& ended) { watchPublisher.ended(ended); },
+      .panic = [guardDuress](const CameraPanicCall& call) {
+        if (!guardDuress || !guardDuress->raiseCameraPanic(call))
+          LOG_WARN << "Voice watch: the panic heard on camera " << call.cameraId << " did not reach argus-guard";
+      },
+      .aim = [watchCameras](const WatchAimInput& aim) {
+        if (!watchCameras)
+          return;
+        blocking_pool::submit(BlockingLane::Light, [watchCameras, aim] {
+          const auto answer = watchCameras->aim(aim);
+          if (!answer)
+            LOG_WARN << "Voice watch: camera " << aim.cameraId << " did not answer the aim request";
+          else
+            LOG_INFO << "Voice watch: camera " << aim.cameraId << " aim "
+                     << argus::camera::v1::AimOutcome_Name(answer->outcome());
+        });
+      },
+      .locate = [guardPresence](const VoiceEvidenceReport& report) {
+        if (!guardPresence)
+          return;
+        blocking_pool::submit(BlockingLane::Light, [guardPresence, report] {
+          if (!guardPresence->reportVoice(report))
+            LOG_DEBUG << "Voice watch: argus-guard did not take the voice evidence for camera " << report.cameraId;
+        });
+      }});
+  ConversationManager& conversations = *conversationsHolder;
+  watch = std::make_unique<WatchCoordinator>(WatchCoordinatorInput{
+      .config = watchConfig,
+      .camera = watchCameras,
+      .spotter = &wakeSpotter,
+      .stt = &voiceStt(),
+      .vad = &voiceVad(),
+      .language = voiceLangToString(voiceSystemLang()),
+      .echo = echo,
+      .guard = guardPresence,
+      .rooms = rooms,
+      .onWake = [&conversations](const ConfirmedWake& wake) { conversations.onWake(wake); },
+      .onFrame = [&conversations](const EarFrame& frame) { conversations.onFrame(frame); },
+      .onPlaybackFire = [&conversations](const EarFire& fire) { return conversations.onPlaybackFire(fire); }});
+  conversations.start();
+  watch->start();
+
   HealthRpcService healthRpc;
   SettingsRegistry settings(voiceSettingsCatalog());
   std::unique_ptr<SettingsRpcService> settingsRpc;
@@ -230,6 +363,8 @@ int main()
       .run();
 
   serverDrain.finish();
+  watch->shutdown();
+  conversations.shutdown();
   if (rtc)
     livekit::shutdown();
   return 0;

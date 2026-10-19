@@ -297,6 +297,8 @@ std::string chatRequestJson(const ChatRequest& request)
     body["use_conversation"] = true;
   if (request.conversationLeg)
     body["conversation_leg"] = conversationLegKindToString(*request.conversationLeg);
+  if (request.surface != ConversationSurface::App)
+    body["surface"] = std::string(conversationSurfaceToString(request.surface));
 
   Json::StreamWriterBuilder builder;
   builder["indentation"] = "";

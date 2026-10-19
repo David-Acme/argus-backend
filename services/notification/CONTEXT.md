@@ -1438,3 +1438,7 @@ already talks to it; argus-llm owns the conversation itself and writes here only
   recipient's read state never reaches the sender, and nothing says where the recipient is. The app's own
   `CreateNotifications` admission for argus-llm stays `assistant_task` only: the `household_message` notice is
   written by this service.
+
+## Watchman notices (2026-10, the camera call plan)
+
+`CreateNotifications` admits argus-voice (`grpc.caller_voice`) for exactly one recipient and the types `watch_busy`, `watch_resume`, `watch_details`, `watch_confirm` and `watch_message`, and argus-llm for `assistant_task`, `watch_details` and `watch_confirm`, always without a `response` plan.

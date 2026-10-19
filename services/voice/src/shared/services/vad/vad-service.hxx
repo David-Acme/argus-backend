@@ -74,6 +74,7 @@ class VadService
 public:
   VadService();
   explicit VadService(std::unique_ptr<VadModel> model);
+  VadService(std::unique_ptr<VadModel> model, const VadConfig& config);
   ~VadService();
 
   VadService(const VadService&) = delete;

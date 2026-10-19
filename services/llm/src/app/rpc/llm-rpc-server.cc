@@ -126,6 +126,17 @@ ChatRequest chatRequest(const wire::ChatRequest& wireRequest, std::string_view c
   request.prefillOnly = wireRequest.prefill_only();
   request.conversationLeg = conversationLegFromWireValue(static_cast<std::uint32_t>(wireRequest.conversation_leg()));
   request.useConversation = wireRequest.use_conversation();
+  switch (wireRequest.surface()) {
+    case wire::CONVERSATION_SURFACE_CAMERA:
+      request.surface = ConversationSurface::Camera;
+      break;
+    case wire::CONVERSATION_SURFACE_CAMERA_VISITOR:
+      request.surface = ConversationSurface::CameraVisitor;
+      break;
+    default:
+      request.surface = ConversationSurface::App;
+      break;
+  }
   return boundToCaller(std::move(request), caller);
 }
 

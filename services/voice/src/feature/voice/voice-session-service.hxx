@@ -9,6 +9,7 @@
 #include <llm/conversation-leg.hxx>
 #include <optional>
 #include <feature/voice/call-history.hxx>
+#include <feature/voice/speaker-verdict.hxx>
 #include <feature/voice/turn-transcript.hxx>
 #include <feature/voice/unheard-reply.hxx>
 #include <feature/voice/voice-engine-seam.hxx>
@@ -25,6 +26,7 @@
 #include <audio/audio-resampler.hxx>
 #include <stop_token>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <tuple>
 #include <unordered_map>
@@ -44,12 +46,31 @@ public:
   virtual void sendServerFrame(argus::voice::v1::ServerFrame frame) = 0;
   virtual void duckPlayout(bool) {}
   [[nodiscard]] virtual int playoutRate() const { return kSinkPcmRate; }
+  [[nodiscard]] virtual std::string shapeSpeech(const std::string& text) const { return text; }
+  [[nodiscard]] virtual bool admitsTurn(const std::string&, VoiceSpeakerVerdict) { return true; }
 };
 
 struct PcmFrame
 {
   const char* data{nullptr};
   size_t size{0};
+};
+
+struct VoiceSessionCarry
+{
+  std::string callId;
+  std::vector<CallEntry> entries;
+};
+
+struct VoiceSessionOptions
+{
+  ConversationSurface surface{ConversationSurface::App};
+  std::optional<int> minSilenceFrames;
+  std::optional<int> maxTurnFrames;
+  bool askAddressed{true};
+  std::chrono::milliseconds incompleteHold{0};
+  std::function<bool(std::string_view)> incomplete;
+  std::optional<VoiceSessionCarry> carry;
 };
 
 inline constexpr std::chrono::milliseconds kSessionActivityWindow{10000};
@@ -78,13 +99,18 @@ public:
              const argus::voice::v1::VoiceStart& request);
   void start(VoiceSessionSink& sink,
              const argus::voice::v1::VoiceIdentity& identity);
+  void start(VoiceSessionSink& sink,
+             const argus::voice::v1::VoiceStart& request,
+             const VoiceSessionOptions& options);
   void feedPcm(VoiceSessionSink& sink, const PcmFrame& frame);
   void feedSamples(VoiceSessionSink& sink, std::span<const float> samples);
   bool announce(int64_t userId, const std::string& text);
+  [[nodiscard]] size_t liveSessions(int64_t userId) const;
   void farewell(VoiceSessionSink& sink);
   [[nodiscard]] static VoiceLang langOf(const argus::voice::v1::VoiceIdentity& identity);
   [[nodiscard]] static bool openingWillBeSpoken(const argus::voice::v1::VoiceStart& request);
   void stop(VoiceSessionSink& sink);
+  [[nodiscard]] std::optional<VoiceSessionCarry> stopWithCarry(VoiceSessionSink& sink);
   void skip(VoiceSessionSink& sink);
   void context(VoiceSessionSink& sink, const argus::voice::v1::VoiceContext& context);
   void actionResult(VoiceSessionSink& sink, const argus::voice::v1::VoiceActionResult& result);
@@ -198,6 +224,17 @@ private:
     std::unique_ptr<VadModel> model;
     VoiceLang lang{VoiceLang::System};
     uint64_t unheardSeed{0};
+    VadConfig vadConfig;
+  };
+
+  struct HeldTurn
+  {
+    std::vector<float> samples;
+    std::vector<float> stt;
+    std::string text;
+    std::chrono::steady_clock::time_point detected{};
+    std::chrono::steady_clock::time_point deadline{};
+    bool active{false};
   };
 
   enum class UnheardTranscript : uint8_t
@@ -209,7 +246,8 @@ private:
   struct Session
   {
     explicit Session(SessionInit init)
-        : vad(std::move(init.model)), history(init.lang), lang(init.lang), unheard(init.unheardSeed)
+        : vad(std::move(init.model), init.vadConfig), history(init.lang), lang(init.lang),
+          unheard(init.unheardSeed)
     {
       lastActivityTicks.store(activityTicks());
     }
@@ -283,6 +321,11 @@ private:
     std::string deviceHash;
     std::string callKey;
     bool speakerHeard{false};
+    bool askAddressed{true};
+    std::chrono::milliseconds incompleteHold{0};
+    std::function<bool(std::string_view)> incomplete;
+    HeldTurn held;
+    ConversationSurface surface{ConversationSurface::App};
   };
 
   struct HeardTurn
@@ -291,9 +334,11 @@ private:
     std::vector<float> stt;
     std::shared_ptr<TurnTranscript> transcript;
     std::chrono::steady_clock::time_point detected{};
+    std::optional<std::string> text;
   };
 
   std::shared_ptr<Session> sessionOf(VoiceSessionSink& sink) const;
+  std::shared_ptr<Session> halt(VoiceSessionSink& sink);
   void workerLoop(const std::shared_ptr<Session>& session);
   void duplexLoop(const std::shared_ptr<Session>& session);
   static bool nextBatch(Session& session);
@@ -301,6 +346,8 @@ private:
   static std::size_t sttIndexOf(const Session& session, std::size_t rawIndex);
   static void resetVad(Session& session);
   void followUtterance(Session& session);
+  bool holdIncomplete(Session& session, HeardTurn& heard);
+  void releaseHeld(Session& session, bool force);
   std::shared_ptr<TurnTranscript> takeTranscript(Session& session);
   static std::span<const float> sttSpan(const Session& session, std::size_t fromIndex);
   static std::vector<float> closeUtterance(Session& session);

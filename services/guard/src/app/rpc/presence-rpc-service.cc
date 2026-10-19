@@ -4,6 +4,8 @@
 #include <feature/presence/services/presence-service.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <optional>
+#include <string>
 #include <utility>
 
 namespace
@@ -131,6 +133,79 @@ grpc::ServerUnaryReactor* PresenceRpcService::GetDuty(
       catch (const std::exception& error) {
         LOG_WARN << "Presence RPC: GetDuty failed: " << error.what();
         reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, "Duty failed"));
+      }
+    });
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* PresenceRpcService::CameraRooms(
+    grpc::CallbackServerContext* context,
+    const v1::CameraRoomsRequest*, v1::CameraRoomsResponse* response)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!argus::client::authorizeCaller(context, input_.credentials)) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Caller credential missing or invalid"));
+    return reactor;
+  }
+  if (!input_.rooms) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "Rooms are not wired"));
+    return reactor;
+  }
+  CameraRoomLookup rooms = input_.rooms;
+  drogon::app().getLoop()->queueInLoop([rooms = std::move(rooms), reactor, response]() {
+    drogon::async_run([rooms, reactor, response]() -> drogon::Task<void> {
+      try {
+        for (const CameraRoomRow& row : co_await rooms()) {
+          auto* camera = response->add_cameras();
+          camera->set_camera_id(row.cameraId);
+          camera->set_environment_id(row.environmentId);
+          camera->set_room(row.room);
+          camera->set_outdoor(row.outdoor);
+        }
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Presence RPC: CameraRooms failed: " << error.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, "Rooms failed"));
+      }
+    });
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* PresenceRpcService::ReportVoiceEvidence(
+    grpc::CallbackServerContext* context, const v1::VoiceEvidenceRequest* request,
+    v1::VoiceEvidenceResponse* response)
+{
+  auto* reactor = context->DefaultReactor();
+  const std::optional<std::string> caller = argus::client::authorizeCaller(context, input_.credentials);
+  if (!caller || *caller != kVoiceEvidenceCaller) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Caller credential missing or invalid"));
+    return reactor;
+  }
+  if (!input_.voice) {
+    response->set_accepted(false);
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+  }
+  const VoiceEvidenceRow row{.userId = request->user_id(),
+                             .cameraId = request->camera_id(),
+                             .snrDb = request->snr_db(),
+                             .voiceprint = request->voiceprint(),
+                             .atMs = request->at_ms()};
+  VoiceEvidenceSink voice = input_.voice;
+  drogon::app().getLoop()->queueInLoop([voice = std::move(voice), reactor, response, row]() {
+    drogon::async_run([voice, reactor, response, row]() -> drogon::Task<void> {
+      try {
+        response->set_accepted(co_await voice(row));
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Presence RPC: ReportVoiceEvidence failed: " << error.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, "Voice evidence failed"));
       }
     });
   });

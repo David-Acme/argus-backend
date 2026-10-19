@@ -116,7 +116,8 @@ SttRpcInput fakeInput(const SttRpcConfig& config, SettingsRpcService& settings)
           .slots = 1,
           .services = {&settings},
           .tlsAddress = {},
-          .tls = {}};
+          .tls = {},
+          .spot = {}};
 }
 }
 
@@ -124,7 +125,8 @@ TEST_CASE("the stt catalog builds through the registry")
 {
   const auto catalog = sttSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{sttSettingsCatalog()});
-  CHECK(catalog.size() == 2);
+  CHECK(catalog.size() == 6);
+  CHECK(specOf(catalog, "kws.threshold").apply == SettingApply::Restart);
   CHECK(specOf(catalog, "stt.language").apply == SettingApply::Live);
   CHECK(specOf(catalog, "stt.engine").apply == SettingApply::Restart);
   for (const auto& spec : catalog)

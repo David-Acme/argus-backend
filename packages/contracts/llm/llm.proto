@@ -59,6 +59,13 @@ message ChatRequest {
   bool use_conversation = 18;
   reserved 14, 15, 16;
   reserved "turn_speaker", "holder_name", "context_facts";
+  ConversationSurface surface = 19;
+}
+
+enum ConversationSurface {
+  CONVERSATION_SURFACE_APP = 0;
+  CONVERSATION_SURFACE_CAMERA = 1;
+  CONVERSATION_SURFACE_CAMERA_VISITOR = 2;
 }
 
 message ChatResponse {

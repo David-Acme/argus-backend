@@ -25,6 +25,7 @@ bool CameraAudioPolicy::allowedBy(
 bool CameraAudioPolicy::apply(
     const argus::identity::v1::ListPrivacyResponse& privacy)
 {
+  setWatchman(privacy.household().watchman());
   const bool next = allowedBy(privacy);
   if (allowed() == next)
     return false;
@@ -45,6 +46,14 @@ void CameraAudioPolicy::setAllowed(bool allowed)
   }
   for (const auto& listener : listeners)
     listener(allowed);
+}
+
+void CameraAudioPolicy::setWatchman(bool on)
+{
+  if (watchman_.exchange(on, std::memory_order_acq_rel) == on)
+    return;
+  LOG_INFO << "Camera watchman " << (on ? "turned on" : "turned off")
+           << " by the household's privacy choices";
 }
 
 void CameraAudioPolicy::onChange(Listener listener)

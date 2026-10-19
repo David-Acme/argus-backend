@@ -219,7 +219,7 @@ ChatRequest requestFor(const RequestInput& input)
 
 std::vector<eval::RecordedCall> inactiveAttempts(const LlmChatOutcome& outcome, const eval::EvalCase& item)
 {
-  const ToolAudience audience{.role = userRoleFromString(item.role), .modules = moduleGate().snapshot()};
+  const ToolAudience audience{.role = userRoleFromString(item.role), .modules = moduleGate().snapshot(), .surface = ConversationSurface::App};
   std::vector<eval::RecordedCall> out;
   for (const auto& call : outcome.attempted) {
     const auto tool = ToolRegistry::instance().find(call.name);
@@ -457,7 +457,7 @@ int main(int argc, char** argv)
   if (options.verbose) {
     moduleGate().apply(catalog);
     std::string names;
-    for (const auto& tool : controller.adapter().executor().offered({.role = UserRole::Owner, .modules = moduleGate().snapshot()}))
+    for (const auto& tool : controller.adapter().executor().offered({.role = UserRole::Owner, .modules = moduleGate().snapshot(), .surface = ConversationSurface::App}))
       names += tool->spec.name + " ";
     std::printf("offered to the owner: %s\n", names.c_str());
   }

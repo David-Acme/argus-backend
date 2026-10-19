@@ -752,7 +752,8 @@ TEST_CASE("without a relay the ice route and the call token both carry an empty 
                                  .calls = nullptr,
                                  .directory = nullptr,
                                  .rooms = rooms,
-                                 .decliner = nullptr});
+                                 .decliner = nullptr,
+                                 .watch = nullptr});
   const ResponseRtcIceDto ice = service.ice({.caller = caller(), .now = 1000});
   CHECK(ice.iceServers.empty());
   CHECK(ice.expiresAt == 0);
@@ -761,4 +762,120 @@ TEST_CASE("without a relay the ice route and the call token both carry an empty 
   CHECK(response.iceServers.isArray());
   CHECK(response.iceServers.empty());
   CHECK(response.toJson()["iceServers"].isArray());
+}
+
+namespace
+{
+
+class FakeWatch final : public RtcWatchDirectory
+{
+public:
+  drogon::Task<std::optional<std::vector<argus::voice::v1::WatchConversation>>> list(int64_t userId) const override
+  {
+    listedFor = userId;
+    co_return conversations;
+  }
+
+  drogon::Task<std::optional<bool>> end(RtcWatchEnd input) const override
+  {
+    ended.push_back(input.conversationId);
+    co_return input.conversationId == conversations.front().conversation_id();
+  }
+
+  std::vector<argus::voice::v1::WatchConversation> conversations;
+  mutable int64_t listedFor{0};
+  mutable std::vector<std::string> ended;
+};
+
+argus::voice::v1::WatchConversation watchOf(const std::string& id, const std::string& state, int64_t until)
+{
+  argus::voice::v1::WatchConversation conversation;
+  conversation.set_conversation_id(id);
+  conversation.set_user_id(7);
+  conversation.set_camera_id(3);
+  conversation.set_camera_name("Sala");
+  conversation.set_state(state);
+  conversation.set_handoff("camera");
+  conversation.set_audience("member");
+  conversation.set_resumable_until(until);
+  auto* turn = conversation.add_turns();
+  turn->set_id(1);
+  turn->set_role("user");
+  turn->set_text("Argus, ¿qué tengo hoy?");
+  turn->set_at(100);
+  turn->set_final(true);
+  return conversation;
+}
+
+constexpr const char* kLiveId = "0123456789abcdef0123456789abcdef";
+constexpr const char* kGoneId = "fedcba9876543210fedcba9876543210";
+
+}
+
+TEST_CASE("a camera conversation is continued on the phone only while it is live or resumable")
+{
+  CHECK(isWatchConversationId(kLiveId));
+  CHECK_FALSE(isWatchConversationId("0123"));
+  CHECK_FALSE(isWatchConversationId("0123456789ABCDEF0123456789ABCDEF"));
+  CHECK(bodyOf(std::string(R"({"watchConversationId":")") + kLiveId + "\"}").watchConversationId == kLiveId);
+  CHECK_THROWS_AS(bodyOf(R"({"watchConversationId":"nope"})"), ValidationException);
+  CHECK_THROWS_AS(bodyOf(std::string(R"({"callId":"call-4","watchConversationId":")") + kLiveId + "\"}"),
+                  ValidationException);
+
+  const auto voice = std::make_shared<FakeVoice>(true);
+  const auto rooms = std::make_shared<FakeRooms>();
+  const auto watch = std::make_shared<FakeWatch>();
+  const int64_t now =
+      std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+  watch->conversations = {watchOf(kLiveId, "listening", 0), watchOf(kGoneId, "resumable", now - 5)};
+  const RtcTokenService service({.config = enabledConfig(),
+                                 .voice = voice,
+                                 .calls = nullptr,
+                                 .directory = nullptr,
+                                 .rooms = rooms,
+                                 .decliner = nullptr,
+                                 .watch = watch});
+  const ResponseRtcTokenDto response = drogon::sync_wait(service.issue(
+      {.body = bodyOf(std::string(R"({"watchConversationId":")") + kLiveId + "\"}"), .caller = caller(), .host = "argus.local"}));
+  CHECK(response.callId == std::string("rtc-") + kLiveId);
+  const auto joins = voice->joins();
+  REQUIRE(joins.size() == 1);
+  CHECK(joins[0].watch_conversation_id() == kLiveId);
+  CHECK(joins[0].call_kind() == "watch");
+
+  CHECK(statusOf([&] {
+          static_cast<void>(drogon::sync_wait(
+              service.issue({.body = bodyOf(std::string(R"({"watchConversationId":")") + kGoneId + "\"}"),
+                             .caller = caller(),
+                             .host = "argus.local"})));
+        }) == 410);
+  CHECK(statusOf([&] {
+          static_cast<void>(drogon::sync_wait(
+              service.issue({.body = bodyOf(R"({"watchConversationId":"00000000000000000000000000000000"})"),
+                             .caller = caller(),
+                             .host = "argus.local"})));
+        }) == 404);
+
+  const ResponseRtcWatchDto listed = drogon::sync_wait(service.watchConversations(caller()));
+  CHECK(watch->listedFor == 7);
+  const Json::Value json = listed.toJson();
+  REQUIRE(json["conversations"].size() == 2);
+  const Json::Value& first = json["conversations"][0];
+  CHECK(first["conversationId"] == kLiveId);
+  CHECK(first["cameraName"] == "Sala");
+  CHECK(first["state"] == "listening");
+  CHECK(first["handoff"] == "camera");
+  CHECK(first["audience"] == "member");
+  CHECK(first["resumableUntil"].isNull());
+  CHECK(first["turns"][0]["role"] == "user");
+  CHECK(first["turns"][0]["final"].asBool());
+
+  CHECK(drogon::sync_wait(service.endWatch({.body = RtcWatchEndDto::fromPath(kLiveId), .caller = caller()})).ended);
+  CHECK(statusOf([&] {
+          static_cast<void>(
+              drogon::sync_wait(service.endWatch({.body = RtcWatchEndDto::fromPath(kGoneId), .caller = caller()})));
+        }) == 404);
+  CHECK_THROWS_AS(RtcWatchEndDto::fromPath("x"), ValidationException);
+  CHECK(watchExpired(watchOf(kGoneId, "ended", 0), now));
+  CHECK_FALSE(watchExpired(watchOf(kGoneId, "resumable", now + 60), now));
 }

@@ -128,6 +128,7 @@ wire::ChatRequest wireRequest(const ChatRequest& request)
   wire.set_prefill_only(request.prefillOnly);
   wire.set_conversation_leg(static_cast<wire::ConversationLeg>(conversationLegWireValue(request.conversationLeg)));
   wire.set_use_conversation(request.useConversation);
+  wire.set_surface(static_cast<wire::ConversationSurface>(static_cast<int>(request.surface)));
   return wire;
 }
 }

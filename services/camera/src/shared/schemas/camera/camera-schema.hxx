@@ -40,6 +40,7 @@ struct CameraSchema
   bool privacyObeyed{false};
   bool watchman{false};
   bool noAudio{false};
+  bool tvExclusion{false};
   std::string tlsFingerprint;
   bool tapoSecure{false};
   std::string controlCredential;

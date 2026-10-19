@@ -25,6 +25,7 @@ public:
 
   void push(std::span<const int16_t> samples);
   std::optional<std::vector<int16_t>> next();
+  std::optional<std::vector<int16_t>> flush();
 
   [[nodiscard]] int queuedMs() const;
   [[nodiscard]] size_t packetSamples() const { return packetSamples_; }

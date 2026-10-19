@@ -6,6 +6,8 @@
 #include <feature/rtc/dtos/response-rtc-decline-dto.hxx>
 #include <feature/rtc/dtos/response-rtc-ice-dto.hxx>
 #include <feature/rtc/dtos/response-rtc-token-dto.hxx>
+#include <feature/rtc/dtos/response-rtc-watch-dto.hxx>
+#include <feature/rtc/dtos/rtc-watch-dto.hxx>
 #include <feature/rtc/dtos/rtc-decline-dto.hxx>
 #include <feature/rtc/dtos/rtc-token-dto.hxx>
 #include <feature/rtc/infra/livekit-room-client.hxx>
@@ -27,7 +29,16 @@ struct RtcTokenServiceInput
   std::shared_ptr<const IUserDirectory> directory;
   std::shared_ptr<const LiveKitRoomClient> rooms;
   std::shared_ptr<const RtcCallDecliner> decliner;
+  std::shared_ptr<const RtcWatchDirectory> watch{};
 };
+
+struct RtcWatchEndRequest
+{
+  RtcWatchEndDto body;
+  JwtContext caller;
+};
+
+[[nodiscard]] bool watchExpired(const argus::voice::v1::WatchConversation& conversation, int64_t now);
 
 struct RtcTokenRequest
 {
@@ -65,6 +76,10 @@ public:
 
   [[nodiscard]] ResponseRtcIceDto ice(const RtcIceRequest& request) const;
 
+  drogon::Task<ResponseRtcWatchDto> watchConversations(JwtContext caller) const;
+
+  drogon::Task<ResponseRtcWatchEndDto> endWatch(RtcWatchEndRequest request) const;
+
 private:
   struct InFlightCalls
   {
@@ -85,5 +100,6 @@ private:
   std::shared_ptr<const IUserDirectory> directory_;
   std::shared_ptr<const LiveKitRoomClient> rooms_;
   std::shared_ptr<const RtcCallDecliner> decliner_;
+  std::shared_ptr<const RtcWatchDirectory> watch_;
   std::shared_ptr<InFlightCalls> inFlight_ = std::make_shared<InFlightCalls>();
 };

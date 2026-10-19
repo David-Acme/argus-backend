@@ -51,6 +51,8 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
     dto.useConversation = json["use_conversation"].asBool();
   if (json.isMember("conversation_leg") && json["conversation_leg"].isString())
     dto.conversationLeg = json["conversation_leg"].asString();
+  if (json.isMember("surface") && json["surface"].isString())
+    dto.surface = json["surface"].asString();
 
   START_VALIDATION(ChatCompletionDto, dto)
   ARRAY_NOT_EMPTY(messages, ChatMessageDto)
@@ -100,6 +102,7 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
   })
   IS_IN_OPTIONAL(role, "owner", "resident", "guard", "guest")
   IS_IN_OPTIONAL(lang, "es", "en")
+  IS_IN_OPTIONAL(surface, "app", "camera", "camera_visitor")
   END_VALIDATION()
   return dto;
 }
@@ -123,5 +126,6 @@ ChatRequest ChatCompletionDto::request() const
   req.prefillOnly = prefillOnly;
   req.useConversation = useConversation;
   req.conversationLeg = conversationLegKindFromString(conversationLeg);
+  req.surface = conversationSurfaceFromString(surface.value_or("app")).value_or(ConversationSurface::App);
   return req;
 }

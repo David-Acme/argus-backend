@@ -108,7 +108,8 @@ SttRpcInput serverInput()
           .slots = 1,
           .services = {},
           .tlsAddress = {},
-          .tls = std::nullopt};
+          .tls = std::nullopt,
+          .spot = {}};
 }
 
 struct HeldEngine

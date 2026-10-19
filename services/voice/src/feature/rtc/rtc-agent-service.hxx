@@ -23,6 +23,8 @@ struct RtcAgentInput
   VoiceSessionService* sessions{nullptr};
   RtcAgentConfig config;
   std::function<void(const RtcCallReport&)> onCallEnded;
+  std::function<bool(int64_t, const std::string&)> bridgeWatch{};
+  RtcWatchClaim claimWatch{};
 };
 
 struct RtcJoinOutcome
@@ -61,6 +63,8 @@ private:
   VoiceSessionService& sessions_;
   RtcAgentConfig config_;
   std::function<void(const RtcCallReport&)> onCallEnded_;
+  std::function<bool(int64_t, const std::string&)> bridgeWatch_;
+  RtcWatchClaim claimWatch_;
   mutable std::mutex mutex_;
   std::unordered_map<std::string, std::shared_ptr<RtcCall>> calls_;
   bool closed_{false};

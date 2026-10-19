@@ -59,6 +59,35 @@ struct CameraLookConfig
   int64_t cooldownMs{60000};
 };
 
+struct CameraWatchConfig
+{
+  int64_t micFrameMs{32};
+  int64_t micReconnectMs{1000};
+  int64_t micReconnectMaxMs{10000};
+  int64_t micLingerMs{2000};
+  int64_t gateRecheckMs{1000};
+  int64_t micQueueFrames{64};
+  int64_t earconMs{300};
+  int64_t leadSilenceMs{700};
+  int64_t tailPadMs{300};
+  int64_t speakQueueMs{60000};
+  int64_t speakIdleMs{15000};
+  int64_t packetMs{120};
+  int64_t maxListeners{16};
+  int64_t boardRefreshMs{2000};
+  int64_t faceWindowMaxMs{3000};
+  int64_t faceWindowMaxCrops{6};
+  int64_t sightingHoldMs{45000};
+  int64_t aimInFrameMs{3000};
+  int64_t aimHorizontalFovDegrees{100};
+  int64_t aimVerticalFovDegrees{56};
+  int64_t aimDeadZonePercent{5};
+  int64_t aimSettleMs{1500};
+  int64_t aimLookMs{2000};
+  int64_t aimMaxPresets{4};
+  int64_t aimReturnMs{30000};
+};
+
 struct GuardDutyConfig
 {
   std::string target;
@@ -88,10 +117,12 @@ public:
   static CameraOnvifConfig resolveOnvif();
   static CameraPtzConfig resolvePtz();
   static CameraLookConfig resolveLook();
+  static CameraWatchConfig resolveWatch();
   static PrivacyNoticeConfig resolvePrivacyNotice();
   static GuardDutyConfig resolveGuardDuty();
   static std::string resolveGuardCallerSecret();
   static std::string resolveSyncCallerSecret();
   static std::string resolveLlmCallerSecret();
+  static std::string resolveVoiceCallerSecret();
   static std::vector<argus::client::CallerCredential> resolveSettingsCallers();
 };

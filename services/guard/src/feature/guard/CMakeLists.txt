@@ -46,6 +46,7 @@ argus_module(NAME guard
         repositories/episode/episode-repository.cc
         repositories/response/response-repository.cc
         repositories/wind-down/wind-down-repository.cc
+        services/camera-room.cc
         services/guard-feature-service.cc
         services/episode-change-gate.cc
         services/posture-watch.cc

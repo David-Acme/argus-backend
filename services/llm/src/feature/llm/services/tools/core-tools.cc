@@ -77,7 +77,8 @@ argus::mcp::ToolOutcome openScreen(const argus::mcp::ToolInvocation& invocation)
     return outcome;
   }
   const ToolAudience audience{.role = userRoleFromString(invocation.caller.role),
-                              .modules = moduleGate().snapshot()};
+                              .modules = moduleGate().snapshot(),
+                              .surface = ConversationSurface::App};
   if (!audience.modules.enabled(screen->module)) {
     outcome.isError = true;
     const ModuleOfferInput offer{.audience = audience, .module = std::string(screen->module), .lang = english ? "en" : "es"};

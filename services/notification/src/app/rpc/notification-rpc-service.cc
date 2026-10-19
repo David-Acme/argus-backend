@@ -6,6 +6,10 @@
 #include <config/notification-config.hxx>
 #include <text/json-util.hxx>
 #include <trantor/utils/Logger.h>
+
+#include <algorithm>
+#include <array>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -89,13 +93,31 @@ void toTombstone(const ConversationMessageSchema& row, argus::notification::v1::
   out->set_deleted_at(row.deletedAt.value_or(0));
 }
 
+constexpr std::array kWatchTypes = std::to_array<std::string_view>(
+    {"watch_busy", "watch_resume", "watch_details", "watch_confirm", "watch_message"});
+
+constexpr std::array kAssistantWatchTypes = std::to_array<std::string_view>({"watch_details", "watch_confirm"});
+
+bool withoutResponse(const argus::notification::v1::CreateNotificationsRequest& request)
+{
+  const Json::Value data = json_util::fromString(request.data());
+  return !data.isObject() || !data.isMember("response");
+}
+
 bool assistantNoticeOnly(
     const argus::notification::v1::CreateNotificationsRequest& request)
 {
-  if (request.type() != kAssistantTaskType || request.user_ids_size() != 1)
+  if (request.user_ids_size() != 1)
     return false;
-  const Json::Value data = json_util::fromString(request.data());
-  return !data.isObject() || !data.isMember("response");
+  const bool type = request.type() == kAssistantTaskType ||
+                    std::ranges::find(kAssistantWatchTypes, request.type()) != kAssistantWatchTypes.end();
+  return type && withoutResponse(request);
+}
+
+bool watchNoticeOnly(const argus::notification::v1::CreateNotificationsRequest& request)
+{
+  return request.user_ids_size() == 1 &&
+         std::ranges::find(kWatchTypes, request.type()) != kWatchTypes.end() && withoutResponse(request);
 }
 
 }
@@ -113,6 +135,10 @@ NotificationRpcService::NotificationRpcService(std::shared_ptr<const Notificatio
           {argus::client::CallerCredential{.service = "argus-sync",
                                         .secret = ConfigService::getString(
                                             "grpc.caller_sync")}}),
+      watchCallers_(
+          {argus::client::CallerCredential{.service = "argus-voice",
+                                        .secret = ConfigService::getString(
+                                            "grpc.caller_voice")}}),
       notificationService_(std::move(notifications))
 {
 }
@@ -224,14 +250,24 @@ grpc::ServerUnaryReactor* NotificationRpcService::CreateNotifications(
 {
   const bool guard =
       argus::client::authorizeCaller(context, guardCallers_).has_value();
-  if (!guard &&
-      !argus::client::authorizeCaller(context, assistantCallers_).has_value()) {
+  const bool assistant =
+      !guard && argus::client::authorizeCaller(context, assistantCallers_).has_value();
+  const bool watch = !guard && !assistant &&
+                     argus::client::authorizeCaller(context, watchCallers_).has_value();
+  if (!guard && !assistant && !watch) {
     auto* reactor = context->DefaultReactor();
     reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
                                  "notification caller credential required"));
     return reactor;
   }
-  if (!guard && !assistantNoticeOnly(*request)) {
+  if (watch && !watchNoticeOnly(*request)) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(
+        grpc::StatusCode::PERMISSION_DENIED,
+        "this caller may only create one watch notice"));
+    return reactor;
+  }
+  if (assistant && !assistantNoticeOnly(*request)) {
     auto* reactor = context->DefaultReactor();
     reactor->Finish(grpc::Status(
         grpc::StatusCode::PERMISSION_DENIED,

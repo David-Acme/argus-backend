@@ -119,6 +119,11 @@ grpc::ServerUnaryReactor* reject(grpc::CallbackServerContext* context,
   return reactor;
 }
 
+bool watchFrame(const argus::sync::v1::SyncFrame& frame)
+{
+  return static_cast<SyncOperation>(frame.operation()) == SyncOperation::WatchUpdate;
+}
+
 bool callFrame(const argus::sync::v1::SyncFrame& frame)
 {
   const auto operation = static_cast<SyncOperation>(frame.operation());
@@ -193,11 +198,15 @@ grpc::ServerUnaryReactor* SyncControlRpcService::EmitToUser(
     const argus::sync::v1::EmitToUserRequest* request,
     argus::sync::v1::ControlAck* response)
 {
-  if (const auto admission = admit(context, sync_control_callers::kEmitToUser);
-      !admission.admitted())
+  if (watchFrame(request->frame())) {
+    if (const auto admission = admit(context, sync_control_callers::kWatchEmit); !admission.admitted())
+      return reject(context, admission.verdict);
+  }
+  else if (const auto admission = admit(context, sync_control_callers::kEmitToUser);
+           !admission.admitted())
     return reject(context, admission.verdict);
 
-  if (!callFrame(request->frame())) {
+  if (!watchFrame(request->frame()) && !callFrame(request->frame())) {
     const auto admission = admit(context, sync_control_callers::kRoomControl);
     if (!admission.admitted())
       return reject(context, admission.verdict);

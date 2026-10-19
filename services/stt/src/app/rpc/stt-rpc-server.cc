@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <semaphore>
+#include <span>
 #include <stdexcept>
 #include <vector>
 
@@ -27,6 +28,7 @@ constexpr std::size_t kMaxStreamSeconds = 120;
 constexpr std::chrono::milliseconds kSlotPoll{20};
 
 using StreamIo = grpc::ServerReaderWriter<wire::TranscribeUpdate, wire::TranscribeChunk>;
+using SpotIo = grpc::ServerReaderWriter<wire::SpotEvent, wire::SpotChunk>;
 
 ResponseException stoppedError(const grpc::ServerContext& context)
 {
@@ -223,6 +225,47 @@ struct SttRpcServer::Impl final : wire::Transcription::Service
     catch (...) {
       return argus::response::toRpcStatus(ResponseException(500, SttErrors::InternalError));
     }
+    return grpc::Status::OK;
+  }
+
+  grpc::Status Spot(grpc::ServerContext* context, SpotIo* stream) override
+  {
+    if (!gate_.admit(context, {}).admitted())
+      return argus::response::toRpcStatus(ResponseException(401, SttErrors::Unauthorized));
+    std::unique_ptr<SpotSession> session = input_.spot ? input_.spot() : nullptr;
+    if (!session)
+      return argus::response::toRpcStatus(
+          ResponseException(503, SttErrors::Unavailable.withMessage("keyword spotter not loaded")));
+    try {
+      wire::SpotChunk chunk;
+      while (stream->Read(&chunk)) {
+        if (chunk.reset())
+          session->reset();
+        if (chunk.samples_size() == 0)
+          continue;
+        if (!validRate(chunk.sample_rate()))
+          return argus::response::toRpcStatus(ResponseException(400, SttErrors::InvalidRequest));
+        const std::vector<SpotHit> hits =
+            session->push(std::span<const float>(chunk.samples().data(), static_cast<std::size_t>(chunk.samples_size())),
+                          static_cast<int>(chunk.sample_rate()));
+        for (const SpotHit& hit : hits) {
+          wire::SpotEvent event;
+          event.set_keyword(hit.keyword);
+          event.set_at_sample(hit.atSample);
+          event.set_start_time(hit.startTime);
+          if (!stream->Write(event))
+            return argus::response::toRpcStatus(stoppedError(*context));
+        }
+      }
+    }
+    catch (const ResponseException& error) {
+      return argus::response::toRpcStatus(error);
+    }
+    catch (...) {
+      return argus::response::toRpcStatus(ResponseException(500, SttErrors::InternalError));
+    }
+    if (context->IsCancelled())
+      return argus::response::toRpcStatus(stoppedError(*context));
     return grpc::Status::OK;
   }
 

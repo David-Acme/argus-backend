@@ -642,7 +642,7 @@ CaseRun runCase(const CaseInput& input)
     recorded.decodedTokens = prefill.decodedTokens;
     recorded.duressHeld = duressTurn && outcome.text.empty() && outcome.speech == llm_speech::kUnheard;
     const std::vector<tools::ToolHandle> offered = input.controller.adapter().executor().offered(
-        {.role = role, .modules = moduleGate().snapshot()});
+        {.role = role, .modules = moduleGate().snapshot(), .surface = ConversationSurface::App});
     const TurnState state =
         stateFor({.utterance = turn.user, .offered = offered, .executed = recorded.executed, .lang = input.item.lang});
     const bool productionClaim = claimedWithoutTool(recorded.reply, state);

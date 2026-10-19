@@ -233,6 +233,35 @@ bool VoiceClient::farewell(const argus::voice::v1::RtcFarewell& farewell, int de
   return stub_->Farewell(&context, farewell, &reply).ok();
 }
 
+std::optional<std::vector<argus::voice::v1::WatchConversation>>
+VoiceClient::watchConversations(int64_t userId) const
+{
+  grpc::ClientContext context;
+  argus::client::addCallerCredential(context, credential_);
+  context.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(kWatchDeadlineMs));
+  argus::voice::v1::ListWatchConversationsRequest request;
+  request.set_user_id(userId);
+  argus::voice::v1::ListWatchConversationsResponse reply;
+  if (!stub_->ListWatchConversations(&context, request, &reply).ok())
+    return std::nullopt;
+  return std::vector<argus::voice::v1::WatchConversation>(reply.conversations().begin(),
+                                                          reply.conversations().end());
+}
+
+std::optional<bool> VoiceClient::endWatchConversation(int64_t userId, const std::string& conversationId) const
+{
+  grpc::ClientContext context;
+  argus::client::addCallerCredential(context, credential_);
+  context.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(kWatchDeadlineMs));
+  argus::voice::v1::EndWatchConversationRequest request;
+  request.set_user_id(userId);
+  request.set_conversation_id(conversationId);
+  argus::voice::v1::EndWatchConversationResponse reply;
+  if (!stub_->EndWatchConversation(&context, request, &reply).ok())
+    return std::nullopt;
+  return reply.ended();
+}
+
 std::optional<bool> VoiceClient::announce(const VoiceAnnounceInput& input) const
 {
   grpc::ClientContext context;

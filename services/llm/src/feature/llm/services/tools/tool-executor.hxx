@@ -6,9 +6,27 @@
 #include <shared/vocabulary/intent-ledger.hxx>
 #include <shared/vocabulary/tool-contracts.hxx>
 
+#include <json/value.h>
+
+#include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <vector>
+
+struct CameraConfirmRequest
+{
+  int64_t userId{0};
+  std::string tool;
+  Json::Value arguments;
+  std::string lang;
+};
+
+using CameraConfirmSink = std::function<void(const CameraConfirmRequest&)>;
+
+[[nodiscard]] std::string cameraFloorLine(std::string_view lang, bool confirmed);
 
 class ToolExecutor
 {
@@ -16,6 +34,8 @@ public:
   explicit ToolExecutor(ToolRegistry& registry) : registry_(registry) {}
 
   void attachLedger(std::shared_ptr<tools::IntentLedger> ledger);
+
+  void attachConfirmations(CameraConfirmSink sink);
 
   [[nodiscard]] tools::ToolResult execute(const tools::ToolCall& call, const ToolAudience& audience) const;
 
@@ -34,4 +54,5 @@ private:
   ToolRegistry& registry_;
   ToolGrounding grounding_;
   std::shared_ptr<tools::IntentLedger> ledger_;
+  CameraConfirmSink confirmations_;
 };

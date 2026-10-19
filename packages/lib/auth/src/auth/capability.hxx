@@ -69,6 +69,8 @@ inline constexpr std::array kCapabilities = std::to_array<CapabilitySpec>({
     {.id = "visitors.read", .module = kSurveillanceModule, .roles = kOwnerGuard},
     {.id = "visitors.manage", .module = kSurveillanceModule, .roles = kOwnerOnly},
     {.id = "presence.read", .module = kSurveillanceModule, .roles = kOwnerOnly},
+    {.id = "proximity.own", .module = kSurveillanceModule, .roles = kEveryRole},
+    {.id = "proximity.manage", .module = kSurveillanceModule, .roles = kOwnerOnly},
     {.id = "agenda.read", .module = kProductivityModule, .roles = kOwnerResident},
     {.id = "agenda.write", .module = kProductivityModule, .roles = kOwnerResident},
     {.id = "projects.read", .module = kProductivityModule, .roles = kOwnerResident},

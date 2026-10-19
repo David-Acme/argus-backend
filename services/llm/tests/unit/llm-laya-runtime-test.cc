@@ -97,7 +97,7 @@ struct World
   slots::RuleText text;
   std::vector<tools::ToolCall> ran;
   std::vector<tools::ToolHandle> offered;
-  ToolAudience audience{.role = UserRole::Owner, .modules = {}};
+  ToolAudience audience{.role = UserRole::Owner, .modules = {}, .surface = ConversationSurface::App};
   tools::ToolContext context{.userId = 24,
                              .role = UserRole::Owner,
                              .lang = "es",

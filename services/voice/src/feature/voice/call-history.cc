@@ -345,6 +345,16 @@ void CallHistory::rollbackUser()
   entries_.erase(kept, entries_.end());
 }
 
+void CallHistory::adoptTurns(const std::vector<CallEntry>& entries)
+{
+  for (const CallEntry& entry : entries) {
+    if (entry.kind == CallEntryKind::Prompt || isNoteKind(entry.kind))
+      continue;
+    entries_.push_back(entry);
+  }
+  cached_ = false;
+}
+
 size_t CallHistory::userTurns() const
 {
   return static_cast<size_t>(std::ranges::count_if(

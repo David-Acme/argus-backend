@@ -31,6 +31,7 @@ bool validRate(std::int64_t rate)
 
 using Clock = std::chrono::system_clock;
 using StreamIo = grpc::ClientReaderWriter<v1::TranscribeChunk, v1::TranscribeUpdate>;
+using SpotIo = grpc::ClientReaderWriter<v1::SpotChunk, v1::SpotEvent>;
 
 StreamUpdate fromWire(const v1::TranscribeUpdate& update)
 {
@@ -152,6 +153,88 @@ StreamUpdate TranscribeStream::finish()
   return *last;
 }
 
+struct SpotStream::Impl
+{
+  grpc::ClientContext context;
+  SpotInput input;
+  std::unique_ptr<SpotIo> io;
+  mutable std::mutex mutex;
+  std::jthread reader;
+  bool alive{true};
+  bool closed{false};
+
+  void read()
+  {
+    v1::SpotEvent event;
+    while (io->Read(&event)) {
+      if (input.onHit)
+        input.onHit({.keyword = event.keyword(), .atSample = event.at_sample(), .startTime = event.start_time()});
+    }
+    std::scoped_lock lock(mutex);
+    alive = false;
+  }
+
+  bool write(const v1::SpotChunk& chunk)
+  {
+    std::scoped_lock lock(mutex);
+    if (!alive || closed)
+      return false;
+    alive = io->Write(chunk);
+    return alive;
+  }
+
+  void close()
+  {
+    {
+      std::scoped_lock lock(mutex);
+      if (closed)
+        return;
+      closed = true;
+      static_cast<void>(io->WritesDone());
+    }
+    context.TryCancel();
+    if (reader.joinable())
+      reader.join();
+    static_cast<void>(io->Finish());
+  }
+};
+
+SpotStream::SpotStream(std::unique_ptr<Impl> impl) : impl_(std::move(impl)) {}
+
+SpotStream::~SpotStream()
+{
+  if (impl_)
+    impl_->close();
+}
+
+bool SpotStream::push(std::span<const float> samples)
+{
+  if (samples.empty())
+    return alive();
+  v1::SpotChunk chunk;
+  chunk.mutable_samples()->Add(samples.begin(), samples.end());
+  chunk.set_sample_rate(static_cast<std::uint32_t>(impl_->input.sampleRate));
+  return impl_->write(chunk);
+}
+
+bool SpotStream::reset()
+{
+  v1::SpotChunk chunk;
+  chunk.set_reset(true);
+  return impl_->write(chunk);
+}
+
+bool SpotStream::alive() const
+{
+  std::scoped_lock lock(impl_->mutex);
+  return impl_->alive && !impl_->closed;
+}
+
+void SpotStream::close()
+{
+  impl_->close();
+}
+
 struct Client::Impl
 {
   ClientConfig config;
@@ -239,5 +322,18 @@ std::unique_ptr<TranscribeStream> Client::openStream(StreamInput input) const
   impl->onStop.emplace(raw->input.cancellation, [raw] { raw->context.TryCancel(); });
   impl->reader = std::jthread([raw] { raw->read(); });
   return std::make_unique<TranscribeStream>(std::move(impl));
+}
+
+std::unique_ptr<SpotStream> Client::openSpot(SpotInput input) const
+{
+  if (!validRate(input.sampleRate))
+    throw ResponseException(400, SttErrors::InvalidRequest);
+  auto impl = std::make_unique<SpotStream::Impl>();
+  impl->input = std::move(input);
+  argus::client::addCallerCredential(impl->context, impl_->config.credential);
+  impl->io = impl_->stub->Spot(&impl->context);
+  auto* raw = impl.get();
+  impl->reader = std::jthread([raw] { raw->read(); });
+  return std::make_unique<SpotStream>(std::move(impl));
 }
 }

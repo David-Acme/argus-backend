@@ -67,6 +67,8 @@ TEST_CASE("every error code has exactly one wire string")
       {.code = ErrorCode::CameraControlLocked, .name = "CAMERA_CONTROL_LOCKED"},
       {.code = ErrorCode::CameraControlRefused, .name = "CAMERA_CONTROL_REFUSED"},
       {.code = ErrorCode::AppSirenDisabled, .name = "APP_SIREN_DISABLED"},
+      {.code = ErrorCode::WatchNotFound, .name = "WATCH_NOT_FOUND"},
+      {.code = ErrorCode::WatchExpired, .name = "WATCH_EXPIRED"},
       {.code = ErrorCode::RouteNotFound, .name = "ROUTE_NOT_FOUND"},
       {.code = ErrorCode::GuardOffDuty, .name = "GUARD_OFF_DUTY"},
       {.code = ErrorCode::PresetsNotYours, .name = "PRESETS_NOT_YOURS"},

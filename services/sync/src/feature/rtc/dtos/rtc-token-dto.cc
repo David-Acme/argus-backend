@@ -1,5 +1,6 @@
 #include "rtc-token-dto.hxx"
 
+#include <feature/rtc/dtos/rtc-watch-dto.hxx>
 #include <feature/rtc/services/rtc-naming.hxx>
 #include <validation/validation_dsl.hxx>
 
@@ -15,6 +16,10 @@ RtcTokenDto RtcTokenDto::fromJson(const Json::Value& json)
       dto.resumeIsBoolean = json["resume"].isBool();
       dto.resume = dto.resumeIsBoolean && json["resume"].asBool();
     }
+    if (json["watchConversationId"].isString())
+      dto.watchConversationId = json["watchConversationId"].asString();
+    else if (json.isMember("watchConversationId") && !json["watchConversationId"].isNull())
+      dto.watchConversationId = "?";
     if (json["mode"].isString())
       dto.mode = json["mode"].asString();
     else if (json.isMember("mode") && !json["mode"].isNull())
@@ -32,6 +37,15 @@ RtcTokenDto RtcTokenDto::fromJson(const Json::Value& json)
     if (value.resumeIsBoolean)
       return std::nullopt;
     return "resume must be a boolean";
+  })
+  CUSTOM_LAMBDA(watchConversationId, [](const RtcTokenDto& value) -> std::optional<std::string> {
+    if (value.watchConversationId.empty())
+      return std::nullopt;
+    if (!value.callId.empty())
+      return "watchConversationId and callId cannot be sent together";
+    if (isWatchConversationId(value.watchConversationId))
+      return std::nullopt;
+    return "watchConversationId must be 32 lowercase hex characters";
   })
   IS_IN_OPTIONAL(mode, "duplex", "half")
   END_VALIDATION()

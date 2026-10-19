@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <auth/user-role.hxx>
+#include <llm/conversation-surface.hxx>
 #include <cstddef>
 #include <llm/conversation-leg.hxx>
 #include <cstdint>
@@ -54,6 +55,7 @@ struct ChatRequest
   std::vector<ContextFact> contextFacts{};
   std::optional<ConversationLegKind> conversationLeg{};
   bool useConversation{false};
+  ConversationSurface surface{ConversationSurface::App};
 };
 
 struct UtteranceScreenRequest

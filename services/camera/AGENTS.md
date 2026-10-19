@@ -26,11 +26,14 @@ that apply to camera-service code; when in doubt, the root file wins.
 9. **Health safety** — `GET /health` must never fail or block on NATS, the
    cameras or any downstream service; degraded dependencies degrade logs,
    not health.
-10. **Audible actions only from argus-guard** — the operator stays read-only
-    toward hardware. Announcing, the alarm tone and arming the siren are
-    capability-credential gated `argus.camera.v1.CameraActionService` calls
-    made by argus-guard behind `[actions].enabled`; never from the operator
-    loop or EventIntelligence. Tests may stub the action RPC service and its
+10. **Audible actions only from argus-guard, and the watchman's voice** — the
+    operator stays read-only toward hardware. Announcing, the alarm tone and
+    arming the siren are capability-credential gated
+    `argus.camera.v1.CameraActionService` calls made by argus-guard behind
+    `[actions].enabled`; the one other audible path is argus-voice speaking a
+    watchman conversation through `argus.camera.v1.CameraWatchService.Speak`
+    (`[grpc] caller_voice`), under the watch gate and the camera's talk line
+    lock. Never from the operator loop or EventIntelligence. Tests may stub the action RPC service and its
     camera driver, but must never drive real audible hardware (no live siren,
     alarm tone or speaker playback in any build).
 11. **No argus.db migrations** — this service owns `camera.db` only
@@ -78,6 +81,10 @@ argus-camera/
   src/feature/settings/ argus::camera-settings — the owner-editable catalog,
                         served by argus.settings.v1 on the gRPC listener when
                         `[grpc] caller_settings` is set
+  src/feature/watch/    argus.camera.v1 CameraWatchService for argus-voice: the
+                        watch gate, the camera board, one microphone reader
+                        per camera (infra/ffmpeg) and the paced speaker session
+                        with the earcon and the start-drop padding
   src/feature/talk/     live talk sessions over /media: the uplink (resample
                         + 120 ms packets), one paced thread per session and
                         the service the media socket hands camera:talk:*
@@ -102,8 +109,8 @@ argus-camera/
                         seals the camera passwords for the shared camera
                         repository)
   config.toml.example   camera, streaming, YOLO object and operator settings;
-                        [grpc] caller_guard, caller_sync, caller_llm and
-                        caller_settings
+                        [grpc] caller_guard, caller_sync, caller_llm,
+                        caller_settings and caller_voice; [watch]
   CONTEXT.md            purpose, ownership, wiring decisions
 ```
 

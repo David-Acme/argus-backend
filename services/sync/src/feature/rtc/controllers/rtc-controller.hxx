@@ -7,6 +7,8 @@
 #include <drogon/HttpResponse.h>
 #include <drogon/utils/coroutine.h>
 
+#include <string>
+
 class RtcController : public drogon::HttpController<RtcController, false>
 {
 public:
@@ -19,11 +21,17 @@ public:
                 "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(RtcController::ice, "/rtc/ice", drogon::Get,
                 "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(RtcController::watch, "/rtc/watch", drogon::Get,
+                "DeviceFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(RtcController::endWatch, "/rtc/watch/{1}/end", drogon::Post,
+                "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> token(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> decline(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> ice(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> watch(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> endWatch(drogon::HttpRequestPtr req, std::string conversationId);
 
 private:
   RtcTokenService service_;

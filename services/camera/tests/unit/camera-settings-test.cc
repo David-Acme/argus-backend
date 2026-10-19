@@ -132,7 +132,7 @@ TEST_CASE("the camera catalog builds through the registry")
 {
   const auto catalog = cameraSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{cameraSettingsCatalog()});
-  CHECK(catalog.size() == 62);
+  CHECK(catalog.size() == 87);
   CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) == 8);
 
   std::vector<std::string> live;

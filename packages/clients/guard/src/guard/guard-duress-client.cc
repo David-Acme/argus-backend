@@ -56,3 +56,21 @@ SpokenDuressReply GuardDuressClient::raiseSpoken(const SpokenDuressCall& call) c
     return SpokenDuressReply::Unavailable;
   return replyOf(response.outcome());
 }
+
+bool GuardDuressClient::raiseCameraPanic(const CameraPanicCall& call) const
+{
+  if (call.cameraId <= 0)
+    return false;
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+  argus::guard::v1::CameraPanicRequest request;
+  request.set_camera_id(call.cameraId);
+  request.set_user_id(call.userId);
+  request.set_speaker(call.speaker);
+  request.set_said_at(call.saidAt);
+  request.set_conversation_id(call.conversationId);
+  argus::guard::v1::CameraPanicResponse response;
+  const grpc::Status status = stub_->RaiseCameraPanic(&context, request, &response);
+  return status.ok();
+}

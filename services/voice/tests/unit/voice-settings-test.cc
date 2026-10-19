@@ -107,11 +107,28 @@ TEST_CASE("the voice catalog builds through the registry and applies at the next
 {
   const auto catalog = voiceSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{voiceSettingsCatalog()});
-  CHECK(catalog.size() == 14);
+  const auto watchKey = [](const SettingSpec& spec) { return spec.key.starts_with("watch."); };
+  CHECK(std::ranges::count_if(catalog, [&](const SettingSpec& spec) { return !watchKey(spec); }) == 14);
   for (const auto& spec : catalog)
-    CHECK(spec.apply == SettingApply::NextSession);
-  const auto basic = std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level);
+    CHECK(spec.apply == (watchKey(spec) ? SettingApply::Restart : SettingApply::NextSession));
+  const auto basic = std::ranges::count_if(
+      catalog, [&](const SettingSpec& spec) { return !watchKey(spec) && spec.level == SettingLevel::Basic; });
   CHECK(basic == 3);
+}
+
+TEST_CASE("the watchman's catalog fallbacks are the defaults the ear runs with")
+{
+  const ScopedConfig config("");
+  const auto catalog = voiceSettingsCatalog();
+  const VoiceWatchConfig watch = VoiceConfig::resolveWatch();
+  CHECK(std::stoi(fallbackOf(catalog, "watch.ring_ms")) == watch.ring.count());
+  CHECK(std::stoi(fallbackOf(catalog, "watch.post_roll_ms")) == watch.postRoll.count());
+  CHECK(std::stoi(fallbackOf(catalog, "watch.echo_tail_ms")) == watch.echoTail.count());
+  CHECK(std::stoi(fallbackOf(catalog, "watch.broadcast_window_ms")) == watch.broadcastWindow.count());
+  CHECK(std::stoi(fallbackOf(catalog, "watch.broadcast_min_cameras")) == watch.broadcastMinCameras);
+  CHECK(std::stof(fallbackOf(catalog, "watch.echo_correlation")) == doctest::Approx(watch.echoCorrelation));
+  CHECK(std::stof(fallbackOf(catalog, "watch.min_wake_snr_db")) == doctest::Approx(watch.minWakeSnrDb));
+  CHECK(fallbackOf(catalog, "watch.stage1") == wakeStageOneToString(watch.stageOne));
 }
 
 TEST_CASE("the voice catalog names no plumbing")

@@ -33,8 +33,25 @@ message SpokenDuressResponse
   SpokenDuressOutcome outcome = 1;
 }
 
+message CameraPanicRequest
+{
+  int64 camera_id = 1;
+  int64 user_id = 2;
+  string speaker = 3;
+  int64 said_at = 4;
+  string conversation_id = 5;
+}
+
+message CameraPanicResponse
+{
+  bool sent = 1;
+  bool repeated = 2;
+  int64 alert_id = 3;
+}
+
 service DuressService
 {
   rpc GetPhrase(DuressPhraseRequest) returns (DuressPhraseResponse) {}
   rpc RaiseSpoken(SpokenDuressRequest) returns (SpokenDuressResponse) {}
+  rpc RaiseCameraPanic(CameraPanicRequest) returns (CameraPanicResponse) {}
 }

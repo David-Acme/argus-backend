@@ -19,7 +19,8 @@ enum class SyncOperation : uint8_t
   Heartbeat = 11,
   ModuleUpdate = 12,
   ContextUpdate = 13,
-  ResourceChanged = 14
+  ResourceChanged = 14,
+  WatchUpdate = 15
 };
 
 inline std::string syncOperationToString(SyncOperation op)
@@ -55,6 +56,8 @@ inline std::string syncOperationToString(SyncOperation op)
       return "context_update";
     case SyncOperation::ResourceChanged:
       return "resource_changed";
+    case SyncOperation::WatchUpdate:
+      return "watch_update";
   }
   return "sync";
 }
@@ -89,5 +92,7 @@ inline SyncOperation syncOperationFromString(const std::string& s)
     return SyncOperation::ContextUpdate;
   if (s == "resource_changed")
     return SyncOperation::ResourceChanged;
+  if (s == "watch_update")
+    return SyncOperation::WatchUpdate;
   return SyncOperation::Synchronize;
 }

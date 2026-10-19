@@ -70,6 +70,35 @@ private:
   std::unique_ptr<Impl> impl_;
 };
 
+struct SpotHitEvent
+{
+  std::string keyword;
+  std::uint64_t atSample{0};
+  float startTime{0.0F};
+};
+
+struct SpotInput
+{
+  int sampleRate{16000};
+  std::function<void(const SpotHitEvent&)> onHit;
+};
+
+class SpotStream
+{
+public:
+  struct Impl;
+  explicit SpotStream(std::unique_ptr<Impl> impl);
+  ~SpotStream();
+  SpotStream(const SpotStream&) = delete;
+  SpotStream& operator=(const SpotStream&) = delete;
+  [[nodiscard]] bool push(std::span<const float> samples);
+  [[nodiscard]] bool reset();
+  [[nodiscard]] bool alive() const;
+  void close();
+private:
+  std::unique_ptr<Impl> impl_;
+};
+
 class Client
 {
 public:
@@ -81,6 +110,7 @@ public:
       const std::stop_token& cancellation = {}) const;
   [[nodiscard]] std::string transcribe(const TranscribeInput& input) const;
   [[nodiscard]] std::unique_ptr<TranscribeStream> openStream(StreamInput input) const;
+  [[nodiscard]] std::unique_ptr<SpotStream> openSpot(SpotInput input) const;
 private:
   struct Impl;
   std::unique_ptr<Impl> impl_;

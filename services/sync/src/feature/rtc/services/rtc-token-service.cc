@@ -60,8 +60,39 @@ RtcTokenService::RtcTokenService(RtcTokenServiceInput input)
       calls_(std::move(input.calls)),
       directory_(std::move(input.directory)),
       rooms_(std::move(input.rooms)),
-      decliner_(std::move(input.decliner))
+      decliner_(std::move(input.decliner)),
+      watch_(std::move(input.watch))
 {
+}
+
+bool watchExpired(const argus::voice::v1::WatchConversation& conversation, int64_t now)
+{
+  if (conversation.state() == "ended")
+    return true;
+  return conversation.state() == "resumable" && conversation.resumable_until() > 0 &&
+         conversation.resumable_until() < now;
+}
+
+drogon::Task<ResponseRtcWatchDto> RtcTokenService::watchConversations(JwtContext caller) const
+{
+  if (!watch_)
+    throw ResponseException(RtcErrors::RtcUnavailable);
+  const auto listed = co_await watch_->list(caller.sub);
+  if (!listed)
+    throw ResponseException(RtcErrors::RtcUnavailable);
+  co_return ResponseRtcWatchDto{.conversations = *listed};
+}
+
+drogon::Task<ResponseRtcWatchEndDto> RtcTokenService::endWatch(RtcWatchEndRequest request) const
+{
+  if (!watch_)
+    throw ResponseException(RtcErrors::RtcUnavailable);
+  const auto ended = co_await watch_->end({.userId = request.caller.sub, .conversationId = request.body.conversationId});
+  if (!ended)
+    throw ResponseException(RtcErrors::RtcUnavailable);
+  if (!*ended)
+    throw ResponseException(RtcErrors::WatchNotFound);
+  co_return ResponseRtcWatchEndDto{.ended = true};
 }
 
 drogon::Task<RtcTokenService::CallSlot>
@@ -118,7 +149,25 @@ drogon::Task<ResponseRtcTokenDto> RtcTokenService::issue(RtcTokenRequest request
   if (!config_.enabled || !voice_ || caller.sessionId.empty())
     throw ResponseException(RtcErrors::RtcUnavailable);
 
-  std::string callId = request.body.callId.empty() ? rtc_naming::mintUserCallId() : request.body.callId;
+  const std::string& watchId = request.body.watchConversationId;
+  if (!watchId.empty()) {
+    if (!watch_)
+      throw ResponseException(RtcErrors::RtcUnavailable);
+    const auto listed = co_await watch_->list(caller.sub);
+    if (!listed)
+      throw ResponseException(RtcErrors::RtcUnavailable);
+    const auto found = std::ranges::find_if(
+        *listed, [&watchId](const argus::voice::v1::WatchConversation& item) { return item.conversation_id() == watchId; });
+    if (found == listed->end())
+      throw ResponseException(RtcErrors::WatchNotFound);
+    const int64_t now =
+        std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+    if (watchExpired(*found, now))
+      throw ResponseException(RtcErrors::WatchExpired);
+  }
+  std::string callId = !watchId.empty()               ? std::string(rtc_naming::kUserCallPrefix) + watchId
+                       : request.body.callId.empty() ? rtc_naming::mintUserCallId()
+                                                      : request.body.callId;
   const rtc_naming::CallKind kind = rtc_naming::callKindOf(callId);
   const std::string room = rtc_naming::roomOf(caller.sub, callId);
   const CallSlot slot = co_await reserveCall({.userId = caller.sub, .room = room});
@@ -171,6 +220,10 @@ drogon::Task<ResponseRtcTokenDto> RtcTokenService::issue(RtcTokenRequest request
                                             : argus::voice::v1::VOICE_MODE_DUPLEX);
   join.set_resume(request.body.resume);
   join.set_call_id(callId);
+  if (!watchId.empty()) {
+    join.set_watch_conversation_id(watchId);
+    join.set_call_kind("watch");
+  }
   if (claim) {
     join.set_opening_line(claim->openingLine);
     for (const auto& line : claim->laterLines)
@@ -181,7 +234,7 @@ drogon::Task<ResponseRtcTokenDto> RtcTokenService::issue(RtcTokenRequest request
   if (rooms_ && !co_await rooms_->createRoom(room))
     throw ResponseException(RtcErrors::RtcUnavailable);
   if (!co_await voice_->join(std::move(join)))
-    throw ResponseException(RtcErrors::RtcUnavailable);
+    throw ResponseException(watchId.empty() ? RtcErrors::RtcUnavailable : RtcErrors::WatchExpired);
 
   ResponseRtcTokenDto response;
   response.url = rtc_naming::publicUrlOf(

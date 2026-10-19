@@ -217,12 +217,16 @@ Guard sound a camera's siren from the app (`POST /guard/siren`, the camera
 action `CameraAction::Siren`, behind the Owner's `guard.app_siren_enabled`,
 `services/guard/CONTEXT.md` "The app siren"); every role presses
 panic (`POST /guard/panic`) and reads its safety state (`GET /guard/safety`),
-and those two are the only guard routes a Guest has; camera maintenance windows (`/guard/maintenance`, the view question, "fui
-yo" on a tamper incident) are the Owner's, the Resident's and the Guard's,
-the Guard's only while on duty and for the cameras of its environment, and the
-home tamper question (`POST /guard/tamper/asks/{id}`) is the Owner's and the
-Resident's (`services/guard/CONTEXT.md`, "Loss of sight and the maintenance
-context"); creating, editing and
+and those two are the only guard routes a Guest has besides its own proximity
+beacon (`GET`/`PUT /guard/proximity/me`, every role, opt-in); the proximity
+receivers, sensors and the room each person is in (`/guard/proximity/people`)
+are the Owner's alone, like household presence; camera maintenance windows
+(`/guard/maintenance`, the view question, "fui yo" on a tamper incident) are
+the Owner's, the Resident's and the Guard's, the Guard's only while on duty and
+for the cameras of its environment, and the home tamper question
+(`POST /guard/tamper/asks/{id}`) is the Owner's and the Resident's
+(`services/guard/CONTEXT.md`, "Loss of sight and the maintenance context");
+creating, editing and
 removing environments, episode detail and review, camera context, decision
 review, feedback and person promotion stay Owner-only.
 
@@ -696,6 +700,12 @@ Raw pointers only for non-owning access (`.get()`).
   module gate, or only the target's room when the payload carries `user`. The
   frame is never persisted and never replayed: the client reloads on it and
   catches up on reconnect (`services/sync/CONTEXT.md`, "Resource changes").
+  `WatchUpdate=15` (additive, `watch_update`) carries a camera conversation
+  with Argus to the speaker's own user room only, emitted by argus-voice
+  through `SyncControlService.EmitToUser` (admitted for that operation alone):
+  `info {conversationId, cameraId, cameraName, state, handoff, audience,
+  startedAt, updatedAt, resumableUntil, endReason, turns[]}`
+  (`services/voice/CONTEXT.md`, "The conversation on the phone").
 - **Normal rows are creation-only after bootstrap**: `Synchronize` pages by
   `created_at`; do not switch it to `updated_at`/`syncAt` to represent an
   update. Every persisted update/revocation must instead publish a granular
@@ -972,7 +982,7 @@ name a first-party `argus::` alias by hand inside the dependency list of one of
 the group helpers: thirteen of the fifteen contracts (all but `routes` and
 `voice`, which name only their own test target; the `response`, `settings`,
 `stt`, `tts`, `llm`, `vlm` and `mcp` wire modules among the thirteen), eight of the
-fourteen clients (`llm`, `mcp`, `settings`, `stt`, `sync`, `tts`, `vlm`, `voice`)
+sixteen clients (`llm`, `mcp`, `settings`, `stt`, `sync`, `tts`, `vlm`, `voice`)
 and seven of the eighteen libs
 (`auth`, `http`, `mdns`, `nats`, `outbox`, `storage`, `validation`). Every package is in
 a group since Phase 4 step 7: `packages/memory` and `packages/intent` were the
@@ -986,8 +996,8 @@ The three groups sit where they belong — `packages/lib/<name>`,
 `packages/contracts/<domain>`, `packages/clients/<domain>`, each declared by
 its group's helper: `argus_lib_<name>` / `argus::lib::<name>`,
 `argus_contracts_<domain>` / `argus::contracts::<domain>`,
-`argus_clients_<domain>` / `argus::clients::<domain>`. Every one of the fourteen
-clients wraps a generated gRPC stub — eight of them pass `PROTO` to
+`argus_clients_<domain>` / `argus::clients::<domain>`. Every one of the sixteen
+clients wraps a generated gRPC stub — ten of them pass `PROTO` to
 `argus_clients`, the four wire clients (`llm`, `stt`, `tts`, `vlm`)
 speak HTTP beside the stub and reach it through a wire contract module
 (`argus::contracts::{llm,stt,tts,vlm}-wire`) instead of passing `PROTO`
@@ -1186,7 +1196,7 @@ their post-move spellings.
 | File | Purpose |
 |------|---------|
 | `packages/contracts/mcp/src/mcp/` | `argus.mcp.v1.Mcp/Rpc` (`McpRpcService`): one unary frame in, one out, on a provider's internal gRPC listener, admitted for the caller `llm` alone and never built open |
-| `packages/clients/<domain>/src/<domain>/` (all fourteen now hold a single `src/<domain>/`; `camera-actions` shares `camera`'s domain folder) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`auth`, `camera`, `identity`, `notification`, `productivity`, `settings`, `sync`, `voice`, `camera-actions` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::clients::<domain>` (rule 25, rule 27) |
+| `packages/clients/<domain>/src/<domain>/` (all sixteen now hold a single `src/<domain>/`; `camera-actions` and `camera-watch` share `camera`'s domain folder) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`auth`, `camera`, `guard`, `identity`, `notification`, `productivity`, `settings`, `sync`, `voice`, `camera-actions`, `camera-watch` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::clients::<domain>` (rule 25, rule 27) |
 
 **Tier 4 — `lib/auth`**
 

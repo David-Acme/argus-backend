@@ -36,7 +36,8 @@ RtcCall::RtcCall(RtcCallInput input)
       url_(std::move(input.url)),
       timings_(input.timings),
       onJoined_(std::move(input.onJoined)),
-      onEnded_(std::move(input.onEnded))
+      onEnded_(std::move(input.onEnded)),
+      claimWatch_(std::move(input.claimWatch))
 {
 }
 
@@ -303,7 +304,17 @@ void RtcCall::startSession()
   start.set_opening_line(join_.opening_line());
   for (const auto& line : join_.later_lines())
     start.add_later_lines(line);
-  sessions_.start(*this, start);
+  VoiceSessionOptions options;
+  if (!join_.watch_conversation_id().empty() && claimWatch_) {
+    if (auto resume = claimWatch_(join_.identity().user_id(), join_.watch_conversation_id())) {
+      if (start.opening_line().empty())
+        start.set_opening_line(resume->openingLine);
+      options.carry = std::move(resume->carry);
+      LOG_INFO << "Voice: RTC call " << join_.room() << " continues camera conversation "
+               << join_.watch_conversation_id();
+    }
+  }
+  sessions_.start(*this, start, options);
 
   std::deque<rtc_wire::ClientMessage> early;
   {

@@ -38,6 +38,7 @@ argus_module(NAME llm
         dtos/chat-dto.cc
         dtos/response-screen-dto.cc
         dtos/screen-dto.cc
+        infra/watch-confirm-notifier.cc
         services/lfm-adapter.cc
         services/llm-service.cc
         services/sampling-config.cc
@@ -95,6 +96,7 @@ argus_module(NAME llm
         argus::lib::validation
         argus::lib::http
         argus::clients::llm
+        argus::clients::notification
         argus::memory
         argus::conversation
         argus::messenger

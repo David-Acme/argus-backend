@@ -114,6 +114,10 @@ if(NOT TARGET argus::clients::camera-actions)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera-actions
                      ${CMAKE_BINARY_DIR}/clients/camera-actions EXCLUDE_FROM_ALL)
 endif()
+if(NOT TARGET argus::clients::camera-watch)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera-watch
+                     ${CMAKE_BINARY_DIR}/clients/camera-watch EXCLUDE_FROM_ALL)
+endif()
 if(NOT TARGET argus::clients::notification)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
                      ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
@@ -180,6 +184,7 @@ argus_service(NAME argus-camera
         argus::camera-privacy-notice
         argus::camera-module-data
         argus::camera-mcp
+        argus::camera-watch
         argus::contracts::mcp-wire
         argus::contracts::settings-wire
         argus::lib::auth
@@ -633,6 +638,16 @@ target_compile_options(camera-hardening-test PRIVATE -Wall -Wextra)
 set_target_properties(camera-hardening-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 argus_runtime_rpath(camera-hardening-test)
 add_test(NAME camera-hardening-test COMMAND camera-hardening-test)
+
+add_executable(camera-watch-test tests/unit/camera-watch-test.cc)
+target_link_libraries(camera-watch-test PRIVATE
+    argus::camera-watch
+    argus::contracts::camera
+    argus::lib::doctest-main)
+target_compile_options(camera-watch-test PRIVATE -Wall -Wextra)
+set_target_properties(camera-watch-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+argus_runtime_rpath(camera-watch-test)
+add_test(NAME camera-watch-test COMMAND camera-watch-test)
 
 add_executable(camera-ptz-lease-test tests/unit/camera-ptz-lease-test.cc)
 target_link_libraries(camera-ptz-lease-test PRIVATE

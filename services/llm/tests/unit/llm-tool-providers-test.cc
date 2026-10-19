@@ -132,7 +132,7 @@ tools::ToolCall bareOf(const std::string& name)
 
 ToolAudience resident()
 {
-  return {.role = UserRole::Resident, .modules = {}};
+  return {.role = UserRole::Resident, .modules = {}, .surface = ConversationSurface::App};
 }
 
 ModuleSnapshot productivityOff()
@@ -302,7 +302,7 @@ TEST_CASE("the tools of a module that is off are still offered, and calling one 
   const auto ledger = std::make_shared<RecordingLedger>();
   executor.attachLedger(ledger);
 
-  const ToolAudience owner{.role = UserRole::Owner, .modules = productivityOff()};
+  const ToolAudience owner{.role = UserRole::Owner, .modules = productivityOff(), .surface = ConversationSurface::App};
   REQUIRE(executor.offered(owner).size() == 1);
 
   auto call = callOf("agenda.ping");
@@ -336,7 +336,7 @@ TEST_CASE("a household member who cannot enable a module is offered to ask the o
   registry.refresh();
   const ToolExecutor executor(registry);
 
-  const ToolAudience resident{.role = UserRole::Resident, .modules = productivityOff()};
+  const ToolAudience resident{.role = UserRole::Resident, .modules = productivityOff(), .surface = ConversationSurface::App};
   auto call = callOf("agenda.ping");
   call.context.lang = "en";
   const auto result = executor.execute(call, resident);
@@ -359,7 +359,7 @@ TEST_CASE("a malformed call to a module that is off is a plain argument error, n
 
   auto call = callOf("agenda.ping");
   call.arguments["text"] = 5;
-  const auto result = executor.execute(call, {.role = UserRole::Resident, .modules = productivityOff()});
+  const auto result = executor.execute(call, {.role = UserRole::Resident, .modules = productivityOff(), .surface = ConversationSurface::App});
   CHECK(result.code == "invalid_arguments");
   CHECK(ledger->offers.empty());
 }
@@ -371,7 +371,7 @@ TEST_CASE("a role that never held the tool is not told about the module")
   registry.addProvider({.id = "productivity", .client = clientOver(std::make_shared<argus::mcp::LocalTransport>(providerServer(seen)))});
   registry.refresh();
   const ToolExecutor executor(registry);
-  const ToolAudience guest{.role = UserRole::Guest, .modules = productivityOff()};
+  const ToolAudience guest{.role = UserRole::Guest, .modules = productivityOff(), .surface = ConversationSurface::App};
   CHECK(executor.offered(guest).empty());
   const auto result = executor.execute(callOf("agenda.ping"), guest);
   CHECK(result.code == "forbidden");
@@ -454,7 +454,7 @@ TEST_CASE("enabling or requesting a module needs the user's own ask or a yes to 
   ToolExecutor executor(registry);
   const auto ledger = std::make_shared<RecordingLedger>();
   executor.attachLedger(ledger);
-  const ToolAudience owner{.role = UserRole::Owner, .modules = productivityOff()};
+  const ToolAudience owner{.role = UserRole::Owner, .modules = productivityOff(), .surface = ConversationSurface::App};
 
   tools::ToolCall enable;
   enable.name = "modules.enable";
@@ -572,14 +572,14 @@ TEST_CASE("a tool of the core server acts for the caller the conversation declar
   call.arguments["target_user_id"] = 9;
   call.context.userId = 7;
   call.context.lang = "es";
-  const auto result = executor.execute(call, {.role = UserRole::Guest, .modules = {}});
+  const auto result = executor.execute(call, {.role = UserRole::Guest, .modules = {}, .surface = ConversationSurface::App});
   CHECK(result.ok);
   CHECK(actedFor == 7);
   CHECK(withRole == UserRole::Guest);
   CHECK(seenArguments["text"].asString() == "pagar la luz");
 
   call.context.userId = 11;
-  CHECK(executor.execute(call, {.role = UserRole::Owner, .modules = {}}).ok);
+  CHECK(executor.execute(call, {.role = UserRole::Owner, .modules = {}, .surface = ConversationSurface::App}).ok);
   CHECK(actedFor == 11);
   CHECK(withRole == UserRole::Owner);
 }
@@ -619,7 +619,7 @@ TEST_CASE("the real app.open opens the notifications panel for every role even w
     call.context.userId = 7;
     call.context.lang = "es";
     call.context.emitAction = [&actions](const std::string& name, const Json::Value& payload) { actions.emplace_back(name, payload); };
-    const auto result = executor.execute(call, {.role = role, .modules = off});
+    const auto result = executor.execute(call, {.role = role, .modules = off, .surface = ConversationSurface::App});
     CHECK(result.ok);
     CHECK(result.output == "La app abrió las notificaciones.");
     REQUIRE(actions.size() == 1);

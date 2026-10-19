@@ -34,6 +34,7 @@ message CameraRow {
   bool privacy_obeyed = 21;
   bool watchman = 22;
   bool no_audio = 23;
+  bool tv_exclusion = 24;
 }
 
 message ZoneRow {

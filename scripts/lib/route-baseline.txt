@@ -76,6 +76,15 @@ guard	POST	/guard/mode	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	servi
 guard	POST	/guard/panic	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/safety/controllers/safety-controller.hxx
 guard	POST	/guard/person/{1}/promote	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
 guard	GET	/guard/presence	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/presence/controllers/presence-controller.hxx
+guard	GET	/guard/proximity/me	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/proximity/controllers/proximity-controller.hxx
+guard	PUT	/guard/proximity/me	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/proximity/controllers/proximity-controller.hxx
+guard	GET	/guard/proximity/people	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/proximity/controllers/proximity-controller.hxx
+guard	GET	/guard/proximity/receivers	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/proximity/controllers/proximity-controller.hxx
+guard	POST	/guard/proximity/receivers	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/proximity/controllers/proximity-controller.hxx
+guard	DELETE	/guard/proximity/receivers/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/proximity/controllers/proximity-controller.hxx
+guard	GET	/guard/proximity/sensors	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/proximity/controllers/proximity-controller.hxx
+guard	POST	/guard/proximity/sensors	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/proximity/controllers/proximity-controller.hxx
+guard	DELETE	/guard/proximity/sensors/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/proximity/controllers/proximity-controller.hxx
 guard	GET	/guard/safety	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/safety/controllers/safety-controller.hxx
 guard	PATCH	/guard/safety	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/safety/controllers/safety-controller.hxx
 guard	DELETE	/guard/safety/pin	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/safety/controllers/safety-controller.hxx
@@ -174,6 +183,8 @@ stt	POST	/stt/v1/transcribe	-	-	services/stt/src/feature/stt/controllers/stt-con
 sync	POST	/rtc/decline	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/sync/src/feature/rtc/controllers/rtc-controller.hxx
 sync	GET	/rtc/ice	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/sync/src/feature/rtc/controllers/rtc-controller.hxx
 sync	POST	/rtc/token	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/sync/src/feature/rtc/controllers/rtc-controller.hxx
+sync	GET	/rtc/watch	DeviceFilter,JwtFilter,RoleFilter	-	services/sync/src/feature/rtc/controllers/rtc-controller.hxx
+sync	POST	/rtc/watch/{1}/end	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/sync/src/feature/rtc/controllers/rtc-controller.hxx
 sync	WS	/sync	DeviceFilter,JwtFilter	-	services/sync/src/feature/transport/controllers/sync-socket.hxx
 sync	GET	/sync/activity	DeviceFilter,JwtFilter,RoleFilter	-	services/sync/src/feature/activity/controllers/activity-controller.hxx
 sync	GET	/sync/heartbeat	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/sync/src/feature/heartbeat/controllers/heartbeat-controller.hxx

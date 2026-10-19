@@ -43,3 +43,36 @@ std::optional<bool> GuardPresenceClient::onDuty(int64_t userId) const
     return std::nullopt;
   return response.on_duty();
 }
+
+std::optional<std::vector<argus::guard::v1::CameraRoom>> GuardPresenceClient::cameraRooms() const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+
+  const argus::guard::v1::CameraRoomsRequest request;
+  argus::guard::v1::CameraRoomsResponse response;
+  if (const grpc::Status status = stub_->CameraRooms(&context, request, &response); !status.ok())
+    return std::nullopt;
+  return std::vector<argus::guard::v1::CameraRoom>(response.cameras().begin(), response.cameras().end());
+}
+
+bool GuardPresenceClient::reportVoice(const VoiceEvidenceReport& report) const
+{
+  if (report.userId <= 0 || report.cameraId <= 0)
+    return false;
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+
+  argus::guard::v1::VoiceEvidenceRequest request;
+  request.set_user_id(report.userId);
+  request.set_camera_id(report.cameraId);
+  request.set_snr_db(report.snrDb);
+  request.set_voiceprint(report.voiceprint);
+  request.set_at_ms(report.atMs);
+  argus::guard::v1::VoiceEvidenceResponse response;
+  if (const grpc::Status status = stub_->ReportVoiceEvidence(&context, request, &response); !status.ok())
+    return false;
+  return response.accepted();
+}

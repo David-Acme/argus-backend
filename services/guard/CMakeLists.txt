@@ -85,6 +85,10 @@ if(PROJECT_IS_TOP_LEVEL)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera-actions
                          ${CMAKE_BINARY_DIR}/clients/camera-actions EXCLUDE_FROM_ALL)
     endif()
+    if(NOT TARGET argus::clients::camera-watch)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera-watch
+                         ${CMAKE_BINARY_DIR}/clients/camera-watch EXCLUDE_FROM_ALL)
+    endif()
     if(NOT TARGET argus::lib::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                          ${CMAKE_BINARY_DIR}/auth)
@@ -129,6 +133,7 @@ argus_service(NAME argus-guard
         argus::guard
         argus::guard-config
         argus::guard-presence
+        argus::guard-proximity
         argus::guard-rpc
         argus::guard-safety
         argus::guard-settings
@@ -146,6 +151,7 @@ argus_service(NAME argus-guard
         argus::clients::identity
         argus::clients::notification
         argus::clients::camera-actions
+        argus::clients::camera-watch
         argus::clients::llm
         argus::clients::vlm
     PORTS 7039)
@@ -223,6 +229,19 @@ target_compile_definitions(guard-presence-test PRIVATE
     ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(guard-presence-test PRIVATE -Wall -Wextra)
 add_test(NAME guard-presence-test COMMAND guard-presence-test)
+
+add_executable(guard-proximity-test tests/unit/guard-proximity-test.cc)
+set_target_properties(guard-proximity-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(guard-proximity-test PRIVATE
+    argus::guard-proximity
+    argus::lib::test-support
+    argus::lib::doctest-main)
+target_include_directories(guard-proximity-test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
+target_compile_definitions(guard-proximity-test PRIVATE
+    ARGUS_GUARD_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(guard-proximity-test PRIVATE -Wall -Wextra)
+add_test(NAME guard-proximity-test COMMAND guard-proximity-test)
 
 add_executable(guard-settings-test tests/unit/guard-settings-test.cc)
 set_target_properties(guard-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)

@@ -25,6 +25,7 @@ struct GuardRpcConfig
   std::vector<argus::client::CallerCredential> settingsCredentials;
   std::vector<argus::client::CallerCredential> presenceCredentials;
   std::string toolCredential;
+  std::string voiceCredential;
 };
 
 struct GuardPeerConfig
@@ -185,6 +186,28 @@ struct GuardPresenceConfig
   int64_t consentRefreshSeconds{600};
 };
 
+struct GuardProximityConfig
+{
+  bool enabled{true};
+  int64_t pollMs{2000};
+  int64_t rotateSeconds{900};
+  int64_t bleRssiFloor{95};
+  int64_t offlineAfterMs{10000};
+  int64_t requestTimeoutMs{1500};
+  int64_t sightingWindowMs{45000};
+  std::string bleEntity{"argus_ble"};
+  std::string homeAssistantToken;
+  double weightFace{1.0};
+  double weightRadarBox{0.8};
+  double weightVoice{0.6};
+  double weightBle{0.4};
+  double nightFaceFactor{0.5};
+  int64_t halfLifeMs{20000};
+  double switchMargin{0.2};
+  int64_t switchHoldMs{3000};
+  int64_t forgetMs{300000};
+};
+
 inline constexpr std::string_view kAppSirenEnabledKey = "guard.app_siren_enabled";
 
 struct GuardSirenConfig
@@ -218,6 +241,7 @@ public:
   [[nodiscard]] static BeliefConfig resolveBelief(int64_t cameraId);
 
   [[nodiscard]] static GuardPresenceConfig resolvePresence();
+  [[nodiscard]] static GuardProximityConfig resolveProximity();
 
   [[nodiscard]] static GuardSirenConfig resolveSiren();
 };

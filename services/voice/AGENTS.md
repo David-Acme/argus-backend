@@ -14,7 +14,10 @@ that apply to voice-service code; when in doubt, the root file wins.
    gRPC. The one outbound media path is the realtime agent: with `[rtc]
    enabled` it joins LiveKit rooms (`[rtc] url`, a plain ws on loopback or the
    docker gateway) with the token argus-sync hands it in `JoinRoom`, and holds
-   no LiveKit secret of its own.
+   no LiveKit secret of its own. The watchman's ear (`src/feature/watch/`)
+   is the other outbound path: argus-camera's `CameraWatchService` through
+   `argus::clients::camera-watch` (`[camera] grpc_target`/`credential`) and
+   argus-stt's keyword spotter `Spot` through `argus::clients::stt`.
 2. **Zero database** — no db clients, no schema, no repositories. The
    spoken-name write is the typed `IdentityService.UpdateUser` RPC to
    argus-identity.
@@ -25,7 +28,11 @@ that apply to voice-service code; when in doubt, the root file wins.
    chain, which is where the voice session is started). Because that
    identity is trusted as sent, `Connect` first requires argus-sync's caller
    credential (`x-argus-credential` = `[grpc] caller_sync`, paired with
-   sync's `[voice] credential` by the provisioning scripts).
+   sync's `[voice] credential` by the provisioning scripts). The one
+   other opener is the watchman (`src/feature/watch/`): a camera
+   conversation starts a half-duplex session itself after a confirmed wake,
+   with the identity the watch resolves from the camera (CC5), never from a
+   client.
 4. **Remote-only engines** — STT/TTS/LLM resolve through the remote HTTP
    adapters only; no in-process engine compiles here.
 5. **Parameter structs for 3+ params** — any function with 3+ parameters
@@ -76,6 +83,11 @@ argus-voice/
                         argus::voice-rtc (the LiveKit agent: RtcCall per room,
                         RtcAgentService); the pinned LiveKit C++ SDK archive
                         hashes and its NOTICE
+  src/feature/watch/    argus::voice-watch — the watchman: one ear per camera
+                        (microphone feed, VAD, 2 s RAM ring, keyword spotter or
+                        transcribed speech as stage one), stage two (the
+                        vocative rule), echo guard, broadcast drop, fire log and
+                        the coordinator
   src/shared/services/  vad
   src/shared/wrapper/   the ring the voice paths carry samples in
   src/test-support/     the fake voice sink the suites drive, and
