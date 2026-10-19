@@ -135,10 +135,15 @@ inline constexpr std::string_view UPDATE_COL_ENDS_AT = "ends_at = ?";
 inline constexpr std::string_view UPDATE_COL_ENDS_AT_NULL = "ends_at = NULL";
 inline constexpr std::string_view UPDATE_COL_IS_ALL_DAY = "is_all_day = ?";
 inline constexpr std::string_view UPDATE_COL_RECURRENCE_RULE = "recurrence_rule = ?";
+inline constexpr std::string_view UPDATE_COL_RECURRENCE_EXCEPTIONS = "recurrence_exceptions = ?";
 inline constexpr std::string_view UPDATE_COL_PROJECT_ID = "project_id = ?";
 inline constexpr std::string_view UPDATE_SUFFIX =
     ", updated_at = strftime('%s', 'now') "
     "WHERE id = ? AND deleted_at IS NULL";
+
+inline constexpr std::string_view TABLE_INFO = "PRAGMA table_info(calendar_event)";
+inline constexpr std::string_view ADD_RECURRENCE_EXCEPTIONS_COLUMN =
+    "ALTER TABLE calendar_event ADD COLUMN recurrence_exceptions TEXT NOT NULL DEFAULT '[]'";
 
 inline constexpr std::string_view REMOVE =
     "UPDATE calendar_event SET deleted_at = strftime('%s', 'now'), "
@@ -175,5 +180,6 @@ struct CalendarEventUpdateInput
   std::optional<bool> isAllDay;
   std::optional<std::string> recurrenceRule;
   std::optional<int64_t> projectId;
+  std::optional<std::string> recurrenceExceptions;
   drogon::orm::DbClient* client{nullptr};
 };

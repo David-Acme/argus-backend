@@ -625,11 +625,14 @@ owner page lists guard without a hand edit.
 | `guard.signature_min_similarity` | advanced | live | tracking | 0.5-0.99 | 0.82 |
 | `guard.loiter_checks` | advanced | live | tracking | 1-20 | 3 |
 | `guard.staging` | advanced | live | tracking | toggle | true |
+| `guard.posture_interval_s` | advanced | live | tracking | 5-600 | 30 |
+| `guard.episode_touch_publish_s` | advanced | live | tracking | 5-300 | 15 |
 | `guard.encounter_timeout_s` | advanced | live | tracking | 30-3600 | 300 |
 | `guard.tamper_sustained_s` | advanced | live | health | 30-3600 | 300 |
 | `guard.offline_sustained_s` | advanced | live | health | 60-3600 | 240 |
 | `guard.health_stale_s` | advanced | live | health | 30-3600 | 300 |
 | `guard.journal_retention_days` | advanced | live | history | 1-60 | 30 |
+| `guard.marked_retention_days` | advanced | live | history | 30-120 | 120 |
 
 The levels are danger ranks (1 low, 2 medium, 3 high, 4 critical): a response
 fires when the rank reaches its level. Announce and alarm accept 5, which no
@@ -1914,6 +1917,21 @@ read or written; a database that already has it keeps it, unread, and a boot ste
 of `guard_schema::migrate` copies its pending rows across, idempotently, so a row
 that was never published is not lost. Dropping the table is a named cleanup for
 the plan's debt list, not a side effect of this build.
+
+**Retired (2026-10-19, D7, the release step).** `retireEncounterOutbox` (in
+`guard_schema::migrate`) now finishes the job in the same boot step: it runs the
+same idempotent copy, then counts the legacy `pending` rows that have no
+`change_outbox` row with their event id, and drops `guard_encounter_outbox` only
+when that count is zero. A row that did not cross (a constraint the copy ignored)
+keeps the table and logs one WARN with the count; the next boot tries again. The
+drop logs one INFO line with the number of legacy rows. No step is in a
+transaction because each one is idempotent: a boot that stops between the copy
+and the drop repeats both. `sent` rows go with the table, because they were
+delivered and nothing reads them. This is the "later release" the debt list
+names: every installation is a development one (owner, 2026-10-19), so the
+release that carries the copy and the release that retires the table can be the
+same. `guard-migration-test` pins that the pending row crosses with its units
+converted, the sent one does not, and the legacy table is gone after migrate.
 
 Two units meet in that copy, and the conversion is explicit: the old table stored
 `created_at` in seconds (`strftime('%s')`) and the change outbox stores it in

@@ -10,6 +10,7 @@ argus_module(NAME memory
         services/extract/call-time-words.cc
         services/extract/covered-lexicon-extractor.cc
         services/extract/lexicon-extractor.cc
+        services/extract/repeat-rule.cc
         services/extract/temporal-resolver.cc
         services/memory/entity-resolver.cc
         services/memory/graph-recall.cc

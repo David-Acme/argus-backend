@@ -8,13 +8,16 @@
 #include <sync/sync-operation.hxx>
 #include <sync/sync-errors.hxx>
 #include <trantor/net/EventLoop.h>
+#include <trantor/utils/Logger.h>
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <coroutine>
 #include <cstddef>
 #include <exception>
 #include <functional>
+#include <iterator>
 #include <memory>
 #include <mutex>
 #include <stdexcept>
@@ -167,6 +170,23 @@ struct PullBatch
   std::vector<std::exception_ptr> errors;
   JwtContext ctx;
 };
+
+constexpr std::array<std::string_view, 3> kWriterlessTables{
+    "event", "camera_stream", "reminder_detail"};
+
+void noteWriterlessPull(std::string_view name)
+{
+  static std::array<std::atomic<bool>, kWriterlessTables.size()> seen{};
+  const auto found = std::ranges::find(kWriterlessTables, name);
+  if (found == kWriterlessTables.end())
+    return;
+  const auto index =
+      static_cast<std::size_t>(std::distance(kWriterlessTables.begin(), found));
+  if (seen.at(index).exchange(true, std::memory_order_relaxed))
+    return;
+  LOG_INFO << "Sync: a client still pulls the writerless table " << name
+           << ", which only schema v10/v11 apps ask for; it keeps its answer";
+}
 
 Json::Value emptyTableNode(const SynchronizedBodyDto& dto)
 {
@@ -382,6 +402,7 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
     const auto& field = body.*member;
     if (!field.has_value())
       continue;
+    noteWriterlessPull(name);
 
     const auto table = tableNameFromString(name);
     if (!role_access::tableReadable(ctx.role, table, *modules)) {

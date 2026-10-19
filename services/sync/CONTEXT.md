@@ -306,6 +306,43 @@ installation by `setup.sh` (native) and `provision-host.sh` (deploy, which
 also writes the 0600 `argus-deploy/livekit-keys.yaml` LiveKit reads through
 `key_file`). It never reaches a client, a log or argus-voice.
 
+### The TURN relay: `GET /rtc/ice` (2026-10-19, F1)
+
+Away from home a direct WebRTC path can fail (symmetric NAT, a carrier that
+drops UDP), so this service hands the app time-limited credentials for the
+house's own coturn relay, never a third party's. The app asks for them in two
+places: the call grant of `POST /rtc/token` carries `iceServers`, which the app
+passes to LiveKit's peer connection, and `GET /rtc/ice` answers
+`{iceServers, expiresAt}` for the camera's WebRTC live view, which needs them
+before it builds its offer. Every role with a session reads it (`kRtcAccess`,
+capability `calls.join`); the filter chain is the usual four.
+
+- **The credential is the TURN REST pair** coturn checks with
+  `use-auth-secret`: `username = "<expiry>:<userId>"` and
+  `credential = base64(HMAC-SHA1(secret, username))`
+  (`feature/rtc/services/turn-credentials.cc`). The expiry is now plus
+  `[turn] ttl_seconds` (3600, clamped 300–86400). The shared secret never leaves
+  the server; a credential is useless after its expiry and names the user.
+- **Config** (`[turn]`): `host` (the public name or IP clients dial; empty means
+  no relay), `port` 3478 (udp and tcp), `tls_port` 5349 (`turns:`; 0 leaves it
+  out), `secret` (at least 32 bytes, never a `CHANGE_ME` placeholder), and
+  `ttl_seconds`. A relay that is not fully configured answers an empty
+  `iceServers` list in both places, so the app dials directly as before; nothing
+  fails.
+- **Provisioning.** `setup.sh` and `provision-host.sh` generate the secret once
+  per installation (`ensure_turn_secret`, 32 random bytes in hex).
+  `provision-host.sh --turn-host <name>` (or `ARGUS_TURN_HOST`) writes `host`,
+  copies the secret to `${ARGUS_DATA_DIR}/coturn/secrets/turn_secret` (0600) for
+  the coturn container and turns the compose profile `turn` on
+  (`argus-deploy/CONTEXT.md`, "TURN relay").
+- **LiveKit's own TURN stays off** (`livekit.yaml` `turn.enabled: false`): the
+  client-side `rtcConfig.iceServers` replaces the servers LiveKit's join
+  response would offer, in both the JS SDK and the Rust SDK the desktop links,
+  so one relay serves calls and camera views.
+- `rtc-token-test` pins the credential against a vector computed independently,
+  the urls, the refusals (no host, short or placeholder secret, a host with a
+  character a URL cannot carry) and both routes' empty answer without a relay.
+
 ## Where the state lives
 
 Its own file, `database/sync.db`, resolved from `[sync] db` — the deploy binds
@@ -730,6 +767,16 @@ the repository and the two schemas were removed instead of fixed, and
 `deleted: []`, and `lastSyncDate: {}` when a `findLast` was asked. The wire
 shape is unchanged; if `event` ever gets an owner it is paged through that
 owner's client like the other domains.
+
+**The three writerless tables are measured before they go (2026-10-19, D8).**
+`event`, `camera_stream` and `reminder_detail` have no writer and the current
+app no longer pulls them; only schema v10/v11 installs still do, and nothing in
+a pull tells the server which schema asked. `noteWriterlessPull` logs one INFO
+line per process and per table the first time a pull carries one of the three
+keys, and the answers stay exactly as they were. The staged retirement (the app
+declares `clientSchema`, a schema-12 connection stops being answered, the code
+and then the owner tables go) is
+`docs/history/plans/writerless-tables-retirement-plan.md`.
 
 **Parallel pulls.** A `Synchronize` frame naming several tables pulls them
 four at a time (`kPullWidth`) instead of one after the other, so a bootstrap
@@ -1267,6 +1314,15 @@ goes to that user's room **instead of** the role rooms, and only after the same
 verdict passes for that user's role, which is the role this service remembered
 for them at connect and at every revalidation (`UserContextService::roleOf`,
 fed by `remember`/`userChanged`).
+
+A target this process cannot place is acknowledged quietly, never terminated
+with a warning (2026-10-19, R1): a user that has not connected since sync
+started has no remembered role, and a user whose stored role this build does
+not know is remembered as `UserRole::Unknown`, which holds no permission and
+has no socket that could read the frame anyway. Both answer no room and no
+refusal, so the message is acked with a DEBUG line. Only a known role that the
+verdict denies is terminated with the warning, because that is a producer
+addressing someone who may not read the route.
 
 The frame carries no rows, so `ids` reaches everyone in the audience — which is
 exactly the set of people allowed to read those rows, which is why a

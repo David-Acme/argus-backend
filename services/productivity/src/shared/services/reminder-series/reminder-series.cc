@@ -1,7 +1,9 @@
 #include "reminder-series.hxx"
 
 #include <algorithm>
+#include <shared/services/recurrence/occurrence-exceptions.hxx>
 #include <shared/services/recurrence/recurrence.hxx>
+#include <string>
 #include <sync/user-change-sink.hxx>
 #include <trantor/utils/Logger.h>
 #include <utility>
@@ -16,10 +18,16 @@ drogon::Task<std::optional<int64_t>> ReminderSeries::advance(const SeriesAdvance
   if (!rule)
     co_return std::nullopt;
   const int64_t anchor = existing->recurrenceAnchor.value_or(existing->scheduledAt);
-  const auto next = firstOccurrenceAfter(
-      {.rule = *rule, .anchor = anchor, .moment = std::max(existing->scheduledAt, input.moment)});
-  if (!next)
+  const auto exceptions = parseOccurrenceExceptions(existing->recurrenceExceptions);
+  const auto fire = nextFiring({.rule = *rule,
+                                .anchor = anchor,
+                                .after = scheduledOccurrence(exceptions, existing->scheduledAt),
+                                .moment = std::max(existing->scheduledAt, input.moment),
+                                .exceptions = exceptions});
+  if (!fire)
     co_return std::nullopt;
+  const auto kept = exceptionsFrom(exceptions, fire->occurrence);
+  const std::optional<int64_t> next = fire->at;
 
   Json::Value before = existing->toJson();
   const auto row = co_await repository_.update({.id = input.reminderId,
@@ -33,6 +41,11 @@ drogon::Task<std::optional<int64_t>> ReminderSeries::advance(const SeriesAdvance
                                                 .recurrenceRule = std::nullopt,
                                                 .recurrenceAnchor = std::nullopt,
                                                 .clearRecurrence = false,
+                                                .recurrenceExceptions =
+                                                    kept.size() == exceptions.size()
+                                                        ? std::nullopt
+                                                        : std::optional<std::string>(
+                                                              serializeOccurrenceExceptions(kept)),
                                                 .client = input.client});
   if (row.id == 0)
     co_return std::nullopt;

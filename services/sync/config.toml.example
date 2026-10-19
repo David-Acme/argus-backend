@@ -71,6 +71,13 @@ public_port = 7046
 token_ttl_seconds = 60
 max_concurrent_calls = 2
 
+[turn]
+host = ""
+port = 3478
+tls_port = 5349
+secret = ""
+ttl_seconds = 3600
+
 [notifications]
 grpc_target = "tls:127.0.0.1:7238"
 credential = ""

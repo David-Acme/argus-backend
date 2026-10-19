@@ -98,6 +98,8 @@ inline constexpr std::string_view INSERT =
 
 inline constexpr std::string_view ADD_RECURRENCE_ANCHOR_COLUMN =
     "ALTER TABLE reminder ADD COLUMN recurrence_anchor INTEGER";
+inline constexpr std::string_view ADD_RECURRENCE_EXCEPTIONS_COLUMN =
+    "ALTER TABLE reminder ADD COLUMN recurrence_exceptions TEXT NOT NULL DEFAULT '[]'";
 inline constexpr std::string_view BACKFILL_RECURRENCE_ANCHOR =
     "UPDATE reminder SET recurrence_anchor = scheduled_at "
     "WHERE recurrence_rule IS NOT NULL AND recurrence_anchor IS NULL";
@@ -110,6 +112,7 @@ inline constexpr std::string_view UPDATE_COL_RECURRENCE_RULE = "recurrence_rule 
 inline constexpr std::string_view UPDATE_COL_RECURRENCE_RULE_NULL = "recurrence_rule = NULL";
 inline constexpr std::string_view UPDATE_COL_RECURRENCE_ANCHOR = "recurrence_anchor = ?";
 inline constexpr std::string_view UPDATE_COL_RECURRENCE_ANCHOR_NULL = "recurrence_anchor = NULL";
+inline constexpr std::string_view UPDATE_COL_RECURRENCE_EXCEPTIONS = "recurrence_exceptions = ?";
 inline constexpr std::string_view UPDATE_COL_IS_COMPLETED = "is_completed = ?";
 inline constexpr std::string_view UPDATE_COL_COMPLETED_AT = "completed_at = ?";
 inline constexpr std::string_view UPDATE_COL_COMPLETED_AT_NULL =
@@ -159,6 +162,7 @@ struct ReminderUpdateInput
   std::optional<std::string> recurrenceRule;
   std::optional<int64_t> recurrenceAnchor;
   bool clearRecurrence{false};
+  std::optional<std::string> recurrenceExceptions;
   drogon::orm::DbClient* client{nullptr};
 };
 

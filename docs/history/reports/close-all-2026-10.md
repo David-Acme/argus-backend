@@ -92,3 +92,15 @@ The shipped bundles `decide/bundle-laya-mvp` and `extract/bundle-gliner-pilot` w
   - `llm-refusal-rules-test` drops its own doctest main and links `argus::lib::doctest-main`.
 - **Found on the way.** `llm-duress-screen-test`'s once-per-speaker case raced its 10 ms retry under a loaded build (4 raises for 3). It now runs with a 200 ms retry base, so the second utterance lands while the first raise is pending.
 - **After.** 2169 findings over 1368 TUs, no check above its count; the baseline is ratcheted to 2169.
+
+## T3: the backlog track
+
+Not built and not run yet: every unit below passed the comment, dependency and route gates, and the batch builds and runs once at integration.
+
+- **Debt (D2, D3, D6, D7, D8, R1).** The shared runner quits Drogon inside `main()` and the auth suites drop their own; the guard settings table lists every catalog key; the legacy encounter outbox is dropped once its pending rows have crossed; a resource frame for an unknown role is acked quietly; the writerless sync tables are measured on first pull, with a staged retirement plan, because the server cannot tell an app's schema and removing them now would break the v10/v11 apps.
+- **F1, TURN.** coturn in compose with credentials from setup and provision, `GET /rtc/ice`, relay servers in the `/rtc/token` grant; the app (web, phone, desktop) uses them. The relay-down acceptance is a checklist in the frontend `CONTEXT.md`.
+- **F1, patrol.** Scheduled preset tours (`/camera/{id}/patrol`), a pure `patrol_plan::decide`, the PTZ lease as Argus (the lowest holder) and the scene-log move windows.
+- **F3, APNs VoIP.** The key stays with the push relay (argus-cloud): a home holding it could push to every Argus phone. The home already rings `fcm` and `apns_voip` devices, never `apns`; one routing test added.
+- **F6a, recurring reminders from the assistant.** `memory.remind` takes a `repeat` rule read in es, es-PE and en; a weekday set becomes one weekly series per day; no call is scheduled for a series; a cadence the rule cannot hold is refused and nothing saved. "Recuérdame el día 5 de cada mes" is read as a question and left to Laya.
+- **F6b, one occurrence of a series.** `recurrence_exceptions` on `reminder` and `calendar_event`, `PATCH …/occurrence` for each, 409 on a row that does not repeat, 422 on a time the series does not produce. A reminder occurrence is only skipped or moved between its neighbours, so the firing order never changes. Frontend schema v14 and the three agenda actions. Open: later occurrences of a recurring event are still not announced; `calendar.list_events` ignores exceptions; a snoozed reminder answers 422 to "this occurrence".
+- **Needs a live stack.** Golden recordings of `/rtc/ice`, the patrol routes and the 13 hand-written occurrence probes; a call through the relay from mobile data; the coturn container started once.

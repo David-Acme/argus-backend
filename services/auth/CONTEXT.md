@@ -513,8 +513,10 @@ an identity toggle another case left behind, which
 `--order-by=rand --rand-seed=<n>`, `--order-by=name --reverse` and a
 `--test-case=<name>` run of each case confirm.
 
-The suite quits Drogon from `main()` **after** `doctest::Context::run()`
-instead of letting the exit-time static destructors do it. Measured: a binary
+The suite quits Drogon inside `main()` **after** `doctest::Context::run()`
+instead of letting the exit-time static destructors do it: since 2026-10-19
+(D2) through the shared runner's suite-end hook, `test_support::atSuiteEnd`,
+which the fixture registers when it boots, rather than a `main()` of its own. Measured: a binary
 that boots Drogon with a SQLite `DbClient`, connects a `NatsBus`, drains it and
 then lets Drogon's teardown run during static destruction corrupts the heap on
 a `DrogonIoLoop` thread (`corrupted double-linked list`, SIGABRT, exit 134) —
@@ -522,7 +524,7 @@ with or without gRPC, subscriptions, messages or the consumer in the path, and
 with the bus leaked rather than destroyed. The same binary that quits Drogon
 during normal execution is clean on every run. This matches production, where
 `shutdown_signal::onStop` drains and then holds `quit()` until the drains
-report, and it is why this suite has its own `main()` while the sibling suites
+report, and it is why this suite registers the hook while the sibling suites
 (the repo's `SharedBoot` idiom) keep the exit-time quit — none of them connects
 NATS.
 

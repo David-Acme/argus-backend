@@ -15,6 +15,7 @@
 #include <feature/project-task/controllers/project-task-controller.hxx>
 #include <feature/reminder/controllers/reminder-controller.hxx>
 #include <feature/reminder/reminder-rpc-service.hxx>
+#include <shared/repositories/calendar-event/calendar-event-repository.hxx>
 #include <shared/repositories/reminder/reminder-repository.hxx>
 #include <auth/auth-access.hxx>
 #include <auth/details/identity-access.hxx>
@@ -247,6 +248,11 @@ int main()
 
     if (!ReminderRepository().migrateSchema()) {
       LOG_FATAL << "Productivity reminder migration failed - aborting startup";
+      _exit(1);
+    }
+
+    if (!CalendarEventRepository().migrateSchema()) {
+      LOG_FATAL << "Productivity calendar event migration failed - aborting startup";
       _exit(1);
     }
 

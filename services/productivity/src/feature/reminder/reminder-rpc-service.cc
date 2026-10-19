@@ -24,6 +24,7 @@ void fill(const ReminderSchema& schema, ReminderRow* out)
   out->set_scheduled_at(schema.scheduledAt);
   if (schema.recurrenceRule)
     out->set_recurrence_rule(*schema.recurrenceRule);
+  out->set_recurrence_exceptions(schema.recurrenceExceptions);
   out->set_is_completed(schema.isCompleted);
   if (schema.completedAt)
     out->set_completed_at(*schema.completedAt);

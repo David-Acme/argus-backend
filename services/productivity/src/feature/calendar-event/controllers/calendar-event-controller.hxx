@@ -17,6 +17,9 @@ public:
   ADD_METHOD_TO(CalendarEventController::update, "/calendar-event/{1}",
                 drogon::Patch, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
                 "RoleFilter");
+  ADD_METHOD_TO(CalendarEventController::changeOccurrence,
+                "/calendar-event/{1}/occurrence", drogon::Patch, "DeviceFilter",
+                "ValidJsonFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(CalendarEventController::remove, "/calendar-event/{1}",
                 drogon::Delete, "DeviceFilter", "JwtFilter", "RoleFilter");
   METHOD_LIST_END
@@ -24,6 +27,8 @@ public:
   drogon::Task<drogon::HttpResponsePtr> create(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> update(drogon::HttpRequestPtr req,
                                                int64_t id);
+  drogon::Task<drogon::HttpResponsePtr>
+  changeOccurrence(drogon::HttpRequestPtr req, int64_t id);
   drogon::Task<drogon::HttpResponsePtr> remove(drogon::HttpRequestPtr req,
                                                int64_t id);
 

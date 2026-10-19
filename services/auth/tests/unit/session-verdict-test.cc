@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
 #include <app/rpc/auth-rpc-service.hxx>
@@ -700,12 +699,4 @@ TEST_CASE("the inline verdict path answers the recorded golden")
     REQUIRE(golden.isMember(verdict.name));
     CHECK(golden[verdict.name] == verdict.response);
   }
-}
-
-int main(int argc, char** argv)
-{
-  doctest::Context context(argc, argv);
-  const int result = context.run();
-  stopFixture();
-  return result;
 }

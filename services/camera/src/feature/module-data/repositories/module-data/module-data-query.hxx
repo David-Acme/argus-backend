@@ -26,9 +26,10 @@ inline constexpr std::string_view SUMMARY =
 
 inline constexpr std::string_view CAMERA_IDS = "SELECT id FROM camera";
 
-inline constexpr std::array<std::string_view, 10> PURGE{
+inline constexpr std::array<std::string_view, 11> PURGE{
     "UPDATE camera_evidence SET expires_at = 1 WHERE deleted_at = 0",
     "DELETE FROM camera_evidence WHERE deleted_at > 0",
+    "DELETE FROM camera_patrol",
     "DELETE FROM zone",
     "DELETE FROM camera_stream",
     "DELETE FROM camera",

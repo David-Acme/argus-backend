@@ -26,6 +26,7 @@ struct ResponseRtcTokenDto
   std::string callId;
   int64_t expiresAt{0};
   std::optional<ResponseRtcCallDto> call;
+  Json::Value iceServers{Json::arrayValue};
 
   [[nodiscard]] Json::Value toJson() const;
 };

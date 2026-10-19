@@ -32,6 +32,15 @@ struct SyncUpstreams
   std::string identitySecret;
 };
 
+struct SyncTurnConfig
+{
+  std::string host;
+  uint16_t port{3478};
+  uint16_t tlsPort{5349};
+  std::string secret;
+  std::chrono::seconds ttl{3600};
+};
+
 struct SyncRtcConfig
 {
   bool enabled{false};
@@ -42,6 +51,7 @@ struct SyncRtcConfig
   uint16_t publicPort{7046};
   std::chrono::seconds tokenTtl{60};
   int maxConcurrentCalls{2};
+  SyncTurnConfig turn;
 };
 
 struct SyncHeartbeatConfig

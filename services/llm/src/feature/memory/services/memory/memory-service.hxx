@@ -12,6 +12,7 @@
 #include <feature/memory/repositories/memory-graph/memory-graph-repository.hxx>
 #include <feature/memory/services/embedding/embedding-service.hxx>
 #include <feature/memory/services/extract/covered-lexicon-extractor.hxx>
+#include <feature/memory/services/extract/repeat-rule.hxx>
 #include <feature/memory/services/memory/graph-recall.hxx>
 #include <feature/memory/services/memory/memory-chat.hxx>
 #include <feature/memory/services/memory/memory-formation.hxx>
@@ -194,6 +195,31 @@ private:
   };
 
   std::optional<ReminderScheduled> scheduleReminder(const ReminderCallInput& input) const;
+
+  struct RepeatAsked
+  {
+    std::optional<Repeat> repeat{};
+    bool unreadable{false};
+    DayPart part{DayPart::None};
+  };
+
+  struct SeriesInput
+  {
+    const tools::ToolCall& call;
+    const std::string& text;
+    int64_t factId{0};
+    const Repeat& repeat;
+    DayPart part{DayPart::None};
+  };
+
+  struct SeriesScheduled
+  {
+    int64_t firstAt{0};
+    bool listed{false};
+  };
+
+  static RepeatAsked repeatAsked(const tools::ToolCall& call);
+  std::optional<SeriesScheduled> scheduleSeries(const SeriesInput& input) const;
   tools::ToolResult handleReminderList(const tools::ToolCall& call);
   tools::ToolResult handleRecall(const tools::ToolCall& call);
   tools::ToolResult handleForget(const tools::ToolCall& call);

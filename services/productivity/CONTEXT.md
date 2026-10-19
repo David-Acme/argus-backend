@@ -654,3 +654,60 @@ another user's token refused), both languages and the gate for each role.
 - The calendar MCP tools set no rule, so the two DTOs are the only way a rule reaches `calendar_event`.
 - `productivity-calendar-event-dto-test` runs the fixture through both DTOs: every case rule is kept, and every invalid
   rule but the empty string is refused.
+
+## One occurrence of a series (F6b, 2026-10-19)
+
+A person can change or skip one occurrence of a recurring reminder or calendar event without touching the series
+(the RFC 5545 exception).
+
+- **Storage.** The series row keeps its exceptions in an additive column, `recurrence_exceptions TEXT NOT NULL DEFAULT
+  '[]'`, on `reminder` and on `calendar_event`; no second table and no second sync stream. The boot migrations add it
+  to an existing database (`ReminderRepository::migrateSchema`, and `CalendarEventRepository::migrateSchema`, which
+  `main.cc` now calls after the reminder one). The text is a JSON array sorted by occurrence, each item
+  `{occurrence, cancelled, startsAt?, endsAt?, title?, location?}`: `occurrence` is the start the series gives that
+  occurrence, in unix seconds like every time in this service, and is the item's key. A cancelled item carries nothing
+  else; an item that changes nothing is dropped, which is how an occurrence is restored. The parser
+  (`src/shared/services/recurrence/occurrence-exceptions`) drops what it cannot read, so a damaged value reads as no
+  exceptions; at most 366 items are kept (`kMaxOccurrenceExceptions`, 422 past it).
+- **Routes.** `PATCH /reminder/{id}/occurrence` and `PATCH /calendar-event/{id}/occurrence` take
+  `{occurrence, cancelled?, startsAt?, endsAt?, title?, location?}` (`OccurrenceChangeDto`, `src/shared/dtos/`, the two
+  features' shared body). The body is the whole change for that occurrence, not a patch of an earlier one: the app
+  sends every field its form shows, `{occurrence}` alone restores it, `cancelled` with any other field is a 422, and a
+  `startsAt` equal to `occurrence` is no move. Both answer the series row. The permissions are the series' own:
+  `role_access::tableFromPath` reads the first segment, so the PATCH is an `Update` of `reminder` or `calendar_event`
+  for each role exactly as `PATCH /{id}` is (pinned in `role-access-test`), the reminder stays own-row (404 for
+  another user's) and the event needs the owner or an `edit` share (404 otherwise).
+- **Refusals** (`ProductivityErrors`): a row without a readable rule is 409 `NotASeries`; a time that is not an
+  occurrence of the series (`occurrenceIndex`, the server's own expansion from the anchor) is 422 `NotAnOccurrence`.
+- **Reminders fire, so they are stricter.** A reminder's occurrence can only be skipped or moved (`endsAt`, `title`
+  or `location` is 422 `ReminderOccurrenceOnlyMoves`), only from the current occurrence on (an earlier one is 422
+  `OccurrenceAlreadyPassed`), and a move stays strictly between the series' previous and next occurrences (422
+  `OccurrenceOutsideItsSlot`), so the firing order never changes and the roll needs no extra state.
+  - `scheduled_at` keeps meaning "when it fires next". The occurrence it stands for is the exception whose `startsAt`
+    equals it, else `scheduled_at` itself (`scheduledOccurrence`). Changing the current occurrence recomputes
+    `scheduled_at` at once: skipped, it goes to the next occurrence that is not skipped; moved, to the new time;
+    restored, back to the occurrence.
+  - `nextFiring` is the one roll, used by delivery (`ReminderSeries::advance`) and by completion: from the current
+    occurrence it walks the series, steps over skipped occurrences and over moves that land at or before the moment,
+    and fires a moved one at its new time (also when its own start is already behind the moment but the new time is
+    not). The roll drops the exceptions older than the occurrence it lands on, so the column stays small.
+  - Re-anchoring the series clears the exceptions, since they are keyed by occurrences of the old series: a new
+    rule, stopping the series, or a new `scheduledAt` on a series. Resending the same rule is no longer a re-anchor
+    (it used to move the anchor to the current, possibly snoozed, time).
+- **Events.** The app expands events, so an event's exceptions are data for the app: a skipped occurrence leaves the
+  agenda, a changed one takes its start, end, title or place. A new `startsAt` or `recurrenceRule` on the series
+  clears them. The agenda announcer still announces only the stored `starts_at` of a recurring event, and now leaves
+  it out when that occurrence is skipped or moved (`DUE_EVENTS`, through `json_each`); announcing later occurrences,
+  moved ones included, stays the open item above. `calendar.list_events` (MCP) does not apply exceptions yet.
+- **Sync.** Every change publishes the row's before and after through the productivity sink (`publishAudit`, rule
+  18), so the app receives a `Log` diff of `recurrenceExceptions` on the existing row; nothing is emitted as `Add`.
+  The row JSON carries `recurrenceExceptions` as the column's JSON text (a string, like `filePaths`), and the pull
+  carries it as `ReminderRow.recurrence_exceptions = 13` and `CalendarEventRow.recurrence_exceptions = 16`, mapped back
+  by argus-sync's productivity gateway (an empty string reads `"[]"`). The frozen `/sync` bootstrap declares the two
+  fields as accepted additions (`services/sync/tests/fixtures/sync/manifest.json`), and the golden HTTP fixtures hold
+  the two routes' filter and validation probes, written by hand from the neighbouring routes' answers until the next
+  recording.
+- Tests: `productivity-recurrence-test` (parse, serialise, replace and restore, the slot and `nextFiring`),
+  `productivity-reminder-test` (skip, move, restore, refusals, the firing path through `ReminderSeries`, completion
+  past a skipped occurrence, re-anchoring) and `productivity-controller-test` (the event route end to end and the
+  series edit that clears the exceptions).

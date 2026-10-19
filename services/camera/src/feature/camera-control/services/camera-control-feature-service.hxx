@@ -55,6 +55,25 @@ struct CameraReturnHomeInput
   std::string reason;
 };
 
+struct CameraPatrolMoveInput
+{
+  int64_t cameraId{0};
+  std::string presetId;
+};
+
+struct CameraPatrolEndInput
+{
+  int64_t cameraId{0};
+  bool returnHome{false};
+};
+
+struct CameraPatrolEvent
+{
+  int64_t cameraId{0};
+  std::string phase;
+  std::string reason;
+};
+
 class CameraControlFeatureService
 {
 public:
@@ -63,6 +82,9 @@ public:
   drogon::Task<CameraControlResult> move(const CameraMoveInput& input) const;
   drogon::Task<CameraControlResult> preset(const CameraPresetInput& input) const;
   drogon::Task<CameraControlResult> returnHome(const CameraReturnHomeInput& input) const;
+  drogon::Task<CameraControlResult> patrolMove(const CameraPatrolMoveInput& input) const;
+  drogon::Task<void> endPatrol(const CameraPatrolEndInput& input) const;
+  drogon::Task<void> recordPatrol(const CameraPatrolEvent& event) const;
   drogon::Task<CameraControlResult> calibrate(int64_t cameraId) const;
   static void configurePtz(const CameraPtzConfig& config);
   drogon::Task<CameraControlResult> settings(const CameraSettingsInput& input) const;

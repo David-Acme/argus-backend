@@ -1,6 +1,7 @@
 argus_module(NAME productivity-dtos
     SOURCES
         idempotency-key/idempotency-key-dto.cc
+        occurrence-change/occurrence-change-dto.cc
     INCLUDES
         ${CMAKE_CURRENT_SOURCE_DIR}/../..
     DEPENDS

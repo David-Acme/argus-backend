@@ -17,6 +17,7 @@
 #include <grpcpp/grpcpp.h>
 #include <sync/user-change-sink.hxx>
 #include <config/config-service.hxx>
+#include <shared/services/recurrence/recurrence.hxx>
 #include <sqlite/db-service.hxx>
 #include <text/json-util.hxx>
 
@@ -188,6 +189,7 @@ void seedProductivityDb(const std::string& path)
       "ends_at INTEGER, "
       "is_all_day INTEGER NOT NULL DEFAULT 0 CHECK (is_all_day IN (0, 1)), "
       "recurrence_rule TEXT, "
+      "recurrence_exceptions TEXT NOT NULL DEFAULT '[]', "
       "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
       "updated_at INTEGER, deleted_at INTEGER)");
   exec(db.get(),
@@ -717,7 +719,8 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(event["endsAt"].asInt64() == 1735693200000);
   CHECK_FALSE(event["isAllDay"].asBool());
   CHECK(event["recurrenceRule"].isNull());
-  CHECK(event.getMemberNames().size() == 15);
+  CHECK(event["recurrenceExceptions"].asString() == "[]");
+  CHECK(event.getMemberNames().size() == 16);
   REQUIRE(sink.emits.size() == 7);
   CHECK(sink.emits.back().option == "calendar_event");
   CHECK(sink.emits.back().users == std::vector<int64_t>{42});
@@ -830,6 +833,86 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(zeroRefused->status == 404);
   CHECK(zeroRefused->message == "Project not found");
   CHECK(patchEvent(R"({"title":"Still linked"})")["projectId"].asInt64() == projectId);
+
+  constexpr int64_t kSeriesStart = 1900000000;
+  Json::Value seriesBody;
+  seriesBody["title"] = "Weekly standup";
+  seriesBody["startsAt"] = Json::Int64(kSeriesStart);
+  seriesBody["endsAt"] = Json::Int64(kSeriesStart + 1800);
+  seriesBody["recurrenceRule"] = "FREQ=WEEKLY";
+  auto seriesReq = drogon::HttpRequest::newHttpJsonRequest(seriesBody);
+  setActor({.req = seriesReq, .sub = 42, .role = UserRole::Owner});
+  const Json::Value series = body(drogon::sync_wait(eventController.create(seriesReq)))["info"];
+  const int64_t seriesId = series["id"].asInt64();
+  CHECK(series["recurrenceExceptions"].asString() == "[]");
+  const int64_t second =
+      occurrenceAt({.rule = {.frequency = RecurrenceFrequency::Weekly, .interval = 1},
+                    .anchor = kSeriesStart,
+                    .index = 1})
+          .value_or(0);
+  REQUIRE(second > kSeriesStart);
+
+  const auto occurrenceRequest = [](const std::string& json) {
+    auto req = drogon::HttpRequest::newHttpJsonRequest(json_util::fromString(json));
+    setActor({.req = req, .sub = 42, .role = UserRole::Owner});
+    return req;
+  };
+  const auto changeOccurrence = [&eventController, &occurrenceRequest, seriesId](const std::string& json) {
+    return body(drogon::sync_wait(
+        eventController.changeOccurrence(occurrenceRequest(json), seriesId)))["info"];
+  };
+  const auto exceptionsOf = [](const Json::Value& row) {
+    return json_util::fromString(row["recurrenceExceptions"].asString());
+  };
+  const std::string occurrenceKey = R"({"occurrence":)" + std::to_string(second);
+
+  const std::size_t auditsBeforeOccurrence = sink.audits.size();
+  const auto moved = changeOccurrence(occurrenceKey + R"(,"startsAt":)" +
+                                      std::to_string(second + 3600) +
+                                      R"(,"title":"Standup, later"})");
+  const Json::Value movedExceptions = exceptionsOf(moved);
+  REQUIRE(movedExceptions.size() == 1);
+  CHECK(movedExceptions[0]["occurrence"].asInt64() == second);
+  CHECK_FALSE(movedExceptions[0]["cancelled"].asBool());
+  CHECK(movedExceptions[0]["startsAt"].asInt64() == second + 3600);
+  CHECK(movedExceptions[0]["title"].asString() == "Standup, later");
+  CHECK(moved["startsAt"].asInt64() == kSeriesStart);
+  CHECK(moved["title"].asString() == "Weekly standup");
+  REQUIRE(sink.audits.size() == auditsBeforeOccurrence + 1);
+  CHECK(sink.audits.back().tableName == "calendar_event");
+  CHECK(sink.audits.back().recordId == seriesId);
+  CHECK(sink.audits.back().users == std::vector<int64_t>{42});
+
+  const auto skipped = changeOccurrence(occurrenceKey + R"(,"cancelled":true})");
+  const Json::Value skippedExceptions = exceptionsOf(skipped);
+  REQUIRE(skippedExceptions.size() == 1);
+  CHECK(skippedExceptions[0]["cancelled"].asBool());
+  CHECK_FALSE(skippedExceptions[0].isMember("startsAt"));
+  CHECK_FALSE(skippedExceptions[0].isMember("title"));
+
+  const auto restored = changeOccurrence(occurrenceKey + "}");
+  CHECK(restored["recurrenceExceptions"].asString() == "[]");
+  CHECK(sink.audits.size() == auditsBeforeOccurrence + 3);
+
+  const auto stranger = refusalOf(eventController.changeOccurrence(
+      occurrenceRequest(R"({"occurrence":)" + std::to_string(second + 60) + "}"), seriesId));
+  REQUIRE(stranger.has_value());
+  CHECK(stranger.value_or(Refusal{}).status == 422);
+  CHECK(stranger.value_or(Refusal{}).message == "occurrence is not an occurrence of this series");
+
+  const auto oneOff = refusalOf(eventController.changeOccurrence(
+      occurrenceRequest(R"({"occurrence":1735689600000})"), eventId));
+  REQUIRE(oneOff.has_value());
+  CHECK(oneOff.value_or(Refusal{}).status == 409);
+
+  changeOccurrence(occurrenceKey + R"(,"cancelled":true})");
+  auto reanchorReq = drogon::HttpRequest::newHttpJsonRequest(
+      json_util::fromString(R"({"startsAt":)" + std::to_string(kSeriesStart + 600) + "}"));
+  setActor({.req = reanchorReq, .sub = 42, .role = UserRole::Owner});
+  const Json::Value reanchored =
+      body(drogon::sync_wait(eventController.update(reanchorReq, seriesId)))["info"];
+  CHECK(reanchored["startsAt"].asInt64() == kSeriesStart + 600);
+  CHECK(reanchored["recurrenceExceptions"].asString() == "[]");
 
   const auto eventGone =
       drogon::sync_wait(eventController.remove(ownerRequest(), eventId));

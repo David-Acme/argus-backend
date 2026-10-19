@@ -8,6 +8,7 @@
 #include <feature/rtc/services/rtc-naming.hxx>
 #include <feature/rtc/services/rtc-session-revoker.hxx>
 #include <feature/rtc/services/rtc-token-service.hxx>
+#include <feature/rtc/services/turn-credentials.hxx>
 
 #include <drogon/utils/coroutine.h>
 #include <errors/response-exception.hxx>
@@ -37,7 +38,19 @@ SyncRtcConfig enabledConfig()
           .publicUrl = {},
           .publicPort = 7046,
           .tokenTtl = std::chrono::seconds(600),
-          .maxConcurrentCalls = 3};
+          .maxConcurrentCalls = 3,
+          .turn = {}};
+}
+
+constexpr const char* kTurnSecret = "0123456789abcdef0123456789abcdef";
+
+SyncTurnConfig turnRelay()
+{
+  return {.host = "turn.argus.example",
+          .port = 3478,
+          .tlsPort = 5349,
+          .secret = kTurnSecret,
+          .ttl = std::chrono::seconds(3600)};
 }
 
 class FakeVoice final : public RtcVoiceJoiner
@@ -668,4 +681,84 @@ TEST_CASE("the notification's answer maps onto the decline codes, and only silen
   CHECK(mapped(NotificationRpcOutcome::Rejected, Status::CALL_END_STATUS_ENDED) == RtcDeclineStatus::Unavailable);
   CHECK(mapped(NotificationRpcOutcome::Unavailable, Status::CALL_END_STATUS_EXPIRED) == RtcDeclineStatus::Unavailable);
   CHECK(mapped(NotificationRpcOutcome::Conflict, Status::CALL_END_STATUS_TAKEN) == RtcDeclineStatus::Unavailable);
+}
+
+TEST_CASE("a TURN credential is the RFC REST pair: expiry and subject, HMAC-SHA1 in base64")
+{
+  const TurnCredential credential =
+      turn_credentials::make({.secret = kTurnSecret, .subject = "42", .expiresAt = 1800000000});
+  CHECK(credential.username == "1800000000:42");
+  CHECK(credential.credential == "nvgSm1oHwSfK7YbCFCNNQAthpc0=");
+  CHECK(credential.expiresAt == 1800000000);
+}
+
+TEST_CASE("the TURN urls name udp, tcp and, when a TLS port is set, turns")
+{
+  SyncTurnConfig relay = turnRelay();
+  CHECK(turn_credentials::urls(relay) ==
+        std::vector<std::string>{"turn:turn.argus.example:3478?transport=udp",
+                                 "turn:turn.argus.example:3478?transport=tcp",
+                                 "turns:turn.argus.example:5349?transport=tcp"});
+  relay.tlsPort = 0;
+  CHECK(turn_credentials::urls(relay).size() == 2);
+}
+
+TEST_CASE("no relay is offered without a host, with a short or placeholder secret, or with a bad host")
+{
+  CHECK(turn_credentials::enabled(turnRelay()));
+  SyncTurnConfig relay = turnRelay();
+  relay.host.clear();
+  CHECK_FALSE(turn_credentials::enabled(relay));
+  CHECK(turn_credentials::iceServers({.relay = relay, .subject = "7", .now = 1000}).servers.empty());
+  relay = turnRelay();
+  relay.secret = "short";
+  CHECK_FALSE(turn_credentials::enabled(relay));
+  relay = turnRelay();
+  relay.secret = "CHANGE_ME_TURN_SECRET_0123456789abcdef";
+  CHECK_FALSE(turn_credentials::enabled(relay));
+  relay = turnRelay();
+  relay.host = "turn.example\nrealm=x";
+  CHECK_FALSE(turn_credentials::enabled(relay));
+}
+
+TEST_CASE("the ice route hands the caller one relay whose credential expires after the ttl")
+{
+  SyncRtcConfig config = enabledConfig();
+  config.turn = turnRelay();
+  const RtcTokenService service({.config = config,
+                                 .voice = nullptr,
+                                 .calls = nullptr,
+                                 .directory = nullptr,
+                                 .rooms = nullptr,
+                                 .decliner = nullptr});
+  const ResponseRtcIceDto ice = service.ice({.caller = caller(), .now = 1000});
+  REQUIRE(ice.iceServers.size() == 1);
+  CHECK(ice.expiresAt == 4600);
+  CHECK(ice.iceServers[0]["username"].asString() == "4600:7");
+  CHECK(ice.iceServers[0]["credential"].asString() ==
+        turn_credentials::make({.secret = kTurnSecret, .subject = "7", .expiresAt = 4600}).credential);
+  CHECK(ice.iceServers[0]["urls"].size() == 3);
+  const Json::Value json = ice.toJson();
+  CHECK(json["iceServers"].isArray());
+  CHECK(json["expiresAt"].asInt64() == 4600);
+}
+
+TEST_CASE("without a relay the ice route and the call token both carry an empty list")
+{
+  const auto voice = std::make_shared<FakeVoice>(true);
+  const auto rooms = std::make_shared<FakeRooms>();
+  const RtcTokenService service({.config = enabledConfig(),
+                                 .voice = voice,
+                                 .calls = nullptr,
+                                 .directory = nullptr,
+                                 .rooms = rooms,
+                                 .decliner = nullptr});
+  const ResponseRtcIceDto ice = service.ice({.caller = caller(), .now = 1000});
+  CHECK(ice.iceServers.empty());
+  CHECK(ice.expiresAt == 0);
+  const ResponseRtcTokenDto response = drogon::sync_wait(
+      service.issue({.body = bodyOf("{}"), .caller = caller(), .host = "argus.local:7025"}));
+  CHECK(response.iceServers.isArray());
+  CHECK(response.iceServers.empty());
+  CHECK(response.toJson()["iceServers"].isArray());
 }

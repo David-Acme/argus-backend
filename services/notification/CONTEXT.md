@@ -1329,6 +1329,30 @@ Tests:
 - Also `notification-change-outbox-sink-test`, `notification-delivery-test`,
   `notification-rpc-test` and lib/auth's `role-access-test`.
 
+## APNs VoIP: where the key lives (2026-10-19, F3)
+
+The iOS app (frontend `2cd3712`, PushKit + CallKit) registers an `apns_voip`
+token beside its `apns` one, and a ringing call is sealed for it alongside the
+Android devices' `fcm` tokens: `call_push_routing::devicesForCall` keeps `fcm`
+and `apns_voip` and drops `apns` (`call-push-routing-test`, including the
+household case with an Android phone and an iPhone side by side). That is the
+whole home side of F3, and it was already in place.
+
+The APNs `.p8` key, its key id, team id and bundle id are **not** home
+configuration, and argus-notification has no `[apns]` table on purpose. An APNs
+auth key belongs to the Apple Developer account that publishes the app, not to a
+household: every home would otherwise need the publisher's signing key, and a
+home that leaked it could push to every Argus phone. The key is held by the push
+relay of argus-cloud (`argus-push`): `APNS_KEY_FILE` (or `APNS_KEY_B64`),
+`APNS_KEY_ID`, `APNS_TEAM_ID` and `APNS_BUNDLE_ID`, read once, refused when
+malformed, and simply absent when not configured. Then the relay advertises no
+APNs provider, and a sealed `apns_voip` push is answered `failed` without a
+retry. The home learns nothing it could leak: it only seals. This follows the
+2026-10-12 design (`realtime-and-backlog-plan.md` F3: "the owner's own push
+relay holds the Firebase and APNs credentials") and the sealed-push contract
+below. If the relay's push process ever starts without APNs credentials, the one
+log line that says so belongs there, in argus-cloud, not here.
+
 ## Sealed push (track 1, call mode)
 
 - argus-notification seals every push it sends to a device. The tunnel client

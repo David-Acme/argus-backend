@@ -23,9 +23,11 @@ a running stack and compares two things:
 The run fails on any difference that `manifest.acceptedAdditions` does not
 declare. An accepted addition is a wire field that landed *after* the
 recording: it names the exact path, the exact value, the commit and the
-date. Today there are none: the 2026-10-06 re-recording folded in `person.status`
-(`f58167d7`, 2026-09-14). Adding an entry is a deliberate act with a reviewable
-reason; a re-recording clears the block by construction.
+date. The 2026-10-06 re-recording folded in `person.status` (`f58167d7`,
+2026-09-14). Two entries stand today: `recurrenceExceptions` on the bootstrap's
+`reminder` and `calendar_event` rows, `"[]"` for the fixture rows (F6b, editing
+one occurrence of a series, 2026-10-19). Adding an entry is a deliberate act
+with a reviewable reason; a re-recording clears the block by construction.
 
 ## Reproducing the run
 

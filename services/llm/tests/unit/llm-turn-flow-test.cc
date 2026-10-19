@@ -10,7 +10,9 @@
 #include <feature/llm/services/turn/tool-effects.hxx>
 #include <feature/llm/services/turn/turn-flow.hxx>
 #include <feature/llm/services/turn/speech-acts.hxx>
+#include <feature/llm/services/turn/speech-render.hxx>
 #include <mcp/schema.hxx>
+#include "support/require-value.hxx"
 #include "tool-stubs.hxx"
 
 #include <text/iso-time.hxx>
@@ -2392,4 +2394,156 @@ TEST_CASE("a turn that only opened a screen may say it opened it, and a state ch
   guard.world.add(tool_stubs::appAction({.name = "app.set_guard_mode", .capability = "guard.mode.set", .module = "surveillance"}));
   guard.script.replies = {"Activé el modo noche."};
   CHECK(guard.sync("Pon la vigilancia en modo noche.").reply == "Activé el modo noche.");
+}
+
+namespace
+{
+void addRemind(World& world)
+{
+  world.add(tool_stubs::stub({.name = "memory.remind",
+                              .capability = "reminders.write",
+                              .handler = [&world](const tools::ToolCall& call) {
+                                world.ran.push_back(call);
+                                return tool_stubs::okResult("Recordatorio guardado.");
+                              },
+                              .module = "core",
+                              .schema = schema::object({{.name = "text", .schema = schema::text(), .required = false},
+                                                        {.name = "when", .schema = schema::text(), .required = false},
+                                                        {.name = "repeat", .schema = schema::text(), .required = false}})}));
+  world.refresh();
+  world.flow.useDecider(world.scripted);
+}
+
+turn::Candidate remindOf(const std::string& utterance)
+{
+  turn::Candidate remind = candidate("memory.remind", 0.95);
+  remind.arguments["text"] = utterance;
+  return remind;
+}
+
+struct Repeated
+{
+  std::string utterance;
+  std::string lang;
+  std::string rule;
+};
+}
+
+TEST_CASE("a recurring reminder carries its rule to the tool, with the words and no instant of its own")
+{
+  const UtcZone zone;
+  const std::vector<Repeated> heard{
+      {.utterance = "recuérdame cada lunes a las 8 sacar la basura", .lang = "es", .rule = "FREQ=WEEKLY;BYDAY=MO"},
+      {.utterance = "recuérdame los lunes y miércoles a las 7 ir al gimnasio", .lang = "es", .rule = "FREQ=WEEKLY;BYDAY=MO,WE"},
+      {.utterance = "recuérdame todos los días a las 9 tomar las pastillas", .lang = "es", .rule = "FREQ=DAILY"},
+      {.utterance = "recuérdame el día 5 de cada mes a las 9 pagar el alquiler", .lang = "es", .rule = "FREQ=MONTHLY;BYMONTHDAY=5"},
+      {.utterance = "recuérdame de lunes a viernes a las 7 sacar al perro", .lang = "es", .rule = "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR"},
+      {.utterance = "remind me every day at 9 to take my pills", .lang = "en", .rule = "FREQ=DAILY"},
+      {.utterance = "remind me every Monday at 8 to take out the trash", .lang = "en", .rule = "FREQ=WEEKLY;BYDAY=MO"},
+  };
+  for (const Repeated& said : heard) {
+    INFO(said.utterance);
+    World world;
+    world.now = at({.day = 7, .hour = 15, .minute = 20});
+    world.context.lang = said.lang;
+    addRemind(world);
+    world.scripted.next = remindOf(said.utterance);
+    const auto done = world.say(said.utterance);
+    REQUIRE(world.ran.size() == 1);
+    const tools::ToolCall& call = world.ran.front();
+    CHECK(call.arguments["repeat"].asString() == said.rule);
+    CHECK(call.arguments["text"].asString() == said.utterance);
+    CHECK(call.context.utterance == said.utterance);
+    CHECK_FALSE(call.context.heardAt.has_value());
+    CHECK(done.wrote);
+    CHECK(actAs<turn::speech::Done>(done) != nullptr);
+  }
+
+  World once;
+  once.now = at({.day = 7, .hour = 15, .minute = 20});
+  addRemind(once);
+  once.scripted.next = remindOf("recuérdame mañana a las 9 llamar al dentista");
+  once.say("recuérdame mañana a las 9 llamar al dentista");
+  REQUIRE(once.ran.size() == 1);
+  CHECK_FALSE(once.ran.front().arguments.isMember("repeat"));
+}
+
+TEST_CASE("a recurrence Argus cannot keep is refused in so many words, and no one-off reminder is made of it")
+{
+  const UtcZone zone;
+  for (const auto& [utterance, lang] : std::vector<std::pair<std::string, std::string>>{
+           {"recuérdame cada hora tomar agua", "es"},
+           {"recuérdame dos veces al día tomar la pastilla", "es"},
+           {"remind me every hour to drink water", "en"}}) {
+    INFO(utterance);
+    World world;
+    world.now = at({.day = 7, .hour = 15, .minute = 20});
+    world.context.lang = lang;
+    addRemind(world);
+    world.scripted.next = remindOf(utterance);
+    const auto outcome = world.say(utterance);
+    CHECK(world.ran.empty());
+    CHECK_FALSE(outcome.wrote);
+    const auto* refused = actAs<turn::speech::Refused>(outcome);
+    REQUIRE(refused != nullptr);
+    CHECK(refused->tool == "memory.remind");
+    CHECK(refused->reason == turn::speech::refusal_reason::kUnreadableRepeat);
+    const std::string line = requireValue(turn::speech::refusalLine({.refused = *refused, .lang = lang}));
+    CHECK(line.starts_with(lang == "en" ? "I did not understand how often to repeat it" : "No entendí cada cuánto repetirlo"));
+  }
+}
+
+TEST_CASE("a recurring reminder without a time asks for it, and the answer completes the call")
+{
+  const UtcZone zone;
+  World world;
+  world.now = at({.day = 7, .hour = 15, .minute = 20});
+  addRemind(world);
+  const std::string untimed = "recuérdame cada lunes sacar la basura";
+  world.scripted.next = remindOf(untimed);
+  const auto asked = world.say(untimed);
+  CHECK(world.ran.empty());
+  const auto* ask = actAs<turn::speech::AskSlot>(asked);
+  REQUIRE(ask != nullptr);
+  CHECK(ask->slot == "when");
+  CHECK(ask->tool == "memory.remind");
+  CHECK(ask->reason == turn::speech::AskReason::RepeatTime);
+  CHECK(requireValue(turn::speech::slotQuestion({.ask = *ask, .lang = "es", .now = world.now})) == "¿A qué hora te lo recuerdo cada vez?");
+  CHECK(requireValue(turn::speech::slotQuestion({.ask = *ask, .lang = "en", .now = world.now})) ==
+        "At what time should I remind you each time?");
+  CHECK(turn::speech::reasonName(ask->reason) == "repeat_time");
+
+  world.scripted.next.reset();
+  const auto done = world.say("a las 8");
+  REQUIRE(world.ran.size() == 1);
+  CHECK(world.ran.front().arguments["repeat"].asString() == "FREQ=WEEKLY;BYDAY=MO");
+  CHECK(world.ran.front().context.utterance == "recuérdame cada lunes sacar la basura a las 8");
+  CHECK(done.wrote);
+
+  World vague;
+  vague.now = at({.day = 7, .hour = 15, .minute = 20});
+  addRemind(vague);
+  vague.scripted.next = remindOf(untimed);
+  REQUIRE(actAs<turn::speech::AskSlot>(vague.say(untimed)) != nullptr);
+  vague.scripted.next.reset();
+  REQUIRE(actAs<turn::speech::AskSlot>(vague.say("mmm")) != nullptr);
+  CHECK(actAs<turn::speech::Misunderstood>(vague.say("este")) != nullptr);
+  CHECK(vague.ran.empty());
+}
+
+TEST_CASE("the trigger decider sends an explicit recurring ask to the reminder tool, and a remembered fact stays a fact")
+{
+  World world;
+  addRemind(world);
+  const turn::TriggerDecider triggers;
+  const auto decide = [&](const std::string& utterance, const std::string& lang) {
+    return triggers.decide({.utterance = utterance, .lang = lang, .offered = world.offered, .modules = world.audience.modules});
+  };
+  const turn::Candidate weekly = must(decide("recuérdame cada lunes a las 8 sacar la basura", "es"));
+  CHECK(weekly.tool == "memory.remind");
+  CHECK(weekly.exact);
+  CHECK(weekly.arguments["text"].asString() == "recuérdame cada lunes a las 8 sacar la basura");
+  CHECK(must(decide("remind me every day at 9 to take my pills", "en")).tool == "memory.remind");
+  CHECK(must(decide("recuérdame cada hora tomar agua", "es")).tool == "memory.remind");
+  CHECK(must(decide("recuerda que mi hermana viene los domingos", "es")).tool == "memory.remember");
 }

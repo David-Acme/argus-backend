@@ -634,6 +634,27 @@ set_target_properties(camera-ptz-lease-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 argus_runtime_rpath(camera-ptz-lease-test)
 add_test(NAME camera-ptz-lease-test COMMAND camera-ptz-lease-test)
 
+add_executable(camera-patrol-test tests/unit/camera-patrol-test.cc)
+target_link_libraries(camera-patrol-test PRIVATE
+    argus::camera-control
+    argus::lib::doctest-main)
+target_compile_options(camera-patrol-test PRIVATE -Wall -Wextra)
+set_target_properties(camera-patrol-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+argus_runtime_rpath(camera-patrol-test)
+add_test(NAME camera-patrol-test COMMAND camera-patrol-test)
+
+add_executable(camera-patrol-repository-test tests/unit/camera-patrol-repository-test.cc)
+target_link_libraries(camera-patrol-repository-test PRIVATE
+    argus::camera-control
+    argus::lib::sqlite
+    argus::lib::doctest-main)
+target_compile_definitions(camera-patrol-repository-test PRIVATE
+    ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(camera-patrol-repository-test PRIVATE -Wall -Wextra)
+set_target_properties(camera-patrol-repository-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+argus_runtime_rpath(camera-patrol-repository-test)
+add_test(NAME camera-patrol-repository-test COMMAND camera-patrol-repository-test)
+
 add_executable(camera-module-data-test tests/unit/camera-module-data-test.cc)
 target_link_libraries(camera-module-data-test PRIVATE
     argus::camera-module-data

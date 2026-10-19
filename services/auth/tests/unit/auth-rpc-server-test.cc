@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
 
 #include <app/rpc/auth-rpc-server.hxx>
@@ -157,12 +156,4 @@ TEST_CASE("the plaintext verdict through startAuthRpc answers the recorded "
     }
     stop(listener);
   }
-}
-
-int main(int argc, char** argv)
-{
-  doctest::Context context(argc, argv);
-  const int result = context.run();
-  stopFixture();
-  return result;
 }

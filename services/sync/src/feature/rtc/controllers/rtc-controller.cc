@@ -10,6 +10,7 @@
 #include <feature/rtc/dtos/rtc-decline-dto.hxx>
 #include <http/api-response.hxx>
 
+#include <chrono>
 #include <exception>
 
 #include <utility>
@@ -50,4 +51,13 @@ drogon::Task<drogon::HttpResponsePtr> RtcController::decline(drogon::HttpRequest
   const auto& caller = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
   const auto result = co_await service_.decline({.body = body, .caller = caller});
   co_return ApiResponse::ok(result.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr> RtcController::ice(drogon::HttpRequestPtr req)
+{
+  const auto& caller = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const auto now = std::chrono::duration_cast<std::chrono::seconds>(
+                       std::chrono::system_clock::now().time_since_epoch())
+                       .count();
+  co_return ApiResponse::ok(service_.ice({.caller = caller, .now = now}).toJson());
 }

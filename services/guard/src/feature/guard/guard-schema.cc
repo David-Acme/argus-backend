@@ -3,6 +3,7 @@
 #include <drogon/drogon.h>
 #include <algorithm>
 #include <array>
+#include <cstdint>
 #include <fstream>
 #include <nats/nats-subject.hxx>
 #include <sqlite/db-service.hxx>
@@ -533,19 +534,49 @@ bool ensureDeadLetterTable()
               "ON guard_dead_letter (event_id) WHERE event_id != ''");
 }
 
-bool migrateEncounterOutbox()
+int64_t countOf(const std::string& sql)
+{
+  const auto rows = DbService::client()->execSqlSync(sql);
+  return rows.empty() ? -1 : rows.front()["total"].as<int64_t>();
+}
+
+bool retireEncounterOutbox()
 {
   if (!tableExists("guard_encounter_outbox") ||
       !tableExists("change_outbox"))
     return true;
-  const std::string sql =
+  const std::string copy =
       std::string("INSERT OR IGNORE INTO change_outbox (event_id, subject, "
                   "fingerprint, payload, status, attempts, created_at, "
                   "sent_at) SELECT event_id, '") +
       nats_subject::kGuardEncounterClosed +
       "', '', payload, 'pending', attempts, created_at * 1000, 0 FROM "
       "guard_encounter_outbox WHERE status = 'pending'";
-  return exec(sql);
+  if (!exec(copy))
+    return false;
+  try {
+    const int64_t uncopied = countOf(
+        "SELECT COUNT(*) AS total FROM guard_encounter_outbox AS legacy "
+        "WHERE legacy.status = 'pending' AND NOT EXISTS (SELECT 1 FROM "
+        "change_outbox AS outbox WHERE outbox.event_id = legacy.event_id)");
+    if (uncopied != 0) {
+      LOG_WARN << "Guard schema migration: guard_encounter_outbox kept, "
+               << uncopied << " pending rows have no change_outbox row";
+      return true;
+    }
+    const int64_t legacyRows =
+        countOf("SELECT COUNT(*) AS total FROM guard_encounter_outbox");
+    if (!exec("DROP TABLE guard_encounter_outbox"))
+      return false;
+    LOG_INFO << "Guard schema migration: guard_encounter_outbox retired, "
+             << legacyRows << " rows, every pending one carried by change_outbox";
+    return true;
+  }
+  catch (const std::exception& e) {
+    LOG_WARN << "Guard schema migration: guard_encounter_outbox check failed: "
+             << e.what();
+    return false;
+  }
 }
 
 bool ensureEvidenceIndex()
@@ -813,7 +844,7 @@ bool guard_schema::migrate(const std::string& schemaPath)
       !migrateJournalDispatchColumn() || !migrateJournalRound11Columns() ||
       !migrateJournalReasonsColumn() || !migrateOutboxColumns() ||
       !ensureDeadLetterTable() || !ensureBaselineTables() ||
-      !migrateEncounterOutbox() || !ensureEvidenceIndex())
+      !retireEncounterOutbox() || !ensureEvidenceIndex())
     return false;
   if (!encounterTableIsCurrent() && !rebuildEncounterTable(schemaPath))
     return false;

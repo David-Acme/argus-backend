@@ -2,6 +2,8 @@
 
 #include <feature/llm/services/tools/app-command.hxx>
 #include <feature/llm/services/tools/module-command.hxx>
+#include <feature/memory/services/extract/call-time.hxx>
+#include <feature/memory/services/extract/repeat-rule.hxx>
 #include <feature/memory/services/extract/temporal-resolver.hxx>
 #include <phrase/rule-parser.hxx>
 #include <text/text-norm.hxx>
@@ -40,6 +42,23 @@ bool namesOneInstant(std::string_view utterance, std::string_view lang)
       resolver.resolve({.lang = lang.empty() ? std::string_view("es") : lang, .normalized = TemporalResolver::normalize(utterance)});
   return when.kind != extract::TemporalKind::None && when.recur == extract::Recurrence::None;
 }
+
+struct RepeatAsk
+{
+  std::string_view utterance;
+  std::string_view lang;
+  bool parsed{false};
+};
+
+bool asksToRepeat(const RepeatAsk& ask)
+{
+  const RepeatReading reading = repeat_rule::read({.text = ask.utterance, .lang = ask.lang});
+  if (!reading.mentioned)
+    return false;
+  if (!reading.repeat || !ask.parsed)
+    return true;
+  return call_time::clockOf({.text = ask.utterance, .part = reading.part}).has_value();
+}
 }
 
 std::optional<Candidate> RuleDecider::decide(const DecideInput& input) const
@@ -76,9 +95,14 @@ std::optional<Candidate> TriggerDecider::decide(const DecideInput& input) const
 {
   const std::string utterance(input.utterance);
   const std::string lang(input.lang);
-  if (!RuleParser(catalog_).parse({.text = utterance, .lang = lang}).has_value())
+  const RuleParser parser(catalog_);
+  const RuleParseInput parseInput{.text = utterance, .lang = lang};
+  const bool parsed = parser.parse(parseInput).has_value();
+  const bool repeating = asksToBeReminded(utterance) && !parser.isQuestion(parseInput) &&
+                         asksToRepeat({.utterance = utterance, .lang = lang, .parsed = parsed});
+  if (!parsed && !repeating)
     return std::nullopt;
-  const bool reminder = asksToBeReminded(utterance) && namesOneInstant(utterance, lang);
+  const bool reminder = repeating || (asksToBeReminded(utterance) && namesOneInstant(utterance, lang));
   const std::string tool = reminder ? "memory.remind" : "memory.remember";
   if (!isOffered(input, tool))
     return std::nullopt;

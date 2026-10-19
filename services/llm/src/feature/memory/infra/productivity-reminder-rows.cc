@@ -40,7 +40,7 @@ bool ProductivityReminderRows::create(const ReminderRowRequest& request) const
                                        .title = request.title,
                                        .description = {},
                                        .scheduledAt = request.scheduledAt,
-                                       .recurrenceRule = std::nullopt,
+                                       .recurrenceRule = request.recurrenceRule,
                                        .idempotencyKey = keyOf(request.commandId)});
   if (result.outcome == ReminderRpcOutcome::Success)
     return true;

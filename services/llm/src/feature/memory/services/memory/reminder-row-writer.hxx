@@ -12,6 +12,7 @@ struct ReminderRowRequest
   std::string title;
   int64_t scheduledAt{0};
   std::string commandId;
+  std::optional<std::string> recurrenceRule{};
 };
 
 struct ReminderRowQuery

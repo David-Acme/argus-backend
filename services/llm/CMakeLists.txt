@@ -609,6 +609,16 @@ set_target_properties(call-time-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME call-time-test COMMAND call-time-test)
 
+add_executable(repeat-rule-test tests/unit/repeat-rule-test.cc)
+
+target_link_libraries(repeat-rule-test PRIVATE argus::memory argus::lib::doctest-main)
+
+target_compile_options(repeat-rule-test PRIVATE -Wall -Wextra)
+
+set_target_properties(repeat-rule-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME repeat-rule-test COMMAND repeat-rule-test)
+
 add_executable(encounter-inbox-test tests/unit/encounter-inbox-test.cc)
 
 target_link_libraries(encounter-inbox-test PRIVATE argus::memory

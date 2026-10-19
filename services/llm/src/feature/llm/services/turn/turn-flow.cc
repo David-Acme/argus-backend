@@ -7,6 +7,8 @@
 #include <feature/llm/services/tools/reply-claims.hxx>
 #include <feature/llm/services/tools/spoken-intent.hxx>
 #include <feature/llm/services/turn/tool-effects.hxx>
+#include <feature/memory/services/extract/call-time.hxx>
+#include <feature/memory/services/extract/repeat-rule.hxx>
 
 #include <text/iso-time.hxx>
 #include <trantor/utils/Logger.h>
@@ -32,6 +34,7 @@ constexpr std::string_view kNoProjects = "no_projects";
 constexpr std::string_view kCreateProjectTool = "project.create";
 constexpr std::string_view kRemindTool = "memory.remind";
 constexpr std::string_view kHeardField = "when";
+constexpr std::string_view kRepeatField = "repeat";
 
 const tools::ToolDescriptor* handleOf(const std::vector<tools::ToolHandle>& offered, std::string_view name)
 {
@@ -294,26 +297,41 @@ Outcome TurnFlow::proceed(const Move& move)
   tools::ToolCall call{.name = move.candidate.tool, .arguments = move.candidate.arguments, .context = request.context};
   call.context.utterance = move.utterance.empty() ? std::string(request.utterance) : move.utterance;
   call.context.heardAt = move.heardAt;
-  if (!move.answering && !move.heardAt && move.candidate.tool == kRemindTool) {
+  Candidate base = move.candidate;
+  bool repeating = false;
+  if (!move.answering && base.tool == kRemindTool) {
+    const RepeatReading repeat = repeat_rule::read({.text = call.context.utterance, .lang = request.context.lang});
+    if (repeat.mentioned && !repeat.repeat)
+      return unreadableRepeat(move);
+    if (repeat.repeat) {
+      if (!base.arguments.isObject())
+        base.arguments = Json::Value(Json::objectValue);
+      base.arguments[std::string(kRepeatField)] = repeat_rule::format(*repeat.repeat);
+      if (!move.heardAt && !call_time::clockOf({.text = call.context.utterance, .part = repeat.part}))
+        return askRepeatTime(move, base);
+      repeating = true;
+    }
+  }
+  if (!repeating && !move.answering && !move.heardAt && base.tool == kRemindTool) {
     const CallReading reading = slots::dayReading({.utterance = call.context.utterance, .lang = request.context.lang, .now = request.now});
     if (reading.conflict)
-      return askDay(move, move.candidate, {.field = std::string(kHeardField), .conflict = *reading.conflict});
+      return askDay(move, base, {.field = std::string(kHeardField), .conflict = *reading.conflict});
     if (reading.farAway)
-      return askFar(move, move.candidate, std::string(kHeardField));
+      return askFar(move, base, std::string(kHeardField));
     if (reading.passedToday)
-      return askPassed(move, move.candidate, {.field = std::string(kHeardField), .tomorrowAt = *reading.passedToday});
+      return askPassed(move, base, {.field = std::string(kHeardField), .tomorrowAt = *reading.passedToday});
   }
   const std::vector<std::string> fields =
-      move.answering ? std::vector<std::string>{move.slot} : missingFields(tool->spec, move.candidate, move.candidate.arguments);
+      move.answering ? std::vector<std::string>{move.slot} : missingFields(tool->spec, base, base.arguments);
   const slots::Filled filled = slots::fill({.spec = tool->spec,
                                             .fields = fields,
-                                            .arguments = move.candidate.arguments,
+                                            .arguments = base.arguments,
                                             .context = call.context,
                                             .now = request.now,
                                             .text = *text_,
                                             .modules = request.audience.modules,
                                             .answering = move.answering});
-  Candidate next = move.candidate;
+  Candidate next = base;
   next.arguments = filled.arguments;
   if (filled.dispute)
     return askDay(move, next, *filled.dispute);
@@ -442,6 +460,78 @@ Outcome TurnFlow::askPassed(const Move& move, const Candidate& candidate, const 
                                                                     .epoch = passed.tomorrowAt}},
                                          .options = {}});
   return outcome;
+}
+
+Outcome TurnFlow::askRepeatTime(const Move& move, const Candidate& candidate)
+{
+  const TurnRequest& request = move.request;
+  Outcome outcome;
+  outcome.source = candidate.source;
+  const int attempts = move.attempts + 1;
+  if (attempts > kMaxAttempts) {
+    outcome.acts.emplace_back(speech::Misunderstood{});
+    return outcome;
+  }
+  if (request.context.userId > 0)
+    pendings_.put(request.context.userId,
+                  {.awaiting = Awaiting::Clock,
+                   .candidate = candidate,
+                   .alternative = std::nullopt,
+                   .slot = std::string(kHeardField),
+                   .utterance = move.utterance.empty() ? std::string(request.utterance) : move.utterance,
+                   .attempts = attempts,
+                   .at = {},
+                   .options = {},
+                   .held = std::nullopt,
+                   .values = {},
+                   .relative = -1});
+  outcome.acts.emplace_back(speech::AskSlot{.slot = std::string(kHeardField),
+                                         .tool = candidate.tool,
+                                         .knownArgs = knownArgsOf(candidate.arguments),
+                                         .reason = speech::AskReason::RepeatTime,
+                                         .dates = {},
+                                         .options = {}});
+  return outcome;
+}
+
+Outcome TurnFlow::unreadableRepeat(const Move& move) const
+{
+  Outcome outcome;
+  outcome.source = move.candidate.source;
+  outcome.acts.emplace_back(speech::Refused{.tool = move.candidate.tool,
+                                            .reason = std::string(speech::refusal_reason::kUnreadableRepeat),
+                                            .name = {}});
+  return outcome;
+}
+
+std::optional<Outcome> TurnFlow::followUpClock(const TurnRequest& request, const Deciding& deciding, const Pending& pending)
+{
+  const int64_t userId = request.context.userId;
+  pendings_.forget(userId);
+  if (supersedes(deciding)) {
+    clearAll(userId);
+    return std::nullopt;
+  }
+  if (declining(request.utterance)) {
+    clearAll(userId);
+    return declined();
+  }
+  if (!call_time::clockOf({.text = request.utterance, .part = DayPart::None}))
+    return askRepeatTime({.request = request,
+                          .candidate = pending.candidate,
+                          .slot = pending.slot,
+                          .attempts = pending.attempts,
+                          .answering = false,
+                          .utterance = pending.utterance,
+                          .heardAt = std::nullopt},
+                         pending.candidate);
+  return proceed({.request = request,
+                  .candidate = pending.candidate,
+                  .slot = {},
+                  .attempts = 0,
+                  .answering = false,
+                  .utterance = pending.utterance + " " + std::string(request.utterance),
+                  .heardAt = std::nullopt});
 }
 
 Outcome TurnFlow::askFar(const Move& move, const Candidate& candidate, const std::string& field)
@@ -810,6 +900,8 @@ std::optional<Outcome> TurnFlow::followUpOwn(const TurnRequest& request, const D
     return followUpProject(request, deciding, pending);
   if (pending.awaiting == Awaiting::Day)
     return followUpDay(request, deciding, pending);
+  if (pending.awaiting == Awaiting::Clock)
+    return followUpClock(request, deciding, pending);
   if (pending.awaiting == Awaiting::Choice) {
     pendings_.forget(userId);
     if (pending.alternative && slots::namesOther(request.utterance))

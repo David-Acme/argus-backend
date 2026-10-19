@@ -151,6 +151,8 @@ std::string_view reasonText(AskReason reason, std::string_view lang)
       return english ? "the project needs a name" : "hay que ponerle nombre al proyecto";
     case AskReason::ProjectNoneYet:
       return english ? "there are no projects yet" : "todavía no hay proyectos";
+    case AskReason::RepeatTime:
+      return english ? "a repeating reminder needs its time" : "un recordatorio que se repite necesita su hora";
   }
   return english ? "it is still needed" : "hay que pedirlo";
 }
@@ -537,6 +539,9 @@ std::optional<std::string> slotQuestion(const SlotQuestion& input)
   if (input.ask.slot == "privacy")
     return input.lang == "en" ? std::string("Do you want me to turn it on or remove it?")
                               : std::string("¿La activo o la quito?");
+  if (input.ask.reason == AskReason::RepeatTime)
+    return input.lang == "en" ? std::string("At what time should I remind you each time?")
+                              : std::string("¿A qué hora te lo recuerdo cada vez?");
   const std::string label = slotLabelOf(input.ask.slot, input.lang);
   if (label.empty())
     return std::nullopt;
@@ -653,6 +658,13 @@ std::optional<std::string> refusalLine(const RefusalSpeech& input)
   if (reason == refusal_reason::kNoAction)
     return english ? std::string("I cannot postpone that. Do you want me to set a reminder for another time?")
                    : std::string("No puedo posponerlo. ¿Quieres que te ponga un recordatorio para otro momento?");
+  if (reason == refusal_reason::kUnreadableRepeat)
+    return english ? std::string("I did not understand how often to repeat it, so I did not save it. I can repeat a "
+                                 "reminder every day, on some days of the week, every week, every month or every year, "
+                                 "for example: every Monday at 8.")
+                   : std::string("No entendí cada cuánto repetirlo, así que no lo guardé. Puedo repetir un recordatorio "
+                                 "cada día, ciertos días de la semana, cada semana, cada mes o cada año, por ejemplo: "
+                                 "cada lunes a las 8.");
   return std::nullopt;
 }
 

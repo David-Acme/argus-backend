@@ -1,5 +1,6 @@
 argus_module(NAME productivity-recurrence
     SOURCES
+        occurrence-exceptions.cc
         recurrence.cc
     INCLUDES
         ../../..

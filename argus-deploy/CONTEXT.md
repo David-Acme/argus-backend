@@ -1304,12 +1304,47 @@ participant leaves and 60 s after creation when nobody joined; at most 8
 participants; Opus (+RED), VP8 and H.264 allowed, the last two for camera
 video later.
 
-**TURN** is configured off (`turn.enabled: false`). When the tunnel exists:
-set `turn.enabled: true`, `turn.domain` to the public name, `turn.tls_port`
-5349 (or 443 behind a TLS-terminating proxy with `external_tls: true`) and
-`turn.udp_port` 3478, give it a certificate (`cert_file`/`key_file`, mounted
-read-only), open those ports and restart `livekit`. Clients receive the TURN
-servers in LiveKit's join response; nothing in Argus changes.
+**TURN** inside LiveKit stays off (`turn.enabled: false`): the house runs one
+relay for calls and camera views alike, the `coturn` service below, and the app
+hands its servers to LiveKit's peer connection itself.
+
+## TURN relay: coturn (2026-10-19, F1)
+
+`coturn` (`coturn/coturn:4.6.3`, BSD-3-Clause, compose profile `turn`, 96 MB
+cap) on the host network, so the relay addresses it allocates are the host's
+own. It answers on 3478 (udp and tcp) and 5349 (TLS with the instance
+certificate, `certs/server.pem` and `server.key`) and relays on
+49160–49199/udp, forty ports, enough for a household's calls and camera views.
+
+- **Credentials** are TURN REST ones (`use-auth-secret`): argus-sync mints
+  `"<expiry>:<userId>"` with an HMAC-SHA1 of the shared secret, per user and per
+  hour (`services/sync/CONTEXT.md`, "The TURN relay"). The secret is generated
+  once per installation into `config.sync.toml` `[turn] secret` and copied by
+  `provision-host.sh --turn-host <name>` into
+  `${ARGUS_DATA_DIR}/coturn/secrets/turn_secret` (0600, the owner's uid). It
+  never reaches a command line: `coturn-entrypoint.sh` renders
+  `turnserver.conf` into the container's tmpfs `/tmp` with umask 077 and runs
+  `turnserver -c` on it.
+- **Peers.** The relay refuses every private, loopback, link-local, CGNAT and
+  reserved range (`denied-peer-ip`) and allows only `ARGUS_TURN_ALLOWED_PEERS`,
+  which `provision-host.sh` sets to the host's LAN address: a credential can
+  reach this house's LiveKit and go2rtc and nothing else on the LAN.
+  `no-multicast-peers`, TLS 1.2 or later, quotas 32 in all and 8 per user.
+- **Turning it on.** `provision-host.sh --turn-host turn.example.org` (or
+  `ARGUS_TURN_HOST`) writes `[turn] host`, the secret file, `ARGUS_TURN_REALM`,
+  `ARGUS_TURN_ALLOWED_PEERS` and the `turn` profile into `.env`; then
+  `docker compose up -d coturn`. The owner opens 3478/udp+tcp, 5349/tcp and
+  49160–49199/udp to the internet (a router port forward), and sets
+  `ARGUS_TURN_EXTERNAL_IP` in `.env` when the host sits behind NAT. Without a
+  host nothing changes: the app is offered no relay and dials directly.
+- **go2rtc's own `ice_servers`** stay empty: the relay runs beside go2rtc, so
+  the app's relayed candidate reaches go2rtc's host candidate on the LAN; go2rtc
+  needs no relay of its own.
+- **Native development** runs no coturn; `[turn] host` stays empty and both
+  answers carry an empty list.
+- Unverified until the owner's deploy check: the container itself (image pull,
+  the read-only root with its two tmpfs, the entrypoint) and a call from a
+  phone on mobile data with the relay as the only path.
 
 Native development uses `scripts/livekit.sh up|down|status|logs|token`: the
 same two images as capped containers (`argus-dev-livekit`,

@@ -12,6 +12,7 @@ Json::Value ResponseRtcTokenDto::toJson() const
   json["agentIdentity"] = agentIdentity;
   json["callId"] = callId;
   json["expiresAt"] = static_cast<Json::Int64>(expiresAt);
+  json["iceServers"] = iceServers;
   if (call) {
     Json::Value details(Json::objectValue);
     details["kind"] = call->kind;

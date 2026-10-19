@@ -73,6 +73,7 @@ struct Parsed
   int weekday{-1};
   std::optional<DateHit> date;
   std::optional<ClockReading> clock;
+  std::size_t clockFirst{0};
   Period context{Period::None};
   std::size_t first{std::numeric_limits<std::size_t>::max()};
   std::size_t last{0};
@@ -601,6 +602,7 @@ private:
   void take(const ClockReading& reading, std::size_t first)
   {
     parsed_.clock = reading;
+    parsed_.clockFirst = first;
     widen(first, reading.last);
   }
 
@@ -801,6 +803,44 @@ CallReading read(const CallTimeInput& input)
   if (!result.fireAt || *result.fireAt > limit)
     return {};
   return {.time = timeOf(*result.fireAt, parsed.first, parsed.last), .conflict = std::nullopt, .farAway = false, .passedToday = std::nullopt};
+}
+
+namespace
+{
+constexpr int kMinutesInDay = 24 * 60;
+
+Period periodOf(DayPart part)
+{
+  switch (part) {
+    case DayPart::Morning:
+      return Period::Morning;
+    case DayPart::Afternoon:
+      return Period::Afternoon;
+    case DayPart::Night:
+      return Period::Night;
+    case DayPart::None:
+      break;
+  }
+  return Period::None;
+}
+}
+
+std::optional<ClockOfDay> clockOf(const ClockHeard& heard)
+{
+  const Folded folded = fold(heard.text);
+  const Tokens tokens = tokenize(folded.text);
+  if (tokens.empty())
+    return std::nullopt;
+  const Parsed parsed = Scanner(tokens).run();
+  if (!parsed.clock)
+    return std::nullopt;
+  ClockReading clock = *parsed.clock;
+  if (clock.period == Period::None)
+    clock.period = parsed.context != Period::None ? parsed.context : periodOf(heard.part);
+  const int minutes = (hour24(clock) * 60 + clock.minute - clock.minus) % kMinutesInDay;
+  return ClockOfDay{.minuteOfDay = (minutes + kMinutesInDay) % kMinutesInDay,
+                    .phraseBegin = folded.origin[tokens[parsed.clockFirst].begin],
+                    .phraseEnd = folded.origin[tokens[clock.last].end]};
 }
 
 std::optional<CallTime> resolve(const CallTimeInput& input)

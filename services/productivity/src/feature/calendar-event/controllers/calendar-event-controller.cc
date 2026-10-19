@@ -4,6 +4,7 @@
 #include <feature/calendar-event/dtos/create-calendar-event-dto.hxx>
 #include <feature/calendar-event/dtos/update-calendar-event-dto.hxx>
 #include <shared/dtos/idempotency-key/idempotency-key-dto.hxx>
+#include <shared/dtos/occurrence-change/occurrence-change-dto.hxx>
 #include <auth/jwt-filter.hxx>
 #include <http/api-response.hxx>
 #include <productivity/productivity-errors.hxx>
@@ -30,6 +31,20 @@ CalendarEventController::update(drogon::HttpRequestPtr req, int64_t id)
       req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
 
   const auto row = co_await service_.update(
+      {.id = id, .body = body, .actorId = ctx.sub});
+  if (!row)
+    throw ResponseException(ProductivityErrors::CalendarEventNotFound);
+  co_return ApiResponse::ok(row->toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+CalendarEventController::changeOccurrence(drogon::HttpRequestPtr req, int64_t id)
+{
+  const auto body = OccurrenceChangeDto::fromJson(*req->getJsonObject());
+  const auto& ctx =
+      req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+
+  const auto row = co_await service_.changeOccurrence(
       {.id = id, .body = body, .actorId = ctx.sub});
   if (!row)
     throw ResponseException(ProductivityErrors::CalendarEventNotFound);

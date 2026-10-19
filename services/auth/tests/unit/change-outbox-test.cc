@@ -1,5 +1,6 @@
-#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
+
+#include <test-support/suite-end.hxx>
 
 #include <array>
 #include <atomic>
@@ -176,17 +177,19 @@ private:
   return booted;
 }
 
-[[nodiscard]] Fixture& fixture()
-{
-  auto& booted = fixtureStorage();
-  if (!booted)
-    booted = std::make_unique<Fixture>();
-  return *booted;
-}
-
 void stopFixture()
 {
   fixtureStorage().reset();
+}
+
+[[nodiscard]] Fixture& fixture()
+{
+  auto& booted = fixtureStorage();
+  if (!booted) {
+    booted = std::make_unique<Fixture>();
+    test_support::atSuiteEnd(stopFixture);
+  }
+  return *booted;
 }
 
 [[nodiscard]] const std::array<unsigned char, 16>& entropy()
@@ -326,12 +329,4 @@ TEST_CASE("the action sink journals actions and session changes under their "
   CHECK(AuthActionSink::repository().pendingBatch(10).size() == 2);
 
   DbService::client()->execSqlSync("DELETE FROM change_outbox");
-}
-
-int main(int argc, char** argv)
-{
-  doctest::Context context(argc, argv);
-  const int result = context.run();
-  stopFixture();
-  return result;
 }

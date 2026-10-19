@@ -42,6 +42,7 @@ void toProto(const Json::Value& row, argus::productivity::v1::ReminderRow* out)
   out->set_scheduled_at(row["scheduledAt"].asInt64());
   if (!row["recurrenceRule"].isNull())
     out->set_recurrence_rule(row["recurrenceRule"].asString());
+  out->set_recurrence_exceptions(row["recurrenceExceptions"].asString());
   out->set_is_completed(row["isCompleted"].asBool());
   if (!row["completedAt"].isNull())
     out->set_completed_at(row["completedAt"].asInt64());
@@ -88,6 +89,7 @@ void toProto(const Json::Value& row,
   out->set_is_all_day(row["isAllDay"].asBool());
   if (!row["recurrenceRule"].isNull())
     out->set_recurrence_rule(row["recurrenceRule"].asString());
+  out->set_recurrence_exceptions(row["recurrenceExceptions"].asString());
   out->set_created_at(row["createdAt"].asInt64());
   if (!row["updatedAt"].isNull())
     out->set_updated_at(row["updatedAt"].asInt64());

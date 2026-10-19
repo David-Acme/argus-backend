@@ -11,7 +11,11 @@
 #include <feature/reminder/services/reminder-feature-service.hxx>
 #include <grpcpp/grpcpp.h>
 #include <productivity/productivity-reminder-client.hxx>
+#include <shared/dtos/occurrence-change/occurrence-change-dto.hxx>
 #include <shared/repositories/reminder/reminder-repository.hxx>
+#include <shared/services/recurrence/occurrence-exceptions.hxx>
+#include <shared/services/recurrence/recurrence.hxx>
+#include <shared/services/reminder-series/reminder-series.hxx>
 #include <sqlite/db-service.hxx>
 #include <sync/sync-filter.hxx>
 #include <sync/user-change-sink.hxx>
@@ -702,6 +706,171 @@ void snoozeMovesOpenRemindersAndRefusesDoneOnes(Env& env)
   CHECK_THROWS_AS(SnoozeReminderDto::validated(tooShort), ValidationException);
 }
 
+int64_t dailyAt(int64_t index)
+{
+  return occurrenceAt({.rule = {.frequency = RecurrenceFrequency::Daily, .interval = 1},
+                       .anchor = kSoon,
+                       .index = index})
+      .value_or(0);
+}
+
+OccurrenceChangeDto occurrenceChange(int64_t occurrence)
+{
+  OccurrenceChangeDto change;
+  change.occurrence = occurrence;
+  return change;
+}
+
+ReminderSchema dailySeries(Env& env, const std::string& title)
+{
+  CreateReminderDto series = body(title);
+  series.recurrenceRule = "FREQ=DAILY";
+  return drogon::sync_wait(
+      env.service.create({.body = series, .userId = kAna, .idempotencyKey = {}}));
+}
+
+ReminderSchema changed(Env& env, int64_t id, const OccurrenceChangeDto& change)
+{
+  return drogon::sync_wait(env.service.changeOccurrence({.id = id, .body = change, .userId = kAna}))
+      .value_or(ReminderSchema{});
+}
+
+void skippingTheNextOccurrenceMovesTheReminder(Env& env)
+{
+  RecordingSink& sink = env.sink;
+  startScenario(env);
+  const auto created = dailySeries(env, "Tomar agua");
+  sink.clear();
+
+  OccurrenceChangeDto skip = occurrenceChange(kSoon);
+  skip.cancelled = true;
+  const ReminderSchema skipped = changed(env, created.id, skip);
+  CHECK(skipped.scheduledAt == dailyAt(1));
+  const auto exceptions = parseOccurrenceExceptions(skipped.recurrenceExceptions);
+  REQUIRE(exceptions.size() == 1);
+  CHECK(exceptions.front().occurrence == kSoon);
+  CHECK(exceptions.front().cancelled);
+
+  REQUIRE(sink.audits.size() == 1);
+  CHECK(sink.audits.front().tableName == TableName::Reminder);
+  CHECK(sink.audits.front().users == std::vector<int64_t>{kAna});
+  CHECK(sink.audits.front().before["scheduledAt"].asInt64() == kSoon);
+  CHECK(sink.audits.front().after["scheduledAt"].asInt64() == dailyAt(1));
+  CHECK(sink.audits.front().after["recurrenceExceptions"].asString() == skipped.recurrenceExceptions);
+  CHECK(sink.emits.empty());
+}
+
+void movingAnOccurrenceFiresItAtItsNewTime(Env& env)
+{
+  startScenario(env);
+  const auto created = dailySeries(env, "Sacar la basura");
+
+  OccurrenceChangeDto later = occurrenceChange(kSoon);
+  later.startsAt = kSoon + 3600;
+  const ReminderSchema moved = changed(env, created.id, later);
+  CHECK(moved.scheduledAt == kSoon + 3600);
+
+  const ReminderSchema restored = changed(env, created.id, occurrenceChange(kSoon));
+  CHECK(restored.scheduledAt == kSoon);
+  CHECK(restored.recurrenceExceptions == "[]");
+
+  OccurrenceChangeDto tomorrowLater = occurrenceChange(dailyAt(1));
+  tomorrowLater.startsAt = dailyAt(1) + 1800;
+  const ReminderSchema ahead = changed(env, created.id, tomorrowLater);
+  CHECK(ahead.scheduledAt == kSoon);
+  CHECK(parseOccurrenceExceptions(ahead.recurrenceExceptions).size() == 1);
+}
+
+void occurrenceChangesThatCannotHoldAreRefused(Env& env)
+{
+  ReminderFeatureService& service = env.service;
+  startScenario(env);
+  const auto created = dailySeries(env, "Regar el jardin");
+
+  OccurrenceChangeDto pastTheNext = occurrenceChange(kSoon);
+  pastTheNext.startsAt = dailyAt(1) + 60;
+  CHECK_THROWS_AS(changed(env, created.id, pastTheNext), ResponseException);
+
+  OccurrenceChangeDto renamed = occurrenceChange(kSoon);
+  renamed.title = "Otro nombre";
+  CHECK_THROWS_AS(changed(env, created.id, renamed), ResponseException);
+
+  CHECK_THROWS_AS(changed(env, created.id, occurrenceChange(kSoon + 60)), ResponseException);
+
+  OccurrenceChangeDto skip = occurrenceChange(kSoon);
+  skip.cancelled = true;
+  CHECK(changed(env, created.id, skip).scheduledAt == dailyAt(1));
+  CHECK_THROWS_AS(changed(env, created.id, occurrenceChange(kSoon)), ResponseException);
+
+  const auto oneOff = drogon::sync_wait(
+      service.create({.body = body("Una sola vez"), .userId = kAna, .idempotencyKey = {}}));
+  CHECK_THROWS_AS(changed(env, oneOff.id, occurrenceChange(kSoon)), ResponseException);
+
+  const OccurrenceChangeDto stranger = occurrenceChange(kSoon);
+  CHECK_FALSE(drogon::sync_wait(service.changeOccurrence({.id = created.id, .body = stranger, .userId = kLuis}))
+                  .has_value());
+
+  OccurrenceChangeDto contradictory = occurrenceChange(kSoon);
+  contradictory.cancelled = true;
+  contradictory.startsAt = kSoon + 60;
+  CHECK_THROWS_AS(OccurrenceChangeDto::validated(contradictory), ValidationException);
+  CHECK_THROWS_AS(OccurrenceChangeDto::validated(occurrenceChange(0)), ValidationException);
+}
+
+void theFiringPathSkipsCancelledAndKeepsMovedOccurrences(Env& env)
+{
+  startScenario(env);
+  const auto created = dailySeries(env, "Pastillas");
+
+  OccurrenceChangeDto later = occurrenceChange(kSoon);
+  later.startsAt = kSoon + 3600;
+  CHECK(changed(env, created.id, later).scheduledAt == kSoon + 3600);
+  OccurrenceChangeDto skip = occurrenceChange(dailyAt(1));
+  skip.cancelled = true;
+  changed(env, created.id, skip);
+
+  ReminderSeries series;
+  const auto next = drogon::sync_wait(series.advance({.reminderId = created.id,
+                                                      .targetUserId = kAna,
+                                                      .moment = kSoon + 3600,
+                                                      .client = nullptr}));
+  CHECK(next.value_or(0) == dailyAt(2));
+  const auto rolled = drogon::sync_wait(
+      env.service.get({.id = created.id, .userId = kAna})).value_or(ReminderSchema{});
+  CHECK(rolled.scheduledAt == dailyAt(2));
+  CHECK(rolled.recurrenceExceptions == "[]");
+}
+
+void completingSkipsACancelledOccurrence(Env& env)
+{
+  startScenario(env);
+  const auto created = dailySeries(env, "Llamar a mama");
+
+  OccurrenceChangeDto skip = occurrenceChange(dailyAt(1));
+  skip.cancelled = true;
+  CHECK(changed(env, created.id, skip).scheduledAt == kSoon);
+
+  UpdateReminderDto done;
+  done.isCompleted = true;
+  const ReminderSchema rolled =
+      drogon::sync_wait(env.service.update({.id = created.id, .body = done, .userId = kAna}))
+          .value_or(ReminderSchema{});
+  CHECK(rolled.scheduledAt == dailyAt(2));
+  CHECK_FALSE(rolled.isCompleted);
+  CHECK(rolled.recurrenceExceptions == "[]");
+
+  OccurrenceChangeDto skipAgain = occurrenceChange(dailyAt(3));
+  skipAgain.cancelled = true;
+  changed(env, created.id, skipAgain);
+  UpdateReminderDto reschedule;
+  reschedule.scheduledAt = kSoon + 7200;
+  const ReminderSchema reanchored =
+      drogon::sync_wait(env.service.update({.id = created.id, .body = reschedule, .userId = kAna}))
+          .value_or(ReminderSchema{});
+  CHECK(reanchored.scheduledAt == kSoon + 7200);
+  CHECK(reanchored.recurrenceExceptions == "[]");
+}
+
 void unknownRecurrenceIsRefused(Env&)
 {
   CreateReminderDto hourly = body("Cada hora");
@@ -731,6 +900,11 @@ TEST_CASE("reminders belong to the caller, whoever asks, and every change is pub
   stoppingTheSeriesKeepsItsTime(env);
   snoozeMovesOpenRemindersAndRefusesDoneOnes(env);
   unknownRecurrenceIsRefused(env);
+  skippingTheNextOccurrenceMovesTheReminder(env);
+  movingAnOccurrenceFiresItAtItsNewTime(env);
+  occurrenceChangesThatCannotHoldAreRefused(env);
+  theFiringPathSkipsCancelledAndKeepsMovedOccurrences(env);
+  completingSkipsACancelledOccurrence(env);
   user_change::setProductivitySink(nullptr);
 }
 

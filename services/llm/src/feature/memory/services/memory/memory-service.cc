@@ -20,6 +20,7 @@
 #include <config/config-service.hxx>
 #include <feature/memory/services/embedding/embedding-service.hxx>
 #include <feature/memory/services/extract/call-time.hxx>
+#include <feature/memory/services/extract/repeat-rule.hxx>
 #include <llm/llm-service.hxx>
 #include <feature/memory/services/memory/memory-tool-descriptors.hxx>
 #include <feature/memory/services/memory/memory-vec.hxx>
@@ -996,6 +997,12 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
     result.output = scopeRefusal(call);
     return result;
   }
+  const RepeatAsked asked = repeatAsked(call);
+  if (asked.unreadable) {
+    result.code = "unreadable_repeat";
+    result.output = reminder_readback::unreadableRepeat(call.context.lang);
+    return result;
+  }
   const tools::ToolCall grounded = groundedCall(call);
   std::string text = grounded.arguments.get("text", "").asString();
   if (text.empty())
@@ -1035,6 +1042,25 @@ tools::ToolResult MemoryService::handleRemind(const tools::ToolCall& call)
               .episode = false});
   result.output = (english(call) ? "Reminder saved: " : "Recordatorio guardado: ") +
                   spoken(formed->canonical);
+  if (asked.repeat) {
+    const Repeat& repeat = *asked.repeat;
+    const auto series = scheduleSeries({.call = call, .text = text, .factId = formed->factId, .repeat = repeat, .part = asked.part});
+    result.data["callScheduled"] = false;
+    result.data["repeat"] = repeat_rule::format(repeat);
+    if (!series) {
+      result.output += reminder_readback::untimedRepeat(call.context.lang);
+      return result;
+    }
+    const reminder_readback::RepeatSpoken spoken{.repeat = repeat,
+                                                 .firstAt = series->firstAt,
+                                                 .now = static_cast<int64_t>(std::time(nullptr)),
+                                                 .lang = call.context.lang,
+                                                 .listed = series->listed};
+    result.output += reminder_readback::repeatSentence(spoken);
+    if (series->listed)
+      result.data["readback"] = reminder_readback::repeatMoment(spoken);
+    return result;
+  }
   if (const auto when = scheduleReminder({.call = call, .text = text, .factId = formed->factId})) {
     const reminder_readback::Spoken spoken{.fireAt = when->fireAt,
                                            .now = static_cast<int64_t>(std::time(nullptr)),
@@ -1109,9 +1135,120 @@ MemoryService::scheduleReminder(const ReminderCallInput& input) const
                                                              .role = userRoleToString(call.context.role),
                                                              .title = topic,
                                                              .scheduledAt = *fireAt,
-                                                             .commandId = commandId});
+                                                             .commandId = commandId,
+                                                             .recurrenceRule = std::nullopt});
   if (!scheduled.called && !scheduled.listed && !scheduled.attempted)
     return std::nullopt;
+  return scheduled;
+}
+
+MemoryService::RepeatAsked MemoryService::repeatAsked(const tools::ToolCall& call)
+{
+  std::string heard = call.context.utterance;
+  if (heard.empty() && call.arguments.isObject())
+    heard = call.arguments.get("text", "").asString();
+  const RepeatReading reading = repeat_rule::read({.text = heard, .lang = call.context.lang});
+  RepeatAsked asked{.repeat = std::nullopt, .unreadable = false, .part = reading.part};
+  const std::string argument =
+      call.arguments.isObject() && call.arguments["repeat"].isString() ? call.arguments["repeat"].asString() : std::string();
+  if (!argument.empty()) {
+    asked.repeat = repeat_rule::parse(argument);
+    asked.unreadable = !asked.repeat.has_value();
+    return asked;
+  }
+  asked.repeat = reading.repeat;
+  asked.unreadable = reading.mentioned && !reading.repeat.has_value();
+  return asked;
+}
+
+namespace
+{
+std::string withoutSpans(std::string text, std::vector<CallTime> spans)
+{
+  std::erase_if(spans, [&text](const CallTime& span) { return span.phraseEnd <= span.phraseBegin || span.phraseEnd > text.size(); });
+  if (spans.empty())
+    return text;
+  std::ranges::sort(spans, [](const CallTime& left, const CallTime& right) { return left.phraseBegin > right.phraseBegin; });
+  std::size_t floor = text.size();
+  CallTime leftmost = spans.back();
+  for (std::size_t index = 0; index + 1 < spans.size(); ++index) {
+    const CallTime& span = spans[index];
+    const std::size_t end = std::min(span.phraseEnd, floor);
+    if (end > span.phraseBegin)
+      text.erase(span.phraseBegin, end - span.phraseBegin);
+    floor = std::min(floor, span.phraseBegin);
+  }
+  leftmost.phraseEnd = std::min(leftmost.phraseEnd, floor);
+  if (leftmost.phraseEnd <= leftmost.phraseBegin)
+    leftmost.phraseEnd = leftmost.phraseBegin;
+  return call_time::withoutPhrase(text, leftmost);
+}
+
+int minuteOfDay(int64_t epoch)
+{
+  const auto seconds = static_cast<std::time_t>(epoch);
+  std::tm local{};
+  localtime_r(&seconds, &local);
+  return local.tm_hour * 60 + local.tm_min;
+}
+}
+
+std::optional<MemoryService::SeriesScheduled> MemoryService::scheduleSeries(const SeriesInput& input) const
+{
+  const tools::ToolCall& call = input.call;
+  if (call.context.userId <= 0)
+    return std::nullopt;
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  const std::string& utterance = call.context.utterance.empty() ? input.text : call.context.utterance;
+  std::vector<int64_t> firsts;
+  if (input.repeat.frequency == RepeatFrequency::Yearly) {
+    std::optional<int64_t> at = call.context.heardAt;
+    if (!at) {
+      if (const auto when = call_time::resolve({.text = utterance, .lang = call.context.lang, .now = now}))
+        at = when->fireAt;
+    }
+    if (at)
+      firsts.push_back(*at);
+  }
+  else {
+    std::optional<int> minute;
+    if (call.context.heardAt)
+      minute = minuteOfDay(*call.context.heardAt);
+    else if (const auto clock = call_time::clockOf({.text = utterance, .part = input.part}))
+      minute = clock->minuteOfDay;
+    if (minute)
+      firsts = repeat_rule::firstOccurrences({.repeat = input.repeat, .minuteOfDay = *minute, .now = now});
+  }
+  if (firsts.empty())
+    return std::nullopt;
+
+  std::vector<CallTime> spans;
+  const RepeatReading inText = repeat_rule::read({.text = input.text, .lang = call.context.lang});
+  if (inText.mentioned)
+    spans.push_back({.fireAt = 0, .phraseBegin = inText.phraseBegin, .phraseEnd = inText.phraseEnd});
+  if (const auto clock = call_time::clockOf({.text = input.text, .part = inText.part}))
+    spans.push_back({.fireAt = 0, .phraseBegin = clock->phraseBegin, .phraseEnd = clock->phraseEnd});
+  if (input.repeat.frequency == RepeatFrequency::Yearly) {
+    if (const auto dated = call_time::resolve({.text = input.text, .lang = call.context.lang, .now = now}))
+      spans.push_back(*dated);
+  }
+  std::string topic = withoutSpans(input.text, std::move(spans));
+  if (topic.empty())
+    topic = input.text;
+
+  const std::string rule = repeat_rule::productivityRule(input.repeat);
+  SeriesScheduled scheduled{.firstAt = firsts.front(), .listed = reminderRows_ != nullptr};
+  if (!reminderRows_)
+    return scheduled;
+  for (const int64_t first : firsts) {
+    const bool created = reminderRows_->create({.userId = call.context.userId,
+                                                .role = userRoleToString(call.context.role),
+                                                .title = topic,
+                                                .scheduledAt = first,
+                                                .commandId = "memory-remind:" + std::to_string(input.factId) + ":" + std::to_string(first),
+                                                .recurrenceRule = rule});
+    scheduled.listed = scheduled.listed && created;
+  }
   return scheduled;
 }
 
