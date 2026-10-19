@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <json/value.h>
 
-inline constexpr int64_t kPrivacyNoticeVersion = 1;
+inline constexpr int64_t kPrivacyNoticeVersion = 2;
 
 struct PrivacyChoices
 {
@@ -11,6 +11,7 @@ struct PrivacyChoices
   bool faceCameras{false};
   bool voiceLearning{false};
   bool cameraAudio{false};
+  bool location{false};
 
   [[nodiscard]] bool operator==(const PrivacyChoices&) const = default;
 
@@ -19,7 +20,8 @@ struct PrivacyChoices
     return {.presence = presence && other.presence,
             .faceCameras = faceCameras && other.faceCameras,
             .voiceLearning = voiceLearning && other.voiceLearning,
-            .cameraAudio = cameraAudio && other.cameraAudio};
+            .cameraAudio = cameraAudio && other.cameraAudio,
+            .location = location && other.location};
   }
 
   [[nodiscard]] Json::Value toJson() const
@@ -29,6 +31,7 @@ struct PrivacyChoices
     json["faceCameras"] = faceCameras;
     json["voiceLearning"] = voiceLearning;
     json["cameraAudio"] = cameraAudio;
+    json["location"] = location;
     return json;
   }
 };

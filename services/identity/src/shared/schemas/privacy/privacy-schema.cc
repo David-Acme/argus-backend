@@ -9,7 +9,8 @@ PrivacyChoices choicesOf(const drogon::orm::Row& row)
   return {.presence = row["presence"].as<int64_t>() != 0,
           .faceCameras = row["face_cameras"].as<int64_t>() != 0,
           .voiceLearning = row["voice_learning"].as<int64_t>() != 0,
-          .cameraAudio = row["camera_audio"].as<int64_t>() != 0};
+          .cameraAudio = row["camera_audio"].as<int64_t>() != 0,
+          .location = row["location"].isNull() || row["location"].as<int64_t>() != 0};
 }
 }
 
@@ -23,8 +24,14 @@ UserPrivacySchema::UserPrivacySchema(const drogon::orm::Row& row)
 }
 
 HouseholdPrivacySchema::HouseholdPrivacySchema(const drogon::orm::Row& row)
-    : allowed(choicesOf(row)), visitorRecognition(row["visitor_recognition"].as<int64_t>() != 0)
+    : allowed(choicesOf(row)),
+      visitorRecognition(row["visitor_recognition"].as<int64_t>() != 0),
+      watchman(!row["watchman"].isNull() && row["watchman"].as<int64_t>() != 0)
 {
+  if (!row["watchman_ack_at"].isNull())
+    watchmanAcknowledgedAt = row["watchman_ack_at"].as<int64_t>();
+  if (!row["watchman_ack_by"].isNull())
+    watchmanAcknowledgedBy = row["watchman_ack_by"].as<int64_t>();
   if (!row["visitor_ack_at"].isNull())
     visitorAcknowledgedAt = row["visitor_ack_at"].as<int64_t>();
   if (!row["visitor_ack_by"].isNull())

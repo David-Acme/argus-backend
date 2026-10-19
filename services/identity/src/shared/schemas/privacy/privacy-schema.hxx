@@ -22,10 +22,14 @@ struct HouseholdPrivacySchema
   PrivacyChoices allowed{.presence = true,
                          .faceCameras = true,
                          .voiceLearning = true,
-                         .cameraAudio = true};
+                         .cameraAudio = true,
+                         .location = true};
   bool visitorRecognition{false};
   std::optional<int64_t> visitorAcknowledgedAt;
   std::optional<int64_t> visitorAcknowledgedBy;
+  bool watchman{false};
+  std::optional<int64_t> watchmanAcknowledgedAt;
+  std::optional<int64_t> watchmanAcknowledgedBy;
   std::optional<int64_t> updatedBy;
   std::optional<int64_t> updatedAt;
 

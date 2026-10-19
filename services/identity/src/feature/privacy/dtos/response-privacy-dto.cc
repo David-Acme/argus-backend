@@ -26,6 +26,7 @@ Json::Value applicableJson(bool surveillanceActive)
   json["faceCameras"] = surveillanceActive;
   json["voiceLearning"] = true;
   json["cameraAudio"] = surveillanceActive;
+  json["location"] = surveillanceActive;
   return json;
 }
 }
@@ -46,6 +47,11 @@ Json::Value ResponsePrivacyDirectoryDto::toJson() const
   json["currentNoticeVersion"] = static_cast<Json::Int64>(kPrivacyNoticeVersion);
   json["household"] = directory.household.toJson();
   json["household"]["visitorRecognition"] = directory.visitorRecognition;
+  json["household"]["watchman"] = directory.watchman;
+  json["watchmanAcknowledgedAt"] =
+      directory.watchmanAcknowledgedAt
+          ? Json::Value(static_cast<Json::Int64>(*directory.watchmanAcknowledgedAt))
+          : Json::Value();
   json["visitorAcknowledgedAt"] =
       directory.visitorAcknowledgedAt
           ? Json::Value(static_cast<Json::Int64>(*directory.visitorAcknowledgedAt))

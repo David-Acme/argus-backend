@@ -38,6 +38,8 @@ struct CameraSchema
   bool isOnline{false};
   CameraPrivacyState privacyState{CameraPrivacyState::Unknown};
   bool privacyObeyed{false};
+  bool watchman{false};
+  bool noAudio{false};
   std::string tlsFingerprint;
   bool tapoSecure{false};
   std::string controlCredential;

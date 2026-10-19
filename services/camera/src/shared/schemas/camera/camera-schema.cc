@@ -33,6 +33,8 @@ CameraSchema::CameraSchema(const drogon::orm::Row& row)
       cameraPrivacyStateFromString(row["privacy_state"].as<std::string>())
           .value_or(CameraPrivacyState::Unknown);
   privacyObeyed = row["privacy_obeyed"].as<int>() != 0;
+  watchman = !row["watchman"].isNull() && row["watchman"].as<int>() != 0;
+  noAudio = !row["no_audio"].isNull() && row["no_audio"].as<int>() != 0;
   tlsFingerprint = row["tls_fingerprint"].as<std::string>();
   tapoSecure = row["tapo_secure"].as<int>() != 0;
   controlCredential = row["control_credential"].as<std::string>();
@@ -66,6 +68,8 @@ Json::Value CameraSchema::toJson() const
   json["isOnline"] = isOnline;
   json["privacyState"] = cameraPrivacyStateToString(privacyState);
   json["privacyObeyed"] = privacyObeyed;
+  json["watchman"] = watchman;
+  json["noAudio"] = noAudio;
   json["createdAt"] = Json::Int64(createdAt);
   json["updatedAt"] = updatedAt ? Json::Value(Json::Int64(*updatedAt)) : Json::Value();
   json["deletedAt"] = deletedAt ? Json::Value(Json::Int64(*deletedAt)) : Json::Value();

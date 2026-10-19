@@ -100,6 +100,14 @@ inline constexpr std::string_view ADD_PRIVACY_OBEYED =
     "ALTER TABLE camera ADD COLUMN privacy_obeyed INTEGER NOT NULL DEFAULT 0";
 inline constexpr std::string_view UPDATE_COL_PRIVACY_OBEYED =
     "privacy_obeyed = ?";
+inline constexpr std::string_view ADD_WATCHMAN =
+    "ALTER TABLE camera ADD COLUMN watchman INTEGER NOT NULL DEFAULT 0 "
+    "CHECK (watchman IN (0, 1))";
+inline constexpr std::string_view ADD_NO_AUDIO =
+    "ALTER TABLE camera ADD COLUMN no_audio INTEGER NOT NULL DEFAULT 0 "
+    "CHECK (no_audio IN (0, 1))";
+inline constexpr std::string_view UPDATE_COL_WATCHMAN = "watchman = ?";
+inline constexpr std::string_view UPDATE_COL_NO_AUDIO = "no_audio = ?";
 inline constexpr std::string_view ADD_TLS_FINGERPRINT =
     "ALTER TABLE camera ADD COLUMN tls_fingerprint TEXT NOT NULL DEFAULT ''";
 inline constexpr std::string_view ADD_TAPO_SECURE =
@@ -186,6 +194,8 @@ struct CameraUpdateInput
   std::optional<bool> isOnline;
   std::optional<CameraPrivacyState> privacyState;
   std::optional<bool> privacyObeyed;
+  std::optional<bool> watchman;
+  std::optional<bool> noAudio;
   bool resetTapoTrust{false};
   drogon::orm::DbClient* client{nullptr};
 };

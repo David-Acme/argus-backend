@@ -74,5 +74,14 @@ aceptes.
      emergencia.
    - Eres responsable de cumplir las leyes locales sobre videovigilancia y
      datos de terceros, incluidos los avisos de zona videovigilada.
+   - Quien instala y opera Argus es el responsable de los datos que procesa
+     y de usarlo conforme a la ley del lugar donde está instalado. El autor
+     entrega controles que protegen la privacidad y la documentación de esas
+     obligaciones; cómo se usan en cada instalación queda fuera de su
+     control.
+   - Si una cámara capta audio, ese audio cuenta como dato de
+     videovigilancia: coloca avisos en cada acceso, no actives audio en zonas
+     de descanso de trabajadores del hogar y conserva las grabaciones solo el
+     tiempo necesario.
 
 Este aviso no es asesoría legal.

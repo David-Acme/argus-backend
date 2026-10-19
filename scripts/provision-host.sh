@@ -51,6 +51,7 @@ Privacy notice (required before anything is configured):
                                (also ARGUS_ACCEPT_PRIVACY_NOTICE=1); without it
                                a non-interactive run stops; -y never accepts it
   --accept-visitor-notice      also acknowledge recurring-visitor recognition
+  --accept-watchman-notice     also acknowledge the watchman through the cameras
                                (it stays off until enabled in the app)
   --privacy-lang es|en         notice language (default: from LANG, else es)
   --jurisdiction pe            country rules quoted in the notice
@@ -74,6 +75,7 @@ while [ "$#" -gt 0 ]; do
     --migrate-volumes) MIGRATE_VOLUMES=1; shift ;;
     --accept-privacy-notice) PRIVACY_ACCEPT=1; shift ;;
     --accept-visitor-notice) PRIVACY_VISITOR_ACCEPT=1; shift ;;
+    --accept-watchman-notice) PRIVACY_WATCHMAN_ACCEPT=1; shift ;;
     --show-privacy-notice) PRIVACY_ACTION="show"; shift ;;
     --withdraw-privacy-consent) PRIVACY_ACTION="withdraw"; shift ;;
     --privacy-lang=*) PRIVACY_LANG="${1#*=}"; shift ;;

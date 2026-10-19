@@ -12,6 +12,8 @@ class PrivacyRepository
 public:
   PrivacyRepository() = default;
 
+  static void ensureColumns();
+
   drogon::Task<std::optional<UserPrivacySchema>>
   findUser(int64_t userId, drogon::orm::DbClient* client = nullptr) const;
 

@@ -516,3 +516,42 @@ TEST_CASE("the speaker line says who Argus is talking to, never who the speaker 
   CHECK(speakerLine({.lang = "en", .role = UserRole::Unknown, .name = {}, .voiceCall = false}) ==
         "You are in a text chat.");
 }
+
+TEST_CASE("a camera session holds only the camera set, inside what the role already holds")
+{
+  for (const std::string_view capability : role_access::kCameraWatchCapabilities)
+    CHECK(role_access::knownCapability(capability));
+  for (const std::string_view capability : role_access::kCameraVisitorCapabilities)
+    CHECK(role_access::knownCapability(capability));
+
+  const ModuleSnapshot all = snapshotWith(true, true);
+  const auto owner = role_access::cameraWatchCapabilitiesFor({.role = UserRole::Owner, .modules = all});
+  CHECK(std::ranges::find(owner, "camera.view") != owner.end());
+  CHECK(std::ranges::find(owner, "agenda.write") != owner.end());
+  for (const std::string_view forbidden :
+       {"guard.mode.set", "settings.manage", "users.manage", "privacy.household", "presence.read", "directory.read"}) {
+    CHECK(std::ranges::find(owner, forbidden) == owner.end());
+    CHECK_FALSE(role_access::hasCameraWatchCapability({.role = UserRole::Owner, .modules = all, .capability = forbidden}));
+  }
+
+  const auto guest = role_access::cameraWatchCapabilitiesFor({.role = UserRole::Guest, .modules = all});
+  CHECK(std::ranges::find(guest, "agenda.read") == guest.end());
+  CHECK(std::ranges::find(guest, "safety.panic") != guest.end());
+
+  const ModuleSnapshot noProductivity = snapshotWith(true, false);
+  CHECK_FALSE(role_access::hasCameraWatchCapability(
+      {.role = UserRole::Owner, .modules = noProductivity, .capability = "agenda.read"}));
+
+  const auto unknown = role_access::cameraWatchCapabilitiesFor({.role = UserRole::Unknown, .modules = all});
+  CHECK(unknown.empty());
+}
+
+TEST_CASE("a visitor at a camera can only talk and ask for help")
+{
+  const ModuleSnapshot all = snapshotWith(true, true);
+  const auto visitor = role_access::cameraVisitorCapabilitiesFor(all);
+  CHECK(visitor.size() == 3);
+  CHECK(role_access::hasCameraVisitorCapability(all, "safety.panic"));
+  CHECK_FALSE(role_access::hasCameraVisitorCapability(all, "camera.view"));
+  CHECK_FALSE(role_access::hasCameraVisitorCapability(all, "reminders.read"));
+}

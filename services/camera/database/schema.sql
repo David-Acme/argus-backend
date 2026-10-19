@@ -32,6 +32,8 @@ CREATE TABLE IF NOT EXISTS camera (
                                      CHECK (privacy_state IN ('on', 'off', 'unknown')),
     privacy_obeyed INTEGER NOT NULL  DEFAULT 0
                                      CHECK (privacy_obeyed IN (0, 1)),
+    watchman       INTEGER NOT NULL  DEFAULT 0  CHECK (watchman IN (0, 1)),
+    no_audio       INTEGER NOT NULL  DEFAULT 0  CHECK (no_audio IN (0, 1)),
     tls_fingerprint TEXT   NOT NULL  DEFAULT '',
     tapo_secure    INTEGER NOT NULL  DEFAULT 0,
     control_credential TEXT NOT NULL DEFAULT '',

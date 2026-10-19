@@ -167,6 +167,7 @@ CREATE TABLE IF NOT EXISTS user_privacy (
     face_cameras    INTEGER NOT NULL  CHECK (face_cameras IN (0, 1)),
     voice_learning  INTEGER NOT NULL  CHECK (voice_learning IN (0, 1)),
     camera_audio    INTEGER NOT NULL  CHECK (camera_audio IN (0, 1)),
+    location        INTEGER NOT NULL  DEFAULT 1  CHECK (location IN (0, 1)),
     decided_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     updated_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
 );
@@ -177,10 +178,15 @@ CREATE TABLE IF NOT EXISTS household_privacy (
     face_cameras    INTEGER NOT NULL  DEFAULT 1  CHECK (face_cameras IN (0, 1)),
     voice_learning  INTEGER NOT NULL  DEFAULT 1  CHECK (voice_learning IN (0, 1)),
     camera_audio    INTEGER NOT NULL  DEFAULT 1  CHECK (camera_audio IN (0, 1)),
+    location        INTEGER NOT NULL  DEFAULT 1  CHECK (location IN (0, 1)),
     visitor_recognition  INTEGER NOT NULL  DEFAULT 0  CHECK (visitor_recognition IN (0, 1)),
     visitor_ack_version  INTEGER,
     visitor_ack_by       INTEGER,
     visitor_ack_at       INTEGER,
+    watchman             INTEGER NOT NULL  DEFAULT 0  CHECK (watchman IN (0, 1)),
+    watchman_ack_version INTEGER,
+    watchman_ack_by      INTEGER,
+    watchman_ack_at      INTEGER,
     updated_by      INTEGER,
     updated_at      INTEGER
 );

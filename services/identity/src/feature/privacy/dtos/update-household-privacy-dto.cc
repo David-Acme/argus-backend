@@ -20,14 +20,16 @@ UpdateHouseholdPrivacyDto::fromJson(const Json::Value& json)
   dto.faceCameras = boolOf(json, "faceCameras");
   dto.voiceLearning = boolOf(json, "voiceLearning");
   dto.cameraAudio = boolOf(json, "cameraAudio");
+  dto.location = boolOf(json, "location");
   dto.visitorRecognition = boolOf(json, "visitorRecognition");
+  dto.watchman = boolOf(json, "watchman");
   dto.acknowledge = boolOf(json, "acknowledge").value_or(false);
 
   START_VALIDATION(UpdateHouseholdPrivacyDto, dto)
   CUSTOM_LAMBDA(body, [](const UpdateHouseholdPrivacyDto& value)
                          -> std::optional<std::string> {
     if (!value.presence && !value.faceCameras && !value.voiceLearning &&
-        !value.cameraAudio && !value.visitorRecognition)
+        !value.cameraAudio && !value.location && !value.visitorRecognition && !value.watchman)
       return "at least one boolean switch is required";
     return std::nullopt;
   })
@@ -35,6 +37,8 @@ UpdateHouseholdPrivacyDto::fromJson(const Json::Value& json)
                     -> std::optional<std::string> {
     if (value.visitorRecognition.value_or(false) && !value.acknowledge)
       return "turning on visitorRecognition requires acknowledge=true";
+    if (value.watchman.value_or(false) && !value.acknowledge)
+      return "turning on watchman requires acknowledge=true";
     return std::nullopt;
   })
   END_VALIDATION()

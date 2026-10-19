@@ -36,7 +36,9 @@ PrivacyController::decide(drogon::HttpRequestPtr req)
        .choices = {.presence = dto.presence.value_or(false),
                    .faceCameras = dto.faceCameras.value_or(false),
                    .voiceLearning = dto.voiceLearning.value_or(false),
-                   .cameraAudio = dto.cameraAudio.value_or(false)}}),
+                   .cameraAudio = dto.cameraAudio.value_or(false),
+                   .location = false},
+       .location = dto.location}),
                                 .surveillanceActive = surveillanceActive()};
   co_return ApiResponse::ok(body.toJson());
 }
@@ -60,7 +62,9 @@ PrivacyController::household(drogon::HttpRequestPtr req)
        .faceCameras = dto.faceCameras,
        .voiceLearning = dto.voiceLearning,
        .cameraAudio = dto.cameraAudio,
-       .visitorRecognition = dto.visitorRecognition}),
+       .location = dto.location,
+       .visitorRecognition = dto.visitorRecognition,
+       .watchman = dto.watchman}),
                                          .surveillanceActive = surveillanceActive()};
   co_return ApiResponse::ok(body.toJson());
 }

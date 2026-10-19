@@ -29,6 +29,7 @@ void fillPrivacy(argus::identity::v1::PrivacyChoices& target,
   target.set_face_cameras(state.effective.faceCameras);
   target.set_voice_learning(state.effective.voiceLearning);
   target.set_camera_audio(state.effective.cameraAudio);
+  target.set_location(state.effective.location);
 }
 }
 
@@ -838,6 +839,8 @@ grpc::ServerUnaryReactor* IdentityRpcService::ListPrivacy(
         allowed->set_voice_learning(household.allowed.voiceLearning);
         allowed->set_camera_audio(household.allowed.cameraAudio);
         allowed->set_visitor_recognition(household.visitorRecognition);
+        allowed->set_location(household.allowed.location);
+        allowed->set_watchman(household.watchman);
         for (const auto& user : co_await userRepository_.findAll()) {
           if (!user.isActive)
             continue;

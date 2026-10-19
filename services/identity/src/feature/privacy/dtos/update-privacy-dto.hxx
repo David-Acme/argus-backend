@@ -12,6 +12,7 @@ struct UpdatePrivacyDto
   std::optional<bool> faceCameras;
   std::optional<bool> voiceLearning;
   std::optional<bool> cameraAudio;
+  std::optional<bool> location;
 
   static UpdatePrivacyDto fromJson(const Json::Value& json);
 };

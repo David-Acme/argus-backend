@@ -22,6 +22,7 @@ struct PrivacyDecisionInput
   int64_t userId{0};
   int64_t noticeVersion{0};
   PrivacyChoices choices;
+  std::optional<bool> location;
 };
 
 struct PrivacyDirectoryEntry
@@ -35,6 +36,8 @@ struct PrivacyDirectory
   PrivacyChoices household;
   bool visitorRecognition{false};
   std::optional<int64_t> visitorAcknowledgedAt;
+  bool watchman{false};
+  std::optional<int64_t> watchmanAcknowledgedAt;
   std::optional<int64_t> householdUpdatedAt;
   std::vector<PrivacyDirectoryEntry> users;
 };
@@ -46,7 +49,9 @@ struct HouseholdPrivacyChange
   std::optional<bool> faceCameras;
   std::optional<bool> voiceLearning;
   std::optional<bool> cameraAudio;
+  std::optional<bool> location;
   std::optional<bool> visitorRecognition;
+  std::optional<bool> watchman;
 };
 
 class PrivacyFeatureService

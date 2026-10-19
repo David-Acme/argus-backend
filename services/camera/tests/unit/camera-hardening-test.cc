@@ -58,6 +58,7 @@ constexpr const char* kLegacyCameraTable =
     "is_online INTEGER NOT NULL DEFAULT 0, "
       "privacy_state TEXT NOT NULL DEFAULT 'unknown', "
       "privacy_obeyed INTEGER NOT NULL DEFAULT 0, "
+      "watchman INTEGER NOT NULL DEFAULT 0, no_audio INTEGER NOT NULL DEFAULT 0, "
     "created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), "
     "updated_at INTEGER, deleted_at INTEGER)";
 

@@ -29,6 +29,7 @@ UpdatePrivacyDto UpdatePrivacyDto::fromJson(const Json::Value& json)
   dto.faceCameras = boolOf(json, "faceCameras");
   dto.voiceLearning = boolOf(json, "voiceLearning");
   dto.cameraAudio = boolOf(json, "cameraAudio");
+  dto.location = boolOf(json, "location");
 
   START_VALIDATION(UpdatePrivacyDto, dto)
   IS_POSITIVE(noticeVersion)

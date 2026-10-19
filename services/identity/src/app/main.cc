@@ -54,6 +54,7 @@
 #include <runtime/log-output.hxx>
 #include <shared/repositories/face-embedding/face-embedding-repository.hxx>
 #include <shared/repositories/person/person-repository.hxx>
+#include <shared/repositories/privacy/privacy-repository.hxx>
 #include <shared/repositories/user-invitation/user-invitation-repository.hxx>
 #include <shared/services/face/face-service.hxx>
 #include <shared/services/object-deletion/object-deletion-worker.hxx>
@@ -426,6 +427,7 @@ int main()
     static_cast<void>(role_check_migration::applyToFile(identityDb.dbPath));
 
     PersonRepository::ensureColumns();
+    PrivacyRepository::ensureColumns();
     UserInvitationRepository::ensureColumns();
 
     VoiceProfileRepository::migrateLegacy();

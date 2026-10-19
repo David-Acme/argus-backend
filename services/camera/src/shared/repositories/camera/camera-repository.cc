@@ -196,6 +196,18 @@ CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
     sql += UPDATE_COL_PRIVACY_OBEYED;
     args.push_back(*input.privacyObeyed ? "1" : "0");
   }
+  if (input.watchman) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_WATCHMAN;
+    args.push_back(*input.watchman ? "1" : "0");
+  }
+  if (input.noAudio) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_NO_AUDIO;
+    args.push_back(*input.noAudio ? "1" : "0");
+  }
 
   if (input.resetTapoTrust && !args.empty()) {
     sql += ", ";
@@ -338,11 +350,21 @@ bool CameraRepository::acceptPrivacyState()
   const auto client = DbService::cameraClient();
   bool state = false;
   bool obeyed = false;
+  bool watchman = false;
+  bool noAudio = false;
   for (const auto& row : client->execSqlSync(std::string(TABLE_COLUMNS))) {
     const auto name = row["name"].as<std::string>();
     state = state || name == "privacy_state";
     obeyed = obeyed || name == "privacy_obeyed";
+    watchman = watchman || name == "watchman";
+    noAudio = noAudio || name == "no_audio";
   }
+  if (!watchman)
+    client->execSqlSync(std::string(ADD_WATCHMAN));
+  if (!noAudio)
+    client->execSqlSync(std::string(ADD_NO_AUDIO));
+  if (!watchman || !noAudio)
+    LOG_INFO << "Camera schema: camera rows carry the watchman and no-audio switches";
   if (!state) {
     client->execSqlSync(std::string(ADD_PRIVACY_STATE));
     LOG_INFO << "Camera schema: camera rows carry the lens mask state "

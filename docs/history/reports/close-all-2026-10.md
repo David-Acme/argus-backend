@@ -46,3 +46,28 @@ Left to the consolidated phase, because the smoke gate does not measure them:
 - the 40-reply blind sample.
 
 The shipped bundles `decide/bundle-laya-mvp` and `extract/bundle-gliner-pilot` were installed into the main checkout's `models/`. They were added beside the pilots and nothing was replaced.
+
+## 4. CC0: the watchman switches
+
+- **Identity.**
+  - `household_privacy.watchman` with its acknowledgement (`watchman_ack_version/by/at`), mirroring `visitor_recognition`. `PATCH /privacy/household {watchman: true}` needs `acknowledge: true`.
+  - `location` as a per-person choice with an opt-out default: an omitted value keeps the stored one. It also exists as a household ceiling.
+  - The proto `PrivacyChoices` carries `location` (8) and `watchman` (9), and `ListPrivacy` fills both.
+  - A boot column migration adds the new columns to an existing database.
+- **Camera.**
+  - `camera.watchman` and `camera.no_audio`, default off, are settable through `PATCH /camera/{id}`. They are carried on the row JSON, the sync `CameraRow` (22, 23) and the sync gateway.
+  - A boot migration adds them.
+- **lib/auth.**
+  - `kCameraWatchCapabilities` holds what a camera conversation may do: voice, camera view, reminders, agenda, projects, safety and notifications. It never holds the guard mode, settings, roles, presence or the directory.
+  - `kCameraVisitorCapabilities` holds what a stranger may do: voice, panic and safety read.
+  - Each set comes with its `…For` and `has…` helpers.
+- **Legal.**
+  - `docs/operations/legal-and-privacy.md`.
+  - `scripts/privacy/watchman.{es,en}.md` and `--accept-watchman-notice` in setup and provisioning, recorded as `watchmanAcknowledged`.
+  - The installer-responsibility and camera-audio sentences in the host notice and in the app's notice.
+  - The notice moves to version 2 in identity, the scripts and the app together.
+- **Measured.**
+  - identity 31/31, camera 41/41, sync 21/21, packages 132/132, `privacy-consent-test` green.
+  - The full dev build with all 15 projects' tests green.
+  - Frontend: 1654 tests, `tsc`, lint and the comment gate green.
+- **Owner decision recorded.** The per-camera flags follow `camera.manage` (Owner and Resident). The household switch stays Owner-only and acknowledged, so a Resident alone can never make a camera listen.

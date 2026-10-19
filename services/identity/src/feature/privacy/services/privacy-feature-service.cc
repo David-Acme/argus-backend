@@ -23,6 +23,8 @@ Json::Value changedFields(const PrivacyChoices& before, const PrivacyChoices& af
     changed.append("voiceLearning");
   if (before.cameraAudio != after.cameraAudio)
     changed.append("cameraAudio");
+  if (before.location != after.location)
+    changed.append("location");
   return changed;
 }
 
@@ -102,10 +104,12 @@ PrivacyFeatureService::decide(const PrivacyDecisionInput& input) const
     const auto household = co_await repository_.household(transaction.get());
     const auto before = co_await repository_.findUser(input.userId,
                                                       transaction.get());
+    PrivacyChoices choices = input.choices;
+    choices.location = input.location.value_or(before ? before->choices.location : true);
     const std::optional<UserPrivacySchema> after =
         co_await repository_.upsertUser({.userId = input.userId,
                                          .noticeVersion = input.noticeVersion,
-                                         .choices = input.choices,
+                                         .choices = choices,
                                          .client = transaction.get()});
     view.state = privacy_policy::stateOf(after, household);
     view.household = household.allowed;
@@ -124,11 +128,11 @@ PrivacyFeatureService::decide(const PrivacyDecisionInput& input) const
                        .user = input.userId,
                        .client = transaction.get()});
 
-    Json::Value data = input.choices.toJson();
+    Json::Value data = choices.toJson();
     data["event"] = "privacy_consent";
     data["noticeVersion"] = static_cast<Json::Int64>(input.noticeVersion);
     data["changed"] = changedFields(before ? before->choices : PrivacyChoices{},
-                                    input.choices);
+                                    choices);
     data["first"] = !before.has_value();
     data["byOwner"] = false;
     co_await journal({.actorId = input.userId,
@@ -158,6 +162,8 @@ drogon::Task<PrivacyDirectory> PrivacyFeatureService::directory() const
                              .visitorRecognition = household.visitorRecognition,
                              .visitorAcknowledgedAt =
                                  household.visitorAcknowledgedAt,
+                             .watchman = household.watchman,
+                             .watchmanAcknowledgedAt = household.watchmanAcknowledgedAt,
                              .householdUpdatedAt = household.updatedAt,
                              .users = {}};
   for (const auto& user : co_await userRepository_.findAll()) {
@@ -183,11 +189,14 @@ PrivacyFeatureService::updateHousehold(const HouseholdPrivacyChange& change) con
          .faceCameras = change.faceCameras,
          .voiceLearning = change.voiceLearning,
          .cameraAudio = change.cameraAudio,
+         .location = change.location,
          .visitorRecognition = change.visitorRecognition,
+         .watchman = change.watchman,
          .updatedBy = change.actorId,
          .client = transaction.get()});
 
-    if (before.allowed != after.allowed || before.visitorRecognition != after.visitorRecognition) {
+    if (before.allowed != after.allowed || before.visitorRecognition != after.visitorRecognition ||
+        before.watchman != after.watchman) {
       auto states = co_await gate_.statesByUser(transaction.get());
       for (const auto& user : co_await userRepository_.findAll(transaction.get())) {
         const auto found = states.find(user.id);
@@ -215,6 +224,9 @@ PrivacyFeatureService::updateHousehold(const HouseholdPrivacyChange& change) con
       data["visitorRecognition"] = after.visitorRecognition;
       if (before.visitorRecognition != after.visitorRecognition)
         data["changed"].append("visitorRecognition");
+      data["watchman"] = after.watchman;
+      if (before.watchman != after.watchman)
+        data["changed"].append("watchman");
       data["byOwner"] = true;
       co_await journal({.actorId = change.actorId,
                         .subjectId = change.actorId,

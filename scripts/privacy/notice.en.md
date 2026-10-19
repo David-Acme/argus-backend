@@ -73,5 +73,13 @@ accept it.
      professional monitoring service or emergency services.
    - You are responsible for complying with local laws on video surveillance
      and third-party data, including camera signage.
+   - Whoever installs and operates Argus is the controller of the data it
+     processes and is responsible for using it lawfully where it is
+     installed. The author ships privacy-protective controls and documents
+     those obligations; how each installation uses them is outside the
+     author's control.
+   - If a camera captures audio, that audio counts as video surveillance
+     data: place signs at every access, do not enable audio in domestic
+     workers' rest areas and keep recordings only as long as needed.
 
 This notice is not legal advice.

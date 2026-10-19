@@ -232,6 +232,7 @@ void seedCameraDb(const char* path)
       "is_online INTEGER NOT NULL DEFAULT 0, "
       "privacy_state TEXT NOT NULL DEFAULT 'unknown', "
       "privacy_obeyed INTEGER NOT NULL DEFAULT 0, "
+      "watchman INTEGER NOT NULL DEFAULT 0, no_audio INTEGER NOT NULL DEFAULT 0, "
       "tls_fingerprint TEXT NOT NULL DEFAULT '', "
       "tapo_secure INTEGER NOT NULL DEFAULT 0, "
       "control_credential TEXT NOT NULL DEFAULT '', "
@@ -420,7 +421,9 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
   CHECK_FALSE(cam["isOnline"].asBool());
   CHECK(cam["updatedAt"].isNull());
   CHECK(cam["deletedAt"].isNull());
-  CHECK(cam.getMemberNames().size() == 21);
+  CHECK(cam.getMemberNames().size() == 23);
+  CHECK_FALSE(cam["watchman"].asBool());
+  CHECK_FALSE(cam["noAudio"].asBool());
   CHECK(cam["privacyState"].asString() == "unknown");
   CHECK_FALSE(cam["privacyObeyed"].asBool());
   checkNoCredentials(cam);

@@ -209,7 +209,8 @@ PrivacyChoices allOn()
   return {.presence = true,
           .faceCameras = true,
           .voiceLearning = true,
-          .cameraAudio = true};
+          .cameraAudio = true,
+          .location = true};
 }
 
 bool hasJournalEvent(const std::vector<UserActionEvent>& actions,
@@ -276,6 +277,19 @@ TEST_CASE("the DTOs refuse a partial decision and an unacknowledged visitor "
   CHECK(UpdateHouseholdPrivacyDto::fromJson(visitors).visitorRecognition ==
         std::optional<bool>(true));
 
+  Json::Value watchman(Json::objectValue);
+  watchman["watchman"] = true;
+  CHECK_THROWS_AS(UpdateHouseholdPrivacyDto::fromJson(watchman), ValidationException);
+  watchman["acknowledge"] = true;
+  CHECK(UpdateHouseholdPrivacyDto::fromJson(watchman).watchman == std::optional<bool>(true));
+  Json::Value watchmanOff(Json::objectValue);
+  watchmanOff["watchman"] = false;
+  CHECK(UpdateHouseholdPrivacyDto::fromJson(watchmanOff).watchman == std::optional<bool>(false));
+
+  CHECK_FALSE(dto.location.has_value());
+  full["location"] = false;
+  CHECK(UpdatePrivacyDto::fromJson(full).location == std::optional<bool>(false));
+
   const Json::Value empty(Json::objectValue);
   CHECK_THROWS_AS(UpdateHouseholdPrivacyDto::fromJson(empty),
                   ValidationException);
@@ -331,7 +345,7 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
   {
     INFO("a decision for an older notice is refused");
     CHECK_THROWS_AS(drogon::sync_wait(service.decide(
-                        {.userId = 7, .noticeVersion = 0, .choices = allOn()})),
+                        {.userId = 7, .noticeVersion = 0, .choices = allOn(), .location = std::nullopt})),
                     ResponseException);
     CHECK_FALSE(drogon::sync_wait(gate.stateFor(7)).decided);
   }
@@ -339,7 +353,7 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
   {
     INFO("a decision is stored, published and journaled with safe metadata");
     const auto view = drogon::sync_wait(service.decide(
-        {.userId = 7, .noticeVersion = kPrivacyNoticeVersion, .choices = allOn()}));
+        {.userId = 7, .noticeVersion = kPrivacyNoticeVersion, .choices = allOn(), .location = std::nullopt}));
     CHECK(view.state.decided);
     CHECK(view.state.effective == allOn());
     CHECK(countRows("voice_profile", 7) == 1);
@@ -372,12 +386,12 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
     INFO("withdrawing voice learning erases the learned voice in the same "
           "transaction");
     drogon::sync_wait(service.decide(
-        {.userId = 7, .noticeVersion = kPrivacyNoticeVersion, .choices = allOn()}));
+        {.userId = 7, .noticeVersion = kPrivacyNoticeVersion, .choices = allOn(), .location = std::nullopt}));
     sink.clear();
     PrivacyChoices withdrawn = allOn();
     withdrawn.voiceLearning = false;
     const auto view = drogon::sync_wait(service.decide(
-        {.userId = 7, .noticeVersion = kPrivacyNoticeVersion, .choices = withdrawn}));
+        {.userId = 7, .noticeVersion = kPrivacyNoticeVersion, .choices = withdrawn, .location = std::nullopt}));
     CHECK_FALSE(view.state.effective.voiceLearning);
     CHECK(countRows("voice_profile", 7) == 0);
     CHECK(countRows("voice_sample", 7) == 0);
@@ -416,7 +430,7 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
     INFO("the owner's household switch turns a signal off for everyone, and "
           "faces stop naming the person");
     drogon::sync_wait(service.decide(
-        {.userId = 7, .noticeVersion = kPrivacyNoticeVersion, .choices = allOn()}));
+        {.userId = 7, .noticeVersion = kPrivacyNoticeVersion, .choices = allOn(), .location = std::nullopt}));
     RpcHarness harness;
     const IdentityClient client(harness.target());
 
@@ -431,7 +445,9 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
          .faceCameras = false,
          .voiceLearning = std::nullopt,
          .cameraAudio = std::nullopt,
-         .visitorRecognition = std::nullopt}));
+         .location = std::nullopt,
+         .visitorRecognition = std::nullopt,
+         .watchman = std::nullopt}));
     CHECK_FALSE(directory.household.faceCameras);
     CHECK(directory.household.presence);
     CHECK(directory.users.size() == 2);
@@ -466,7 +482,9 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
          .faceCameras = false,
          .voiceLearning = std::nullopt,
          .cameraAudio = std::nullopt,
-         .visitorRecognition = std::nullopt}));
+         .location = std::nullopt,
+         .visitorRecognition = std::nullopt,
+         .watchman = std::nullopt}));
     CHECK(sink.resources().empty());
 
     const auto unnamed = present(client.getPerson(1));
@@ -498,7 +516,9 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
                                                .faceCameras = true,
                                                .voiceLearning = std::nullopt,
                                                .cameraAudio = std::nullopt,
-                                               .visitorRecognition = true}));
+                                               .location = std::nullopt,
+                                               .visitorRecognition = true,
+                                               .watchman = std::nullopt}));
     const auto household = drogon::sync_wait(gate.household());
     CHECK(household.allowed.faceCameras);
     CHECK(household.visitorRecognition);
@@ -507,4 +527,45 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
   }
 
   identity_change::setSink(nullptr);
+
+  {
+    INFO("the watchman is the owner's acknowledged switch, and travels to the cameras");
+    const auto on = drogon::sync_wait(service.updateHousehold({.actorId = 1,
+                                                               .presence = std::nullopt,
+                                                               .faceCameras = std::nullopt,
+                                                               .voiceLearning = std::nullopt,
+                                                               .cameraAudio = std::nullopt,
+                                                               .location = std::nullopt,
+                                                               .visitorRecognition = std::nullopt,
+                                                               .watchman = true}));
+    CHECK(on.watchman);
+    REQUIRE(on.watchmanAcknowledgedAt.has_value());
+    const auto json = ResponsePrivacyDirectoryDto{.directory = on}.toJson();
+    CHECK(json["household"]["watchman"].asBool());
+    CHECK(json["watchmanAcknowledgedAt"].isIntegral());
+    CHECK(drogon::sync_wait(gate.household()).watchman);
+    const auto off = drogon::sync_wait(service.updateHousehold({.actorId = 1,
+                                                                .presence = std::nullopt,
+                                                                .faceCameras = std::nullopt,
+                                                                .voiceLearning = std::nullopt,
+                                                                .cameraAudio = std::nullopt,
+                                                                .location = std::nullopt,
+                                                                .visitorRecognition = std::nullopt,
+                                                                .watchman = false}));
+    CHECK_FALSE(off.watchman);
+  }
+
+  {
+    INFO("a location opt-out holds when a client does not send it");
+    drogon::sync_wait(service.decide(
+        {.userId = 7, .noticeVersion = kPrivacyNoticeVersion, .choices = allOn(), .location = false}));
+    CHECK_FALSE(drogon::sync_wait(gate.stateFor(7)).choices.location);
+    drogon::sync_wait(service.decide(
+        {.userId = 7, .noticeVersion = kPrivacyNoticeVersion, .choices = allOn(), .location = std::nullopt}));
+    CHECK_FALSE(drogon::sync_wait(gate.stateFor(7)).choices.location);
+    CHECK_FALSE(drogon::sync_wait(gate.effectiveFor(7)).location);
+    drogon::sync_wait(service.decide(
+        {.userId = 7, .noticeVersion = kPrivacyNoticeVersion, .choices = allOn(), .location = true}));
+    CHECK(drogon::sync_wait(gate.effectiveFor(7)).location);
+  }
 }

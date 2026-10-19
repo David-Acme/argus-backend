@@ -1,7 +1,8 @@
-PRIVACY_NOTICE_VERSION=1
+PRIVACY_NOTICE_VERSION=2
 PRIVACY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../privacy" && pwd)"
 PRIVACY_ACCEPT="${ARGUS_ACCEPT_PRIVACY_NOTICE:-0}"
 PRIVACY_VISITOR_ACCEPT="${ARGUS_ACCEPT_VISITOR_NOTICE:-0}"
+PRIVACY_WATCHMAN_ACCEPT="${ARGUS_ACCEPT_WATCHMAN_NOTICE:-0}"
 PRIVACY_JURISDICTION="${ARGUS_PRIVACY_JURISDICTION:-pe}"
 PRIVACY_LANG="${ARGUS_PRIVACY_LANG:-}"
 
@@ -62,6 +63,12 @@ privacy_visitor_text() {
   privacy_render "$PRIVACY_DIR/visitors.$lang.md" "$lang"
 }
 
+privacy_watchman_text() {
+  local lang
+  lang="$(privacy_lang)"
+  privacy_render "$PRIVACY_DIR/watchman.$lang.md" "$lang"
+}
+
 privacy_record_path() {
   printf '%s/privacy/host-consent.json' "$1"
 }
@@ -77,12 +84,25 @@ privacy_recorded_visitors() {
   [ -r "$record" ] && grep -q '"visitorRecognitionAcknowledged": *true' "$record"
 }
 
+privacy_recorded_watchman() {
+  local record="$1"
+  [ -r "$record" ] && grep -q '"watchmanAcknowledged": *true' "$record"
+}
+
+privacy_flag_of() {
+  if "$@"; then
+    printf 'true'
+  else
+    printf 'false'
+  fi
+}
+
 privacy_json_string() {
   printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
 }
 
 privacy_write_record() {
-  local data_dir="$1" method="$2" visitors="$3" script="$4"
+  local data_dir="$1" method="$2" visitors="$3" watchman="$4" script="$5"
   local dir="$data_dir/privacy" record lang at by digest line
   record="$(privacy_record_path "$data_dir")"
   lang="$(privacy_lang)"
@@ -91,11 +111,11 @@ privacy_write_record() {
   digest="$(privacy_notice_text | openssl dgst -sha256 -r | awk '{print $1}')"
   mkdir -p "$dir"
   chmod 700 "$dir"
-  line="$(printf '{"notice": "argus-host-privacy", "noticeVersion": %s, "termsVersion": %s, "jurisdiction": "%s", "language": "%s", "acceptedAt": "%s", "acceptedBy": "%s", "method": "%s", "script": "%s", "noticeSha256": "%s", "visitorRecognitionAcknowledged": %s}' \
+  line="$(printf '{"notice": "argus-host-privacy", "noticeVersion": %s, "termsVersion": %s, "jurisdiction": "%s", "language": "%s", "acceptedAt": "%s", "acceptedBy": "%s", "method": "%s", "script": "%s", "noticeSha256": "%s", "visitorRecognitionAcknowledged": %s, "watchmanAcknowledged": %s}' \
     "$PRIVACY_NOTICE_VERSION" "$PRIVACY_NOTICE_VERSION" \
     "$(privacy_json_string "$PRIVACY_JURISDICTION")" "$lang" "$at" \
     "$(privacy_json_string "$by")" "$method" "$(privacy_json_string "$script")" \
-    "$digest" "$visitors")"
+    "$digest" "$visitors" "$watchman")"
   ( umask 077 && printf '%s\n' "$line" > "$record.tmp" && mv "$record.tmp" "$record" )
   ( umask 077 && printf '%s\n' "$line" >> "$dir/host-consent.log" )
   chmod 600 "$record" "$dir/host-consent.log"
@@ -138,15 +158,50 @@ privacy_ask_visitors() {
   fi
 }
 
+privacy_ask_watchman() {
+  local lang word
+  lang="$(privacy_lang)"
+  if [ "$PRIVACY_WATCHMAN_ACCEPT" = 1 ]; then
+    printf 'true'
+    return
+  fi
+  if [ ! -t 0 ]; then
+    printf 'false'
+    return
+  fi
+  word="SI"
+  [ "$lang" = en ] && word="YES"
+  {
+    echo
+    privacy_watchman_text
+    echo
+    if [ "$lang" = en ]; then
+      printf 'Type %s to acknowledge it now, or press Enter to skip (it stays off): ' "$word"
+    else
+      printf 'Escribe %s para aceptarlo ahora, o pulsa Enter para omitirlo (queda apagado): ' "$word"
+    fi
+  } >&2
+  if privacy_prompt_word "$word"; then
+    printf 'true'
+  else
+    printf 'false'
+  fi
+}
+
 privacy_require_consent() {
-  local data_dir="$1" script="$2" record lang word visitors method
+  local data_dir="$1" script="$2" record lang word visitors watchman method
   record="$(privacy_record_path "$data_dir")"
   lang="$(privacy_lang)"
 
   if [ "$(privacy_recorded_version "$record")" = "$PRIVACY_NOTICE_VERSION" ]; then
-    if [ "$PRIVACY_VISITOR_ACCEPT" = 1 ] && ! privacy_recorded_visitors "$record"; then
-      privacy_write_record "$data_dir" flag true "$script"
-      log "Visitor recognition notice acknowledged and recorded in ${record}."
+    visitors="$(privacy_flag_of privacy_recorded_visitors "$record")"
+    watchman="$(privacy_flag_of privacy_recorded_watchman "$record")"
+    if { [ "$PRIVACY_VISITOR_ACCEPT" = 1 ] && [ "$visitors" = false ]; } ||
+       { [ "$PRIVACY_WATCHMAN_ACCEPT" = 1 ] && [ "$watchman" = false ]; }; then
+      [ "$PRIVACY_VISITOR_ACCEPT" = 1 ] && visitors=true
+      [ "$PRIVACY_WATCHMAN_ACCEPT" = 1 ] && watchman=true
+      privacy_write_record "$data_dir" flag "$visitors" "$watchman" "$script"
+      log "Optional notices acknowledged and recorded in ${record}."
     fi
     log "Privacy notice v$PRIVACY_NOTICE_VERSION already accepted (${record})."
     return 0
@@ -184,7 +239,8 @@ privacy_require_consent() {
   fi
 
   visitors="$(privacy_ask_visitors)"
-  privacy_write_record "$data_dir" "$method" "$visitors" "$script"
+  watchman="$(privacy_ask_watchman)"
+  privacy_write_record "$data_dir" "$method" "$visitors" "$watchman" "$script"
   log "Privacy notice v$PRIVACY_NOTICE_VERSION accepted and recorded in ${record}."
 }
 

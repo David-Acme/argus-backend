@@ -11,6 +11,8 @@ message PrivacyChoices
   bool voice_learning = 5;
   bool camera_audio = 6;
   bool visitor_recognition = 7;
+  bool location = 8;
+  bool watchman = 9;
 }
 
 message UserIdentity

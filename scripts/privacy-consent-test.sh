@@ -63,11 +63,12 @@ accepted="$TEST_TMP/accepted"
 consent "$accepted" ARGUS_ACCEPT_PRIVACY_NOTICE=1 ARGUS_PRIVACY_LANG=es </dev/null 2>/dev/null \
   || fail "the flag did not accept the notice"
 json="$(record "$accepted")"
-grep -q '"noticeVersion": 1' <<<"$json" || fail "the record lacks the version"
-grep -q '"termsVersion": 1' <<<"$json" || fail "the record lacks the terms version"
+grep -q '"noticeVersion": 2' <<<"$json" || fail "the record lacks the version"
+grep -q '"termsVersion": 2' <<<"$json" || fail "the record lacks the terms version"
 grep -q '"method": "flag"' <<<"$json" || fail "the record lacks the method"
 grep -q '"jurisdiction": "pe"' <<<"$json" || fail "the record lacks the jurisdiction"
 grep -q '"visitorRecognitionAcknowledged": false' <<<"$json" || fail "visitors were acknowledged by default"
+grep -q '"watchmanAcknowledged": false' <<<"$json" || fail "the watchman was acknowledged by default"
 grep -Eq '"acceptedAt": "[0-9]{4}-[0-9]{2}-[0-9]{2}T' <<<"$json" || fail "the record lacks the time"
 grep -q '"acceptedBy": ".*@' <<<"$json" || fail "the record lacks who accepted"
 grep -Eq '"noticeSha256": "[0-9a-f]{64}"' <<<"$json" || fail "the record lacks the notice digest"
@@ -85,6 +86,14 @@ consent "$accepted" ARGUS_ACCEPT_VISITOR_NOTICE=1 </dev/null 2>/dev/null \
 grep -q '"visitorRecognitionAcknowledged": true' <<<"$(record "$accepted")" \
   || fail "the visitor acknowledgement was not recorded"
 [ "$(wc -l < "$accepted/privacy/host-consent.log")" -eq 2 ] || fail "the log does not keep every acceptance"
+
+consent "$accepted" ARGUS_ACCEPT_WATCHMAN_NOTICE=1 </dev/null 2>/dev/null \
+  || fail "the watchman acknowledgement failed"
+grep -q '"watchmanAcknowledged": true' <<<"$(record "$accepted")" \
+  || fail "the watchman acknowledgement was not recorded"
+grep -q '"visitorRecognitionAcknowledged": true' <<<"$(record "$accepted")" \
+  || fail "the watchman acknowledgement dropped the visitor one"
+[ "$(wc -l < "$accepted/privacy/host-consent.log")" -eq 3 ] || fail "the log does not keep the watchman acceptance"
 
 withdraw "$accepted" >/dev/null 2>&1
 [ ! -e "$accepted/privacy/host-consent.json" ] || fail "withdrawal kept the record"

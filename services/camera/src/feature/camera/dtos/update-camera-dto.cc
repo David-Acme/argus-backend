@@ -33,6 +33,10 @@ UpdateCameraDto UpdateCameraDto::fromJson(const Json::Value& json)
     dto.retentionDays = json["retentionDays"].asInt64();
   if (json.isMember("isEnabled") && json["isEnabled"].isBool())
     dto.isEnabled = json["isEnabled"].asBool();
+  if (json.isMember("watchman") && json["watchman"].isBool())
+    dto.watchman = json["watchman"].asBool();
+  if (json.isMember("noAudio") && json["noAudio"].isBool())
+    dto.noAudio = json["noAudio"].asBool();
   if (json.isMember("streamPath") && json["streamPath"].isString())
     dto.streamPath = json["streamPath"].asString();
   if (json.isMember("subStreamPath") && json["subStreamPath"].isString())

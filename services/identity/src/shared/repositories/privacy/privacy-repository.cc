@@ -1,5 +1,7 @@
 #include "privacy-repository.hxx"
 
+#include <array>
+#include <shared/services/schema/column-migration.hxx>
 #include <sqlite/db-service.hxx>
 #include <string>
 #include <vector>
@@ -12,6 +14,25 @@ int64_t flag(bool value)
 {
   return value ? 1 : 0;
 }
+}
+
+void PrivacyRepository::ensureColumns()
+{
+  constexpr std::array<ColumnMigration, 6> kColumns = {{
+      {.table = "user_privacy",
+       .column = "location",
+       .definition = "INTEGER NOT NULL DEFAULT 1 CHECK (location IN (0, 1))"},
+      {.table = "household_privacy",
+       .column = "location",
+       .definition = "INTEGER NOT NULL DEFAULT 1 CHECK (location IN (0, 1))"},
+      {.table = "household_privacy",
+       .column = "watchman",
+       .definition = "INTEGER NOT NULL DEFAULT 0 CHECK (watchman IN (0, 1))"},
+      {.table = "household_privacy", .column = "watchman_ack_version", .definition = "INTEGER"},
+      {.table = "household_privacy", .column = "watchman_ack_by", .definition = "INTEGER"},
+      {.table = "household_privacy", .column = "watchman_ack_at", .definition = "INTEGER"},
+  }};
+  column_migration::ensure(kColumns);
 }
 
 drogon::Task<std::optional<UserPrivacySchema>>
@@ -48,7 +69,8 @@ PrivacyRepository::upsertUser(const UserPrivacyUpsertInput& input) const
                                flag(input.choices.presence),
                                flag(input.choices.faceCameras),
                                flag(input.choices.voiceLearning),
-                               flag(input.choices.cameraAudio));
+                               flag(input.choices.cameraAudio),
+                               flag(input.choices.location));
   const auto stored = co_await findUser(input.userId, client);
   co_return stored.value_or(UserPrivacySchema{});
 }
@@ -89,10 +111,18 @@ PrivacyRepository::updateHousehold(const HouseholdPrivacyUpdateInput& input) con
   add(UPDATE_COL_FACE_CAMERAS, input.faceCameras);
   add(UPDATE_COL_VOICE_LEARNING, input.voiceLearning);
   add(UPDATE_COL_CAMERA_AUDIO, input.cameraAudio);
+  add(UPDATE_COL_LOCATION, input.location);
   add(UPDATE_COL_VISITOR_RECOGNITION, input.visitorRecognition);
   if (input.visitorRecognition.value_or(false)) {
     sql += ", ";
     sql += UPDATE_COL_VISITOR_ACK;
+    args.push_back(std::to_string(input.updatedBy));
+    args.push_back(std::to_string(kPrivacyNoticeVersion));
+  }
+  add(UPDATE_COL_WATCHMAN, input.watchman);
+  if (input.watchman.value_or(false)) {
+    sql += ", ";
+    sql += UPDATE_COL_WATCHMAN_ACK;
     args.push_back(std::to_string(input.updatedBy));
     args.push_back(std::to_string(kPrivacyNoticeVersion));
   }

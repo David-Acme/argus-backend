@@ -131,6 +131,61 @@ inline bool hasAppAction(const AppActionInput& input)
   return hasCapability({.role = input.role, .modules = input.modules, .capability = capability});
 }
 
+inline constexpr std::array kCameraWatchCapabilities = std::to_array<std::string_view>({
+    "assistant.voice",
+    "camera.view",
+    "reminders.read",
+    "reminders.write",
+    "agenda.read",
+    "agenda.write",
+    "projects.read",
+    "projects.write",
+    "safety.panic",
+    "safety.read",
+    "safety.respond",
+    "notifications.read",
+});
+
+inline constexpr std::array kCameraVisitorCapabilities = std::to_array<std::string_view>({
+    "assistant.voice",
+    "safety.panic",
+    "safety.read",
+});
+
+inline bool inCameraWatchSet(std::string_view capability)
+{
+  return std::ranges::find(kCameraWatchCapabilities, capability) != kCameraWatchCapabilities.end();
+}
+
+inline std::vector<std::string_view> cameraWatchCapabilitiesFor(const CapabilitiesInput& input)
+{
+  std::vector<std::string_view> granted = capabilitiesFor(input);
+  std::erase_if(granted, [](std::string_view capability) { return !inCameraWatchSet(capability); });
+  return granted;
+}
+
+inline bool hasCameraWatchCapability(const HasCapabilityInput& input)
+{
+  return inCameraWatchSet(input.capability) && hasCapability(input);
+}
+
+inline std::vector<std::string_view> cameraVisitorCapabilitiesFor(const ModuleSnapshot& modules)
+{
+  std::vector<std::string_view> granted;
+  for (const std::string_view capability : kCameraVisitorCapabilities) {
+    const auto spec = std::ranges::find(kCapabilities, capability, &CapabilitySpec::id);
+    if (spec != kCapabilities.end() && modules.enabled(spec->module))
+      granted.push_back(capability);
+  }
+  return granted;
+}
+
+inline bool hasCameraVisitorCapability(const ModuleSnapshot& modules, std::string_view capability)
+{
+  const std::vector<std::string_view> granted = cameraVisitorCapabilitiesFor(modules);
+  return std::ranges::find(granted, capability) != granted.end();
+}
+
 inline bool knownCapability(std::string_view capability)
 {
   return std::ranges::find(kCapabilities, capability, &CapabilitySpec::id) != kCapabilities.end();

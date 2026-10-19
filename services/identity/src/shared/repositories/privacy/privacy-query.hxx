@@ -18,12 +18,13 @@ inline constexpr std::string_view FIND_ALL_USERS =
 
 inline constexpr std::string_view UPSERT_USER =
     "INSERT INTO user_privacy (user_id, notice_version, presence, "
-    "face_cameras, voice_learning, camera_audio) VALUES (?, ?, ?, ?, ?, ?) "
+    "face_cameras, voice_learning, camera_audio, location) VALUES (?, ?, ?, ?, ?, ?, ?) "
     "ON CONFLICT(user_id) DO UPDATE SET "
     "notice_version = excluded.notice_version, presence = excluded.presence, "
     "face_cameras = excluded.face_cameras, "
     "voice_learning = excluded.voice_learning, "
     "camera_audio = excluded.camera_audio, "
+    "location = excluded.location, "
     "updated_at = strftime('%s', 'now')";
 
 inline constexpr std::string_view ENSURE_HOUSEHOLD =
@@ -39,7 +40,12 @@ inline constexpr std::string_view UPDATE_COL_FACE_CAMERAS = "face_cameras = ?";
 inline constexpr std::string_view UPDATE_COL_VOICE_LEARNING =
     "voice_learning = ?";
 inline constexpr std::string_view UPDATE_COL_CAMERA_AUDIO = "camera_audio = ?";
+inline constexpr std::string_view UPDATE_COL_LOCATION = "location = ?";
 inline constexpr std::string_view UPDATE_COL_VISITOR_RECOGNITION = "visitor_recognition = ?";
+inline constexpr std::string_view UPDATE_COL_WATCHMAN = "watchman = ?";
+inline constexpr std::string_view UPDATE_COL_WATCHMAN_ACK =
+    "watchman_ack_at = strftime('%s', 'now'), "
+    "watchman_ack_by = ?, watchman_ack_version = ?";
 inline constexpr std::string_view UPDATE_COL_VISITOR_ACK =
     "visitor_ack_at = strftime('%s', 'now'), "
     "visitor_ack_by = ?, visitor_ack_version = ?";
@@ -62,7 +68,9 @@ struct HouseholdPrivacyUpdateInput
   std::optional<bool> faceCameras;
   std::optional<bool> voiceLearning;
   std::optional<bool> cameraAudio;
+  std::optional<bool> location;
   std::optional<bool> visitorRecognition;
+  std::optional<bool> watchman;
   int64_t updatedBy{0};
   drogon::orm::DbClient* client{nullptr};
 };
