@@ -20,7 +20,11 @@ enum class NoticeKind : uint8_t
   Panic,
   Duress,
   SpokenDuress,
-  PrivacyCoverage
+  PrivacyCoverage,
+  LensNotice,
+  TamperAsk,
+  ViewCheck,
+  MaintenanceDuress
 };
 
 enum class NoticeSubject : uint8_t
@@ -87,6 +91,14 @@ struct GuardNotice
   bool afterQuiet{false};
   std::string actorName;
   GuardVisitor visitor;
+  std::vector<DigestLine> lost{};
+  std::string seenName{};
+  bool seenGuest{false};
+  bool probableMaintenance{false};
+  bool canClaim{false};
+  int64_t onsetAt{0};
+  int64_t askId{0};
+  int64_t maintenanceId{0};
 };
 
 struct NoticeText

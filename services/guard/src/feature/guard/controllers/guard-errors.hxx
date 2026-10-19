@@ -61,6 +61,42 @@ inline constexpr ErrorDefinition DutyForGuardsOnly{
     .code = ErrorCode::Forbidden,
     .status = 403,
     .message = "Only a guard goes on duty"};
+inline constexpr ErrorDefinition MaintenanceOffDuty{
+    .code = ErrorCode::GuardOffDuty,
+    .status = 403,
+    .message = "A guard declares maintenance only while on duty"};
+inline constexpr ErrorDefinition MaintenanceOutOfScope{
+    .code = ErrorCode::MaintenanceOutOfScope,
+    .status = 403,
+    .message = "A guard declares maintenance only for the cameras of its environment"};
+inline constexpr ErrorDefinition MaintenanceForbidden{
+    .code = ErrorCode::Forbidden,
+    .status = 403,
+    .message = "Only the household or a guard on duty declares maintenance"};
+inline constexpr ErrorDefinition MaintenanceNotYours{
+    .code = ErrorCode::Forbidden,
+    .status = 403,
+    .message = "A guard ends or answers only its own maintenance windows"};
+inline constexpr ErrorDefinition MaintenanceNotFound{
+    .code = ErrorCode::NotFound,
+    .status = 404,
+    .message = "Maintenance window not found"};
+inline constexpr ErrorDefinition MaintenanceCamerasRequired{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "A maintenance window names cameras or an environment that has cameras"};
+inline constexpr ErrorDefinition ViewCheckNotPending{
+    .code = ErrorCode::Conflict,
+    .status = 409,
+    .message = "That camera has no view question pending"};
+inline constexpr ErrorDefinition NotATamper{
+    .code = ErrorCode::NotATamper,
+    .status = 409,
+    .message = "That incident is not a lost camera"};
+inline constexpr ErrorDefinition TamperAskNotFound{
+    .code = ErrorCode::NotFound,
+    .status = 404,
+    .message = "That question is not open"};
 inline constexpr ErrorDefinition ChangeNotRecorded{
     .code = ErrorCode::InternalError,
     .status = 500,

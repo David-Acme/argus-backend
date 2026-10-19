@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <functional>
@@ -28,6 +29,8 @@ public:
     ICameraPresenceSink* presence{nullptr};
     std::function<bool()> active{};
     std::function<void(int64_t)> homeDrift{};
+    std::function<bool()> protects{};
+    std::function<void(TamperOnset)> tamperOnset{};
   };
 
   struct CameraRef
@@ -54,10 +57,32 @@ public:
   void publishPrivacyState(const CameraRef& camera);
 
 private:
+  static constexpr int kGridSide = 4;
+  using BlockSpread = std::array<double, static_cast<size_t>(kGridSide * kGridSide)>;
+
+  struct Reference
+  {
+    std::vector<uint8_t> gray;
+    int64_t atMs{0};
+    BlockSpread blocks{};
+    double laplacian{0.0};
+    double sharpness{0.0};
+  };
+
   struct CameraState
   {
-    std::vector<uint8_t> reference;
-    int64_t referenceAtMs{0};
+    std::array<Reference, 2> references{};
+    bool infraredKnown{false};
+    bool infrared{false};
+    int64_t holdUntilMs{0};
+    bool previousKnown{false};
+    double previousBrightness{0.0};
+    double previousSharpness{1.0};
+    int64_t suddenSinceMs{0};
+    bool lastSudden{false};
+    int64_t onsetAtMs{0};
+    std::vector<uint8_t> lastGoodJpeg;
+    int64_t lastGoodAtMs{0};
     std::vector<uint8_t> previous;
     int64_t newSceneSinceMs{0};
     CameraHealthState lastStatus{CameraHealthState::Ok};
@@ -77,6 +102,8 @@ private:
     int width{0};
     int height{0};
     int64_t capturedAtMs{0};
+    double chroma{0.0};
+    int64_t intervalMs{0};
   };
 
   drogon::Task<void> run();
@@ -84,6 +111,7 @@ private:
   std::vector<CameraRef> loadCameras();
   drogon::Task<bool> refreshPrivacy(const CameraRef& camera);
   [[nodiscard]] bool dueForSample(int64_t cameraId);
+  [[nodiscard]] int64_t intervalNow() const;
 
   HealthMetrics measure(const TickInput& input, CameraState& state) const;
 

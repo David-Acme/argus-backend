@@ -136,6 +136,26 @@ drogon::Task<argus::mcp::ToolOutcome> setGuardMode(EnvironmentCatalog catalog, M
                             : "No encuentro un lugar llamado " + asked + ". Los lugares son: " + listed(places) + ".", .code = "unknown_environment"});
 }
 
+drogon::Task<argus::mcp::ToolOutcome> maintenanceCall(MaintenanceVoice port, argus::mcp::ToolInvocation invocation)
+{
+  const bool english = invocation.caller.lang == "en";
+  if (!port)
+    co_return argus::mcp::toolFailure({.text = english ? "Maintenance is not available right now."
+                                                       : "El mantenimiento no está disponible ahora.",
+                                       .code = "maintenance_unavailable"});
+  const MaintenanceVoiceReply reply = co_await port({.userId = invocation.caller.userId,
+                                                     .role = invocation.caller.role,
+                                                     .lang = invocation.caller.lang,
+                                                     .camera = invocation.arguments.get("camera", "").asString(),
+                                                     .minutes = invocation.arguments.get("minutes", 0).asInt64()});
+  if (!reply.ok)
+    co_return argus::mcp::toolFailure({.text = reply.text, .code = reply.code});
+  argus::mcp::ToolOutcome outcome;
+  outcome.text = reply.text;
+  outcome.structured = reply.structured;
+  co_return outcome;
+}
+
 }
 
 std::shared_ptr<argus::mcp::McpServer> guardToolServer(const GuardToolsInput& input)
@@ -158,6 +178,41 @@ std::shared_ptr<argus::mcp::McpServer> guardToolServer(const GuardToolsInput& in
               argus::mcp::onLoop({.loop = input.loop, .handler = [catalog, maskedCameras](const argus::mcp::ToolInvocation& invocation) {
                 return setGuardMode(catalog, maskedCameras, invocation);
               }}));
+  const MaintenanceVoicePorts maintenance = input.maintenance;
+  server->add({.name = "guard.maintenance_start",
+               .title = "",
+               .description = "Abre una ventana de mantenimiento de cámaras: mientras dure, tapar, mover o limpiar "
+                              "esas cámaras no es una alarma. camera es el nombre de la cámara (vacío para todas las "
+                              "del lugar) y minutes la duración (15 por defecto, 120 como máximo)",
+               .inputSchema = schema::object({{.name = "camera", .schema = schema::text(), .required = false},
+                                              {.name = "minutes", .schema = schema::integer(), .required = false}}),
+               .annotations = {},
+               .module = "surveillance",
+               .capability = "guard.maintenance"},
+              argus::mcp::onLoop({.loop = input.loop, .handler = [maintenance](const argus::mcp::ToolInvocation& invocation) {
+                                    return maintenanceCall(maintenance.start, invocation);
+                                  }}));
+  server->add({.name = "guard.maintenance_end",
+               .title = "",
+               .description = "Cierra la ventana de mantenimiento abierta por quien habla (\"ya terminé\")",
+               .inputSchema = schema::object({}),
+               .annotations = {.idempotent = true},
+               .module = "surveillance",
+               .capability = "guard.maintenance"},
+              argus::mcp::onLoop({.loop = input.loop, .handler = [maintenance](const argus::mcp::ToolInvocation& invocation) {
+                                    return maintenanceCall(maintenance.end, invocation);
+                                  }}));
+  server->add({.name = "guard.maintenance_status",
+               .title = "",
+               .description = "Dice qué ventanas de mantenimiento están abiertas y qué cámaras perdieron la imagen "
+                              "hace poco, para contestar por qué avisó Argus o quién movió una cámara",
+               .inputSchema = schema::object({}),
+               .annotations = {.readOnly = true},
+               .module = "surveillance",
+               .capability = "guard.maintenance"},
+              argus::mcp::onLoop({.loop = input.loop, .handler = [maintenance](const argus::mcp::ToolInvocation& invocation) {
+                                    return maintenanceCall(maintenance.status, invocation);
+                                  }}));
   server->setGate(tool_gate::capabilities());
   return server;
 }

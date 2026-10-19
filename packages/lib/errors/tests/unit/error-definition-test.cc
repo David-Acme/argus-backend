@@ -67,10 +67,14 @@ TEST_CASE("every error code has exactly one wire string")
       {.code = ErrorCode::CameraControlLocked, .name = "CAMERA_CONTROL_LOCKED"},
       {.code = ErrorCode::CameraControlRefused, .name = "CAMERA_CONTROL_REFUSED"},
       {.code = ErrorCode::AppSirenDisabled, .name = "APP_SIREN_DISABLED"},
-      {.code = ErrorCode::RouteNotFound, .name = "ROUTE_NOT_FOUND"}};
+      {.code = ErrorCode::RouteNotFound, .name = "ROUTE_NOT_FOUND"},
+      {.code = ErrorCode::GuardOffDuty, .name = "GUARD_OFF_DUTY"},
+      {.code = ErrorCode::PresetsNotYours, .name = "PRESETS_NOT_YOURS"},
+      {.code = ErrorCode::MaintenanceOutOfScope, .name = "MAINTENANCE_OUT_OF_SCOPE"},
+      {.code = ErrorCode::NotATamper, .name = "NOT_A_TAMPER"}};
 
   CHECK(table.size() ==
-        static_cast<std::size_t>(ErrorCode::RouteNotFound) + 1);
+        static_cast<std::size_t>(ErrorCode::NotATamper) + 1);
 
   for (const auto& row : table)
     CHECK(std::string(toString(row.code)) == row.name);

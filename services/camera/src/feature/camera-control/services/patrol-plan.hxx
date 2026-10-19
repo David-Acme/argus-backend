@@ -20,6 +20,8 @@ struct PatrolProgress
   bool active{false};
   std::size_t nextStop{0};
   int64_t arrivedAtMs{0};
+  int64_t lapStartedMs{0};
+  int64_t restUntilMs{0};
 };
 
 struct PatrolSituation
@@ -32,6 +34,8 @@ struct PatrolSituation
   bool online{false};
   bool masked{false};
   bool moduleActive{false};
+  bool allowed{false};
+  int64_t everyMs{0};
   PtzLeaseState lease{};
   int64_t nowMs{0};
   PatrolProgress progress{};
@@ -43,6 +47,7 @@ enum class PatrolStepKind : unsigned char
   Wait,
   Advance,
   Yield,
+  Rest,
   End
 };
 

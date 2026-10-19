@@ -50,7 +50,11 @@ enum class ErrorCode
   CameraControlLocked,
   CameraControlRefused,
   AppSirenDisabled,
-  RouteNotFound
+  RouteNotFound,
+  GuardOffDuty,
+  PresetsNotYours,
+  MaintenanceOutOfScope,
+  NotATamper
 };
 
 constexpr std::string_view toString(ErrorCode code)
@@ -102,6 +106,10 @@ constexpr std::string_view toString(ErrorCode code)
   case ErrorCode::CameraControlRefused: return "CAMERA_CONTROL_REFUSED";
   case ErrorCode::AppSirenDisabled: return "APP_SIREN_DISABLED";
   case ErrorCode::RouteNotFound: return "ROUTE_NOT_FOUND";
+  case ErrorCode::GuardOffDuty: return "GUARD_OFF_DUTY";
+  case ErrorCode::PresetsNotYours: return "PRESETS_NOT_YOURS";
+  case ErrorCode::MaintenanceOutOfScope: return "MAINTENANCE_OUT_OF_SCOPE";
+  case ErrorCode::NotATamper: return "NOT_A_TAMPER";
   }
   throw std::invalid_argument("Unknown response error code");
 }

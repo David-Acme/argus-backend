@@ -14,6 +14,8 @@
 #include <feature/camera-control/services/camera-control-feature-service.hxx>
 #include <optional>
 #include <shared/services/camera-driver/camera-driver.hxx>
+#include <shared/services/camera-driver/camera-scene-log.hxx>
+#include <chrono>
 #include <config/config-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
@@ -1094,4 +1096,77 @@ drogon::Task<void> CameraActionRpcService::sweepLeases()
   catch (...) {
     LOG_WARN << "Camera action: lease sweep failed with unknown error";
   }
+}
+
+grpc::ServerUnaryReactor*
+CameraActionRpcService::Relearn(grpc::CallbackServerContext* context,
+                                const argus::camera::v1::RelearnRequest* request,
+                                argus::camera::v1::RelearnResponse* response)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!authorized(context)) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "caller capability credential invalid"));
+    return reactor;
+  }
+  if (request->camera_id() <= 0) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "camera_id is required"));
+    return reactor;
+  }
+  const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+  CameraSceneLog::instance().noteAimed({.cameraId = request->camera_id(), .atMs = now});
+  LOG_INFO << "Camera action: camera " << request->camera_id()
+           << " takes its current view as the reference, as its owner confirmed";
+  response->set_accepted(true);
+  reactor->Finish(grpc::Status::OK);
+  return reactor;
+}
+
+grpc::ServerUnaryReactor*
+CameraActionRpcService::Look(grpc::CallbackServerContext* context,
+                             const argus::camera::v1::LookRequest* request,
+                             argus::camera::v1::LookResponse* response)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!authorized(context)) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "caller capability credential invalid"));
+    return reactor;
+  }
+  if (request->camera_id() <= 0 || request->box_w() <= 0.0 || request->box_h() <= 0.0) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "camera_id and a box are required"));
+    return reactor;
+  }
+  ::LookRequest look{.cameraId = request->camera_id(),
+                   .trackId = request->track_id(),
+                   .box = {.x = request->box_x(), .y = request->box_y(), .w = request->box_w(), .h = request->box_h()},
+                   .reason = request->reason().empty() ? std::string("guard") : request->reason().substr(0, 32),
+                   .budgetMs = request->budget_ms(),
+                   .follow = request->follow()};
+  drogon::app().getLoop()->queueInLoop([this, reactor, response, look = std::move(look)]() mutable {
+    drogon::async_run([this, reactor, response, look = std::move(look)]() mutable -> drogon::Task<void> {
+      const in_flight::Guard guard(inFlight_);
+      try {
+        const ::LookOutcome outcome = co_await lookService_.look(std::move(look));
+        response->set_confirmed(outcome.confirmed);
+        response->set_class_name(outcome.cls);
+        response->set_confidence(outcome.confidence);
+        for (const int64_t id : outcome.cropIds)
+          response->add_crop_ids(id);
+        response->set_moved(outcome.moved);
+        response->set_detail(outcome.detail);
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Camera action: Look failed: " << error.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, error.what()));
+      }
+      co_return;
+    });
+  });
+  return reactor;
 }

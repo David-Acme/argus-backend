@@ -1,5 +1,8 @@
 #include <feature/operator/camera-operator-service.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
+#include <feature/camera-control/services/aim-board.hxx>
+#include <feature/camera-control/services/camera-control-feature-service.hxx>
+#include <feature/look/services/look-refresh.hxx>
 #include <shared/services/camera-motion/camera-motion-board.hxx>
 #include <shared/services/privacy/privacy-mask.hxx>
 #include <shared/services/privacy-state/privacy-state.hxx>
@@ -627,7 +630,25 @@ CameraOperatorService::analyse(const ProcessFrameInput& input)
                            return zone.cameraId == cameraId;
                          });
   bool masked = false;
-  if (privacy_mask::covers(zones)) {
+  if (CameraSceneLog::instance().sceneOf(cameraId).argusAway) {
+    zones.clear();
+    const auto aim = LookableCameras::instance().of(cameraId);
+    const AimSnapshot position = AimBoard::instance().snapshot(cameraId);
+    const CameraPtzConfig& ptz = CameraControlFeatureService::ptz();
+    if (aim && !aim->noAimSectors.empty()) {
+      rgb = rgb.clone();
+      for (const BlackoutColumns& columns :
+           aim_math::blackout({.position = position.position,
+                               .fov = {.horizontalDeg = ptz.fovHorizontalDeg, .verticalDeg = ptz.fovVerticalDeg},
+                               .sectors = aim->noAimSectors,
+                               .width = rgb.cols})) {
+        cv::rectangle(rgb, cv::Rect(columns.from, 0, columns.to - columns.from, rgb.rows), cv::Scalar(0, 0, 0),
+                      cv::FILLED);
+        masked = true;
+      }
+    }
+  }
+  else if (privacy_mask::covers(zones)) {
     rgb = rgb.clone();
     masked = privacy_mask::apply(rgb, zones);
   }
@@ -654,6 +675,14 @@ CameraOperatorService::analyse(const ProcessFrameInput& input)
       {.rgb = reinterpret_cast<const uint8_t*>(rgb.data),
        .width = rgb.cols,
        .height = rgb.rows});
+
+  if (inputs_.look.enabled) {
+    const auto floor = static_cast<float>(inputs_.objects.confidence);
+    const auto doubtFloor = static_cast<float>(inputs_.look.doubtMinConfidence);
+    std::erase_if(objects, [floor, doubtFloor](const DetectedObject& object) {
+      return object.confidence < (object.name == "person" ? doubtFloor : floor);
+    });
+  }
 
   {
     std::lock_guard<std::mutex> lock(stateMutex_);
@@ -767,6 +796,16 @@ void CameraOperatorService::interpret(const ProcessFrameInput& input, FrameAnaly
       found->second.signature = personSignature(rgb, object);
     }
   }
+  if (inputs_.dependencies.sighting && rgb.cols > 0 && rgb.rows > 0)
+    for (const auto& object : objects)
+      if (object.name == "person" && object.trackId > 0)
+        inputs_.dependencies.sighting({.cameraId = cameraId,
+                                       .trackId = object.trackId,
+                                       .box = {.x = object.x / rgb.cols,
+                                               .y = object.y / rgb.rows,
+                                               .w = object.w / rgb.cols,
+                                               .h = object.h / rgb.rows},
+                                       .atMs = stamp});
   intelligence.objects = objects;
   intelligence.night = night;
   intelligence.state = operatorState;
@@ -1003,6 +1042,41 @@ void CameraOperatorService::publishPersonPending(
   ObjectDetectedEvent event = pending->second;
   event.detectedAtMs = input.nowMs;
   event.publishedAtMs = input.nowMs;
+  const auto primary = std::ranges::find_if(event.objects, [&input](const DetectedEventObject& object) {
+    return object.name == "person" && object.trackId == input.trackId;
+  });
+  if (primary != event.objects.end() && event.frameWidth > 0 && event.frameHeight > 0) {
+    const NormalizedBox box{.x = primary->x / static_cast<double>(event.frameWidth),
+                            .y = primary->y / static_cast<double>(event.frameHeight),
+                            .w = primary->w / static_cast<double>(event.frameWidth),
+                            .h = primary->h / static_cast<double>(event.frameHeight)};
+    const bool protect = inputs_.dependencies.protects && inputs_.dependencies.protects();
+    event.doubtful = second_look::doubtful({.confidence = primary->confidence,
+                                            .confirmConfidence = static_cast<float>(inputs_.objects.confidence),
+                                            .boxShare = aim_math::boxShare(box),
+                                            .smallBoxShare = inputs_.look.smallBoxShare,
+                                            .unknownPerson = primary->identity != "known",
+                                            .protect = protect});
+    event.lookable = inputs_.dependencies.lookable && inputs_.dependencies.lookable(input.cameraId);
+    const int cell = aim_math::areaCell(box);
+    if (event.doubtful && inputs_.look.enabled &&
+        LookCooldown::instance().cooling({.cameraId = input.cameraId, .cell = cell, .atMs = input.nowMs})) {
+      input.state.pendingPersons.erase(pending);
+      input.state.pendingPersonStartMs.erase(input.trackId);
+      return;
+    }
+    const bool lookHere = event.doubtful && inputs_.look.enabled && inputs_.dependencies.secondLook != nullptr &&
+                          !(event.lookable && protect) && drogon::app().isRunning();
+    if (lookHere) {
+      input.state.pendingPersons.erase(pending);
+      input.state.pendingPersonStartMs.erase(input.trackId);
+      const auto track = input.state.personTracks.find(input.trackId);
+      if (track != input.state.personTracks.end())
+        track->second.lastEmitMs = input.nowMs;
+      lookAgain({.event = std::move(event), .trackId = input.trackId, .box = box, .cell = cell});
+      return;
+    }
+  }
   const ObjectEventPublishResult result =
       inputs_.dependencies.sink
           ? inputs_.dependencies.sink->publish(event)
@@ -1018,14 +1092,59 @@ void CameraOperatorService::publishPersonPending(
     const auto track = input.state.personTracks.find(input.trackId);
     if (track != input.state.personTracks.end())
       track->second.lastEmitMs = input.nowMs;
-    EvidenceUploader::instance().uploadDetection(input.cameraId, input.nowMs);
-    static_cast<void>(ClipRecorder::instance().requestClip(
-        {.cameraId = input.cameraId, .trigger = CameraClipTrigger::Event}));
-    if (inputs_.dependencies.detections != nullptr)
-      drogon::async_run([this, cameraId = input.cameraId]() -> drogon::Task<void> {
-        co_await inputs_.dependencies.detections->detected(cameraId);
-      });
+    afterRecorded({.cameraId = input.cameraId, .nowMs = input.nowMs});
   }
+}
+
+void CameraOperatorService::afterRecorded(const RecordedInput& input)
+{
+  EvidenceUploader::instance().uploadDetection(input.cameraId, input.nowMs);
+  static_cast<void>(ClipRecorder::instance().requestClip(
+      {.cameraId = input.cameraId, .trigger = CameraClipTrigger::Event, .atEpochMs = 0}));
+  if (inputs_.dependencies.detections != nullptr)
+    drogon::async_run([this, cameraId = input.cameraId]() -> drogon::Task<void> {
+      co_await inputs_.dependencies.detections->detected(cameraId);
+    });
+}
+
+void CameraOperatorService::lookAgain(SecondLookJob job)
+{
+  drogon::app().getLoop()->queueInLoop([this, job = std::move(job)]() mutable {
+    drogon::async_run([this, job = std::move(job)]() mutable -> drogon::Task<void> {
+      const in_flight::Guard running(inFlight_);
+      const int64_t cameraId = job.event.cameraId;
+      const SecondLookResult result = co_await inputs_.dependencies.secondLook->confirm(
+          {.cameraId = cameraId,
+           .cameraName = job.event.cameraName,
+           .box = job.box,
+           .grabs = inputs_.look.grabs,
+           .budgetMs = inputs_.look.budgetMs,
+           .sectors = {},
+           .position = {},
+           .awayFromHome = false,
+           .fov = {}});
+      const int64_t now = nowMs();
+      if (!result.confirmed) {
+        LookCooldown::instance().cool({.cameraId = cameraId, .cell = job.cell, .atMs = now}, inputs_.look.cooldownMs);
+        LOG_INFO << "Camera operator: camera " << cameraId << " track " << job.trackId
+                 << " was not confirmed by a second look; discarded, area cooling for "
+                 << inputs_.look.cooldownMs / 1000 << " s";
+        co_return;
+      }
+      job.event.secondLook = "confirmed";
+      job.event.lookConfidence = result.confidence;
+      job.event.doubtful = false;
+      job.event.publishedAtMs = now;
+      if (!result.crops.empty())
+        SnapshotStore::instance().putPersonCrop(
+            {.cameraId = cameraId, .trackId = job.trackId, .jpeg = result.crops.back(), .atMs = now});
+      const ObjectEventPublishResult published =
+          inputs_.dependencies.sink ? inputs_.dependencies.sink->publish(job.event) : ObjectEventPublishResult::Failed;
+      if (published == ObjectEventPublishResult::Recorded)
+        afterRecorded({.cameraId = cameraId, .nowMs = now});
+      co_return;
+    });
+  });
 }
 
 void CameraOperatorService::publishOtherPending(const PublishOtherInput& input)
@@ -1060,6 +1179,6 @@ void CameraOperatorService::publishOtherPending(const PublishOtherInput& input)
   if (result == ObjectEventPublishResult::Recorded) {
     EvidenceUploader::instance().uploadDetection(input.cameraId, input.nowMs);
     static_cast<void>(ClipRecorder::instance().requestClip(
-        {.cameraId = input.cameraId, .trigger = CameraClipTrigger::Event}));
+        {.cameraId = input.cameraId, .trigger = CameraClipTrigger::Event, .atEpochMs = 0}));
   }
 }

@@ -1,5 +1,6 @@
 #include "patrol-runner.hxx"
 
+#include <feature/camera-control/services/aim-board.hxx>
 #include <shared/services/privacy-state/privacy-state.hxx>
 #include <shared/utils/in-flight/in-flight.hxx>
 
@@ -39,6 +40,8 @@ std::string endReason(const PatrolSituation& situation, bool configured)
     return "no_stops";
   if (!situation.moduleActive)
     return "module_off";
+  if (!situation.allowed)
+    return "not_away";
   if (!situation.online)
     return "offline";
   if (situation.masked)
@@ -99,7 +102,7 @@ PatrolProgress PatrolRunner::progressOf(int64_t cameraId)
 void PatrolRunner::keep(int64_t cameraId, const PatrolProgress& progress)
 {
   const std::scoped_lock lock(mutex_);
-  if (!progress.active && progress.nextStop == 0) {
+  if (!progress.active && progress.nextStop == 0 && progress.restUntilMs == 0) {
     progress_.erase(cameraId);
     return;
   }
@@ -130,9 +133,12 @@ drogon::Task<void> PatrolRunner::tick()
   const in_flight::Guard guard(inFlight_);
   if (!running_.load(std::memory_order_acquire))
     co_return;
+  const CameraPtzConfig& ptz = CameraControlFeatureService::ptz();
   const PatrolClock moment{.nowMs = nowMs(),
                           .localHour = localHourNow(),
-                          .moduleActive = !config_.active || config_.active()};
+                          .moduleActive = !config_.active || config_.active(),
+                          .allowed = ptz.patrolEnabled && config_.awayOrArmed && config_.awayOrArmed(),
+                          .everyMs = ptz.patrolEveryMs};
   const auto patrols = co_await repository_.findActive();
   std::vector<int64_t> seen;
   seen.reserve(patrols.size());
@@ -151,6 +157,14 @@ drogon::Task<void> PatrolRunner::follow(PatrolTarget target, PatrolClock moment)
 {
   const int64_t cameraId = target.cameraId;
   PatrolProgress progress = progressOf(cameraId);
+  if (config_.busy && config_.busy(cameraId)) {
+    if (progress.active) {
+      progress.active = false;
+      keep(cameraId, progress);
+      LOG_INFO << "Camera " << cameraId << ": the patrol yields to a follow";
+    }
+    co_return;
+  }
   const PatrolSituation situation{
       .enabled = target.patrol.has_value() && target.patrol->isEnabled,
       .stopCount = target.patrol ? target.patrol->stops.size() : 0,
@@ -160,6 +174,8 @@ drogon::Task<void> PatrolRunner::follow(PatrolTarget target, PatrolClock moment)
       .online = target.online,
       .masked = PrivacyStateService::instance().masked(cameraId),
       .moduleActive = moment.moduleActive,
+      .allowed = moment.allowed,
+      .everyMs = moment.everyMs,
       .lease = PtzLease::instance().stateOf({.cameraId = cameraId, .atMs = moment.nowMs}),
       .nowMs = moment.nowMs,
       .progress = progress};
@@ -176,6 +192,18 @@ drogon::Task<void> PatrolRunner::follow(PatrolTarget target, PatrolClock moment)
         LOG_INFO << "Camera " << cameraId << ": the patrol yields to whoever aims the camera";
       }
       co_return;
+    case PatrolStepKind::Rest: {
+      keep(cameraId,
+           {.active = false,
+            .nextStop = 0,
+            .arrivedAtMs = 0,
+            .lapStartedMs = progress.lapStartedMs,
+            .restUntilMs = progress.lapStartedMs + moment.everyMs});
+      co_await service_.endPatrol({.cameraId = cameraId, .returnHome = true});
+      co_await service_.recordPatrol({.cameraId = cameraId, .phase = "ended", .reason = "lap"});
+      LOG_INFO << "Camera " << cameraId << ": the patrol finished a lap and rests at home";
+      co_return;
+    }
     case PatrolStepKind::End: {
       keep(cameraId, PatrolProgress{});
       const std::string reason = endReason(situation, target.patrol.has_value());
@@ -193,24 +221,44 @@ drogon::Task<void> PatrolRunner::follow(PatrolTarget target, PatrolClock moment)
   const std::size_t count = target.patrol->stops.size();
   const std::string presetId = target.patrol->stops[step.stop % count];
   const bool starting = !progress.active;
-  const auto result = co_await service_.patrolMove({.cameraId = cameraId, .presetId = presetId});
+  const CameraPtzConfig& ptz = CameraControlFeatureService::ptz();
+  if (!AimBoard::instance().wearAllows(
+          {.cameraId = cameraId, .nowMs = moment.nowMs, .perMinute = ptz.movesPerMinute, .dailyCap = ptz.dailyMoveCap}))
+    co_return;
+  const auto result =
+      co_await service_.gotoByArgus({.cameraId = cameraId, .presetId = presetId, .reason = "patrol"});
   const int64_t movedAt = nowMs();
+  const int64_t lapStartedMs = step.stop == 0 ? movedAt : progress.lapStartedMs;
 
   if (result && result->ok) {
     keep(cameraId,
-         {.active = true, .nextStop = (step.stop + 1) % count, .arrivedAtMs = movedAt + config_.settleMs});
+         {.active = true,
+          .nextStop = (step.stop + 1) % count,
+          .arrivedAtMs = movedAt + config_.settleMs,
+          .lapStartedMs = lapStartedMs,
+          .restUntilMs = 0});
     if (starting)
       co_await service_.recordPatrol({.cameraId = cameraId, .phase = "started", .reason = "schedule"});
     co_return;
   }
   const std::string failure = result ? result->failure : std::string("not_found");
   if (failure == "lease_held" || failure == "privacy_on") {
-    keep(cameraId, {.active = false, .nextStop = progress.nextStop, .arrivedAtMs = progress.arrivedAtMs});
+    keep(cameraId,
+         {.active = false,
+          .nextStop = progress.nextStop,
+          .arrivedAtMs = progress.arrivedAtMs,
+          .lapStartedMs = progress.lapStartedMs,
+          .restUntilMs = 0});
     co_return;
   }
   const bool holds =
       PtzLease::instance().holds({.cameraId = cameraId, .holder = PtzHolder::Argus, .userId = 0, .atMs = movedAt});
-  keep(cameraId, {.active = holds, .nextStop = (step.stop + 1) % count, .arrivedAtMs = movedAt});
+  keep(cameraId,
+       {.active = holds,
+        .nextStop = (step.stop + 1) % count,
+        .arrivedAtMs = movedAt,
+        .lapStartedMs = lapStartedMs,
+        .restUntilMs = 0});
   LOG_WARN << "Camera " << cameraId << ": the patrol could not reach preset " << presetId << " ("
            << (result ? result->error : std::string("camera not found")) << "); it moves on";
   if (starting && holds)

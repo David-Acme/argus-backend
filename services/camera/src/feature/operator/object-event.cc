@@ -71,5 +71,11 @@ Json::Value object_event::toJson(const ObjectDetectedEvent& event)
     objects.append(entry);
   }
   json["objects"] = objects;
+  json["doubtful"] = event.doubtful;
+  json["lookable"] = event.lookable;
+  if (!event.secondLook.empty()) {
+    json["secondLook"] = event.secondLook;
+    json["lookConfidence"] = event.lookConfidence;
+  }
   return json;
 }

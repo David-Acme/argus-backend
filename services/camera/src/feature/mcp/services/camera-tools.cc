@@ -1,6 +1,9 @@
 #include "camera-tools.hxx"
 
 #include <auth/tool-gate.hxx>
+#include <auth/user-role.hxx>
+#include <errors/response-exception.hxx>
+#include <feature/camera-control/dtos/camera-ptz-dto.hxx>
 #include <feature/camera-control/dtos/camera-settings-dto.hxx>
 #include <feature/camera-control/services/camera-control-feature-service.hxx>
 #include <shared/services/privacy-state/privacy-state.hxx>
@@ -290,6 +293,216 @@ drogon::Task<argus::mcp::ToolOutcome> setPrivacy(PrivacyRequest request)
   outcome.structured["confirmed"] = reportedNow != CameraPrivacyState::Unknown;
   co_return outcome;
 }
+constexpr int64_t kLookPanDegrees = 15;
+constexpr int64_t kLookTiltDegrees = 10;
+
+struct PresetChoice
+{
+  std::string id;
+  std::string name;
+};
+
+struct PresetWalk
+{
+  const Json::Value& node;
+  std::vector<PresetChoice>& out;
+  int depth{0};
+};
+
+void collectPresets(const PresetWalk& walk)
+{
+  const Json::Value& node = walk.node;
+  std::vector<PresetChoice>& out = walk.out;
+  if (!node.isObject() || walk.depth > 8 || !out.empty())
+    return;
+  const Json::Value& ids = node["id"];
+  const Json::Value& names = node["name"];
+  if (ids.isArray() && names.isArray() && ids.size() == names.size()) {
+    for (Json::ArrayIndex index = 0; index < ids.size(); ++index)
+      out.push_back({.id = ids[index].isString() ? ids[index].asString() : std::to_string(ids[index].asInt64()),
+                     .name = names[index].asString()});
+    return;
+  }
+  for (const auto& key : node.getMemberNames())
+    collectPresets({.node = node[key], .out = out, .depth = walk.depth + 1});
+}
+
+std::string aimRefusalText(const ResponseException& error, bool english)
+{
+  if (error.errorCode() == "GUARD_OFF_DUTY")
+    return english ? "You can move the camera only while you are on duty."
+                   : "Solo puedes mover la cámara mientras estás de turno.";
+  if (error.errorCode() == "PRESETS_NOT_YOURS")
+    return english ? "Only the owner or a resident changes the camera positions."
+                   : "Solo el propietario o un residente cambia las posiciones de la cámara.";
+  return english ? "I could not move the camera." : "No pude mover la cámara.";
+}
+
+struct AimFailure
+{
+  const CameraControlResult& result;
+  const std::string& camera;
+  bool english{false};
+};
+
+std::string aimFailureText(const AimFailure& failure)
+{
+  const CameraControlResult& result = failure.result;
+  const std::string& camera = failure.camera;
+  const bool english = failure.english;
+  if (!result)
+    return english ? "I could not find that camera." : "No encuentro esa cámara.";
+  if (result->failure == "privacy_on")
+    return english ? "The " + camera + " camera is in privacy mode; Argus does not move it."
+                   : "La cámara " + camera + " está en modo privacidad; Argus no la mueve.";
+  if (result->failure == "no_home")
+    return english ? "The " + camera + " camera has no home position yet."
+                   : "La cámara " + camera + " todavía no tiene posición de vigilancia.";
+  return english ? "The " + camera + " camera did not move" + (result->error.empty() ? "." : ": " + result->error)
+                 : "La cámara " + camera + " no se movió" + (result->error.empty() ? "." : ": " + result->error);
+}
+
+struct AimRequest
+{
+  CameraCatalog catalog;
+  argus::mcp::ToolInvocation invocation;
+};
+
+drogon::Task<std::optional<CameraChoice>> aimedCamera(const AimRequest& request, argus::mcp::ToolOutcome& refusal)
+{
+  const bool english = request.invocation.caller.lang == "en";
+  const std::string asked = request.invocation.arguments.get("camera", "").asString();
+  const auto cameras = co_await request.catalog();
+  if (cameras.empty()) {
+    refusal = argus::mcp::toolFailure(
+        {.text = english ? "There are no cameras yet." : "Todavía no hay cámaras.", .code = "no_cameras"});
+    co_return std::nullopt;
+  }
+  if (text_norm::folded(asked).empty() && cameras.size() == 1)
+    co_return cameras.front();
+  const CameraMatch match = matchCamera({.cameras = cameras, .text = asked});
+  if (match.kind == CameraMatchKind::Exact)
+    co_return match.camera;
+  refusal = argus::mcp::toolFailure(
+      {.text = match.kind == CameraMatchKind::Ambiguous
+                   ? (english ? "Which camera do you mean? " + listed(match.candidates) + "."
+                              : "¿A cuál cámara te refieres? " + listed(match.candidates) + ".")
+                   : (english ? "Which camera? The cameras are: " + listed(cameras) + "."
+                              : "¿Qué cámara? Las cámaras son: " + listed(cameras) + "."),
+       .code = match.kind == CameraMatchKind::Ambiguous ? "ambiguous_camera" : "unknown_camera"});
+  co_return std::nullopt;
+}
+
+bool homeWord(const std::string& text)
+{
+  const std::string folded = text_norm::folded(text);
+  return folded == "home" || folded == "casa" || folded == "vigilancia" || folded == "inicio" ||
+         folded == "posicion de vigilancia";
+}
+
+drogon::Task<argus::mcp::ToolOutcome> gotoPreset(AimRequest request)
+{
+  const argus::mcp::ToolInvocation& invocation = request.invocation;
+  const bool english = invocation.caller.lang == "en";
+  argus::mcp::ToolOutcome refusal;
+  const auto camera = co_await aimedCamera(request, refusal);
+  if (!camera)
+    co_return refusal;
+  const UserRole role = parseUserRole(invocation.caller.role).value_or(UserRole::Unknown);
+  const std::string wanted = invocation.arguments.get("preset", "").asString();
+  const CameraControlFeatureService service;
+  try {
+    CameraControlResult result;
+    if (homeWord(wanted)) {
+      result = co_await service.preset({.cameraId = camera->id,
+                                        .body = {.action = "go_home", .id = {}, .name = {}},
+                                        .actorUserId = invocation.caller.userId,
+                                        .actorRole = role});
+    }
+    else {
+      const auto listed = co_await service.presets(camera->id);
+      std::vector<PresetChoice> presets;
+      if (listed && listed->ok)
+        collectPresets({.node = listed->data, .out = presets, .depth = 0});
+      std::vector<std::string> names;
+      names.reserve(presets.size());
+      for (const auto& preset : presets)
+        names.push_back(preset.name);
+      const auto found = text_norm::matchName(names, wanted);
+      if (found.kind != text_norm::NameMatchKind::Exact) {
+        std::string known;
+        for (const auto& name : names)
+          known += (known.empty() ? "" : ", ") + name;
+        co_return argus::mcp::toolFailure(
+            {.text = english ? "The " + camera->name + " camera has no position called " + wanted +
+                                   (known.empty() ? "." : ". Its positions are: " + known + ".")
+                             : "La cámara " + camera->name + " no tiene una posición llamada " + wanted +
+                                   (known.empty() ? "." : ". Sus posiciones son: " + known + "."),
+             .code = "unknown_preset"});
+      }
+      const PresetChoice& preset = presets.at(found.hits.front());
+      result = co_await service.preset({.cameraId = camera->id,
+                                        .body = {.action = "goto", .id = preset.id, .name = preset.name},
+                                        .actorUserId = invocation.caller.userId,
+                                        .actorRole = role});
+    }
+    if (!result || !result->ok)
+      co_return argus::mcp::toolFailure({.text = aimFailureText({.result = result, .camera = camera->name, .english = english}), .code = "aim_failed"});
+  }
+  catch (const ResponseException& error) {
+    co_return argus::mcp::toolFailure({.text = aimRefusalText(error, english), .code = error.errorCode()});
+  }
+  argus::mcp::ToolOutcome outcome;
+  outcome.text = english ? "The " + camera->name + " camera turned to " + wanted + "."
+                         : "La cámara " + camera->name + " giró hacia " + wanted + ".";
+  outcome.structured["cameraId"] = camera->id;
+  outcome.structured["camera"] = camera->name;
+  outcome.structured["preset"] = wanted;
+  co_return outcome;
+}
+
+drogon::Task<argus::mcp::ToolOutcome> lookDirection(AimRequest request)
+{
+  const argus::mcp::ToolInvocation& invocation = request.invocation;
+  const bool english = invocation.caller.lang == "en";
+  argus::mcp::ToolOutcome refusal;
+  const auto camera = co_await aimedCamera(request, refusal);
+  if (!camera)
+    co_return refusal;
+  const UserRole role = parseUserRole(invocation.caller.role).value_or(UserRole::Unknown);
+  const std::string direction = invocation.arguments.get("direction", "").asString();
+  const CameraControlFeatureService service;
+  try {
+    CameraControlResult result;
+    if (direction == "home") {
+      result = co_await service.preset({.cameraId = camera->id,
+                                        .body = {.action = "go_home", .id = {}, .name = {}},
+                                        .actorUserId = invocation.caller.userId,
+                                        .actorRole = role});
+    }
+    else {
+      CameraPtzDto body;
+      body.x = direction == "left" ? -kLookPanDegrees : direction == "right" ? kLookPanDegrees : 0;
+      body.y = direction == "up" ? kLookTiltDegrees : direction == "down" ? -kLookTiltDegrees : 0;
+      result = co_await service.move(
+          {.cameraId = camera->id, .body = body, .actorUserId = invocation.caller.userId, .actorRole = role});
+    }
+    if (!result || !result->ok)
+      co_return argus::mcp::toolFailure({.text = aimFailureText({.result = result, .camera = camera->name, .english = english}), .code = "aim_failed"});
+  }
+  catch (const ResponseException& error) {
+    co_return argus::mcp::toolFailure({.text = aimRefusalText(error, english), .code = error.errorCode()});
+  }
+  argus::mcp::ToolOutcome outcome;
+  outcome.text = direction == "home"
+                     ? (english ? "The " + camera->name + " camera is back at its home position."
+                                : "La cámara " + camera->name + " volvió a su posición de vigilancia.")
+                     : (english ? "I moved the " + camera->name + " camera." : "Moví la cámara " + camera->name + ".");
+  outcome.structured["cameraId"] = camera->id;
+  outcome.structured["camera"] = camera->name;
+  outcome.structured["direction"] = direction;
+  co_return outcome;
+}
 }
 
 CameraMatch matchCamera(const CameraQuery& query)
@@ -364,6 +577,33 @@ std::shared_ptr<argus::mcp::McpServer> cameraToolServer(const CameraToolsInput& 
                                                        .posture = posture,
                                                        .ledger = ledger,
                                                        .invocation = invocation});
+                                  }}));
+  server->add({.name = "camera.goto_preset",
+               .title = "",
+               .description = "Gira una cámara a una de sus posiciones guardadas, por su nombre. camera es la "
+                              "cámara (vacío si solo hay una) y preset el nombre de la posición; casa o vigilancia "
+                              "la devuelven a su posición de vigilancia",
+               .inputSchema = schema::object({{.name = "camera", .schema = schema::text(), .required = false},
+                                              {.name = "preset", .schema = schema::text(), .required = true}}),
+               .annotations = {},
+               .module = "surveillance",
+               .capability = "camera.aim"},
+              argus::mcp::onLoop({.loop = input.loop, .handler = [catalog](const argus::mcp::ToolInvocation& invocation) {
+                                    return gotoPreset({.catalog = catalog, .invocation = invocation});
+                                  }}));
+  server->add({.name = "camera.look",
+               .title = "",
+               .description = "Mueve una cámara un paso hacia una dirección: left, right, up o down; home la "
+                              "devuelve a su posición de vigilancia",
+               .inputSchema = schema::object(
+                   {{.name = "camera", .schema = schema::text(), .required = false},
+                    {.name = "direction", .schema = schema::choice({"left", "right", "up", "down", "home"}),
+                     .required = true}}),
+               .annotations = {},
+               .module = "surveillance",
+               .capability = "camera.aim"},
+              argus::mcp::onLoop({.loop = input.loop, .handler = [catalog](const argus::mcp::ToolInvocation& invocation) {
+                                    return lookDirection({.catalog = catalog, .invocation = invocation});
                                   }}));
   server->setGate(tool_gate::capabilities());
   return server;

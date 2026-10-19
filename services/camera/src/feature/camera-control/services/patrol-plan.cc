@@ -56,7 +56,7 @@ PatrolStep decide(const PatrolSituation& situation)
 {
   const PatrolProgress& progress = situation.progress;
   const bool runnable = situation.enabled && situation.stopCount > 0 && situation.online &&
-                        !situation.masked && situation.moduleActive &&
+                        !situation.masked && situation.moduleActive && situation.allowed &&
                         inWindow(situation.window, situation.localHour);
   if (!runnable) {
     if (!progress.active)
@@ -66,10 +66,15 @@ PatrolStep decide(const PatrolSituation& situation)
             .returnHome = situation.online && !situation.masked && situation.moduleActive};
   }
   const std::size_t next = progress.nextStop % situation.stopCount;
+  if (!progress.active && situation.nowMs < progress.restUntilMs)
+    return {.kind = PatrolStepKind::Idle, .stop = next, .returnHome = false};
   if (heldByOthers(situation))
     return {.kind = PatrolStepKind::Yield, .stop = next, .returnHome = false};
   if (progress.active && situation.nowMs < progress.arrivedAtMs + situation.dwellMs)
     return {.kind = PatrolStepKind::Wait, .stop = next, .returnHome = false};
+  if (progress.active && next == 0 && situation.everyMs > 0 &&
+      situation.nowMs < progress.lapStartedMs + situation.everyMs)
+    return {.kind = PatrolStepKind::Rest, .stop = 0, .returnHome = true};
   return {.kind = PatrolStepKind::Advance, .stop = next, .returnHome = false};
 }
 

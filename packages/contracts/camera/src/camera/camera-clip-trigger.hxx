@@ -7,7 +7,9 @@ enum class CameraClipTrigger : uint8_t
 {
   Motion = 0,
   Event,
-  Continuous
+  Continuous,
+  Tamper,
+  Look
 };
 
 inline std::string cameraClipTriggerToString(CameraClipTrigger trigger)
@@ -19,6 +21,10 @@ inline std::string cameraClipTriggerToString(CameraClipTrigger trigger)
       return "continuous";
     case CameraClipTrigger::Event:
       return "event";
+    case CameraClipTrigger::Tamper:
+      return "tamper";
+    case CameraClipTrigger::Look:
+      return "look";
   }
   return "event";
 }
@@ -29,5 +35,9 @@ inline CameraClipTrigger cameraClipTriggerFromString(const std::string& s)
     return CameraClipTrigger::Motion;
   if (s == "continuous")
     return CameraClipTrigger::Continuous;
+  if (s == "tamper")
+    return CameraClipTrigger::Tamper;
+  if (s == "look")
+    return CameraClipTrigger::Look;
   return CameraClipTrigger::Event;
 }

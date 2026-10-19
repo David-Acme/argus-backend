@@ -13,6 +13,15 @@ argus_module(NAME guard
         guard-schema.cc
         guard-service.cc
         guard-weapon-lexicon.cc
+        guard-tamper-policy.cc
+        maintenance-schema.cc
+        controllers/maintenance-controller.cc
+        dtos/declare-maintenance-dto.cc
+        dtos/maintenance-view-dto.cc
+        dtos/tamper-ask-answer-dto.cc
+        repositories/maintenance/maintenance-repository.cc
+        services/maintenance-service.cc
+        services/targeted-notice.cc
         controllers/guard-controller.cc
         controllers/response-controller.cc
         infra/identity-response-directory.cc

@@ -44,7 +44,9 @@ enum class ResourceScope : std::uint8_t
   Presence,
   Entries,
   Clips,
-  Recording
+  Recording,
+  Aim,
+  Maintenance
 };
 
 
@@ -56,7 +58,7 @@ struct ResourceRoute
   drogon::HttpMethod method;
 };
 
-inline constexpr std::array<ResourceRoute, 22> kResourceRoutes{{
+inline constexpr std::array<ResourceRoute, 24> kResourceRoutes{{
     {.domain = ResourceDomain::Camera,
      .scope = ResourceScope::Device,
      .path = "/camera",
@@ -144,6 +146,14 @@ inline constexpr std::array<ResourceRoute, 22> kResourceRoutes{{
     {.domain = ResourceDomain::Activity,
      .scope = ResourceScope::Entries,
      .path = "/sync/activity",
+     .method = drogon::Get},
+    {.domain = ResourceDomain::Camera,
+     .scope = ResourceScope::Aim,
+     .path = "/camera/0/aim",
+     .method = drogon::Get},
+    {.domain = ResourceDomain::Guard,
+     .scope = ResourceScope::Maintenance,
+     .path = "/guard/maintenance",
      .method = drogon::Get},
 }};
 
@@ -235,6 +245,10 @@ inline std::string resourceScopeToString(ResourceScope scope)
       return "clips";
     case ResourceScope::Recording:
       return "recording";
+    case ResourceScope::Aim:
+      return "aim";
+    case ResourceScope::Maintenance:
+      return "maintenance";
   }
   return "device";
 }
@@ -285,6 +299,10 @@ inline std::optional<ResourceScope> resourceScopeFromString(std::string_view nam
     return ResourceScope::Clips;
   if (name == "recording")
     return ResourceScope::Recording;
+  if (name == "aim")
+    return ResourceScope::Aim;
+  if (name == "maintenance")
+    return ResourceScope::Maintenance;
   return std::nullopt;
 }
 

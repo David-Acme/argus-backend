@@ -4,6 +4,9 @@
 #include <drogon/utils/Utilities.h>
 #include <errors/response-exception.hxx>
 #include <feature/camera-control/services/duty-gate.hxx>
+#include <feature/camera-control/services/aim-board.hxx>
+#include <feature/camera-control/services/aim-settings.hxx>
+#include <cmath>
 #include <runtime/blocking-task.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
@@ -136,8 +139,17 @@ CameraControlFeatureService::move(const CameraMoveInput& input) const
   auto result = co_await onDevice(cameraId, [body](ICameraDriver& driver) {
     return driver.move({.x = body.x, .y = body.y, .angle = body.angle, .stop = body.stop});
   });
-  if (succeeded(result))
+  if (succeeded(result)) {
     CameraSceneLog::instance().noteAimed({.cameraId = cameraId, .atMs = nowMs()});
+    if (!body.stop && !body.angle && (body.x || body.y))
+      AimBoard::instance().recordMove(
+          {.cameraId = cameraId,
+           .delta = {.pan = static_cast<double>(body.x.value_or(0)), .tilt = static_cast<double>(body.y.value_or(0))},
+           .atMs = nowMs()});
+    else if (body.angle)
+      AimBoard::instance().lose(cameraId);
+  }
+  co_await publishAim(cameraId);
   co_return result;
 }
 
@@ -219,6 +231,14 @@ CameraControlFeatureService::preset(const CameraPresetInput& input) const
   });
   if (succeeded(result) && body.action != "save" && body.action != "delete")
     CameraSceneLog::instance().noteAimed({.cameraId = cameraId, .atMs = nowMs()});
+  if (succeeded(result) && body.action == "goto") {
+    const auto camera = co_await cameraRepository_.findById(cameraId);
+    if (camera && homePresetOf(camera->config) == body.id)
+      AimBoard::instance().arriveHome(cameraId);
+    else
+      AimBoard::instance().lose(cameraId);
+    co_await publishAim(cameraId);
+  }
   if (succeeded(result) && (body.action == "save" || body.action == "delete"))
     co_await announceStatus(cameraId);
   co_return result;
@@ -257,6 +277,7 @@ CameraControlFeatureService::setHome(const CameraPresetInput& input) const
                                  .client = nullptr});
   Json::Value data(Json::objectValue);
   data["homePreset"] = input.body.id;
+  co_await publishAim(input.cameraId);
   co_return DriverResult{.ok = true, .error = {}, .data = data};
 }
 
@@ -313,6 +334,9 @@ CameraControlFeatureService::returnHome(const CameraReturnHomeInput& input) cons
                              .failure = "lease_held"};
   }
   const int64_t settle = ptzConfig().settleMs;
+  if (byArgus)
+    AimBoard::instance().setActivity({.cameraId = cameraId, .activity = AimActivity::Returning});
+  CameraSceneLog::instance().setArgusAway({.cameraId = cameraId, .away = false});
   CameraSceneLog::instance().beginMove(
       {.cameraId = cameraId, .startMs = started, .expectedEndMs = started + settle, .returnsHome = true});
   const auto result = co_await onDevice(cameraId, [home, byArgus](ICameraDriver& driver) {
@@ -351,14 +375,31 @@ CameraControlFeatureService::returnHome(const CameraReturnHomeInput& input) cons
     if (byArgus)
       PtzLease::instance().release({.cameraId = cameraId, .holder = PtzHolder::Argus, .userId = 0, .atMs = ended});
   });
+  if (succeeded(result))
+    AimBoard::instance().arriveHome(cameraId);
+  else
+    AimBoard::instance().setActivity({.cameraId = cameraId, .activity = AimActivity::Idle});
   if (byArgus && succeeded(result))
     co_await recordAutomaticMove(
         {.cameraId = cameraId, .reason = input.reason, .target = "home", .durationMs = nowMs() - started});
+  co_await publishAim(cameraId);
   co_return result;
 }
 
-drogon::Task<CameraControlResult>
-CameraControlFeatureService::patrolMove(const CameraPatrolMoveInput& input) const
+const CameraPtzConfig& CameraControlFeatureService::ptz()
+{
+  return ptzConfig();
+}
+
+drogon::Task<void> CameraControlFeatureService::publishAim(int64_t cameraId) const
+{
+  const CameraChangeSink* sink = camera_change::getSink();
+  if (sink == nullptr)
+    co_return;
+  co_await sink->publishResource({.scope = ResourceScope::Aim, .ids = {cameraId}, .user = 0, .client = nullptr});
+}
+
+drogon::Task<CameraControlResult> CameraControlFeatureService::aimByArgus(const CameraAimInput& input) const
 {
   const int64_t cameraId = input.cameraId;
   if (PrivacyStateService::instance().masked(cameraId))
@@ -377,24 +418,157 @@ CameraControlFeatureService::patrolMove(const CameraPatrolMoveInput& input) cons
                            .attempted = false,
                            .failure = "lease_held"};
   const int64_t settle = ptzConfig().settleMs;
+  const auto pan = static_cast<int64_t>(std::lround(input.delta.pan));
+  const auto tilt = static_cast<int64_t>(std::lround(input.delta.tilt));
+  AimBoard::instance().setActivity({.cameraId = cameraId, .activity = input.activity});
+  CameraSceneLog::instance().setArgusAway({.cameraId = cameraId, .away = true});
   CameraSceneLog::instance().beginMove(
-      {.cameraId = cameraId, .startMs = started, .expectedEndMs = started + settle, .returnsHome = false});
-  const std::string presetId = input.presetId;
-  const auto result = co_await onDevice(cameraId, [presetId](ICameraDriver& driver) {
-    return driver.preset({.action = "goto", .id = presetId, .name = {}});
+      {.cameraId = cameraId, .startMs = started, .expectedEndMs = started + settle, .returnsHome = true});
+  const auto result = co_await onDevice(cameraId, [pan, tilt](ICameraDriver& driver) {
+    return driver.move({.x = pan, .y = tilt, .angle = std::nullopt, .stop = false});
   });
-  drogon::app().getLoop()->runAfter(static_cast<double>(settle) / 1000.0, [cameraId] {
-    CameraSceneLog::instance().endMove({.cameraId = cameraId, .atMs = nowMs()});
-  });
+  if (succeeded(result))
+    AimBoard::instance().recordMove(
+        {.cameraId = cameraId,
+         .delta = {.pan = static_cast<double>(pan), .tilt = static_cast<double>(tilt)},
+         .atMs = started});
+  if (drogon::app().isRunning())
+    drogon::app().getLoop()->runAfter(static_cast<double>(settle) / 1000.0, [cameraId] {
+      CameraSceneLog::instance().endMove({.cameraId = cameraId, .atMs = nowMs()});
+    });
+  else
+    CameraSceneLog::instance().endMove({.cameraId = cameraId, .atMs = started + settle});
+  if (succeeded(result))
+    co_await recordAutomaticMove({.cameraId = cameraId,
+                                  .reason = input.reason,
+                                  .target = "pan " + std::to_string(pan) + " tilt " + std::to_string(tilt),
+                                  .durationMs = settle});
+  co_await publishAim(cameraId);
   co_return result;
+}
+
+drogon::Task<CameraControlResult> CameraControlFeatureService::gotoByArgus(const CameraArgusGotoInput& input) const
+{
+  const int64_t cameraId = input.cameraId;
+  if (PrivacyStateService::instance().masked(cameraId))
+    co_return DriverResult{.ok = false,
+                           .error = "This camera is in privacy mode",
+                           .data = Json::Value(),
+                           .attempted = false,
+                           .failure = "privacy_on"};
+  const int64_t started = nowMs();
+  if (PtzLease::instance().claim({.cameraId = cameraId, .holder = PtzHolder::Argus, .userId = 0, .atMs = started}) ==
+      PtzClaimResult::Refused)
+    co_return DriverResult{.ok = false,
+                           .error = "Someone is moving this camera",
+                           .data = Json::Value(),
+                           .attempted = false,
+                           .failure = "lease_held"};
+  const int64_t settle = ptzConfig().settleMs;
+  AimBoard::instance().setActivity({.cameraId = cameraId, .activity = AimActivity::Patrolling});
+  CameraSceneLog::instance().setArgusAway({.cameraId = cameraId, .away = true});
+  CameraSceneLog::instance().beginMove(
+      {.cameraId = cameraId, .startMs = started, .expectedEndMs = started + settle, .returnsHome = true});
+  const std::string preset = input.presetId;
+  const auto result = co_await onDevice(cameraId, [preset](ICameraDriver& driver) {
+    return driver.preset({.action = "goto", .id = preset, .name = {}});
+  });
+  if (succeeded(result))
+    AimBoard::instance().recordMove({.cameraId = cameraId, .delta = {}, .atMs = started});
+  AimBoard::instance().lose(cameraId);
+  if (drogon::app().isRunning())
+    drogon::app().getLoop()->runAfter(static_cast<double>(settle) / 1000.0, [cameraId] {
+      CameraSceneLog::instance().endMove({.cameraId = cameraId, .atMs = nowMs()});
+    });
+  else
+    CameraSceneLog::instance().endMove({.cameraId = cameraId, .atMs = started + settle});
+  co_await publishAim(cameraId);
+  co_return result;
+}
+
+drogon::Task<Json::Value> CameraControlFeatureService::aimState(const CameraAimStateInput& input) const
+{
+  const auto camera = co_await cameraRepository_.findById(input.cameraId);
+  if (!camera)
+    throw ResponseException(CameraErrors::CameraNotFound);
+  const int64_t now = nowMs();
+  const AimSettings settings = aim_settings::parse({.capabilities = camera->capabilities, .config = camera->config});
+  const PtzLeaseState lease = PtzLease::instance().stateOf({.cameraId = input.cameraId, .atMs = now});
+  const AimSnapshot aim = AimBoard::instance().snapshot(input.cameraId);
+  Json::Value json(Json::objectValue);
+  json["cameraId"] = static_cast<Json::Int64>(input.cameraId);
+  json["ptz"] = settings.ptz;
+  json["homePreset"] = settings.homePreset.empty() ? Json::Value() : Json::Value(settings.homePreset);
+  json["atHome"] = aim.atHome;
+  json["positionKnown"] = aim.known;
+  json["pan"] = aim.position.pan;
+  json["tilt"] = aim.position.tilt;
+  Json::Value holder(Json::objectValue);
+  holder["holder"] = ptzHolderToString(lease.holder);
+  holder["userId"] = static_cast<Json::Int64>(lease.userId);
+  holder["mine"] = lease.holder != PtzHolder::None && lease.holder != PtzHolder::Argus &&
+                   lease.userId == input.userId;
+  holder["sinceMs"] = static_cast<Json::Int64>(lease.sinceMs);
+  holder["parkUntilMs"] = static_cast<Json::Int64>(lease.parkUntilMs);
+  json["lease"] = holder;
+  json["activity"] = aimActivityToString(aim.activity);
+  json["settings"] = aim_settings::toJson(settings);
+  Json::Value wear(Json::objectValue);
+  wear["movesToday"] = static_cast<Json::Int64>(aim.movesToday);
+  wear["dailyCap"] = static_cast<Json::Int64>(ptzConfig().dailyMoveCap);
+  json["wear"] = wear;
+  co_return json;
+}
+
+drogon::Task<Json::Value> CameraControlFeatureService::updateAim(const CameraAimUpdateInput& input) const
+{
+  const auto camera = co_await cameraRepository_.findById(input.cameraId);
+  if (!camera)
+    throw ResponseException(CameraErrors::CameraNotFound);
+  const Json::Value before = camera->toJson();
+  CameraUpdateInput change;
+  change.config = aim_settings::merged({.config = camera->config, .patch = input.patch});
+  const auto after = co_await cameraRepository_.update(input.cameraId, change);
+  if (const CameraChangeSink* sink = camera_change::getSink())
+    co_await sink->publishAudit({.recordId = input.cameraId,
+                                 .tableName = TableName::Camera,
+                                 .before = before,
+                                 .after = after.toJson(),
+                                 .actorId = input.actorUserId,
+                                 .client = nullptr});
+  co_await publishAim(input.cameraId);
+  co_return co_await aimState({.cameraId = input.cameraId, .userId = input.actorUserId});
+}
+
+drogon::Task<Json::Value> CameraControlFeatureService::lease(const CameraLeaseInput& input) const
+{
+  const int64_t now = nowMs();
+  if (input.hold) {
+    co_await admitActor({.userId = input.actorUserId, .role = input.actorRole, .changesPresets = false});
+    const PtzClaimResult claim = PtzLease::instance().claim(
+        {.cameraId = input.cameraId, .holder = PtzHolder::Viewer, .userId = input.actorUserId, .atMs = now});
+    if (claim == PtzClaimResult::Refused)
+      throw ResponseException(CameraErrors::CameraControlLocked.withMessage("Someone else is moving the camera"));
+  }
+  else {
+    PtzLease::instance().release(
+        {.cameraId = input.cameraId, .holder = PtzHolder::Viewer, .userId = input.actorUserId, .atMs = now});
+    PtzLease::instance().release(
+        {.cameraId = input.cameraId, .holder = PtzHolder::Person, .userId = input.actorUserId, .atMs = now});
+  }
+  co_await publishAim(input.cameraId);
+  co_return co_await aimState({.cameraId = input.cameraId, .userId = input.actorUserId});
 }
 
 drogon::Task<void> CameraControlFeatureService::endPatrol(const CameraPatrolEndInput& input) const
 {
   PtzLease::instance().release(
       {.cameraId = input.cameraId, .holder = PtzHolder::Argus, .userId = 0, .atMs = nowMs()});
-  if (!input.returnHome)
+  if (!input.returnHome) {
+    AimBoard::instance().setActivity({.cameraId = input.cameraId, .activity = AimActivity::Idle});
+    co_await publishAim(input.cameraId);
     co_return;
+  }
   const auto result = co_await returnHome({.cameraId = input.cameraId, .reason = "patrol"});
   if (result && !result->ok && result->failure != "no_home" && result->failure != "lease_held")
     LOG_WARN << "Camera " << input.cameraId << ": the patrol ended but the way home failed ("

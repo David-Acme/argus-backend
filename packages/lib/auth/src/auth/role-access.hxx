@@ -112,7 +112,7 @@ inline constexpr RoleMask kResidentGuardGuest =
 inline constexpr RoleMask kResidentGuardGuestBaseline =
     static_cast<RoleMask>(kResidentGuardGuest | kBaselineBit);
 
-inline constexpr std::array<GuardRouteAccess, 14> kGuardAccess = {{
+inline constexpr std::array<GuardRouteAccess, 20> kGuardAccess = {{
     {.path = "/guard/environments", .method = drogon::Get, .roles = kResidentAndGuard},
     {.path = "/guard/episodes", .method = drogon::Get, .roles = kResidentAndGuard},
     {.path = "/guard/mode", .method = drogon::Post, .roles = roleBit(UserRole::Resident)},
@@ -127,6 +127,12 @@ inline constexpr std::array<GuardRouteAccess, 14> kGuardAccess = {{
     {.path = "/guard/safety/pin", .method = drogon::Put, .roles = roleBit(UserRole::Resident)},
     {.path = "/guard/safety/pin", .method = drogon::Delete, .roles = roleBit(UserRole::Resident)},
     {.path = "/guard/siren", .method = drogon::Post, .roles = kResidentAndGuard},
+    {.path = "/guard/maintenance", .method = drogon::Get, .roles = kResidentAndGuard},
+    {.path = "/guard/maintenance", .method = drogon::Post, .roles = kResidentAndGuard},
+    {.path = "/guard/maintenance/{id}", .method = drogon::Delete, .roles = kResidentAndGuard},
+    {.path = "/guard/maintenance/{id}/view", .method = drogon::Post, .roles = kResidentAndGuard},
+    {.path = "/guard/incidents/{id}/mine", .method = drogon::Post, .roles = kResidentAndGuard},
+    {.path = "/guard/tamper/asks/{id}", .method = drogon::Post, .roles = roleBit(UserRole::Resident)},
 }};
 
 enum class CameraAction : std::uint8_t
@@ -146,12 +152,13 @@ struct CameraActionAccess
   RoleMask roles;
 };
 
-inline constexpr std::array<CameraActionAccess, 5> kCameraActionAccess = {{
+inline constexpr std::array<CameraActionAccess, 6> kCameraActionAccess = {{
     {.action = CameraAction::Talk, .segment = "talk", .method = drogon::Post, .roles = kResidentAndGuard},
     {.action = CameraAction::Watch, .segment = "webrtc", .method = drogon::Post, .roles = kResidentGuardGuest},
     {.action = CameraAction::Siren, .segment = "siren", .method = drogon::Post, .roles = kResidentAndGuard},
     {.action = CameraAction::Move, .segment = "ptz", .method = drogon::Patch, .roles = kResidentAndGuard},
     {.action = CameraAction::Preset, .segment = "preset", .method = drogon::Patch, .roles = kResidentAndGuard},
+    {.action = CameraAction::Move, .segment = "ptz/lease", .method = drogon::Post, .roles = kResidentAndGuard},
 }};
 
 inline bool hasCameraAction(UserRole role, CameraAction action)

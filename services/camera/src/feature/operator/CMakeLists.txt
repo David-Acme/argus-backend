@@ -14,8 +14,10 @@ argus_module(NAME camera-operator
         ../..
     DEPENDS
         argus::camera-config
+        argus::camera-control
         argus::camera-driver
         argus::camera-event-stream
+        argus::camera-look
         argus::camera-motion
         argus::camera-objects
         argus::camera-privacy

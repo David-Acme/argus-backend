@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS camera_clip (
     id           INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     camera_id    INTEGER NOT NULL  REFERENCES camera(id) ON DELETE CASCADE,
     trigger      TEXT    NOT NULL  DEFAULT 'event'
-                                      CHECK (trigger IN ('motion', 'event', 'continuous')),
+                                      CHECK (trigger IN ('motion', 'event', 'continuous', 'tamper', 'look')),
     object_key   TEXT    NOT NULL  DEFAULT '',
     content_type TEXT    NOT NULL  DEFAULT 'video/mp4',
     codec        TEXT    NOT NULL  DEFAULT '',

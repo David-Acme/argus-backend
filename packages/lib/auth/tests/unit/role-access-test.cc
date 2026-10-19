@@ -491,6 +491,49 @@ TEST_CASE("hasHttpAccess applies kGuardAccess route by route")
     CHECK(allows(UserRole::Owner, "/guard/environments/2", drogon::Delete));
 }
 
+TEST_CASE("a maintenance window is declared by the household and a guard, never by a guest")
+{
+    const auto allows = [](UserRole role, std::string_view path, drogon::HttpMethod method) {
+        return role_access::hasHttpAccess({.role = role, .path = path, .method = method});
+    };
+    for (const auto role : {UserRole::Owner, UserRole::Resident, UserRole::Guard}) {
+        CAPTURE(userRoleToString(role));
+        CHECK(allows(role, "/guard/maintenance", drogon::Get));
+        CHECK(allows(role, "/guard/maintenance", drogon::Post));
+        CHECK(allows(role, "/guard/maintenance/3", drogon::Delete));
+        CHECK(allows(role, "/guard/maintenance/3/view", drogon::Post));
+        CHECK(allows(role, "/guard/incidents/8/mine", drogon::Post));
+    }
+    for (const auto role : {UserRole::Guest, UserRole::Unknown}) {
+        CAPTURE(userRoleToString(role));
+        CHECK_FALSE(allows(role, "/guard/maintenance", drogon::Get));
+        CHECK_FALSE(allows(role, "/guard/maintenance", drogon::Post));
+        CHECK_FALSE(allows(role, "/guard/maintenance/3", drogon::Delete));
+        CHECK_FALSE(allows(role, "/guard/incidents/8/mine", drogon::Post));
+        CHECK_FALSE(allows(role, "/guard/tamper/asks/2", drogon::Post));
+    }
+    CHECK(allows(UserRole::Owner, "/guard/tamper/asks/2", drogon::Post));
+    CHECK(allows(UserRole::Resident, "/guard/tamper/asks/2", drogon::Post));
+    CHECK_FALSE(allows(UserRole::Guard, "/guard/tamper/asks/2", drogon::Post));
+    CHECK_FALSE(allows(UserRole::Resident, "/guard/maintenance", drogon::Patch));
+}
+
+TEST_CASE("the PTZ lease follows the move rule, and the aim settings follow the camera edit rule")
+{
+    const auto allows = [](UserRole role, std::string_view path, drogon::HttpMethod method) {
+        return role_access::hasHttpAccess({.role = role, .path = path, .method = method});
+    };
+    CHECK(allows(UserRole::Resident, "/camera/4/ptz/lease", drogon::Post));
+    CHECK(allows(UserRole::Guard, "/camera/4/ptz/lease", drogon::Post));
+    CHECK_FALSE(allows(UserRole::Guest, "/camera/4/ptz/lease", drogon::Post));
+    CHECK(allows(UserRole::Guest, "/camera/4/aim", drogon::Get));
+    CHECK(allows(UserRole::Guard, "/camera/4/aim", drogon::Get));
+    CHECK(allows(UserRole::Resident, "/camera/4/aim", drogon::Patch));
+    CHECK_FALSE(allows(UserRole::Guard, "/camera/4/aim", drogon::Patch));
+    CHECK_FALSE(allows(UserRole::Guest, "/camera/4/aim", drogon::Patch));
+    CHECK_FALSE(allows(UserRole::Unknown, "/camera/4/aim", drogon::Get));
+}
+
 TEST_CASE("every role lists and revokes its own sessions through kSessionAccess")
 {
   const auto allows = [](UserRole role, std::string_view path, drogon::HttpMethod method) {

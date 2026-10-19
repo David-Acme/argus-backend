@@ -1,6 +1,8 @@
 #pragma once
 
 #include <feature/objects/object-detector.hxx>
+#include <feature/look/services/follow-service.hxx>
+#include <feature/look/services/second-look.hxx>
 #include <feature/operator/event-intelligence.hxx>
 #include <shared/services/stream/frame-source.hxx>
 #include <feature/operator/object-event-sink.hxx>
@@ -46,6 +48,10 @@ public:
     DetectionChangeGate* detections{nullptr};
     std::function<bool()> active{};
     CameraMotionBoard* motion{nullptr};
+    const SecondLook* secondLook{nullptr};
+    std::function<bool()> protects{};
+    std::function<bool(int64_t)> lookable{};
+    std::function<void(const TrackSighting&)> sighting{};
   };
 
   struct Inputs
@@ -53,6 +59,7 @@ public:
     Dependencies dependencies;
     ObjectsConfig objects;
     OperatorConfig operator_;
+    CameraLookConfig look{};
   };
 
   explicit CameraOperatorService(Inputs inputs);
@@ -226,6 +233,24 @@ private:
   void publishPersonPending(const PublishPersonInput& input);
 
   void publishOtherPending(const PublishOtherInput& input);
+
+  struct RecordedInput
+  {
+    int64_t cameraId{0};
+    int64_t nowMs{0};
+  };
+
+  void afterRecorded(const RecordedInput& input);
+
+  struct SecondLookJob
+  {
+    ObjectDetectedEvent event;
+    int64_t trackId{0};
+    NormalizedBox box;
+    int cell{0};
+  };
+
+  void lookAgain(SecondLookJob job);
 
   Inputs inputs_;
   std::atomic<bool> running_{false};

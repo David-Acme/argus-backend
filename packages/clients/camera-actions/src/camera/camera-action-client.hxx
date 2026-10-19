@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 using CameraCommandOutcome = argus::camera::v1::CommandOutcome;
 
@@ -59,6 +60,29 @@ struct CameraListenInput
   std::string commandId;
   int64_t encounterId{0};
   int64_t expiresAt{0};
+};
+
+struct CameraLookInput
+{
+  int64_t cameraId{0};
+  int64_t trackId{0};
+  double boxX{0.0};
+  double boxY{0.0};
+  double boxW{0.0};
+  double boxH{0.0};
+  std::string reason;
+  int64_t budgetMs{8000};
+  bool follow{false};
+};
+
+struct CameraLookResult
+{
+  bool confirmed{false};
+  std::string cls;
+  float confidence{0.0F};
+  std::vector<int64_t> cropIds;
+  bool moved{false};
+  std::string detail;
 };
 
 struct CameraCommandResult
@@ -134,6 +158,10 @@ public:
   personCrop(const CameraPersonCropInput& input) const;
 
   virtual CameraCommandResult listen(const CameraListenInput& input) const;
+
+  virtual bool relearn(int64_t cameraId) const;
+
+  virtual std::optional<CameraLookResult> look(const CameraLookInput& input) const;
 
 private:
   std::shared_ptr<grpc::Channel> channel_;

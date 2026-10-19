@@ -20,6 +20,8 @@ PatrolSituation patrolling(PatrolProgress progress)
           .online = true,
           .masked = false,
           .moduleActive = true,
+          .allowed = true,
+          .everyMs = 0,
           .lease = {},
           .nowMs = 100000,
           .progress = progress};
@@ -27,7 +29,7 @@ PatrolSituation patrolling(PatrolProgress progress)
 
 PatrolProgress at(std::size_t nextStop, int64_t arrivedAtMs)
 {
-  return {.active = true, .nextStop = nextStop, .arrivedAtMs = arrivedAtMs};
+  return {.active = true, .nextStop = nextStop, .arrivedAtMs = arrivedAtMs, .lapStartedMs = 0, .restUntilMs = 0};
 }
 
 bool refused(const std::string& body, const std::string& field)
@@ -143,6 +145,42 @@ TEST_CASE("a closed window, a disabled patrol and an empty list end the patrol o
   auto never = patrolling({});
   never.stopCount = 0;
   CHECK(patrol_plan::decide(never).kind == PatrolStepKind::Idle);
+}
+
+TEST_CASE("the patrol walks only while the household is away or armed, and goes home when it returns")
+{
+  auto home = patrolling({});
+  home.allowed = false;
+  CHECK(patrol_plan::decide(home).kind == PatrolStepKind::Idle);
+
+  auto returning = patrolling(at(1, 0));
+  returning.allowed = false;
+  const PatrolStep end = patrol_plan::decide(returning);
+  CHECK(end.kind == PatrolStepKind::End);
+  CHECK(end.returnHome);
+}
+
+TEST_CASE("a finished lap rests at home until the next lap is due, and a long lap goes straight on")
+{
+  auto lap = patrolling(at(0, 0));
+  lap.lease.holder = PtzHolder::Argus;
+  lap.progress.lapStartedMs = 50000;
+  lap.everyMs = 600000;
+  const PatrolStep rest = patrol_plan::decide(lap);
+  CHECK(rest.kind == PatrolStepKind::Rest);
+  CHECK(rest.returnHome);
+
+  lap.nowMs = 650000;
+  CHECK(patrol_plan::decide(lap).kind == PatrolStepKind::Advance);
+
+  auto resting = patrolling({.active = false, .nextStop = 0, .arrivedAtMs = 0, .lapStartedMs = 50000, .restUntilMs = 650000});
+  CHECK(patrol_plan::decide(resting).kind == PatrolStepKind::Idle);
+  resting.nowMs = 650000;
+  CHECK(patrol_plan::decide(resting).kind == PatrolStepKind::Advance);
+
+  auto continuous = patrolling(at(0, 0));
+  continuous.lease.holder = PtzHolder::Argus;
+  CHECK(patrol_plan::decide(continuous).kind == PatrolStepKind::Advance);
 }
 
 TEST_CASE("the daily window holds its start hour, drops its end hour and may cross midnight")

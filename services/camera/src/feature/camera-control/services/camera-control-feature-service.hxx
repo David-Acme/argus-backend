@@ -12,6 +12,8 @@
 #include <feature/camera-control/dtos/camera-snapshot-dto.hxx>
 #include <feature/camera-control/dtos/camera-talk-dto.hxx>
 #include <feature/camera-control/services/ptz-lease.hxx>
+#include <feature/camera-control/services/aim-board.hxx>
+#include <feature/camera-control/services/aim-settings.hxx>
 #include <feature/camera-control/services/still-flights.hxx>
 #include <json/value.h>
 #include <optional>
@@ -55,12 +57,6 @@ struct CameraReturnHomeInput
   std::string reason;
 };
 
-struct CameraPatrolMoveInput
-{
-  int64_t cameraId{0};
-  std::string presetId;
-};
-
 struct CameraPatrolEndInput
 {
   int64_t cameraId{0};
@@ -74,6 +70,42 @@ struct CameraPatrolEvent
   std::string reason;
 };
 
+struct CameraAimInput
+{
+  int64_t cameraId{0};
+  AimAngles delta;
+  std::string reason;
+  AimActivity activity{AimActivity::Looking};
+};
+
+struct CameraArgusGotoInput
+{
+  int64_t cameraId{0};
+  std::string presetId;
+  std::string reason;
+};
+
+struct CameraAimStateInput
+{
+  int64_t cameraId{0};
+  int64_t userId{0};
+};
+
+struct CameraAimUpdateInput
+{
+  int64_t cameraId{0};
+  AimSettingsPatch patch;
+  int64_t actorUserId{0};
+};
+
+struct CameraLeaseInput
+{
+  int64_t cameraId{0};
+  int64_t actorUserId{0};
+  UserRole actorRole{UserRole::Unknown};
+  bool hold{false};
+};
+
 class CameraControlFeatureService
 {
 public:
@@ -82,11 +114,17 @@ public:
   drogon::Task<CameraControlResult> move(const CameraMoveInput& input) const;
   drogon::Task<CameraControlResult> preset(const CameraPresetInput& input) const;
   drogon::Task<CameraControlResult> returnHome(const CameraReturnHomeInput& input) const;
-  drogon::Task<CameraControlResult> patrolMove(const CameraPatrolMoveInput& input) const;
   drogon::Task<void> endPatrol(const CameraPatrolEndInput& input) const;
   drogon::Task<void> recordPatrol(const CameraPatrolEvent& event) const;
   drogon::Task<CameraControlResult> calibrate(int64_t cameraId) const;
   static void configurePtz(const CameraPtzConfig& config);
+  [[nodiscard]] static const CameraPtzConfig& ptz();
+  drogon::Task<CameraControlResult> aimByArgus(const CameraAimInput& input) const;
+  drogon::Task<CameraControlResult> gotoByArgus(const CameraArgusGotoInput& input) const;
+  drogon::Task<Json::Value> aimState(const CameraAimStateInput& input) const;
+  drogon::Task<Json::Value> updateAim(const CameraAimUpdateInput& input) const;
+  drogon::Task<Json::Value> lease(const CameraLeaseInput& input) const;
+  drogon::Task<void> publishAim(int64_t cameraId) const;
   drogon::Task<CameraControlResult> settings(const CameraSettingsInput& input) const;
   drogon::Task<CameraControlResult> speak(int64_t cameraId,
                                           const CameraTalkDto& body) const;

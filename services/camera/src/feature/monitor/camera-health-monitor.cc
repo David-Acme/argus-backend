@@ -6,13 +6,17 @@
 #include <shared/services/stream/frame-source.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
+#include <text/json-util.hxx>
+#include <json/value.h>
 #include <shared/services/privacy-state/privacy-state.hxx>
 #include <runtime/blocking-task.hxx>
 #include <sqlite/db-service.hxx>
-#include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
+#include <array>
+#include <optional>
+#include <string>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -84,19 +88,180 @@ int64_t nowMs()
              std::chrono::system_clock::now().time_since_epoch())
       .count();
 }
+
+constexpr int kSaturatedLevel = 245;
+constexpr double kTexturedBlock = 8.0;
+constexpr double kFlatBlock = 2.0;
+constexpr double kLostBlockShare = 0.25;
+constexpr double kWholeFrameLost = 0.9;
+constexpr double kSuddenMargin = 15.0;
+constexpr double kSteadySharpness = 0.8;
+constexpr double kShiftResponse = 0.2;
+constexpr double kMinLaplacian = 1.0;
+
+struct Texture
+{
+  double mean{0.0};
+  double deviation{0.0};
+  double laplacian{0.0};
+  double entropy{0.0};
+  double saturated{0.0};
+  std::array<double, 16> blocks{};
+};
+
+double entropyOf(const cv::Mat& gray)
+{
+  std::array<double, 256> histogram{};
+  for (int row = 0; row < gray.rows; ++row) {
+    const uint8_t* line = gray.ptr<uint8_t>(row);
+    for (int column = 0; column < gray.cols; ++column)
+      histogram.at(line[column]) += 1.0;
+  }
+  const auto total = static_cast<double>(gray.total());
+  double entropy = 0.0;
+  for (const double count : histogram) {
+    if (count <= 0.0)
+      continue;
+    const double share = count / total;
+    entropy -= share * std::log2(share);
+  }
+  return entropy;
+}
+
+Texture textureOf(const cv::Mat& gray, int side)
+{
+  Texture texture;
+  cv::Scalar mean;
+  cv::Scalar deviation;
+  cv::meanStdDev(gray, mean, deviation);
+  texture.mean = mean[0];
+  texture.deviation = deviation[0];
+  cv::Mat laplacian;
+  cv::Laplacian(gray, laplacian, CV_64F);
+  cv::Scalar lapMean;
+  cv::Scalar lapDeviation;
+  cv::meanStdDev(laplacian, lapMean, lapDeviation);
+  texture.laplacian = lapDeviation[0] * lapDeviation[0];
+  texture.entropy = entropyOf(gray);
+  texture.saturated = static_cast<double>(cv::countNonZero(gray >= kSaturatedLevel)) /
+                      static_cast<double>(gray.total());
+  const int blockWidth = gray.cols / side;
+  const int blockHeight = gray.rows / side;
+  for (int row = 0; row < side; ++row) {
+    for (int column = 0; column < side; ++column) {
+      const int width = column == side - 1 ? gray.cols - column * blockWidth : blockWidth;
+      const int height = row == side - 1 ? gray.rows - row * blockHeight : blockHeight;
+      cv::Scalar blockMean;
+      cv::Scalar blockDeviation;
+      cv::meanStdDev(gray(cv::Rect(column * blockWidth, row * blockHeight, width, height)), blockMean,
+                     blockDeviation);
+      texture.blocks.at(static_cast<size_t>(row * side + column)) = blockDeviation[0];
+    }
+  }
+  return texture;
+}
+
+double sharpnessOf(const Texture& texture)
+{
+  return texture.deviation >= kFlatDeviation ? std::sqrt(texture.laplacian) / texture.deviation : 0.0;
+}
+
+struct BlockPair
+{
+  const std::array<double, 16>& current;
+  const std::array<double, 16>& reference;
+};
+
+double blocksLost(const BlockPair& blocks)
+{
+  const std::array<double, 16>& current = blocks.current;
+  const std::array<double, 16>& reference = blocks.reference;
+  int textured = 0;
+  int lost = 0;
+  for (size_t index = 0; index < reference.size(); ++index) {
+    if (reference.at(index) < kTexturedBlock)
+      continue;
+    ++textured;
+    if (current.at(index) < std::max(kFlatBlock, reference.at(index) * kLostBlockShare))
+      ++lost;
+  }
+  return textured == 0 ? 0.0 : static_cast<double>(lost) / textured;
+}
+
+struct ShiftInput
+{
+  std::span<const uint8_t> reference;
+  std::span<const uint8_t> current;
+  int width{0};
+  int height{0};
+};
+
+double shiftOf(const ShiftInput& input)
+{
+  if (input.reference.size() != input.current.size() || input.reference.empty())
+    return 0.0;
+  cv::Mat reference;
+  cv::Mat current;
+  cv::Mat(input.height, input.width, CV_8UC1, const_cast<uint8_t*>(input.reference.data()))
+      .convertTo(reference, CV_32F);
+  cv::Mat(input.height, input.width, CV_8UC1, const_cast<uint8_t*>(input.current.data()))
+      .convertTo(current, CV_32F);
+  cv::Mat window;
+  cv::createHanningWindow(window, reference.size(), CV_32F);
+  double response = 0.0;
+  const cv::Point2d shift = cv::phaseCorrelate(reference, current, window, &response);
+  if (response < kShiftResponse)
+    return 0.0;
+  return std::hypot(shift.x, shift.y);
+}
+
+double chromaOf(const cv::Mat& bgr)
+{
+  std::vector<cv::Mat> planes;
+  cv::split(bgr, planes);
+  if (planes.size() < 3)
+    return 0.0;
+  cv::Mat blueGreen;
+  cv::Mat greenRed;
+  cv::absdiff(planes.at(0), planes.at(1), blueGreen);
+  cv::absdiff(planes.at(1), planes.at(2), greenRed);
+  return (cv::mean(blueGreen)[0] + cv::mean(greenRed)[0]) / 2.0;
+}
+
+std::string linkOf(const std::string& config)
+{
+  const Json::Value parsed = json_util::fromString(config);
+  if (parsed.isObject() && parsed.get("link", "").asString() == "wired")
+    return "wired";
+  return "wifi";
+}
 }
 
 CameraHealthState health_monitor::classify(const HealthMetrics& metrics,
                                       const HealthThresholds& thresholds)
 {
-  if (metrics.brightness < thresholds.dark)
-    return metrics.blur < thresholds.blur ? CameraHealthState::Covered
-                                          : CameraHealthState::Dark;
+  if (metrics.brightness < thresholds.dark) {
+    if (metrics.blur < thresholds.blur || metrics.entropy < thresholds.coverEntropy)
+      return CameraHealthState::Covered;
+    return metrics.sudden ? CameraHealthState::DarkSudden : CameraHealthState::Dark;
+  }
+  if (metrics.saturated >= thresholds.saturatedShare) {
+    if (metrics.edgeRatio < thresholds.whiteoutEdgeRatio)
+      return CameraHealthState::Whiteout;
+    if (metrics.edgeRatio < thresholds.blindEdgeRatio)
+      return CameraHealthState::Blinded;
+  }
   if (metrics.brightness > thresholds.bright)
     return CameraHealthState::Bright;
-  if (metrics.blur < thresholds.blur)
+  if (metrics.entropy < thresholds.coverEntropy && metrics.edgeRatio < thresholds.coverEdgeRatio)
+    return CameraHealthState::Covered;
+  if (metrics.blocksLost >= kWholeFrameLost)
+    return CameraHealthState::Covered;
+  if (metrics.blocksLost >= thresholds.partialBlockShare)
+    return CameraHealthState::PartialCover;
+  if (metrics.blur < thresholds.blur || metrics.sharpness < thresholds.defocusSharpness)
     return CameraHealthState::Blurred;
-  if (metrics.sceneDiff > thresholds.sceneDiff)
+  if (metrics.sceneDiff > thresholds.sceneDiff || metrics.shiftPx > thresholds.reaimShiftPx)
     return CameraHealthState::Moved;
   return CameraHealthState::Ok;
 }
@@ -118,8 +283,37 @@ std::string_view health_monitor::statusName(CameraHealthState status)
       return "unreachable";
     case CameraHealthState::Covered:
       return "covered";
+    case CameraHealthState::Whiteout:
+      return "whiteout";
+    case CameraHealthState::Blinded:
+      return "blinded";
+    case CameraHealthState::PartialCover:
+      return "partial_cover";
+    case CameraHealthState::DarkSudden:
+      return "dark_sudden";
   }
   return "ok";
+}
+
+bool health_monitor::tampering(CameraHealthState status, bool sudden)
+{
+  switch (status) {
+    case CameraHealthState::Covered:
+    case CameraHealthState::Whiteout:
+    case CameraHealthState::Blinded:
+    case CameraHealthState::PartialCover:
+    case CameraHealthState::Moved:
+    case CameraHealthState::DarkSudden:
+    case CameraHealthState::Unreachable:
+      return true;
+    case CameraHealthState::Blurred:
+      return sudden;
+    case CameraHealthState::Ok:
+    case CameraHealthState::Dark:
+    case CameraHealthState::Bright:
+      return false;
+  }
+  return false;
 }
 
 CameraHealthMonitor::CameraHealthMonitor(Dependencies dependencies,
@@ -188,55 +382,100 @@ HealthMetrics CameraHealthMonitor::measure(const TickInput& input,
                                            CameraState& state) const
 {
   HealthMetrics metrics;
+  const HealthThresholds& thresholds = config_.thresholds;
   const cv::Mat gray(input.height, input.width, CV_8UC1,
                      const_cast<uint8_t*>(input.rgb.data()));
+  const Texture texture = textureOf(gray, kGridSide);
+  metrics.brightness = texture.mean;
+  metrics.blur = texture.laplacian;
+  metrics.entropy = texture.entropy;
+  metrics.saturated = texture.saturated;
+  metrics.chroma = input.chroma;
+  metrics.infrared = input.chroma < thresholds.infraredChroma;
+  const double sharpness = sharpnessOf(texture);
 
-  cv::Scalar mean;
-  cv::Scalar stddev;
-  cv::meanStdDev(gray, mean, stddev);
-  metrics.brightness = mean[0];
-
-  cv::Mat laplacian;
-  cv::Laplacian(gray, laplacian, CV_64F);
-  cv::Scalar lapMean;
-  cv::Scalar lapStd;
-  cv::meanStdDev(laplacian, lapMean, lapStd);
-  metrics.blur = lapStd[0] * lapStd[0];
-
-  const std::span<const uint8_t> current(input.rgb);
-  const bool sane = metrics.brightness >= config_.thresholds.dark &&
-                    metrics.brightness <= config_.thresholds.bright &&
-                    metrics.blur >= config_.thresholds.blur;
-  const auto adopt = [&state, &input] {
-    state.reference = input.rgb;
-    state.referenceAtMs = input.capturedAtMs;
-    state.newSceneSinceMs = 0;
+  const auto remember = [&state, &metrics](double sharpnessRatio) {
+    state.previousBrightness = metrics.brightness;
+    state.previousSharpness = sharpnessRatio;
+    state.previousKnown = true;
   };
 
-  const CameraScene scene = CameraSceneLog::instance().sceneOf(input.camera.id);
-  const bool settlingHome = scene.returnsHome && scene.moveEndedAtMs > 0 &&
-                            input.capturedAtMs < scene.moveEndedAtMs + 2 * config_.intervalMs;
-  if (scene.moving(input.capturedAtMs) || settlingHome) {
+  if (state.infraredKnown && state.infrared != metrics.infrared)
+    state.holdUntilMs = input.capturedAtMs + config_.dayNightHoldMs;
+  state.infrared = metrics.infrared;
+  state.infraredKnown = true;
+  Reference& reference = state.references.at(metrics.infrared ? 1 : 0);
+
+  const std::span<const uint8_t> current(input.rgb);
+  const bool sane = metrics.brightness >= thresholds.dark &&
+                    metrics.brightness <= thresholds.bright &&
+                    metrics.blur >= thresholds.blur &&
+                    metrics.saturated < thresholds.saturatedShare;
+  const auto adopt = [&state, &input, &reference, &texture, sharpness] {
+    reference.gray = input.rgb;
+    reference.atMs = input.capturedAtMs;
+    reference.blocks = texture.blocks;
+    reference.laplacian = texture.laplacian;
+    reference.sharpness = sharpness;
+    state.newSceneSinceMs = 0;
+  };
+  const auto pause = [&state, &input, &metrics, &remember] {
     state.previous = input.rgb;
+    state.suddenSinceMs = 0;
     metrics.sceneDiff = 0.0;
     metrics.paused = true;
+    remember(1.0);
+  };
+
+  const int64_t intervalMs = input.intervalMs > 0 ? input.intervalMs : config_.intervalMs;
+  const CameraScene scene = CameraSceneLog::instance().sceneOf(input.camera.id);
+  const bool settlingHome = scene.returnsHome && scene.moveEndedAtMs > 0 &&
+                            input.capturedAtMs < scene.moveEndedAtMs + 2 * intervalMs;
+  if (scene.moving(input.capturedAtMs) || settlingHome || scene.argusAway) {
+    pause();
+    return metrics;
+  }
+  if (input.capturedAtMs < state.holdUntilMs) {
+    pause();
+    metrics.held = true;
     return metrics;
   }
   const bool settling = scene.aimedAtMs > 0 &&
-                        input.capturedAtMs < scene.aimedAtMs + 2 * config_.intervalMs;
-  if (settling || scene.aimedAtMs > state.referenceAtMs)
-    state.reference.clear();
+                        input.capturedAtMs < scene.aimedAtMs + 2 * intervalMs;
+  if (settling || scene.aimedAtMs > reference.atMs)
+    for (Reference& slot : state.references)
+      if (settling || scene.aimedAtMs > slot.atMs)
+        slot.gray.clear();
 
-  if (state.reference.size() != input.rgb.size()) {
+  if (reference.gray.size() != input.rgb.size()) {
     if (sane)
       adopt();
     state.previous = input.rgb;
     metrics.sceneDiff = 0.0;
+    state.suddenSinceMs = 0;
+    remember(1.0);
     return metrics;
   }
 
-  metrics.sceneDiff = sceneDistance(current, state.reference);
-  const double threshold = config_.thresholds.sceneDiff;
+  metrics.sceneDiff = sceneDistance(current, reference.gray);
+  metrics.edgeRatio = reference.laplacian >= kMinLaplacian ? texture.laplacian / reference.laplacian : 1.0;
+  metrics.sharpness = reference.sharpness > 0.0 ? sharpness / reference.sharpness : 1.0;
+  metrics.blocksLost = blocksLost({.current = texture.blocks, .reference = reference.blocks});
+  metrics.shiftPx = shiftOf({.reference = reference.gray, .current = current, .width = input.width,
+                             .height = input.height});
+
+  const bool droppedDark = metrics.brightness < thresholds.dark && state.previousKnown &&
+                           state.previousBrightness >= thresholds.dark + kSuddenMargin;
+  const bool droppedSharp = metrics.sharpness < thresholds.defocusSharpness && state.previousKnown &&
+                            state.previousSharpness >= kSteadySharpness;
+  if (state.suddenSinceMs == 0 && (droppedDark || droppedSharp))
+    state.suddenSinceMs = input.capturedAtMs;
+  if (metrics.brightness >= thresholds.dark && metrics.sharpness >= thresholds.defocusSharpness)
+    state.suddenSinceMs = 0;
+  metrics.sudden = state.suddenSinceMs > 0;
+  remember(metrics.sharpness);
+
+  const double threshold = thresholds.sceneDiff;
   if (scene.returnsHome && scene.moveEndedAtMs > 0 && state.homeCheckedForMs != scene.moveEndedAtMs) {
     state.homeCheckedForMs = scene.moveEndedAtMs;
     metrics.homeDrift = metrics.sceneDiff > threshold;
@@ -244,7 +483,7 @@ HealthMetrics CameraHealthMonitor::measure(const TickInput& input,
   if (metrics.sceneDiff <= threshold) {
     state.newSceneSinceMs = 0;
     if (sane && metrics.sceneDiff <= threshold / 2.0)
-      drift(state.reference, current);
+      drift(reference.gray, current);
   }
   else if (!sane || sceneDistance(current, state.previous) > threshold / 2.0) {
     state.newSceneSinceMs = input.capturedAtMs;
@@ -257,9 +496,20 @@ HealthMetrics CameraHealthMonitor::measure(const TickInput& input,
              << " has kept its new view; it is the reference now";
     adopt();
     metrics.sceneDiff = 0.0;
+    metrics.edgeRatio = 1.0;
+    metrics.sharpness = 1.0;
+    metrics.blocksLost = 0.0;
+    metrics.shiftPx = 0.0;
   }
   state.previous = input.rgb;
   return metrics;
+}
+
+int64_t CameraHealthMonitor::intervalNow() const
+{
+  if (dependencies_.protects && dependencies_.protects())
+    return std::min(config_.intervalMs, config_.protectIntervalMs);
+  return config_.intervalMs;
 }
 
 bool CameraHealthMonitor::dueForSample(int64_t cameraId)
@@ -268,7 +518,7 @@ bool CameraHealthMonitor::dueForSample(int64_t cameraId)
   std::scoped_lock lock(stateMutex_);
   const auto it = states_.find(cameraId);
   return it == states_.end() || !it->second.sampled ||
-         now - it->second.sampledAtMs >= config_.intervalMs;
+         now - it->second.sampledAtMs >= intervalNow();
 }
 
 drogon::Task<void> CameraHealthMonitor::run()
@@ -367,8 +617,14 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
   publishPrivacyState(camera);
   if (PrivacyStateService::instance().masked(camera.id))
     co_return;
+  const int64_t intervalMs = intervalNow();
+  const int64_t maxAgeMs =
+      intervalMs < config_.intervalMs ? std::max(kFrameMaxAgeMs, intervalMs) : kFrameMaxAgeMs;
   auto frame = co_await dependencies_.source->grab(
-      {.cameraId = camera.id, .cameraName = camera.name, .maxAgeMs = kFrameMaxAgeMs});
+      {.cameraId = camera.id,
+       .cameraName = camera.name,
+       .maxAgeMs = maxAgeMs,
+       .stream = camera_stream_role::streamFor(CameraStreamRole::Analysis)});
 
   struct Sample
   {
@@ -387,7 +643,7 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
                 .frameHeight = 0};
   if (frame && !frame->jpeg.empty()) {
     auto measureFrame =
-        [this, &camera, jpeg = std::move(frame->jpeg), capturedAt = frame->capturedAtMs]() {
+        [this, &camera, intervalMs, jpeg = std::move(frame->jpeg), capturedAt = frame->capturedAtMs]() {
           Sample measured{.status = CameraHealthState::Unreachable,
                           .metrics = {},
                           .capturedAt = capturedAt,
@@ -405,6 +661,7 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
           std::vector<uint8_t> gray(small.total());
           const cv::Mat grayMat(kSampleHeight, kSampleWidth, CV_8UC1, gray.data());
           cv::cvtColor(small, grayMat, cv::COLOR_BGR2GRAY);
+          const double chroma = chromaOf(small);
 
           std::scoped_lock lock(stateMutex_);
           CameraState& state = states_[camera.id];
@@ -412,9 +669,15 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
                                       .rgb = std::move(gray),
                                       .width = kSampleWidth,
                                       .height = kSampleHeight,
-                                      .capturedAtMs = capturedAt},
+                                      .capturedAtMs = capturedAt,
+                                      .chroma = chroma,
+                                      .intervalMs = intervalMs},
                                      state);
           measured.status = health_monitor::classify(measured.metrics, config_.thresholds);
+          if (measured.status == CameraHealthState::Ok && !measured.metrics.paused) {
+            state.lastGoodJpeg = jpeg;
+            state.lastGoodAtMs = capturedAt;
+          }
           return measured;
         };
     if (drogon::app().isRunning())
@@ -435,6 +698,9 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
 
   bool transitioned = false;
   bool heartbeatDue = false;
+  bool sudden = metrics.sudden;
+  int64_t onsetAtMs = 0;
+  std::optional<TamperOnset> onset;
   {
     std::scoped_lock lock(stateMutex_);
     CameraState& state = states_[camera.id];
@@ -443,21 +709,42 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
     state.misses = reachable ? 0 : state.misses + 1;
     const bool held = (!reachable && state.misses < kMissesBeforeOffline && state.published) ||
                       (reachable && metrics.paused && state.published);
+    const bool wasTampering = health_monitor::tampering(state.lastStatus, state.lastSudden);
     if (held) {
       status = state.lastStatus;
+      sudden = state.lastSudden;
     }
-    else if (state.lastStatus != status) {
+    else if (state.lastStatus != status || state.lastSudden != sudden) {
       state.lastStatus = status;
+      state.lastSudden = sudden;
       transitioned = true;
     }
     else if (!state.published ||
              capturedAt - state.lastPublishMs >= config_.intervalMs) {
       heartbeatDue = true;
     }
+    const bool tampering = health_monitor::tampering(status, sudden);
+    if (transitioned && tampering && !wasTampering) {
+      state.onsetAtMs = capturedAt;
+      onset = TamperOnset{.cameraId = camera.id,
+                          .cameraName = camera.name,
+                          .status = status,
+                          .atMs = capturedAt,
+                          .lastGoodJpeg = state.lastGoodJpeg,
+                          .lastGoodAtMs = state.lastGoodAtMs};
+    }
+    if (!tampering)
+      state.onsetAtMs = 0;
+    onsetAtMs = state.onsetAtMs;
     if (transitioned || heartbeatDue) {
       state.lastPublishMs = capturedAt;
       state.published = true;
     }
+  }
+  if (onset && dependencies_.tamperOnset) {
+    LOG_WARN << "Camera health: " << camera.id << " lost its sight ("
+             << health_monitor::statusName(onset->status) << "); the tamper evidence is kept";
+    dependencies_.tamperOnset(std::move(*onset));
   }
 
   CameraLiveBoard::instance().recordSample({.cameraId = camera.id,
@@ -484,11 +771,15 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
                << health_monitor::statusName(status);
   }
   if (dependencies_.sink) {
+    HealthMetrics published = metrics;
+    published.sudden = sudden;
     dependencies_.sink->publish({.cameraId = camera.id,
                                  .cameraName = camera.name,
                                  .status = status,
-                                 .metrics = metrics,
-                                 .detectedAtMs = capturedAt});
+                                 .metrics = published,
+                                 .detectedAtMs = capturedAt,
+                                 .link = linkOf(camera.camera.config),
+                                 .onsetAtMs = onsetAtMs});
   }
   co_return;
 }

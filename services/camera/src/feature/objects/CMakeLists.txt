@@ -4,7 +4,6 @@ argus_module(NAME camera-objects
     INCLUDES
         ../..
     DEPENDS
-        argus::hardware-profile
         argus::hardware-profile-gpu
         argus::lib::runtime
         opencv::opencv

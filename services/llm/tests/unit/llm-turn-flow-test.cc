@@ -1546,7 +1546,8 @@ TEST_CASE("the adapter hands the decider the assistant turn that came before the
 TEST_CASE("the read-only tools are exactly the list in tool-effects.json and every other tool is a write")
 {
   const std::vector<std::string> expected{"calendar.list_events", "task.list", "project.list", "modules.list", "modules.explain",
-                                          "reminder.list", "memory.recall", "app.open", "app.show_camera"};
+                                          "reminder.list", "memory.recall", "app.open", "app.show_camera",
+                                          "guard.maintenance_status"};
   CHECK(turn::kReadOnlyTools.size() == expected.size());
   for (const std::string& name : expected)
     CHECK(turn::isReadOnlyTool(name));

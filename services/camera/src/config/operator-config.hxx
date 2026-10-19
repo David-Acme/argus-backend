@@ -17,7 +17,7 @@ struct ObjectsConfig
   double activeFps{6.0};
   double burstFps{10.0};
   int64_t burstMs{3000};
-  bool useVulkan{true};
+  bool useVulkan{false};
 };
 
 struct OperatorConfig

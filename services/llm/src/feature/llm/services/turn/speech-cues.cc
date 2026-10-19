@@ -278,7 +278,7 @@ constexpr std::array<LabelRow, 19> kSlotLabels{{
     {.key = "task_id", .labelEs = "la tarea", .labelEn = "the task"},
 }};
 
-constexpr std::array<LabelRow, 21> kOptionLabels{{
+constexpr std::array<LabelRow, 26> kOptionLabels{{
     {.key = "calendar.create_event", .labelEs = "un evento en el calendario", .labelEn = "an event on the calendar"},
     {.key = "calendar.list_events", .labelEs = "ver la agenda", .labelEn = "see the agenda"},
     {.key = "calendar.cancel_event", .labelEs = "cancelar un evento", .labelEn = "cancel an event"},
@@ -300,6 +300,12 @@ constexpr std::array<LabelRow, 21> kOptionLabels{{
     {.key = "app.show_camera", .labelEs = "mostrar una cámara", .labelEn = "show a camera"},
     {.key = "app.set_guard_mode", .labelEs = "cambiar la vigilancia", .labelEn = "change the guard mode"},
     {.key = "camera.set_privacy", .labelEs = "tapar o destapar una cámara", .labelEn = "mask or unmask a camera"},
+    {.key = "camera.goto_preset", .labelEs = "girar una cámara a una posición", .labelEn = "turn a camera to a position"},
+    {.key = "camera.look", .labelEs = "mover una cámara", .labelEn = "move a camera"},
+    {.key = "guard.maintenance_start", .labelEs = "avisar de un mantenimiento", .labelEn = "announce maintenance"},
+    {.key = "guard.maintenance_end", .labelEs = "cerrar un mantenimiento", .labelEn = "close a maintenance"},
+    {.key = "guard.maintenance_status", .labelEs = "ver los mantenimientos y avisos de cámaras",
+     .labelEn = "see camera maintenance and warnings"},
 }};
 
 constexpr std::array<std::string_view, 9> kAllRequestsEs{

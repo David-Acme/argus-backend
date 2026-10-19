@@ -50,6 +50,10 @@
 #include <feature/operator/services/evidence/evidence-uploader.hxx>
 #include <feature/recording/controllers/clip-controller.hxx>
 #include <feature/recording/services/clip-recorder.hxx>
+#include <feature/recording/services/clip-trigger-migration.hxx>
+#include <feature/look/services/follow-service.hxx>
+#include <feature/look/services/look-refresh.hxx>
+#include <feature/look/services/second-look.hxx>
 #include <feature/objects/ncnn-object-detector.hxx>
 #include <feature/onvif-events/onvif-motion-events.hxx>
 #include <feature/operator/camera-operator-service.hxx>
@@ -99,6 +103,7 @@ struct HouseholdPostureCache
 {
   std::atomic<bool> protects{false};
   std::atomic<bool> armed{false};
+  std::atomic<bool> away{false};
 };
 
 Json::Value drogonConfig(const CameraDbConfig& cameraDb,
@@ -175,6 +180,19 @@ drogon::Task<void> startAfterSources(CameraOperatorService* operatorService,
     operatorService->start();
   if (healthMonitor)
     healthMonitor->start();
+}
+
+void tamperEvidence(TamperOnset onset)
+{
+  static_cast<void>(ClipRecorder::instance().requestClip(
+      {.cameraId = onset.cameraId, .trigger = CameraClipTrigger::Tamper, .atEpochMs = onset.atMs}));
+  if (onset.lastGoodJpeg.empty())
+    return;
+  ClipRecorder::instance().storeStill(
+      {.cameraId = onset.cameraId,
+       .trigger = CameraClipTrigger::Tamper,
+       .jpeg = std::string(onset.lastGoodJpeg.begin(), onset.lastGoodJpeg.end()),
+       .atEpochMs = onset.lastGoodAtMs > 0 ? onset.lastGoodAtMs : onset.atMs});
 }
 
 std::function<void(int64_t)> homeDriftHandler(const CameraPtzConfig& config)
@@ -431,6 +449,8 @@ int main()
                                     std::memory_order_release);
           household->armed.store(heartbeat.get("armed", false).asBool(),
                                  std::memory_order_release);
+          household->away.store(heartbeat.get("away", false).asBool(),
+                                std::memory_order_release);
         }));
   }
   const WebRtcSessionCloser webrtcSessions{};
@@ -477,12 +497,16 @@ int main()
   CameraPresenceRecorder presenceRecorder;
   std::unique_ptr<NatsHealthEventSink> healthSink;
   std::unique_ptr<CameraHealthMonitor> healthMonitor;
+  const CameraLookConfig lookConfig = CameraConfig::resolveLook();
+  std::unique_ptr<SecondLook> secondLook;
   if (objectsConfig.enabled) {
     ObjectDetectorOptions detectorOptions;
     detectorOptions.modelDir = objectsConfig.model;
     detectorOptions.classes = objectsConfig.classes;
     detectorOptions.inputSize = objectsConfig.inputSize;
-    detectorOptions.confidence = objectsConfig.confidence;
+    detectorOptions.confidence =
+        lookConfig.enabled ? std::min(objectsConfig.confidence, static_cast<float>(lookConfig.doubtMinConfidence))
+                           : objectsConfig.confidence;
     detectorOptions.useVulkan = objectsConfig.useVulkan;
     detector = std::make_unique<ObjectDetectorService>(detectorOptions);
     detector->init();
@@ -509,6 +533,16 @@ int main()
       inputs.dependencies.detections = &detectionChanges;
       inputs.dependencies.active = surveillanceActive;
       inputs.dependencies.motion = &motionBoard;
+      secondLook = std::make_unique<SecondLook>(
+          SecondLookDependencies{.detector = detector.get(), .source = &frameSource(), .config = lookConfig});
+      SecondLook::install(secondLook.get());
+      inputs.dependencies.secondLook = secondLook.get();
+      inputs.dependencies.protects = [household = &householdPosture] {
+        return household->protects.load(std::memory_order_acquire);
+      };
+      inputs.dependencies.lookable = [](int64_t cameraId) { return LookableCameras::instance().lookable(cameraId); };
+      inputs.dependencies.sighting = [](const TrackSighting& sighting) { FollowService::sighting(sighting); };
+      inputs.look = lookConfig;
       inputs.objects = objectsConfig;
       inputs.operator_ = operator_config::resolveOperator();
       if (inputs.operator_.zonesFromDb) {
@@ -548,7 +582,12 @@ int main()
                                            .sink = healthSink.get(),
                                            .presence = &presenceRecorder,
                                            .active = surveillanceActive,
-                                           .homeDrift = homeDriftHandler(CameraConfig::resolvePtz())},
+                                           .homeDrift = homeDriftHandler(CameraConfig::resolvePtz()),
+                                           .protects =
+                                               [household = &householdPosture] {
+                                                 return household->protects.load(std::memory_order_acquire);
+                                               },
+                                           .tamperOnset = tamperEvidence},
         healthConfig);
   }
 
@@ -577,6 +616,11 @@ int main()
 
     if (!record_mode_migration::applyToFile(cameraDb.dbPath)) {
       LOG_FATAL << "Camera record mode migration failed — aborting startup";
+      _exit(1);
+    }
+
+    if (!clip_trigger_migration::applyToFile(cameraDb.dbPath)) {
+      LOG_FATAL << "Camera clip trigger migration failed — aborting startup";
       _exit(1);
     }
 
@@ -656,9 +700,18 @@ int main()
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*healthMonitor, "camera-health"));
   }
+  LookRefresh lookRefresh;
+  drogon::app().registerBeginningAdvice([&lookRefresh]() { lookRefresh.start(); });
+  shutdown_signal::onStop(shutdown_signal::drainOf(lookRefresh, "camera-look"));
   PatrolRunner patrolRunner({.settleMs = CameraConfig::resolvePtz().settleMs,
                              .tickSeconds = 2.0,
-                             .active = surveillanceActive});
+                             .active = surveillanceActive,
+                             .awayOrArmed =
+                                 [household = &householdPosture] {
+                                   return household->away.load(std::memory_order_acquire) ||
+                                          household->armed.load(std::memory_order_acquire);
+                                 },
+                             .busy = [](int64_t cameraId) { return FollowBoard::instance().following(cameraId); }});
   drogon::app().registerBeginningAdvice([&patrolRunner]() { patrolRunner.start(); });
   shutdown_signal::onStop(shutdown_signal::drainOf(patrolRunner, "camera-patrol"));
   shutdown_signal::onStop(shutdown_signal::drainOf(talkService, "camera-talk"));

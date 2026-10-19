@@ -355,42 +355,140 @@ NoticeText renderEpisode(const GuardNotice& notice, bool english)
   return text;
 }
 
+std::string tamperKind(const GuardNotice& notice, bool english)
+{
+  const std::string since = durationPhrase(std::max<int64_t>(notice.dwellS, 60), english);
+  const std::string_view status = notice.tamperStatus;
+  if (status == "covered")
+    return english ? "It has been covered " + since + ". Argus can't see that area."
+                   : "Está tapada " + since + ". Argus no ve esa zona.";
+  if (status == "whiteout")
+    return pick({.es = "Está tapada: con la luz infrarroja la imagen quedó en blanco. Argus no ve esa zona.",
+                 .en = "It is covered: the infrared light turned the picture white. Argus can't see that area."},
+                english);
+  if (status == "blinded")
+    return pick({.es = "Está deslumbrada: una luz fuerte apunta al lente. Argus no ve esa zona.",
+                 .en = "It is blinded: a strong light is pointed at the lens. Argus can't see that area."},
+                english);
+  if (status == "partial_cover")
+    return pick({.es = "Está parcialmente tapada: Argus ve solo una parte de la zona.",
+                 .en = "It is partly covered: Argus sees only part of the area."},
+                english);
+  if (status == "moved")
+    return pick({.es = "Está girada: ya no vigila la misma zona.",
+                 .en = "It was turned: it no longer watches the same area."},
+                english);
+  if (status == "blurred")
+    return english ? "It has been out of focus " + since + "." : "Está desenfocada " + since + ".";
+  if (status == "dark_sudden")
+    return pick({.es = "Se quedó a oscuras de golpe. Argus no ve esa zona.",
+                 .en = "It went dark all of a sudden. Argus can't see that area."},
+                english);
+  if (status == "unreachable")
+    return english ? "Argus has had no picture from it " + since +
+                         ": it may be unplugged, off the network or "
+                         "switched off. That area is not being watched."
+                   : "Argus no recibe imagen " + since +
+                         ": puede estar desenchufada, sin red o "
+                         "apagada. Esa zona no está vigilada.";
+  return english ? "The image has been unreliable " + since + "." : "La imagen no es fiable " + since + ".";
+}
+
 NoticeText renderTamper(const GuardNotice& notice, bool english)
 {
   const std::string camera = cameraLabel(notice, english);
-  const std::string since = durationPhrase(std::max<int64_t>(notice.dwellS, 60),
-                                           english);
   NoticeText text;
-  text.title = (english ? "Check camera " : "Revisa la cámara ") + camera;
-  if (notice.tamperStatus == "covered")
-    text.body = english ? "The view has been blocked " + since +
-                              ". Argus can't see that area."
-                        : "La imagen está tapada " + since +
-                              ". Argus no ve esa zona.";
-  else if (notice.tamperStatus == "moved")
-    text.body = pick({.es = "Parece que la han movido o girado. Argus ya no "
-                            "vigila la misma zona.",
-                      .en = "It seems to have been moved or turned. Argus is "
-                            "no longer watching the same area."},
+  if (notice.lost.size() >= 2) {
+    const std::string count = std::to_string(notice.lost.size());
+    text.title = english ? "I lost sight of " + count + " cameras at once"
+                         : "Perdí la visión de " + count + " cámaras a la vez";
+    std::string names;
+    for (const auto& line : notice.lost)
+      names += (names.empty() ? "" : ", ") + line.cameraName;
+    text.body = english ? "Cameras: " + names +
+                              ". It may be a Wi-Fi jammer or someone tampering with them."
+                        : "Cámaras: " + names +
+                              ". Puede ser un inhibidor de wifi o alguien manipulándolas.";
+  }
+  else if (notice.probableMaintenance && notice.danger != GuardDanger::Critical &&
+           notice.danger != GuardDanger::High && !notice.seenName.empty()) {
+    text.title = english ? "It looks like " + notice.seenName + " is handling the " + camera + " camera"
+                         : "Parece que " + notice.seenName + " está manipulando la cámara " + camera;
+    text.body = pick({.es = "No es una alarma: Argus le vio junto a la cámara justo antes de perder la imagen.",
+                      .en = "This is not an alarm: Argus saw them next to the camera just before the picture was lost."},
                      english);
-  else if (notice.tamperStatus == "blurred")
-    text.body = english ? "The image has been blurry " + since + "."
-                        : "La imagen está borrosa " + since + ".";
-  else if (notice.tamperStatus == "unreachable")
-    text.body = english ? "Argus has had no picture from it " + since +
-                              ": it may be unplugged, off the network or "
-                              "switched off. That area is not being watched."
-                        : "Argus no recibe imagen " + since +
-                              ": puede estar desenchufada, sin red o "
-                              "apagada. Esa zona no está vigilada.";
-  else
-    text.body = english ? "The image has been unreliable " + since + "."
-                        : "La imagen no es fiable " + since + ".";
+    return text;
+  }
+  else {
+    text.title = english ? "I lost sight of the " + camera + " camera"
+                         : "Perdí la visión de la cámara " + camera;
+    text.body = tamperKind(notice, english);
+  }
+  if (!notice.seenName.empty() && notice.seenGuest)
+    text.body += english ? " Just before, I saw " + notice.seenName + " (a guest) next to it."
+                         : " Justo antes vi a " + notice.seenName + " (invitado) junto a ella.";
+  else if (!notice.seenName.empty() && notice.probableMaintenance)
+    text.body += english ? " Probably maintenance by " + notice.seenName + "."
+                         : " Probable mantenimiento por " + notice.seenName + ".";
   if (notice.danger == GuardDanger::Critical)
     text.body += pick({.es = " La vigilancia está activa: revísalo cuanto antes.",
                        .en = " Guarding is on: check it as soon as you can."},
                       english);
   return text;
+}
+
+NoticeText renderMaintenance(const GuardNotice& notice, bool english)
+{
+  const std::string camera = cameraLabel(notice, english);
+  NoticeText text;
+  switch (notice.kind) {
+    case NoticeKind::LensNotice:
+      text.title = english ? "Clean the lens of the " + camera + " camera"
+                           : "Limpia el lente de la cámara " + camera;
+      text.body = pick({.es = "La imagen se ha ido nublando poco a poco: suele ser polvo, una telaraña o "
+                              "lluvia. No es una alarma.",
+                        .en = "The picture has been getting blurry slowly: usually dust, a spider web or "
+                              "rain. This is not an alarm."},
+                       english);
+      return text;
+    case NoticeKind::TamperAsk:
+      text.title = english ? "Is someone moving the " + camera + " camera?"
+                           : "¿Alguien está moviendo la cámara " + camera + "?";
+      text.body = pick({.es = "Perdí su imagen y hay alguien en casa. Responde «Sí, soy yo» o «No».",
+                        .en = "I lost its picture and someone is home. Answer \"Yes, it's me\" or \"No\"."},
+                       english);
+      return text;
+    case NoticeKind::ViewCheck:
+      text.title = english ? "The " + camera + " camera is looking somewhere else"
+                           : "La cámara " + camera + " quedó mirando distinto";
+      text.body = pick({.es = "¿Es la nueva vista? Si dices que sí, Argus la toma como referencia; si no, "
+                              "sigue avisando.",
+                        .en = "Is this the new view? If yes, Argus takes it as the reference; if not, it "
+                              "keeps warning."},
+                       english);
+      return text;
+    case NoticeKind::MaintenanceDuress: {
+      const std::string who = notice.actorName.empty()
+                                  ? pick({.es = "Alguien de casa", .en = "Someone at home"}, english)
+                                  : notice.actorName;
+      text.title = (english ? "Maintenance under duress · " : "Mantenimiento bajo coacción · ") + who;
+      text.body = who + (english ? " declared camera maintenance right after giving the duress signal. "
+                                   "Argus does not obey it: it keeps watching."
+                                 : " declaró un mantenimiento de cámaras justo después de dar la señal de "
+                                   "coacción. Argus no lo obedece: sigue vigilando.");
+      return text;
+    }
+    case NoticeKind::Episode:
+    case NoticeKind::Escalation:
+    case NoticeKind::Tamper:
+    case NoticeKind::Digest:
+    case NoticeKind::Panic:
+    case NoticeKind::Duress:
+    case NoticeKind::SpokenDuress:
+    case NoticeKind::PrivacyCoverage:
+      break;
+  }
+  return renderTamper(notice, english);
 }
 
 NoticeText renderSafety(const GuardNotice& notice, bool english)
@@ -510,6 +608,14 @@ std::string noticeKindToString(NoticeKind kind)
       return "guard_duress";
     case NoticeKind::PrivacyCoverage:
       return "camera_privacy_coverage";
+    case NoticeKind::LensNotice:
+      return "camera_maintenance_notice";
+    case NoticeKind::TamperAsk:
+      return "guard_tamper_ask";
+    case NoticeKind::ViewCheck:
+      return "maintenance_view_check";
+    case NoticeKind::MaintenanceDuress:
+      return "guard_maintenance_duress";
   }
   return "guard_episode";
 }
@@ -581,6 +687,11 @@ NoticeText guard_copy::render(const GuardNotice& notice, std::string_view lang)
       return renderSafety(notice, english);
     case NoticeKind::PrivacyCoverage:
       return renderPrivacyCoverage(notice, english);
+    case NoticeKind::LensNotice:
+    case NoticeKind::TamperAsk:
+    case NoticeKind::ViewCheck:
+    case NoticeKind::MaintenanceDuress:
+      return renderMaintenance(notice, english);
   }
   return renderEpisode(notice, english);
 }
@@ -626,12 +737,18 @@ std::string guard_copy::urgency(const GuardNotice& notice)
   switch (notice.kind) {
     case NoticeKind::Digest:
     case NoticeKind::PrivacyCoverage:
+    case NoticeKind::LensNotice:
       return "passive";
     case NoticeKind::Tamper:
       return notice.danger == GuardDanger::Critical ? "critical" : "active";
+    case NoticeKind::TamperAsk:
+      return "time_sensitive";
+    case NoticeKind::ViewCheck:
+      return "active";
     case NoticeKind::Panic:
     case NoticeKind::Duress:
     case NoticeKind::SpokenDuress:
+    case NoticeKind::MaintenanceDuress:
       return "critical";
     case NoticeKind::Episode:
     case NoticeKind::Escalation:

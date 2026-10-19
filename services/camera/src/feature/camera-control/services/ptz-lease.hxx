@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
 #include <mutex>
 #include <unordered_map>
 
@@ -11,6 +12,21 @@ enum class PtzHolder : unsigned char
   Viewer,
   Person
 };
+
+inline std::string ptzHolderToString(PtzHolder holder)
+{
+  switch (holder) {
+    case PtzHolder::None:
+      return "none";
+    case PtzHolder::Argus:
+      return "argus";
+    case PtzHolder::Viewer:
+      return "viewer";
+    case PtzHolder::Person:
+      return "person";
+  }
+  return "none";
+}
 
 struct PtzLeaseConfig
 {

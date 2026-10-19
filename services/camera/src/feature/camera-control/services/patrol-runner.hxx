@@ -19,6 +19,8 @@ struct PatrolRunnerConfig
   int64_t settleMs{4000};
   double tickSeconds{2.0};
   std::function<bool()> active{};
+  std::function<bool()> awayOrArmed{};
+  std::function<bool(int64_t)> busy{};
 };
 
 class PatrolRunner
@@ -49,6 +51,8 @@ private:
     int64_t nowMs{0};
     int localHour{0};
     bool moduleActive{false};
+    bool allowed{false};
+    int64_t everyMs{0};
   };
 
   drogon::Task<void> follow(PatrolTarget target, PatrolClock moment);

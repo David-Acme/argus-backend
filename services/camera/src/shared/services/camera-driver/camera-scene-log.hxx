@@ -11,6 +11,7 @@ struct CameraScene
   int64_t moveExpectedEndMs{0};
   int64_t moveEndedAtMs{0};
   bool returnsHome{false};
+  bool argusAway{false};
 
   [[nodiscard]] bool moving(int64_t atMs) const
   {
@@ -32,6 +33,12 @@ struct CameraInstant
   int64_t atMs{0};
 };
 
+struct CameraAway
+{
+  int64_t cameraId{0};
+  bool away{false};
+};
+
 struct CameraMoveEnd
 {
   int64_t cameraId{0};
@@ -46,6 +53,7 @@ public:
   void noteAimed(const CameraInstant& aimed);
   void beginMove(const CameraMoveStart& move);
   void endMove(const CameraMoveEnd& move);
+  void setArgusAway(const CameraAway& away);
   [[nodiscard]] CameraScene sceneOf(int64_t cameraId) const;
   [[nodiscard]] bool moving(const CameraInstant& instant) const;
   void forget(int64_t cameraId);

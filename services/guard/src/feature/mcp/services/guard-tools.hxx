@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mcp/server.hxx>
+#include <shared/vocabulary/maintenance-voice.hxx>
 #include <shared/vocabulary/masked-camera.hxx>
 
 #include <cstdint>
@@ -24,6 +25,7 @@ struct GuardToolsInput
   EnvironmentCatalog catalog;
   MaskedCameraDirectory maskedCameras{};
   std::function<trantor::EventLoop*()> loop;
+  MaintenanceVoicePorts maintenance{};
 };
 
 [[nodiscard]] std::shared_ptr<argus::mcp::McpServer> guardToolServer(const GuardToolsInput& input);

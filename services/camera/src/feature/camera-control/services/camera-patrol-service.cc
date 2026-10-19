@@ -3,8 +3,11 @@
 #include <camera/camera-errors.hxx>
 #include <errors/response-exception.hxx>
 #include <errors/validation-exception.hxx>
+#include <feature/camera-control/services/camera-control-feature-service.hxx>
 #include <sync/camera-change-sink.hxx>
 
+#include <algorithm>
+#include <cstdint>
 #include <optional>
 #include <utility>
 
@@ -15,6 +18,12 @@ std::optional<std::optional<PatrolWindow>> windowChange(const CameraPatrolDto& b
   if (!body.windowGiven)
     return std::nullopt;
   return std::optional<std::optional<PatrolWindow>>(body.window);
+}
+
+int64_t defaultDwellSeconds()
+{
+  const int64_t configured = CameraControlFeatureService::ptz().patrolDwellMs / 1000;
+  return std::clamp(configured, patrol_plan::kMinDwellSeconds, patrol_plan::kMaxDwellSeconds);
 }
 }
 
@@ -79,7 +88,7 @@ drogon::Task<ResponseCameraPatrolDto> CameraPatrolService::change(const CameraPa
     after = co_await patrolRepository_.create(
         {.cameraId = cameraId,
          .stops = *body.stops,
-         .dwellSeconds = body.dwellSeconds.value_or(patrol_plan::kDefaultDwellSeconds),
+         .dwellSeconds = body.dwellSeconds.value_or(defaultDwellSeconds()),
          .isEnabled = body.enabled.value_or(true),
          .window = body.windowGiven ? body.window : std::nullopt,
          .client = nullptr});

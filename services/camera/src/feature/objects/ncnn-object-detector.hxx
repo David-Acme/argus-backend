@@ -21,7 +21,7 @@ struct ObjectDetectorOptions
   int inputSize{640};
   float confidence{0.45f};
   int maxDet{300};
-  bool useVulkan{true};
+  bool useVulkan{false};
 };
 
 class ObjectDetectorService final : public IObjectDetector

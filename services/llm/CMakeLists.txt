@@ -217,6 +217,16 @@ set_target_properties(llm-app-command-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-app-command-test COMMAND llm-app-command-test)
 
+add_executable(llm-sight-command-test tests/unit/llm-sight-command-test.cc)
+
+target_link_libraries(llm-sight-command-test PRIVATE argus::llm argus::lib::doctest-main)
+
+target_compile_options(llm-sight-command-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-sight-command-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-sight-command-test COMMAND llm-sight-command-test)
+
 add_executable(llm-tool-providers-test tests/unit/llm-tool-providers-test.cc)
 
 target_link_libraries(llm-tool-providers-test PRIVATE argus::llm

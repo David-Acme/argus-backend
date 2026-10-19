@@ -10,11 +10,11 @@ inline constexpr ErrorDefinition Forbidden{
     .status = 403,
     .message = "Forbidden"};
 inline constexpr ErrorDefinition GuardOffDuty{
-    .code = ErrorCode::Forbidden,
+    .code = ErrorCode::GuardOffDuty,
     .status = 403,
     .message = "A guard moves a camera only while on duty"};
 inline constexpr ErrorDefinition PresetsNotYours{
-    .code = ErrorCode::Forbidden,
+    .code = ErrorCode::PresetsNotYours,
     .status = 403,
     .message = "Only the owner or a resident saves, deletes or sets presets"};
 inline constexpr ErrorDefinition InvalidCameraId{

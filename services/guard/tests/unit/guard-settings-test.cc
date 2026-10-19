@@ -129,7 +129,7 @@ TEST_CASE("the guard catalog builds through the registry")
 {
   const auto catalog = guardSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{guardSettingsCatalog()});
-  CHECK(catalog.size() == 45);
+  CHECK(catalog.size() == 66);
   CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) ==
         13);
   for (const auto& spec : catalog) {
@@ -210,6 +210,27 @@ TEST_CASE("every fallback is what the guard runs with when the key is absent")
   CHECK(intFallback(catalog, "guard.tamper_sustained_s") ==
         service.tamperSustainedS);
   CHECK(intFallback(catalog, "guard.health_stale_s") == service.healthStaleS);
+  CHECK(intFallback(catalog, "guard.tamper.cover_s") == service.tamper.coverS);
+  CHECK(intFallback(catalog, "guard.tamper.whiteout_s") == service.tamper.whiteoutS);
+  CHECK(intFallback(catalog, "guard.tamper.blind_s") == service.tamper.blindS);
+  CHECK(intFallback(catalog, "guard.tamper.blind_home_s") == service.tamper.blindHomeS);
+  CHECK(intFallback(catalog, "guard.tamper.partial_s") == service.tamper.partialS);
+  CHECK(intFallback(catalog, "guard.tamper.defocus_s") == service.tamper.defocusS);
+  CHECK(intFallback(catalog, "guard.tamper.reaim_s") == service.tamper.reaimS);
+  CHECK(intFallback(catalog, "guard.tamper.dark_s") == service.tamper.darkS);
+  CHECK(intFallback(catalog, "guard.tamper.signal_wired_s") == service.tamper.signalWiredS);
+  CHECK(intFallback(catalog, "guard.tamper.signal_wifi_s") == service.tamper.signalWifiS);
+  CHECK(intFallback(catalog, "guard.tamper.group_window_s") == service.tamper.groupWindowS);
+  CHECK(intFallback(catalog, "guard.tamper.lens_notice_s") == service.tamper.lensNoticeS);
+  CHECK(intFallback(catalog, "guard.tamper.seen_window_s") == service.tamper.seenWindowS);
+  CHECK(decimalFallback(catalog, "guard.tamper.near_share") == doctest::Approx(service.tamper.nearShare));
+  CHECK(intFallback(catalog, "guard.tamper.ask_answer_s") == service.tamper.askAnswerS);
+  CHECK(intFallback(catalog, "guard.tamper.sweep_s") == service.tamper.sweepS);
+  CHECK(intFallback(catalog, "guard.maintenance.default_minutes") == service.maintenance.defaultMinutes);
+  CHECK(intFallback(catalog, "guard.maintenance.max_minutes") == service.maintenance.maxMinutes);
+  CHECK(intFallback(catalog, "guard.maintenance.duress_window_s") == service.maintenance.duressWindowS);
+  CHECK(intFallback(catalog, "guard.look.budget_ms") == service.look.budgetMs);
+  CHECK(intFallback(catalog, "guard.look.cooldown_s") == service.look.cooldownS);
   CHECK(intFallback(catalog, "guard.journal_retention_days") ==
         service.journalRetentionDays);
   CHECK(intFallback(catalog, "guard.marked_retention_days") ==

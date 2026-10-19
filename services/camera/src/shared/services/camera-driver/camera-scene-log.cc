@@ -12,6 +12,13 @@ void CameraSceneLog::noteAimed(const CameraInstant& aimed)
   CameraScene& scene = scenes_[aimed.cameraId];
   scene.aimedAtMs = aimed.atMs;
   scene.returnsHome = false;
+  scene.argusAway = false;
+}
+
+void CameraSceneLog::setArgusAway(const CameraAway& away)
+{
+  std::scoped_lock lock(mutex_);
+  scenes_[away.cameraId].argusAway = away.away;
 }
 
 void CameraSceneLog::beginMove(const CameraMoveStart& move)

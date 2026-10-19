@@ -2,6 +2,7 @@ argus_module(NAME camera-control
     SOURCES
         controllers/camera-control-controller.cc
         controllers/camera-patrol-controller.cc
+        dtos/camera-aim-dto.cc
         dtos/camera-patrol-dto.cc
         dtos/camera-preset-dto.cc
         dtos/camera-ptz-dto.cc
@@ -12,6 +13,9 @@ argus_module(NAME camera-control
         dtos/response-camera-patrol-dto.cc
         repositories/camera-patrol/camera-patrol-repository.cc
         schemas/camera-patrol/camera-patrol-schema.cc
+        services/aim-board.cc
+        services/aim-math.cc
+        services/aim-settings.cc
         services/camera-control-feature-service.cc
         services/camera-patrol-service.cc
         services/duty-gate.cc
