@@ -1358,3 +1358,15 @@ burst into a single reload; and the restart story is short, because a process
 that dies between the insert and the emit dropped every socket with it, and a
 device that reconnects re-reads what it mounts, so the missed frame costs
 nothing.
+
+## Conversations (F8/F9, 2026-10-19)
+
+`conversation_message` is a pulled table like `notification`: the `Synchronize` body may carry
+`conversation_message` with the usual creation and deletion legs, and `SynchronizedService` asks argus-notification
+through `NotificationSyncSource::conversation` (`PullConversation`), scoped by the socket's `sub`. Live rows arrive on
+the notification change stream as user emits (`Add`, `Delete`) and user audit diffs; the fan-out needs nothing
+specific. The table is own-row, so it is excluded from module rooms and from the global audit page by role-access.
+
+`voice:start` may name its leg: `{"leg":"phone"}` or `{"leg":"laptop"}` becomes `VoiceStart.leg`
+(`VoiceGrpcRelay::legOf`); anything else, including `camera`, is unspecified, because only the server sets a camera
+leg.

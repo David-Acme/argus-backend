@@ -254,3 +254,17 @@ TEST_CASE("voice:start resumes a cut call only when it says so")
   CHECK_FALSE(VoiceGrpcRelay::resumeOf(json_util::fromString(R"({"type":"voice:start","payload":{"resume":"true"}})")));
   CHECK_FALSE(VoiceGrpcRelay::resumeOf(json_util::fromString(R"({"type":"voice:start"})")));
 }
+
+TEST_CASE("voice:start names the phone or the laptop leg, and anything else is unspecified")
+{
+  const auto legOf = [](const std::string& raw) {
+    return VoiceGrpcRelay::legOf(json_util::fromString(raw));
+  };
+  CHECK(legOf(R"({"type":"voice:start","payload":{"leg":"phone"}})") == argus::voice::v1::VOICE_LEG_PHONE);
+  CHECK(legOf(R"({"type":"voice:start","payload":{"leg":"laptop","mode":"duplex"}})") ==
+        argus::voice::v1::VOICE_LEG_LAPTOP);
+  CHECK(legOf(R"({"type":"voice:start","payload":{"leg":"camera"}})") == argus::voice::v1::VOICE_LEG_UNSPECIFIED);
+  CHECK(legOf(R"({"type":"voice:start","payload":{"leg":"PHONE"}})") == argus::voice::v1::VOICE_LEG_UNSPECIFIED);
+  CHECK(legOf(R"({"type":"voice:start","payload":{"leg":2}})") == argus::voice::v1::VOICE_LEG_UNSPECIFIED);
+  CHECK(legOf(R"({"type":"voice:start"})") == argus::voice::v1::VOICE_LEG_UNSPECIFIED);
+}

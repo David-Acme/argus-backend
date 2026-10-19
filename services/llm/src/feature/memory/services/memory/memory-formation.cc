@@ -1,6 +1,7 @@
 #include "memory-formation.hxx"
 
 #include <algorithm>
+#include <feature/memory/services/memory/memory-scope-classifier.hxx>
 #include <array>
 #include <string_view>
 
@@ -230,6 +231,9 @@ MemoryFormation::observe(const Observation& obs,
       resolveOrCreateEntity({.surface = subjectSurface, .lang = obs.lang});
   if (entityId == 0)
     return std::nullopt;
+  const MemoryScope scope = classifyMemoryScope({.text = obs.text, .lang = obs.lang});
+  const std::string scopeName = memoryScopeToString(scope);
+  const int64_t scopeRef = scope == MemoryScope::Household ? 0 : obs.userId;
 
   const std::string canonical = text_norm::whitespace(
       naturalClause.empty() ? predicate + " " + value : naturalClause);
@@ -255,8 +259,8 @@ MemoryFormation::observe(const Observation& obs,
                               .priority = priority,
                               .confidence = confidence,
                               .lang = obs.lang,
-                              .scope = "user",
-                              .refId = obs.userId,
+                              .scope = scopeName,
+                              .refId = scopeRef,
                               .now = obs.at,
                               .sourceId = sourceId,
                               .supersedes = predicate != kNotePredicate});

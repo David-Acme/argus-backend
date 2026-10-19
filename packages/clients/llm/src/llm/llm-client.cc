@@ -3,6 +3,7 @@
 #include <errors/response-exception.hxx>
 #include <grpc/grpc-client-base.hxx>
 #include <llm.grpc.pb.h>
+#include <llm/conversation-leg-wire.hxx>
 #include <llm/llm-errors.hxx>
 #include <response/response-rpc.hxx>
 
@@ -125,6 +126,8 @@ wire::ChatRequest wireRequest(const ChatRequest& request)
   wire.set_client_actions(request.clientActions);
   wire.set_session_id(request.sessionId);
   wire.set_prefill_only(request.prefillOnly);
+  wire.set_conversation_leg(static_cast<wire::ConversationLeg>(conversationLegWireValue(request.conversationLeg)));
+  wire.set_use_conversation(request.useConversation);
   return wire;
 }
 }

@@ -15,6 +15,7 @@
 #include <notification/notification-delivery-sink.hxx>
 #include <config/config-service.hxx>
 #include <optional>
+#include <shared/vocabulary/notification-kind.hxx>
 #include <sqlite/db-service.hxx>
 #include <stdexcept>
 #include <string>
@@ -547,6 +548,12 @@ TEST_CASE("notification RPC creates fan-out rows and serves user pulls")
           grpc::StatusCode::UNAUTHENTICATED);
     CHECK(sendAs({.credential = kGuardCredential, .type = "camera", .users = {7}, .data = ""}).ok());
   }
+}
+
+TEST_CASE("a household message is a core kind: no module gates it")
+{
+  CHECK(notification_kind::moduleOf("household_message").empty());
+  CHECK_FALSE(notification_kind::moduleOf("guard_episode").empty());
 }
 
 TEST_CASE("the task gate refuses new work after a stop and drains on the last ticket")

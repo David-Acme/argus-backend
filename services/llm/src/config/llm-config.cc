@@ -40,6 +40,23 @@ LlmIdentityConfig LlmConfig::resolveIdentity()
           .rpcSecret = ConfigService::getString("identity.rpc_secret")};
 }
 
+MessengerSettings LlmConfig::resolveMessenger()
+{
+  MessengerSettings settings;
+  if (ConfigService::hasKey("messenger.enabled"))
+    settings.enabled = ConfigService::getBool("messenger.enabled");
+  if (ConfigService::hasKey("messenger.reply_window_s"))
+    settings.replyWindowSeconds = ConfigService::getInt("messenger.reply_window_s");
+  if (ConfigService::hasKey("messenger.max_relays_per_hour"))
+    settings.maxRelaysPerHour = ConfigService::getInt("messenger.max_relays_per_hour");
+  if (ConfigService::hasKey("messenger.max_message_chars"))
+    settings.maxMessageChars = ConfigService::getInt("messenger.max_message_chars");
+  if (ConfigService::hasKey("messenger.max_visitor_notices_per_hour_per_camera"))
+    settings.maxVisitorNoticesPerHourPerCamera = ConfigService::getInt("messenger.max_visitor_notices_per_hour_per_camera");
+  settings.retentionDays = resolveConversation().retentionDays;
+  return settings;
+}
+
 std::string LlmConfig::resolveCameraTarget()
 {
   return ConfigService::getString("camera.grpc_target");
@@ -54,6 +71,26 @@ LlmMemoryConfig LlmConfig::resolveMemory()
 {
   return {.observeCameraEvents =
               ConfigService::getBool("memory.observe_camera_events")};
+}
+
+LlmConversationConfig LlmConfig::resolveConversation()
+{
+  LlmConversationConfig config;
+  if (ConfigService::hasKey("conversation.idle_seconds"))
+    config.idleSeconds = ConfigService::getInt("conversation.idle_seconds");
+  if (ConfigService::hasKey("conversation.retention_days"))
+    config.retentionDays = ConfigService::getInt("conversation.retention_days");
+  if (ConfigService::hasKey("conversation.switch_budget_ms"))
+    config.switchBudgetMs = ConfigService::getInt("conversation.switch_budget_ms");
+  return boundConversation(config);
+}
+
+LlmConversationConfig LlmConfig::boundConversation(LlmConversationConfig config)
+{
+  config.idleSeconds = std::clamp<int64_t>(config.idleSeconds, 60, 86400);
+  config.retentionDays = std::clamp<int64_t>(config.retentionDays, 1, 365);
+  config.switchBudgetMs = std::clamp<int64_t>(config.switchBudgetMs, 1, 1000);
+  return config;
 }
 
 std::optional<LlmDecisionConfig> LlmConfig::resolveDecision(std::string_view decider){

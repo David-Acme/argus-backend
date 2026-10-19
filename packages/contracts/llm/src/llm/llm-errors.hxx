@@ -45,4 +45,12 @@ inline constexpr ErrorDefinition Unavailable{
     .code = ErrorCode::ServiceUnavailable,
     .status = 503,
     .message = "Chat service unavailable"};
+inline constexpr ErrorDefinition ConversationUnavailable{
+    .code = ErrorCode::ServiceUnavailable,
+    .status = 503,
+    .message = "use_conversation needs the conversation store, which is not attached"};
+inline constexpr ErrorDefinition ConversationNeedsUserAndLeg{
+    .code = ErrorCode::BadRequest,
+    .status = 400,
+    .message = "use_conversation needs a known user and a conversation leg"};
 }

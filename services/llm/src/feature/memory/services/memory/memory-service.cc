@@ -1362,8 +1362,9 @@ tools::ToolResult MemoryService::handleForget(const tools::ToolCall& call)
   auto target = recalled.hits.end();
   std::ptrdiff_t best = 0;
   for (auto hit = recalled.hits.begin(); hit != recalled.hits.end(); ++hit) {
+    const bool ownFact = hit->factId > 0 && hit->scope == MemoryScope::Personal;
     const std::ptrdiff_t shared =
-        hit->factId > 0 ? sharedWords({.query = query, .canonical = hit->canonical}) : 0;
+        ownFact ? sharedWords({.query = query, .canonical = hit->canonical}) : 0;
     if (shared > best) {
       best = shared;
       target = hit;

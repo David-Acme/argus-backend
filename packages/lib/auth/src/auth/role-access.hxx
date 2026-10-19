@@ -55,6 +55,7 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::UserAuditLog, kRead},
       {TableName::Notification, kReadUpdateDelete},
       {TableName::NotificationToken, kCreateDeleteOwn},
+      {TableName::ConversationMessage, kReadUpdateDelete},
       {TableName::Memory, kFull}}},
     {UserRole::Guard,
      {{TableName::Camera, kRead},
@@ -68,7 +69,8 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::AuditLog, kRead},
       {TableName::UserAuditLog, kRead},
       {TableName::Notification, kReadUpdateDelete},
-      {TableName::NotificationToken, kCreateDeleteOwn}}},
+      {TableName::NotificationToken, kCreateDeleteOwn},
+      {TableName::ConversationMessage, kReadUpdateDelete}}},
     {UserRole::Guest,
      {{TableName::Camera, kRead},
       {TableName::Reminder, kFull},
@@ -77,7 +79,8 @@ inline const std::unordered_map<UserRole, TableAccess> kTableAccess = {
       {TableName::AuditLog, kRead},
       {TableName::UserAuditLog, kRead},
       {TableName::Notification, kReadUpdateDelete},
-      {TableName::NotificationToken, kCreateDeleteOwn}}},
+      {TableName::NotificationToken, kCreateDeleteOwn},
+      {TableName::ConversationMessage, kReadUpdateDelete}}},
 };
 
 struct GuardRouteAccess
@@ -357,7 +360,7 @@ inline const ClipRouteAccess* clipRouteOf(std::string_view path,
   return route;
 }
 
-inline constexpr std::array<TableName, 7> kBaselineTables = {
+inline constexpr std::array<TableName, 8> kBaselineTables = {
     TableName::User,
     TableName::AuditLog,
     TableName::UserAuditLog,
@@ -365,11 +368,13 @@ inline constexpr std::array<TableName, 7> kBaselineTables = {
     TableName::NotificationToken,
     TableName::Reminder,
     TableName::ReminderDetail,
+    TableName::ConversationMessage,
 };
 
-inline constexpr std::array<TableName, 2> kOwnRowTables = {
+inline constexpr std::array<TableName, 3> kOwnRowTables = {
     TableName::Reminder,
     TableName::ReminderDetail,
+    TableName::ConversationMessage,
 };
 
 inline bool isBaselineTable(TableName table)
@@ -551,6 +556,7 @@ inline std::optional<TableName> tableFromPath(std::string_view path)
       {"user", TableName::User},
       {"notification-token", TableName::NotificationToken},
       {"notification", TableName::Notification},
+      {"conversation", TableName::ConversationMessage},
   };
 
   const auto table = kSegments.find(firstSegment(path));

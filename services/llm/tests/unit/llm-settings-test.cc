@@ -53,9 +53,9 @@ TEST_CASE("the llm catalog names its basic keys and stable groups")
   const auto basic = std::ranges::count_if(catalog, [](const SettingSpec& spec) {
     return spec.level == SettingLevel::Basic;
   });
-  CHECK(basic == 2);
+  CHECK(basic == 3);
   for (const auto& spec : catalog)
-    CHECK((spec.group == "sampling" || spec.group == "memory" || spec.group == "engine"));
+    CHECK((spec.group == "sampling" || spec.group == "memory" || spec.group == "engine" || spec.group == "privacy"));
 }
 
 TEST_CASE("resolveSampling reads an applied temperature")

@@ -289,7 +289,7 @@ TEST_CASE("an unreachable sync is a refusal, not a crash")
 
 TEST_CASE("both frozen enums travel value for value")
 {
-  const std::array<std::pair<TableName, v1::TableName>, 24> tables = {{
+  const std::array<std::pair<TableName, v1::TableName>, 25> tables = {{
       {TableName::User, v1::TABLE_NAME_USER},
       {TableName::UserInvitation, v1::TABLE_NAME_USER_INVITATION},
       {TableName::Person, v1::TABLE_NAME_PERSON},
@@ -314,11 +314,12 @@ TEST_CASE("both frozen enums travel value for value")
       {TableName::RefreshToken, v1::TABLE_NAME_REFRESH_TOKEN},
       {TableName::FaceEmbedding, v1::TABLE_NAME_FACE_EMBEDDING},
       {TableName::Memory, v1::TABLE_NAME_MEMORY},
+      {TableName::ConversationMessage, v1::TABLE_NAME_CONVERSATION_MESSAGE},
   }};
   for (const auto& [cxx, wire] : tables)
     CHECK_MESSAGE(static_cast<int>(cxx) == static_cast<int>(wire),
                   "table ", static_cast<int>(cxx));
-  CHECK(static_cast<int>(kLastTableName) == 23);
+  CHECK(static_cast<int>(kLastTableName) == 24);
 
   const std::array<std::pair<SyncOperation, v1::SyncOperation>, 8> operations =
       {{

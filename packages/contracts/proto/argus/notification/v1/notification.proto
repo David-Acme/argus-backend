@@ -151,4 +151,130 @@ service NotificationService {
 
   rpc PullNotifications(PullNotificationsRequest)
       returns (PullNotificationsResponse) {}
+
+  rpc PullConversation(PullConversationRequest)
+      returns (PullConversationResponse) {}
+}
+
+message ConversationMessageRow {
+  int64 id = 1;
+  int64 user_id = 2;
+  int64 counterpart_id = 3;
+  string counterpart_name = 4;
+  string direction = 5;
+  string kind = 6;
+  string body = 7;
+  optional string leg = 8;
+  string state = 9;
+  string message_key = 10;
+  optional string reply_to_key = 11;
+  bool is_read = 12;
+  optional int64 read_at = 13;
+  int64 created_at = 14;
+  optional int64 updated_at = 15;
+}
+
+message ConversationTombstone {
+  int64 id = 1;
+  int64 deleted_at = 2;
+}
+
+message ConversationPull {
+  bool required_create = 1;
+  bool find_last_created = 2;
+  optional SyncRange created = 3;
+  bool required_deleted = 4;
+  bool find_last_deleted = 5;
+  optional SyncRange deleted = 6;
+}
+
+message PullConversationRequest {
+  ConversationPull pull = 1;
+}
+
+message PullConversationResponse {
+  repeated ConversationMessageRow created = 1;
+  optional ConversationMessageRow last_created = 2;
+  repeated ConversationTombstone deleted = 3;
+  optional ConversationTombstone last_deleted = 4;
+}
+
+enum MessageKind {
+  MESSAGE_KIND_UNSPECIFIED = 0;
+  MESSAGE_KIND_RELAY = 1;
+  MESSAGE_KIND_REPLY = 2;
+  MESSAGE_KIND_VISITOR = 3;
+}
+
+enum MessageChannel {
+  MESSAGE_CHANNEL_UNSPECIFIED = 0;
+  MESSAGE_CHANNEL_CONVERSATION = 1;
+  MESSAGE_CHANNEL_NOTIFICATION = 2;
+}
+
+message RelayMessageRequest {
+  int64 from_user_id = 1;
+  string from_name = 2;
+  int64 to_user_id = 3;
+  string to_name = 4;
+  MessageKind kind = 5;
+  string body = 6;
+  string spoken_line = 7;
+  string title = 8;
+  string reply_to_key = 9;
+  string command_id = 10;
+  int64 expires_at = 11;
+}
+
+message RelayMessageResponse {
+  string message_key = 1;
+  MessageChannel channel = 2;
+  bool duplicate = 3;
+}
+
+enum MessageSettlement {
+  MESSAGE_SETTLEMENT_UNSPECIFIED = 0;
+  MESSAGE_SETTLEMENT_ANSWERED = 1;
+  MESSAGE_SETTLEMENT_EXPIRED = 2;
+}
+
+message SettleMessageRequest {
+  string message_key = 1;
+  MessageSettlement settlement = 2;
+}
+
+message SettleMessageResponse {
+  int32 updated = 1;
+}
+
+enum TurnSpeaker {
+  TURN_SPEAKER_UNSPECIFIED = 0;
+  TURN_SPEAKER_USER = 1;
+  TURN_SPEAKER_ASSISTANT = 2;
+}
+
+message ConversationTurnLine {
+  TurnSpeaker speaker = 1;
+  string body = 2;
+}
+
+message AppendTurnsRequest {
+  int64 user_id = 1;
+  string leg = 2;
+  repeated ConversationTurnLine turns = 3;
+  int64 expires_at = 4;
+  string command_id = 5;
+}
+
+message AppendTurnsResponse {
+  int32 appended = 1;
+  bool duplicate = 2;
+}
+
+service ConversationService {
+  rpc RelayMessage(RelayMessageRequest) returns (RelayMessageResponse) {}
+
+  rpc SettleMessage(SettleMessageRequest) returns (SettleMessageResponse) {}
+
+  rpc AppendTurns(AppendTurnsRequest) returns (AppendTurnsResponse) {}
 }

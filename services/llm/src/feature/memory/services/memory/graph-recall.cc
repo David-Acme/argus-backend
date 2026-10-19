@@ -140,6 +140,20 @@ std::string stripTagChars(std::string text)
   return text;
 }
 
+GraphRecallInput scopedTo(const GraphRecallInput& input, const RecallAudience& audience)
+{
+  GraphRecallInput scoped = input;
+  scoped.scope = memoryScopeToString(audience.scope);
+  scoped.refId = audience.refId;
+  return scoped;
+}
+
+}
+
+std::vector<RecallAudience> recallAudiences(int64_t listenerId)
+{
+  return {{.scope = MemoryScope::Personal, .refId = listenerId},
+          {.scope = MemoryScope::Household, .refId = 0}};
 }
 
 std::string GraphRecall::render(const AliasRenderInput& input) const
@@ -205,6 +219,9 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
                                   GraphRecallResult& result)
 {
   if (!worthSemanticSearch(input.text))
+    return;
+  const auto audience = memoryScopeFromString(input.scope);
+  if (!audience)
     return;
 
   const auto query = embedding_.embed(input.text, "query:");
@@ -328,6 +345,7 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
         out.confidence = fact->confidence;
         out.hops = 1;
         out.score = static_cast<float>(fact->priority) * sim;
+        out.scope = *audience;
         out.rendered =
             render({.entityId = out.entityId,
                     .addresseeEntityId = input.addresseeEntityId,
@@ -345,6 +363,7 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
         out.priority = static_cast<int>(episode->salience * 100.0F);
         out.hops = 1;
         out.score = static_cast<float>(episode->salience * 100.0F) * sim;
+        out.scope = *audience;
         out.rendered = episode->summary;
         result.hits.push_back(std::move(out));
         result.usedEpisodeIds.push_back(episode->episodeId);
@@ -368,43 +387,48 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
   const auto overDeadline = [&] {
     return std::chrono::steady_clock::now() >= deadline;
   };
+  const std::vector<RecallAudience> audiences = recallAudiences(input.refId);
 
   const auto collect = [&](int64_t entityId) {
-    std::vector<RecallHit> facts;
-    {
-      std::scoped_lock lock(graph_.mutex());
-      facts = graph_.factsForEntity({.entityId = entityId,
-                                     .scope = input.scope,
-                                     .refId = input.refId,
-                                     .maxHops = input.maxHops,
-                                     .limit = input.limit});
-    }
-    for (const auto& fact : facts) {
-      bool seen = false;
-      for (const auto& existing : result.hits) {
-        if (existing.factId == fact.factId) {
-          seen = true;
-          break;
-        }
+    for (const RecallAudience& audience : audiences) {
+      const GraphRecallInput scoped = scopedTo(input, audience);
+      std::vector<RecallHit> facts;
+      {
+        std::scoped_lock lock(graph_.mutex());
+        facts = graph_.factsForEntity({.entityId = entityId,
+                                       .scope = scoped.scope,
+                                       .refId = scoped.refId,
+                                       .maxHops = input.maxHops,
+                                       .limit = input.limit});
       }
-      if (seen)
-        continue;
-      GraphRecallHit out;
-      out.factId = fact.factId;
-      out.entityId = fact.entityId;
-      out.predicate = fact.predicate;
-      out.value = fact.value;
-      out.canonical = fact.canonical;
-      out.type = fact.type;
-      out.priority = fact.priority;
-      out.confidence = fact.confidence;
-      out.hops = fact.hops;
-      out.score = fact.score;
-      out.rendered =
-          render({.entityId = fact.entityId,
-                  .addresseeEntityId = input.addresseeEntityId,
-                  .canonical = fact.canonical});
-      result.hits.push_back(std::move(out));
+      for (const auto& fact : facts) {
+        bool seen = false;
+        for (const auto& existing : result.hits) {
+          if (existing.factId == fact.factId) {
+            seen = true;
+            break;
+          }
+        }
+        if (seen)
+          continue;
+        GraphRecallHit out;
+        out.factId = fact.factId;
+        out.entityId = fact.entityId;
+        out.predicate = fact.predicate;
+        out.value = fact.value;
+        out.canonical = fact.canonical;
+        out.type = fact.type;
+        out.priority = fact.priority;
+        out.confidence = fact.confidence;
+        out.hops = fact.hops;
+        out.score = fact.score;
+        out.scope = audience.scope;
+        out.rendered =
+            render({.entityId = fact.entityId,
+                    .addresseeEntityId = input.addresseeEntityId,
+                    .canonical = fact.canonical});
+        result.hits.push_back(std::move(out));
+      }
     }
   };
 
@@ -436,22 +460,24 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
   }
   result.entityAnchored = !result.hits.empty();
 
-  if (result.hits.empty()) {
-    const auto tokens = text_norm::words(input.text);
-    if (!tokens.empty()) {
-      std::string match;
-      for (const auto& token : tokens) {
-        if (!match.empty())
-          match += " OR ";
-        match += "\"" + token + "\"";
-      }
+  const auto tokens = text_norm::words(input.text);
+  std::string match;
+  for (const auto& token : tokens) {
+    if (!match.empty())
+      match += " OR ";
+    match += "\"" + token + "\"";
+  }
+
+  if (result.hits.empty() && !tokens.empty()) {
+    for (const RecallAudience& audience : audiences) {
+      const GraphRecallInput scoped = scopedTo(input, audience);
       std::vector<RecallHit> facts;
       {
         std::scoped_lock lock(graph_.mutex());
         facts = repo_.ftsFacts(graph_.handle(),
                                {.match = match,
-                                .scope = input.scope,
-                                .refId = input.refId,
+                                .scope = scoped.scope,
+                                .refId = scoped.refId,
                                 .limit = input.limit});
       }
       for (const auto& fact : facts) {
@@ -466,6 +492,7 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
         out.confidence = fact.confidence;
         out.hops = 1;
         out.score = static_cast<float>(out.priority);
+        out.scope = audience.scope;
         out.rendered =
             render({.entityId = out.entityId,
                     .addresseeEntityId = input.addresseeEntityId,
@@ -489,25 +516,25 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
     weakLexical = shared < 2;
   }
 
-  if ((underBudget || weakLexical) && !overDeadline())
-    collectSemantic(input, result);
+  if ((underBudget || weakLexical) && !overDeadline()) {
+    for (const RecallAudience& audience : audiences) {
+      if (overDeadline())
+        break;
+      collectSemantic(scopedTo(input, audience), result);
+    }
+  }
 
-  if (underBudget && worthSemanticSearch(input.text) && !overDeadline()) {
-    const auto tokens = text_norm::words(input.text);
-    if (!tokens.empty()) {
-      std::string match;
-      for (const auto& token : tokens) {
-        if (!match.empty())
-          match += " OR ";
-        match += "\"" + token + "\"";
-      }
+  if (underBudget && worthSemanticSearch(input.text) && !overDeadline() &&
+      !tokens.empty()) {
+    for (const RecallAudience& audience : audiences) {
+      const GraphRecallInput scoped = scopedTo(input, audience);
       std::vector<EpisodeHit> episodes;
       {
         std::scoped_lock lock(graph_.mutex());
         episodes = repo_.ftsEpisodes(graph_.handle(),
                                      {.match = match,
-                                      .scope = input.scope,
-                                      .refId = input.refId,
+                                      .scope = scoped.scope,
+                                      .refId = scoped.refId,
                                       .limit = 2});
       }
       for (const auto& episode : episodes) {
@@ -527,6 +554,7 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
         out.hops = 1;
         out.score = static_cast<float>(episode.salience * 100.0F) *
                     (1.0F + 0.05F * static_cast<float>(episode.hitCount));
+        out.scope = audience.scope;
         out.rendered = episode.summary;
         result.hits.push_back(std::move(out));
         result.usedEpisodeIds.push_back(episode.episodeId);

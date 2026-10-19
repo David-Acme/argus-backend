@@ -21,4 +21,12 @@ inline constexpr ErrorDefinition NotificationNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,
     .message = "Notification not found"};
+inline constexpr ErrorDefinition ConversationNotFound{
+    .code = ErrorCode::NotFound,
+    .status = 404,
+    .message = "Conversation not found"};
+inline constexpr ErrorDefinition MessageInvalid{
+    .code = ErrorCode::BadRequest,
+    .status = 400,
+    .message = "The message is not valid"};
 }

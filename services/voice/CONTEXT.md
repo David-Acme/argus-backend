@@ -1379,3 +1379,11 @@ other rooms. Turn1 stays slow (about 1.0 s) because its raw probabilities rarely
 reach the threshold; a fix would need turn1-like speech, not a tuning change.
 The permanent test pins: the background never fires, and turns 2 to 4 fire
 within 200 ms of onset.
+
+## The conversation leg (F9, 2026-10-19)
+
+`VoiceStart.leg` (field 6) names the device a session speaks from: argus-sync sets `phone` or `laptop` from the
+app's `voice:start`, and a camera leg is only ever set by the server. With `voice.use_conversation` on, phone and
+laptop turns ask argus-llm for the person's conversation (`conversation_leg`, `use_conversation`); camera turns do
+not until the leg arbiter's identification rule is wired with the watchman. A relayed message reaches a live session
+through the existing `Announce` RPC, called by argus-notification, with kind `household_message`.

@@ -3,12 +3,14 @@
 #include <atomic>
 #include <auth/user-role.hxx>
 #include <cstddef>
+#include <llm/conversation-leg.hxx>
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <functional>
 #include <limits>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <stop_token>
 #include <string>
 #include <vector>
@@ -50,6 +52,8 @@ struct ChatRequest
   bool toolCallsAllowed{true};
   bool prefillOnly{false};
   std::vector<ContextFact> contextFacts{};
+  std::optional<ConversationLegKind> conversationLeg{};
+  bool useConversation{false};
 };
 
 struct UtteranceScreenRequest

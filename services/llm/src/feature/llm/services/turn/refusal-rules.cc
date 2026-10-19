@@ -124,6 +124,21 @@ constexpr std::array<std::string_view, 10> kRelaySkip{
 constexpr std::array<std::string_view, 12> kRelayPronoun{
     "me", "him", "her", "them", "us", "you", "himself", "herself", "lo", "le", "les", "ella"};
 
+constexpr std::array<std::string_view, 14> kImpersonationEs{
+    "de parte de", "en nombre de", "hazte pasar", "haciendote pasar", "finge que eres", "finge ser",
+    "como si fuera", "como si fueras", "que no sepa que soy", "sin decir que soy", "sin decirle que soy",
+    "que no diga quien", "anonimo", "anonimamente"};
+constexpr std::array<std::string_view, 12> kImpersonationEn{
+    "on behalf of", "pretend to be", "pretend you are", "pretending to be", "as if it were", "as if you were",
+    "pose as", "posing as", "say it is from", "anonymously", "without saying it is me", "do not say it is me"};
+
+bool impersonates(const std::vector<Word>& words, bool english)
+{
+  return firstPhrase(words, english ? std::span<const std::string_view>(kImpersonationEn)
+                                    : std::span<const std::string_view>(kImpersonationEs))
+      .has_value();
+}
+
 constexpr std::array<std::string_view, 8> kWherePersonEs{
     "donde esta", "donde andara", "donde anda", "en que lugar esta", "donde vive", "donde estuvo", "donde se fue",
     "donde trabajo"};
@@ -263,8 +278,13 @@ std::optional<Refusal> refusalFor(const Ask& ask)
   const ModuleSnapshot& modules = ask.audience.modules;
   const bool owner = ask.audience.role == UserRole::Owner;
 
-  if (const auto target = relayTarget(words, english))
-    return Refusal{.reason = std::string(kNoRelay), .name = *target};
+  if (const auto target = relayTarget(words, english)) {
+    if (impersonates(words, english))
+      return Refusal{.reason = std::string(kImpersonation), .name = *target};
+    if (!ask.relayOffered)
+      return Refusal{.reason = std::string(kNoRelay), .name = *target};
+    return std::nullopt;
+  }
 
   const bool security = anyStem(words, english ? std::span<const std::string_view>(kSecurityEn)
                                                : std::span<const std::string_view>(kSecurityEs));

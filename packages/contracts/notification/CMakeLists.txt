@@ -13,6 +13,9 @@ argus_contracts(NAME notification
         src/notification/notification-errors.hxx
         src/notification/notification-delivery-sink.hxx
         src/notification/notification-delivery-status.hxx
+        src/notification/message-direction.hxx
+        src/notification/message-kind.hxx
+        src/notification/message-state.hxx
     DEPENDS
         argus::lib::errors)
 
@@ -28,6 +31,15 @@ if(ARGUS_PACKAGE_TESTS)
         -Wall -Wextra)
     add_test(NAME notification-contract-vocabulary-test
              COMMAND notification-contract-vocabulary-test)
+
+    add_executable(notification-message-vocabulary-test
+        tests/unit/notification-message-vocabulary-test.cc)
+    target_link_libraries(notification-message-vocabulary-test PRIVATE
+        argus::contracts::notification argus::lib::doctest-main)
+    target_compile_options(notification-message-vocabulary-test PRIVATE
+        -Wall -Wextra)
+    add_test(NAME notification-message-vocabulary-test
+             COMMAND notification-message-vocabulary-test)
 
     add_executable(notification-contract-catalog-test
         tests/unit/notification-contract-catalog-test.cc)

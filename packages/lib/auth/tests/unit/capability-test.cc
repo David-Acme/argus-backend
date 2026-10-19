@@ -111,6 +111,9 @@ constexpr std::array kRouteProbes = std::to_array<RouteProbe>({
     {.capability = "reminders.write", .method = drogon::Post, .path = "/reminder"},
     {.capability = "reminders.write", .method = drogon::Patch, .path = "/reminder/1"},
     {.capability = "reminders.write", .method = drogon::Delete, .path = "/reminder/1"},
+    {.capability = "messages.relay", .method = drogon::Get, .path = "/conversation"},
+    {.capability = "messages.relay", .method = drogon::Patch, .path = "/conversation/1/read"},
+    {.capability = "messages.relay", .method = drogon::Delete, .path = "/conversation/1"},
 });
 
 constexpr std::array kTableProbes = std::to_array<TableProbe>({
@@ -122,6 +125,7 @@ constexpr std::array kTableProbes = std::to_array<TableProbe>({
     {.capability = "reminders.read", .table = TableName::ReminderDetail, .perm = RolePermission::Read},
     {.capability = "reminders.write", .table = TableName::Reminder, .perm = RolePermission::Update},
     {.capability = "reminders.write", .table = TableName::ReminderDetail, .perm = RolePermission::Create},
+    {.capability = "messages.relay", .table = TableName::ConversationMessage, .perm = RolePermission::Read},
 });
 
 bool tableAllowed(UserRole role, const TableProbe& probe, const ModuleSnapshot& modules)
@@ -207,6 +211,20 @@ TEST_CASE("a role whose module is off keeps the baseline and nothing else")
 
   const auto on = snapshotWith(true, true);
   CHECK(has(role_access::capabilitiesFor({.role = UserRole::Guard, .modules = on}), "directory.read"));
+}
+
+TEST_CASE("messages.relay is core and held by every registered role, even one whose module is off, never by Unknown")
+{
+  for (const auto& modules : moduleStates()) {
+    for (const auto role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+      CAPTURE(userRoleToString(role));
+      CHECK(role_access::hasCapability({.role = role, .modules = modules, .capability = "messages.relay"}));
+    }
+    CHECK_FALSE(role_access::hasCapability(
+        {.role = UserRole::Unknown, .modules = modules, .capability = "messages.relay"}));
+  }
+  const auto guardOff = snapshotWith(false, true);
+  CHECK(has(role_access::capabilitiesFor({.role = UserRole::Guard, .modules = guardOff}), "messages.relay"));
 }
 
 TEST_CASE("a role this build does not know holds nothing, active or not")

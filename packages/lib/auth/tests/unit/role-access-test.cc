@@ -155,13 +155,13 @@ TEST_CASE("readableTables lists every table a role can read")
     }
 
     const auto resident = role_access::readableTables(UserRole::Resident);
-    CHECK(resident.size() == 18);
+    CHECK(resident.size() == 19);
 
     const auto guard = role_access::readableTables(UserRole::Guard);
-    CHECK(guard.size() == 11);
+    CHECK(guard.size() == 12);
 
     const auto guest = role_access::readableTables(UserRole::Guest);
-    CHECK(guest.size() == 7);
+    CHECK(guest.size() == 8);
 }
 
 TEST_CASE("permissionForMethod maps HTTP methods to permissions")
@@ -411,7 +411,34 @@ TEST_CASE("only directory roles receive the user module stream")
     CAPTURE(userRoleToString(role));
     CHECK_FALSE(contains(role_access::moduleTables(role), TableName::Reminder));
     CHECK_FALSE(contains(role_access::moduleTables(role), TableName::ReminderDetail));
+    CHECK_FALSE(contains(role_access::moduleTables(role), TableName::ConversationMessage));
   }
+}
+
+TEST_CASE("conversation messages are own rows every registered role reads, marks read and clears, even inactive")
+{
+  for (const auto role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CAPTURE(userRoleToString(role));
+    for (const bool active : {true, false}) {
+      CHECK(role_access::hasAccess({.role = role, .table = TableName::ConversationMessage,
+                                    .perm = RolePermission::Read, .roleActive = active}));
+      CHECK(role_access::hasAccess({.role = role, .table = TableName::ConversationMessage,
+                                    .perm = RolePermission::Update, .roleActive = active}));
+      CHECK(role_access::hasAccess({.role = role, .table = TableName::ConversationMessage,
+                                    .perm = RolePermission::Delete, .roleActive = active}));
+      CHECK_FALSE(role_access::hasAccess({.role = role, .table = TableName::ConversationMessage,
+                                          .perm = RolePermission::Create, .roleActive = active}));
+    }
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/conversation", .method = drogon::Get, .roleActive = true}));
+    CHECK(role_access::hasHttpAccess(
+        {.role = role, .path = "/conversation/4/read", .method = drogon::Patch, .roleActive = true}));
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/conversation/4", .method = drogon::Delete, .roleActive = false}));
+    CHECK_FALSE(role_access::hasHttpAccess(
+        {.role = role, .path = "/conversation/message", .method = drogon::Post, .roleActive = true}));
+  }
+  CHECK(role_access::tableFromPath("/conversation/2/read") == TableName::ConversationMessage);
+  CHECK_FALSE(role_access::hasAccess({.role = UserRole::Unknown, .table = TableName::ConversationMessage,
+                                      .perm = RolePermission::Read, .roleActive = true}));
 }
 
 TEST_CASE("hasHttpAccess applies kGuardAccess route by route")

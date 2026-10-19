@@ -104,3 +104,68 @@ Not built and not run yet: every unit below passed the comment, dependency and r
 - **F6a, recurring reminders from the assistant.** `memory.remind` takes a `repeat` rule read in es, es-PE and en; a weekday set becomes one weekly series per day; no call is scheduled for a series; a cadence the rule cannot hold is refused and nothing saved. "Recuérdame el día 5 de cada mes" is read as a question and left to Laya.
 - **F6b, one occurrence of a series.** `recurrence_exceptions` on `reminder` and `calendar_event`, `PATCH …/occurrence` for each, 409 on a row that does not repeat, 422 on a time the series does not produce. A reminder occurrence is only skipped or moved between its neighbours, so the firing order never changes. Frontend schema v14 and the three agenda actions. Open: later occurrences of a recurring event are still not announced; `calendar.list_events` ignores exceptions; a snoozed reminder answers 422 to "this occurrence".
 - **Needs a live stack.** Golden recordings of `/rtc/ice`, the patrol routes and the 13 hand-written occurrence probes; a call through the relay from mobile data; the coturn container started once.
+
+## F8/F9: parallel conversations and the messenger
+
+Track T4. Backend branch `feat/t4-conversations` (base `integ/close-batch-3`), frontend branch
+`feat/t4-conversations-ui` (base frontend `origin/master`). Nothing was compiled, built or run: the owner ordered
+the tests to run once at the end. The gates that were run: `check-comments`, `check-deps` and `check-routes`
+(baseline refreshed with `route_scan.py`), all green.
+
+- **What was ported.** From `track/b4-conversations`: the per-person conversation store, the takeover and switch
+  note, the purge, the leg contract (`ConversationLegKind`, `ChatRequest` fields 17 and 18, `VoiceStart.leg` moved
+  to field 6 because 5 is now `later_lines`), the voice leg arbiter and route, and the memory scopes with recall
+  scoped by the listener. From `track/b4-messenger`: the relay tool, rules family, recipient resolution, relay
+  threads, caps, visitor ask and turn integration. Every ported test links `argus::lib::doctest-main`.
+- **Left on the tracks, not ported.** The STT utterance batcher, the TTS fair queue and turnstile, the sequence
+  scheduler (P1/P2 gated), the leg correlation detector and the P3 harness: they are not needed for the
+  conversation threads or the messenger and are untouched in STT and TTS.
+- **Found and fixed while porting.** `kActionPhrases` gained an eleventh row in an array of ten; `relay-service.hxx`
+  named `ConversationPort` outside its namespace; `stt-client.cc` read a `conversationKey` that `StreamInput` does not
+  have (dropped with the batcher); `ConversationPurgeTask` and `setChannel` took three parameters.
+- **Decisions (the plan's recommended options).**
+  - The app-visible threads live in argus-notification (`conversation_message`), not in argus-llm: llm is internal
+    by its rules, notification already owns what reaches a person, has the push path, `Announce` through voice and
+    the change feed into sync. argus-llm writes there through `ConversationService` and keeps its own store for the
+    hot context.
+  - A message never rings (owner ruling 8.4): said inside a live session, else a `household_message` notification.
+  - Consent: the sender hears the exact words read back and confirms them in the next turn; the code binds the
+    recipient and the words.
+  - No impersonation: "de parte de", "en nombre de", "hazte pasar por", "anónimo", "on behalf of",
+    "anonymously" and the like are refused even when the relay is offered.
+  - The sender learns only the delivery state (`sent`, `delivered`, `notified`, `answered`, `expired`), never the
+    recipient's read state or whereabouts.
+  - Typed messages from the app are not part of this unit: the app reads, marks read and clears.
+- **Contracts.**
+  - Sync table `conversation_message`, `TableName::ConversationMessage = 24`, `TABLE_NAME_CONVERSATION_MESSAGE = 24`,
+    own rows, deletions on. Row: `id, userId, counterpartId (0 = Argus), counterpartName, direction (out|in), kind
+    (turn|relay|reply|visitor), body, leg (camera|phone|laptop|null), state, messageKey, replyToKey, isRead, readAt,
+    createdAt, updatedAt, deletedAt`. No new `SyncOperation`: `Add`, `Delete` and user audit diffs.
+  - Routes on argus-notification: `GET /conversation`, `PATCH /conversation/{counterpartId}/read`,
+    `DELETE /conversation/{counterpartId}`; filter chains in `route-baseline.txt`.
+  - gRPC: `NotificationService.PullConversation` (sync caller), `ConversationService.RelayMessage`,
+    `SettleMessage`, `AppendTurns` (llm caller). Notification kind `household_message`, data
+    `{kind, fromUserId, messageKey, counterpartId}`.
+  - role-access: `conversation_message` read/update/delete for Resident, Guard and Guest, baseline and own-row;
+    capability `messages.relay` (core, baseline, every registered role) gates the app's messenger.
+  - `voice:start` payload `leg: "phone" | "laptop"`.
+  - Schema: argus-notification `database/schema.sql` gains `conversation_message`; argus-llm gains `conversation`,
+    `conversation_turn`, `relay_thread`, `visitor_notice`. Frontend WatermelonDB schema 13 to 14 with a
+    `createTable` migration.
+- **Frontend.** The `conversation_message` table, its sync and audit handling, the Conversations list and thread
+  screens painted from the local database, mark read and clear through HTTP, the Messages entry on Inicio gated
+  on `messages.relay`, the `household_message` notification opening its thread, and the leg on `voice:start`.
+- **Commits.** Backend: `59271c4f` (conversation core and memory scopes), `e76d8677` (inbox, sync table, routes,
+  role access), `8810bbf8` (messenger), plus the documentation commit. Frontend: `7debe1e`, `c0a31f4`, `0e6138c`,
+  `6d2af17`.
+- **What remains.**
+  - The build and every test of llm, notification, sync, voice, packages and the frontend.
+  - `voice.use_conversation` stays off until the conversation path passes its tests (ruling Q16); the app's
+    Argus thread is filled regardless, from every identified turn.
+  - Golden HTTP fixtures for the three `/conversation` routes (`scripts/fixtures/http/`), and the frontend
+    `HTTP_CONTRACTS` entries that depend on them.
+  - The STT, TTS and LLM parallelism of the plan's section 3 and the co-located handling of section 4 (with the
+    watchman).
+  - A visitor's notice cannot be answered back to the visitor; typed messages from the app; the call preference
+    `live_announce` is not consulted before announcing a message.
+  - The P1 to P5 measurements.

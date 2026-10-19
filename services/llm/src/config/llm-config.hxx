@@ -1,8 +1,10 @@
 #pragma once
 
+#include <feature/messenger/vocabulary/messenger-settings.hxx>
 #include <grpc/grpc-server-identity.hxx>
 #include <http/listener-config.hxx>
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -27,6 +29,13 @@ struct LlmIdentityConfig
 struct LlmMemoryConfig
 {
   bool observeCameraEvents{false};
+};
+
+struct LlmConversationConfig
+{
+  int64_t idleSeconds{900};
+  int64_t retentionDays{30};
+  int64_t switchBudgetMs{100};
 };
 
 struct LlmDecisionConfig
@@ -74,11 +83,16 @@ public:
   [[nodiscard]] static std::filesystem::path resolveComponentsRoot();
 
   [[nodiscard]] static LlmIdentityConfig resolveIdentity();
+  [[nodiscard]] static MessengerSettings resolveMessenger();
 
   [[nodiscard]] static std::string resolveCameraTarget();
   [[nodiscard]] static std::string resolveCameraCredential();
 
   [[nodiscard]] static LlmMemoryConfig resolveMemory();
+
+  [[nodiscard]] static LlmConversationConfig resolveConversation();
+
+  [[nodiscard]] static LlmConversationConfig boundConversation(LlmConversationConfig config);
 
   [[nodiscard]] static std::optional<LlmDecisionConfig> resolveDecision(std::string_view decider = {});
 

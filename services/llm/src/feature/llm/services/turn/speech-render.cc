@@ -107,7 +107,7 @@ struct ActionPhrase
   std::string_view en;
 };
 
-constexpr std::array<ActionPhrase, 10> kActionPhrases{{
+constexpr std::array<ActionPhrase, 11> kActionPhrases{{
     {.tool = "calendar.create_event", .es = "agendar el evento", .en = "schedule the event"},
     {.tool = "calendar.cancel_event", .es = "cancelar el evento", .en = "cancel the event"},
     {.tool = "task.create", .es = "anotar la tarea", .en = "add the task"},
@@ -118,6 +118,7 @@ constexpr std::array<ActionPhrase, 10> kActionPhrases{{
     {.tool = "app.show_camera", .es = "mostrar la cámara", .en = "show the camera"},
     {.tool = "app.set_guard_mode", .es = "cambiar la vigilancia", .en = "change the guard mode"},
     {.tool = "camera.set_privacy", .es = "tapar la cámara", .en = "mask the camera"},
+    {.tool = "message.relay", .es = "mandar el mensaje", .en = "send the message"},
 }};
 
 std::string_view actionPhrase(std::string_view tool, std::string_view lang)
@@ -153,6 +154,10 @@ std::string_view reasonText(AskReason reason, std::string_view lang)
       return english ? "there are no projects yet" : "todavía no hay proyectos";
     case AskReason::RepeatTime:
       return english ? "a repeating reminder needs its time" : "un recordatorio que se repite necesita su hora";
+    case AskReason::RecipientChoice:
+      return english ? "the recipient must be chosen" : "hay que elegir a quién";
+    case AskReason::RecipientName:
+      return english ? "the recipient must be named" : "hay que decir a quién";
   }
   return english ? "it is still needed" : "hay que pedirlo";
 }
@@ -562,6 +567,8 @@ std::optional<std::string> slotQuestion(const SlotQuestion& input)
   return std::nullopt;
 }
 
+constexpr std::string_view kRelayTool = "message.relay";
+
 std::string subjectOf(const Json::Value& args)
 {
   constexpr std::size_t kLongestSubject = 60;
@@ -575,6 +582,8 @@ std::string subjectOf(const Json::Value& args)
 
 std::optional<std::string> confirmQuestion(const ConfirmQuestion& input)
 {
+  if (input.confirm.action == kRelayTool && !input.confirm.toolPreview.empty())
+    return input.confirm.toolPreview;
   if (!input.confirm.module.empty())
     return std::nullopt;
   const bool english = input.lang == "en";
@@ -652,6 +661,11 @@ std::optional<std::string> refusalLine(const RefusalSpeech& input)
                                    : "I cannot pass a message on to " + name + " yet. Do you want me to set a reminder instead?")
                    : (name.empty() ? std::string("Todavía no puedo pasar mensajes. ¿Quieres que te ponga un recordatorio?")
                                    : "Todavía no puedo pasarle un mensaje a " + name + ". ¿Quieres que te ponga un recordatorio?");
+  if (reason == refusal_reason::kImpersonation)
+    return english ? std::string("I cannot pass on a message as someone else or hide who sends it. If you want, "
+                                 "I pass it on as yours.")
+                   : std::string("No puedo mandar un mensaje en nombre de otra persona ni ocultar quién lo manda. "
+                                 "Si quieres, se lo paso diciendo que es tuyo.");
   if (reason == refusal_reason::kModuleOff)
     return english ? std::string("Surveillance is off, so I cannot tell you that.")
                    : std::string("La vigilancia está apagada, así que no puedo decirte eso.");

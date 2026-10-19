@@ -21,7 +21,8 @@ enum class Awaiting : unsigned char
   Project,
   NewProject,
   Day,
-  Clock
+  Clock,
+  Recipient
 };
 
 struct Pending

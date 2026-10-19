@@ -40,6 +40,7 @@ inline constexpr std::array kCapabilities = std::to_array<CapabilitySpec>({
     {.id = "reminders.read", .module = kCoreModule, .roles = kEveryRoleBaseline},
     {.id = "reminders.write", .module = kCoreModule, .roles = kEveryRoleBaseline},
     {.id = "assistant.voice", .module = kCoreModule, .roles = kEveryRole},
+    {.id = "messages.relay", .module = kCoreModule, .roles = kEveryRoleBaseline},
     {.id = "directory.read", .module = kCoreModule, .roles = kOwnerGuard},
     {.id = "people.read", .module = kCoreModule, .roles = kOwnerResidentGuard},
     {.id = "people.write", .module = kCoreModule, .roles = kOwnerResident},

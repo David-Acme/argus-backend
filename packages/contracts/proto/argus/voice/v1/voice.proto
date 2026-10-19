@@ -32,6 +32,14 @@ enum VoiceMode
   VOICE_MODE_DUPLEX = 1;
 }
 
+enum VoiceLeg
+{
+  VOICE_LEG_UNSPECIFIED = 0;
+  VOICE_LEG_CAMERA = 1;
+  VOICE_LEG_PHONE = 2;
+  VOICE_LEG_LAPTOP = 3;
+}
+
 message VoiceStart
 {
   VoiceIdentity identity = 1;
@@ -39,6 +47,7 @@ message VoiceStart
   bool resume = 3;
   string opening_line = 4;
   repeated string later_lines = 5;
+  VoiceLeg leg = 6;
 }
 
 message VoiceStop {}

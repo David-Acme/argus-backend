@@ -107,6 +107,9 @@ llm	POST	/llm/v1/chat	-	-	services/llm/src/feature/llm/controllers/llm-controlle
 llm	POST	/llm/v1/chat-stream	-	-	services/llm/src/feature/llm/controllers/llm-controller.hxx
 llm	GET	/llm/v1/config	-	-	services/llm/src/feature/llm/controllers/llm-controller.hxx
 llm	POST	/llm/v1/screen	-	-	services/llm/src/feature/llm/controllers/llm-controller.hxx
+notification	GET	/conversation	DeviceFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/conversation/controllers/conversation-controller.hxx
+notification	DELETE	/conversation/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/conversation/controllers/conversation-controller.hxx
+notification	PATCH	/conversation/{1}/read	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/conversation/controllers/conversation-controller.hxx
 notification	DELETE	/notification-token	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/notification/controllers/notification-token-controller.hxx
 notification	POST	/notification-token	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/notification/controllers/notification-token-controller.hxx
 notification	PATCH	/notification/ack	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/notification/src/feature/notification/controllers/notification-controller.hxx

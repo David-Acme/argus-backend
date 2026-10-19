@@ -2667,3 +2667,40 @@ tarea, en una sola pregunta corta"): `retryShare` 0.333333 to 0.111111 on the sh
 the pins were measured (the U19 prompt items); their fix is the call prompt
 (`services/voice/src/feature/voice/call-history.cc`, another unit's surface in this batch) or the corpus
 itself, never the fixture.
+
+## The conversation's stored text (2026-10-14)
+
+The conversation stores what the screen let through or rewrote, never the raw
+utterance when the screen changed it. The chat path screens the turn first, and
+only then opens the conversation (the leg takeover and the tail), so the stored
+user turn and the model's last user message are the same text: the screen's text.
+
+- A pass returns the utterance unchanged (the duress screen does this), so the
+  stored text is the spoken text of the request.
+- A rewrite that does not withhold replaces the request's user message, and the
+  stored turn is the rewrite.
+- A withheld turn is answered with the withheld speech, opens nothing, records
+  nothing and does not change the active leg.
+
+The reply is stored as the assistant turn on the same leg, only when it is not
+empty. Test: llm-controller-conversation-test (the rewriting screen case, and the
+withheld case).
+
+## The messenger and the app's conversation thread (F8/F9, 2026-10-19)
+
+- **One conversation per person.** The `conversation` feature (from `track/b4-conversations`) keeps the turns, the
+  active leg and the switch note per user; `voice.use_conversation` stays off until the conversation path passes
+  its tests (ruling Q16). Memory facts carry a scope (`personal` by default, `household` by cue) and recall reads
+  the listener's personal facts and the household's, never another person's.
+- **The app's thread.** Every identified turn (a `userId` bound by the `voice` caller, not withheld by the duress
+  screen) is mirrored to argus-notification's inbox through `ConversationTranscript` (`AppendTurns`), off the turn
+  and best effort, with `expires_at` from `conversation.retention_days`.
+- **The relay.** `message.relay` is chosen by the rules tier (`relay_command`: "llama a X y dile que", "dile a X
+  que", "avísale a", "mándale a", "cuéntale a", "tell X that", "let X know that"; "dile que" alone is an answer) and
+  never by the LLM. The refusal leg lets it through when the tool is offered and refuses impersonation in any case
+  (`impersonation`: on behalf of someone else, hiding the sender). The tool resolves the recipient without side
+  effects and reads the words back; only the sender's yes in the next turn, with the one-use code bound to that
+  recipient and those words, sends it (consent). `RelayService` keeps the reply window in `relay_thread` and hands
+  the letter to the `MessageCourier`, argus-notification's `RelayMessage`; a message said in a live session is also
+  noted in the recipient's conversation. Answers name the message they answer; the hourly sweep settles expired
+  threads in the inbox.

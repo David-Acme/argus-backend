@@ -18,6 +18,9 @@ public:
   [[nodiscard]] drogon::Task<std::optional<Json::Value>>
   findLast(const JwtContext& ctx) const override;
 
+  [[nodiscard]] drogon::Task<ConversationPage>
+  conversation(const JwtContext& ctx, const ConversationPull& pull) const override;
+
 private:
   std::shared_ptr<NotificationClient> client_;
 };

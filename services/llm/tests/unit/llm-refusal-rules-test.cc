@@ -219,3 +219,37 @@ TEST_CASE("presence is the owner's alone")
   CHECK_FALSE(ask("¿quiénes están en casa?", UserRole::Owner).has_value());
   CHECK_FALSE(ask("Who is home?", UserRole::Owner, "en").has_value());
 }
+
+TEST_CASE("an offered relay passes the refusal leg so the decider can take it")
+{
+  const ToolAudience audience = audienceFor(UserRole::Resident, true);
+  const auto offered = [&audience](std::string_view utterance, std::string_view lang) {
+    return turn::refusal::refusalFor(
+        {.utterance = utterance, .audience = audience, .lang = lang, .relayOffered = true});
+  };
+  CHECK_FALSE(offered("dile a María que llego tarde al almuerzo", "es").has_value());
+  CHECK_FALSE(offered("llama a David y dile que venga a comer", "es").has_value());
+  CHECK_FALSE(offered("Tell María I'll be late for lunch", "en").has_value());
+  CHECK_FALSE(offered("dile a Ana de mi parte que ya voy", "es").has_value());
+}
+
+TEST_CASE("a relay that hides or fakes its sender is refused even when relays are offered")
+{
+  const ToolAudience audience = audienceFor(UserRole::Owner, true);
+  const auto offered = [&audience](std::string_view utterance, std::string_view lang) {
+    return turn::refusal::refusalFor(
+        {.utterance = utterance, .audience = audience, .lang = lang, .relayOffered = true});
+  };
+  const auto onBehalf = valueOf(offered("dile a David de parte de Ana que venga", "es"));
+  CHECK(onBehalf.reason == turn::refusal::kImpersonation);
+  CHECK(onBehalf.name == "David");
+
+  const auto posing = valueOf(offered("dile a Lucía que no sepa que soy yo", "es"));
+  CHECK(posing.reason == turn::refusal::kImpersonation);
+
+  const auto anonymous = valueOf(offered("tell David anonymously that dinner is ready", "en"));
+  CHECK(anonymous.reason == turn::refusal::kImpersonation);
+
+  const auto notOffered = valueOf(ask("dile a David en nombre de Ana que venga", UserRole::Owner));
+  CHECK(notOffered.reason == turn::refusal::kImpersonation);
+}

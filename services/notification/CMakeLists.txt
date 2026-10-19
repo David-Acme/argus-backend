@@ -90,6 +90,11 @@ if(NOT TARGET argus::contracts::camera)
                      ${CMAKE_BINARY_DIR}/contracts/camera)
 endif()
 
+if(NOT TARGET argus::contracts::llm)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/llm
+                     ${CMAKE_BINARY_DIR}/contracts/llm)
+endif()
+
 if(NOT TARGET argus::clients::notification)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
                      ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
@@ -149,6 +154,7 @@ target_link_libraries(argus-notification PRIVATE
     argus::notification-camera-notification
     argus::notification-module-request
     argus::notification-call
+    argus::notification-conversation
     argus::notification-settings
     argus::contracts::settings-wire
     argus::lib::auth argus::lib::validation argus::lib::http
@@ -220,6 +226,16 @@ target_link_libraries(notification-rpc-test PRIVATE
 target_compile_options(notification-rpc-test PRIVATE -Wall -Wextra)
 
 add_test(NAME notification-rpc-test COMMAND notification-rpc-test)
+
+add_executable(notification-conversation-test
+    tests/unit/notification-conversation-test.cc)
+set_target_properties(notification-conversation-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(notification-conversation-test PRIVATE
+    argus::notification-conversation
+    argus::notification-rpc
+    argus::lib::doctest-main)
+target_compile_options(notification-conversation-test PRIVATE -Wall -Wextra)
+add_test(NAME notification-conversation-test COMMAND notification-conversation-test)
 
 add_executable(notification-no-nats-test
     tests/unit/notification-no-nats-test.cc)

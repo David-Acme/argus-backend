@@ -4,6 +4,7 @@
 #include <grpc/fleet-caller-gate.hxx>
 #include <grpc/internal-tls.hxx>
 #include <llm.grpc.pb.h>
+#include <llm/conversation-leg-wire.hxx>
 #include <llm/llm-errors.hxx>
 #include <response/response-rpc.hxx>
 
@@ -123,6 +124,8 @@ ChatRequest chatRequest(const wire::ChatRequest& wireRequest, std::string_view c
   request.clientActions = wireRequest.client_actions();
   request.sessionId = wireRequest.session_id();
   request.prefillOnly = wireRequest.prefill_only();
+  request.conversationLeg = conversationLegFromWireValue(static_cast<std::uint32_t>(wireRequest.conversation_leg()));
+  request.useConversation = wireRequest.use_conversation();
   return boundToCaller(std::move(request), caller);
 }
 

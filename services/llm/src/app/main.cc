@@ -1,6 +1,9 @@
 #include <app/rpc/llm-rpc-server.hxx>
 #include <config/llm-config.hxx>
 #include <camera/camera-sync-client.hxx>
+#include <feature/conversation/services/conversation-purge.hxx>
+#include <feature/conversation/services/conversation-service.hxx>
+#include <feature/conversation/infra/notification-conversation-transcript.hxx>
 #include <feature/memory/infra/notification-reminder-calls.hxx>
 #include <feature/memory/infra/productivity-reminder-rows.hxx>
 #include <feature/pending-intent/infra/notification-intent-notifier.hxx>
@@ -32,6 +35,8 @@
 #include <identity/identity-client.hxx>
 #include <llm/llm-client.hxx>
 #include <feature/memory/infra/catalog-replica.hxx>
+#include <feature/messenger/infra/graph-messenger-store.hxx>
+#include <feature/messenger/services/messenger-wiring.hxx>
 #include <feature/memory/repositories/memory-graph/memory-graph-repository.hxx>
 #include <config/config-service.hxx>
 #include <feature/encounter-closed/services/encounter-closed-consumer.hxx>
@@ -253,20 +258,55 @@ int main()
     llama_backend_free();
     return 1;
   }
+  const auto conversation = std::make_shared<ConversationService>(
+      ConversationServiceDeps{.db = VecDb::instance().handle(),
+                              .mutex = VecDb::instance().mutex(),
+                              .policy = {.idleSeconds = LlmConfig::resolveConversation().idleSeconds}});
+  llm->setConversation(conversation);
+  const auto conversationPurge = std::make_shared<ConversationPurgeTask>(
+      ConversationPurgeInput{.service = conversation,
+                             .retentionDays = [] { return LlmConfig::resolveConversation().retentionDays; },
+                             .at = DailyClock{.hour = 4, .minute = 30}});
+  conversationPurge->start();
   std::shared_ptr<NotificationClient> notificationClient;
   if (const LlmNotificationConfig notifications = LlmConfig::resolveNotifications();
       !notifications.target.empty() && !notifications.credential.empty()) {
     notificationClient = std::make_shared<NotificationClient>(
         NotificationClientConfig{.target = notifications.target, .credential = notifications.credential});
     memory.setReminderCalls(std::make_shared<NotificationReminderCalls>(notificationClient));
+    llm->setTranscript(std::make_shared<NotificationConversationTranscript>(NotificationTranscriptInput{
+        .client = notificationClient,
+        .retentionDays = [] { return LlmConfig::resolveConversation().retentionDays; }}));
     LOG_INFO << "argus-llm: timed reminders schedule a call through "
              << notifications.target;
   }
+  std::shared_ptr<const IdentityClient> messengerIdentity;
+  if (const LlmIdentityConfig identityConfig = LlmConfig::resolveIdentity(); !identityConfig.target.empty())
+    messengerIdentity = std::make_shared<IdentityClient>(
+        identityConfig.target,
+        argus::client::PeerCredential{.credential = identityConfig.credential, .fleetSecret = identityConfig.rpcSecret});
+  std::vector<tools::ToolDescriptor> coreTools = memory.toolDescriptors();
+  const MessengerWiring messengerWiring =
+      composeMessenger({.store = std::make_shared<GraphMessengerStore>(static_cast<SqliteGraph&>(memory.graph())),
+                        .notifications = notificationClient,
+                        .identity = messengerIdentity,
+                        .conversations = conversation,
+                        .settings = LlmConfig::resolveMessenger()});
+  coreTools.push_back(messengerWiring.tool);
+  drogon::app().registerBeginningAdvice([service = messengerWiring.service]() {
+    static_cast<void>(drogon::app().getLoop()->runEvery(3600.0, [service]() {
+      drogon::async_run([service]() -> drogon::Task<void> {
+        co_await BlockingTask<void>([service] {
+          static_cast<void>(service->sweep(static_cast<int64_t>(std::time(nullptr))));
+        });
+      });
+    }));
+  });
   ToolRegistry& tools = ToolRegistry::instance();
   const argus::mcp::ClientIdentity toolClient{.name = "argus-llm", .version = "1"};
   tools.addProvider({.id = "llm",
                      .client = std::make_shared<argus::mcp::McpClient>(
-                         std::make_shared<argus::mcp::LocalTransport>(coreToolServer(memory.toolDescriptors())),
+                         std::make_shared<argus::mcp::LocalTransport>(coreToolServer(std::move(coreTools))),
                          toolClient)});
   const auto providers = LlmConfig::resolveToolProviders();
   std::shared_ptr<const ReminderRowWriter> reminderRows;
@@ -561,6 +601,7 @@ int main()
     replica->stop();
   if (encounterConsumer)
     encounterConsumer->stop();
+  conversationPurge->stop();
   memory.shutdown();
   llm->shutdownEngine();
   llama_backend_free();

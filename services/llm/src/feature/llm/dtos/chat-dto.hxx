@@ -27,6 +27,8 @@ struct ChatCompletionDto
   std::optional<std::string> lang;
   std::string sessionId;
   bool prefillOnly{false};
+  bool useConversation{false};
+  std::string conversationLeg;
 
   static ChatCompletionDto fromJson(const Json::Value& json);
 

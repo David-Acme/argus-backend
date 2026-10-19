@@ -58,6 +58,7 @@ struct FactCloseInput
   int64_t factId{0};
   int64_t refId{0};
   int64_t at{0};
+  std::string scope{"user"};
 };
 
 struct RecallEntityInput

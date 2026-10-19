@@ -10,6 +10,11 @@
 #include <feature/call/infra/notification-call-sink.hxx>
 #include <feature/call/infra/sync-call-signal.hxx>
 #include <feature/call/infra/voice-call-announcer.hxx>
+#include <app/rpc/conversation-rpc-service.hxx>
+#include <feature/conversation/controllers/conversation-controller.hxx>
+#include <feature/conversation/infra/notification-message-notice.hxx>
+#include <feature/conversation/infra/voice-message-announcer.hxx>
+#include <feature/conversation/services/conversation-inbox-service.hxx>
 #include <feature/call/services/call-feed.hxx>
 #include <feature/notification/services/token-revocation/token-revocation.hxx>
 #include <feature/module-request/services/notification-module-request.hxx>
@@ -56,6 +61,7 @@
 #include <unistd.h>
 
 #include <chrono>
+#include <ctime>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -324,10 +330,13 @@ int main()
   }
   const NotificationVoiceConfig voiceConfig = NotificationConfig::resolveVoice();
   std::shared_ptr<const LiveCallAnnouncer> callAnnouncer;
-  if (!voiceConfig.target.empty() && !voiceConfig.credential.empty())
-    callAnnouncer = std::make_shared<VoiceCallAnnouncer>(std::make_shared<VoiceClient>(
+  std::shared_ptr<const VoiceClient> voiceClient;
+  if (!voiceConfig.target.empty() && !voiceConfig.credential.empty()) {
+    voiceClient = std::make_shared<VoiceClient>(
         VoiceClientConfig{.target = voiceConfig.target,
-                          .credential = voiceConfig.credential}));
+                          .credential = voiceConfig.credential});
+    callAnnouncer = std::make_shared<VoiceCallAnnouncer>(voiceClient);
+  }
   else
     LOG_INFO << "Voice target or credential unset; calls never speak into a "
                 "live conversation and always ring";
@@ -369,6 +378,26 @@ int main()
   drogon::app().registerController(std::make_shared<CallPreferenceController>());
   drogon::app().registerController(std::make_shared<CallResponseController>(callEngine));
   drogon::app().registerController(std::make_shared<NotificationController>(notifications));
+  const auto conversations = std::make_shared<const ConversationInboxService>(ConversationInboxService::Dependencies{
+      .announcer = voiceClient ? std::make_shared<VoiceMessageAnnouncer>(voiceClient) : nullptr,
+      .notices = std::make_shared<NotificationMessageNotice>(notifications)});
+  drogon::app().registerController(std::make_shared<ConversationController>(conversations));
+  drogon::app().registerBeginningAdvice([conversations, tasks]() {
+    drogon::app().getLoop()->runEvery(3600.0, [conversations, tasks]() {
+      drogon::async_run([conversations, tasks]() -> drogon::Task<void> {
+        const auto ticket = TaskGate::enter(tasks);
+        if (!ticket)
+          co_return;
+        try {
+          static_cast<void>(co_await conversations->expire(static_cast<int64_t>(std::time(nullptr))));
+        }
+        catch (const std::exception& error) {
+          LOG_WARN << "Conversation: the retention sweep failed: " << error.what();
+        }
+        co_return;
+      });
+    });
+  });
   if (natsBus) {
     call_feed::subscribe({.bus = natsBus,
                           .engine = callEngine,
@@ -446,6 +475,7 @@ int main()
   notificationRpc.attachCallEngine(callEngine);
   notificationRpc.attachTasks(tasks);
   CallRpcService callRpc(callEngine, NotificationConfig::resolveCallCallers());
+  ConversationRpcService conversationRpc(conversations);
   SettingsRegistry settings(notificationSettingsCatalog());
   settings.onChange([cameraNotifier, callEngine](const std::vector<std::string>&) {
     if (cameraNotifier)
@@ -465,7 +495,7 @@ int main()
   }
 
   const std::string grpcAddress = grpcListener.address();
-  std::vector<grpc::Service*> grpcServices{&notificationRpc, &callRpc};
+  std::vector<grpc::Service*> grpcServices{&notificationRpc, &callRpc, &conversationRpc};
   if (settingsRpc)
     grpcServices.push_back(settingsRpc.get());
   const NotificationRpcListenInput grpcInput{.address = grpcAddress,

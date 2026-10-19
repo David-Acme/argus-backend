@@ -1404,3 +1404,37 @@ log line that says so belongs there, in argus-cloud, not here.
 - Backlog debt: the per-user reads of the call table (`exists`, `findRingingFor`, `ringStats`)
   run one per user, outside the alert transaction. Batch them in the call repository when the
   alert volume asks for it.
+
+## Conversations and the messenger inbox (F8/F9, 2026-10-19)
+
+The `conversation` feature is what the app shows of a person's conversations: the person's own conversation
+with Argus and the messages household members relay to each other through Argus. It is the notification
+service's because this service already owns what reaches a person (rows, push, live announcements) and the app
+already talks to it; argus-llm owns the conversation itself and writes here only through the gRPC wire.
+
+- **The table.** `conversation_message` holds one copy per person: a relayed message is two rows sharing a
+  `message_key` (the sender's `out` copy and the recipient's `in` copy, unique on `(message_key, user_id)`), and a
+  turn with Argus is two rows of the speaker (`out` for their words, `in` for Argus's reply, `counterpart_id` 0).
+  Every constrained column has its enum in `contracts/notification` (`MessageDirection`, `MessageKind`,
+  `MessageState`) or `contracts/llm` (`ConversationLegKind`). Rows carry `expires_at` from the owner's
+  `conversation.retention_days` (sent by argus-llm); the hourly sweep soft-deletes expired rows, sends their
+  tombstones and drops tombstones older than seven days.
+- **The sync table.** `TableName::ConversationMessage` (24), own rows only: argus-sync pulls it through
+  `PullConversation` (creations and the deleted leg, paged by `(created_at, id)` and `(deleted_at, id)`); a
+  creation is an `Add` to the owner's room, a clear or an expiry a `Delete`, and state and read changes are
+  recipient-scoped user audit diffs, all through the change outbox. role-access lists it as baseline and own-row,
+  so it never joins a module room or the global audit.
+- **The wire for argus-llm** (`argus.notification.v1.ConversationService`, caller `llm` only):
+  - `RelayMessage` stores both copies, marks the answered message when the letter is a reply, then tries
+    argus-voice's `Announce` into the recipient's live sessions; heard, the sender's copy becomes `delivered`;
+    not heard, a `household_message` notification is written (push included) and the copy becomes `notified`. A
+    message is never a call. A repeated `command_id` answers the first receipt.
+  - `SettleMessage` moves the sender's copy to `answered` or `expired`.
+  - `AppendTurns` stores the two lines of an identified turn.
+- **The app routes** (every registered role, own rows): `GET /conversation` (one summary per counterpart),
+  `PATCH /conversation/{counterpartId}/read`, `DELETE /conversation/{counterpartId}` (clears the caller's copies
+  only). There is no route that sends: messages are sent by voice through Argus, with the sender's spoken yes.
+- **Privacy.** The sender's copy says only `sent`, `delivered`, `notified`, `answered` or `expired`; the
+  recipient's read state never reaches the sender, and nothing says where the recipient is. The app's own
+  `CreateNotifications` admission for argus-llm stays `assistant_task` only: the `household_message` notice is
+  written by this service.

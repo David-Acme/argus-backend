@@ -31,6 +31,20 @@ struct NotificationPullResult
   argus::notification::v1::PullNotificationsResponse response;
 };
 
+struct NotificationConversationPullResult
+{
+  NotificationRpcOutcome outcome{NotificationRpcOutcome::Unavailable};
+  grpc::Status status;
+  argus::notification::v1::PullConversationResponse response;
+};
+
+struct NotificationRelayResult
+{
+  NotificationRpcOutcome outcome{NotificationRpcOutcome::Unavailable};
+  grpc::Status status;
+  argus::notification::v1::RelayMessageResponse response;
+};
+
 struct NotificationCallClaimInput
 {
   std::string callId;
@@ -120,6 +134,19 @@ public:
       const argus::notification::v1::PullNotificationsRequest& request,
       const argus::client::CallerIdentity& identity) const;
 
+  [[nodiscard]] virtual NotificationConversationPullResult pullConversation(
+      const argus::notification::v1::PullConversationRequest& request,
+      const argus::client::CallerIdentity& identity) const;
+
+  [[nodiscard]] virtual NotificationRelayResult
+  relayMessage(const argus::notification::v1::RelayMessageRequest& request) const;
+
+  [[nodiscard]] virtual NotificationRpcOutcome
+  settleMessage(const argus::notification::v1::SettleMessageRequest& request) const;
+
+  [[nodiscard]] virtual NotificationRpcOutcome
+  appendTurns(const argus::notification::v1::AppendTurnsRequest& request) const;
+
   [[nodiscard]] virtual NotificationCallClaimResult
   claimCall(const NotificationCallClaimInput& input) const;
 
@@ -142,4 +169,6 @@ private:
       stub_;
   std::unique_ptr<argus::notification::v1::CallService::StubInterface>
       callStub_;
+  std::unique_ptr<argus::notification::v1::ConversationService::StubInterface>
+      conversationStub_;
 };
