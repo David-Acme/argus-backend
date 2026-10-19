@@ -277,6 +277,7 @@ sync productivity grpc_target productivity
 sync voice target voice
 sync notifications grpc_target notification
 sync guard presence_target guard
+camera guard duty_target guard
 sync modules target settings
 voice identity target identity
 voice notification target notification

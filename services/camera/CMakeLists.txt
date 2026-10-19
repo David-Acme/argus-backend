@@ -118,6 +118,10 @@ if(NOT TARGET argus::clients::notification)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/notification
                      ${CMAKE_BINARY_DIR}/clients/notification EXCLUDE_FROM_ALL)
 endif()
+if(NOT TARGET argus::clients::guard)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/guard
+                     ${CMAKE_BINARY_DIR}/clients/guard EXCLUDE_FROM_ALL)
+endif()
 if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
@@ -620,6 +624,15 @@ target_compile_options(camera-hardening-test PRIVATE -Wall -Wextra)
 set_target_properties(camera-hardening-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 argus_runtime_rpath(camera-hardening-test)
 add_test(NAME camera-hardening-test COMMAND camera-hardening-test)
+
+add_executable(camera-ptz-lease-test tests/unit/camera-ptz-lease-test.cc)
+target_link_libraries(camera-ptz-lease-test PRIVATE
+    argus::camera-control
+    argus::lib::doctest-main)
+target_compile_options(camera-ptz-lease-test PRIVATE -Wall -Wextra)
+set_target_properties(camera-ptz-lease-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+argus_runtime_rpath(camera-ptz-lease-test)
+add_test(NAME camera-ptz-lease-test COMMAND camera-ptz-lease-test)
 
 add_executable(camera-module-data-test tests/unit/camera-module-data-test.cc)
 target_link_libraries(camera-module-data-test PRIVATE

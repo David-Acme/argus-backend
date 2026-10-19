@@ -11,6 +11,8 @@ struct HealthMetrics
   double brightness{0.0};
   double blur{0.0};
   double sceneDiff{0.0};
+  bool paused{false};
+  bool homeDrift{false};
 };
 
 enum class CameraHealthState

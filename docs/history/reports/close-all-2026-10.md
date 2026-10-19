@@ -71,3 +71,11 @@ The shipped bundles `decide/bundle-laya-mvp` and `extract/bundle-gliner-pilot` w
   - The full dev build with all 15 projects' tests green.
   - Frontend: 1654 tests, `tsc`, lint and the comment gate green.
 - **Owner decision recorded.** The per-camera flags follow `camera.manage` (Owner and Resident). The household switch stays Owner-only and acknowledged, so a Resident alone can never make a camera listen.
+
+## Item 5: AL-B1/B2, who aims the camera
+
+- **Move windows.** The scene log carries each move; the health monitor and the operator pause through it, so a pan is not a scene change or a new track.
+- **Lease.** Argus < Viewer < Person, park and idle release 60 s, `[ptz]` config.
+- **Home and drift.** `set_home`/`go_home`, the automatic return after a look or a follow, `ptz_automatic_move` audit, `homeDrift` health metric and a bounded recalibration.
+- **Guard on duty.** `GetDuty` on guard's presence RPC; camera's `DutyGate` (15 s cache, fails closed); `CameraAction::Move`/`Preset` for Resident and Guard; a Guard cannot save, delete or set home. Credentials provisioned by setup, provision-host and native-stack.
+- **Measured.** camera 42/42 (new `camera-ptz-lease-test`, three health cases), guard 42/42, packages 132/132 (role-access pins the new rows), comment/deps/routes gates, `rpc-credentials-test`, `internal-pki-test`, `setup-config-only-test` green.

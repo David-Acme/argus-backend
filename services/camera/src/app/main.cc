@@ -9,6 +9,12 @@
 #include <shared/repositories/zone/zone-repository.hxx>
 #include <drogon/utils/coroutine.h>
 #include <feature/camera-control/controllers/camera-control-controller.hxx>
+#include <functional>
+#include <chrono>
+#include <mutex>
+#include <map>
+#include <feature/camera-control/services/camera-control-feature-service.hxx>
+#include <feature/camera-control/services/duty-gate.hxx>
 #include <feature/camera/controllers/camera-controller.hxx>
 #include <feature/zone/controllers/zone-controller.hxx>
 #include <feature/webrtc/controllers/camera-webrtc-controller.hxx>
@@ -167,6 +173,33 @@ drogon::Task<void> startAfterSources(CameraOperatorService* operatorService,
     operatorService->start();
   if (healthMonitor)
     healthMonitor->start();
+}
+
+std::function<void(int64_t)> homeDriftHandler(const CameraPtzConfig& config)
+{
+  auto calibrated = std::make_shared<std::map<int64_t, int64_t>>();
+  auto guard = std::make_shared<std::mutex>();
+  return [config, calibrated, guard](int64_t cameraId) {
+    const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::system_clock::now().time_since_epoch())
+                            .count();
+    {
+      std::scoped_lock lock(*guard);
+      auto& last = (*calibrated)[cameraId];
+      if (last > 0 && now - last < config.calibrateEveryMs)
+        return;
+      last = now;
+    }
+    drogon::async_run([cameraId]() -> drogon::Task<void> {
+      const CameraControlFeatureService service;
+      const auto result = co_await service.calibrate(cameraId);
+      if (result && result->ok)
+        LOG_INFO << "Camera " << cameraId << ": motor recalibrated after a drifted return home";
+      else
+        LOG_WARN << "Camera " << cameraId << ": recalibration after drift failed ("
+                 << (result ? result->error : std::string("camera not found")) << ")";
+    });
+  };
 }
 
 }
@@ -498,6 +531,12 @@ int main()
   });
 
   const CameraHealthConfig healthConfig = CameraConfig::resolveHealth();
+  CameraControlFeatureService::configurePtz(CameraConfig::resolvePtz());
+  if (const GuardDutyConfig duty = CameraConfig::resolveGuardDuty(); !duty.target.empty())
+    DutyGate::instance().configure(
+        {.client = std::make_shared<const GuardPresenceClient>(
+             GuardPresenceClientConfig{.target = duty.target, .credential = duty.credential}),
+         .ttlMs = 15000});
   if (healthConfig.enabled) {
     if (natsBus)
       healthSink = std::make_unique<NatsHealthEventSink>(natsBus);
@@ -505,7 +544,8 @@ int main()
         CameraHealthMonitor::Dependencies{.source = &frameSource(),
                                            .sink = healthSink.get(),
                                            .presence = &presenceRecorder,
-                                           .active = surveillanceActive},
+                                           .active = surveillanceActive,
+                                           .homeDrift = homeDriftHandler(CameraConfig::resolvePtz())},
         healthConfig);
   }
 

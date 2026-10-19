@@ -101,6 +101,7 @@ public:
   virtual DriverResult speak(const DriverSpeakInput& input) = 0;
   virtual TalkLineOpen talkLine();
   [[nodiscard]] virtual Json::Value controlStatus() const;
+  virtual DriverResult calibrate();
   virtual DriverResult sdDays(const DriverSdDaysInput& input);
   virtual DriverResult sdDay(const DriverSdDayInput& input);
 };

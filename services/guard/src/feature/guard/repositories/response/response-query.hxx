@@ -17,6 +17,11 @@ inline constexpr std::string_view LIST_RECIPIENTS =
     "ON e.id = r.environment_id WHERE r.environment_id = ? "
     "ORDER BY r.user_id ASC";
 
+inline constexpr std::string_view LIST_DUTY_ENVIRONMENTS =
+    "SELECT r.environment_id FROM guard_response_recipient r JOIN guard_environment e "
+    "ON e.id = r.environment_id WHERE r.user_id = ? AND r.on_duty = 1 "
+    "ORDER BY r.environment_id ASC";
+
 inline constexpr std::string_view LIST_CONTACTS =
     "SELECT c.id, c.environment_id, c.position, c.name, c.phone, c.note "
     "FROM guard_response_contact c JOIN guard_environment e "

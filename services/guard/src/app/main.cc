@@ -1,6 +1,7 @@
 #include <app/rpc/duress-rpc-service.hxx>
 #include <app/rpc/guard-rpc-server.hxx>
 #include <app/rpc/presence-rpc-service.hxx>
+#include <feature/guard/repositories/response/response-repository.hxx>
 #include <feature/guard/repositories/environment/environment-repository.hxx>
 #include <feature/mcp/services/guard-tools.hxx>
 #include <mcp/mcp-rpc.hxx>
@@ -166,13 +167,17 @@ RpcListener startRpcListener(const RpcListenerInput& input)
     services.push_back(listener.settings.get());
   }
   if (rpc.presenceCredentials.empty()) {
-    LOG_INFO << "Guard presence RPC not served: no [rpc.callers] sync or "
-                "notification";
+    LOG_INFO << "Guard presence RPC not served: no [rpc.callers] sync, "
+                "notification or camera";
   }
   else {
     listener.presence = std::make_unique<PresenceRpcService>(
         PresenceRpcInput{.presence = &input.presence,
-                         .credentials = std::move(rpc.presenceCredentials)});
+                         .credentials = std::move(rpc.presenceCredentials),
+                         .duty = [](int64_t userId) -> drogon::Task<std::vector<int64_t>> {
+                           const ResponseRepository responses;
+                           co_return co_await responses.dutyEnvironments(userId);
+                         }});
     services.push_back(listener.presence.get());
   }
   listener.tools = toolsService(input, rpc);

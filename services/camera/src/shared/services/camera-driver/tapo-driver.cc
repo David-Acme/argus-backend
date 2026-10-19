@@ -180,6 +180,13 @@ DriverResult TapoDriver::preset(const DriverPresetInput& input)
   return toDriverResult(api_->gotoPreset(target));
 }
 
+DriverResult TapoDriver::calibrate()
+{
+  if (const auto ready = ensureConnected(); !ready.ok)
+    return ready;
+  return toDriverResult(api_->calibrateMotor());
+}
+
 DriverResult TapoDriver::sdDays(const DriverSdDaysInput& input)
 {
   if (!capabilities()["sdCard"].asBool())

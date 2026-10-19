@@ -26,6 +26,7 @@ public:
   DriverResult speak(const DriverSpeakInput& input) override;
   TalkLineOpen talkLine() override;
   [[nodiscard]] Json::Value controlStatus() const override;
+  DriverResult calibrate() override;
   DriverResult sdDays(const DriverSdDaysInput& input) override;
   DriverResult sdDay(const DriverSdDayInput& input) override;
 

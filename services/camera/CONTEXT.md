@@ -2557,3 +2557,11 @@ claims privacy, and if the mask is on the failure is the mask and not a fault.
 **Not built now.** Automatic privacy by presence (Nest style: mask on when
 home, off when away) is an owner decision left for later; nothing in the tree
 turns the mask on or off on its own.
+
+## Who aims the camera: moves, the lease and the way home (2026-10, AL-B1/B2)
+
+- **Move windows.** `CameraSceneLog` records each move (`beginMove`/`endMove`, the expected end and whether it returns home). The health monitor pauses while a move runs and keeps its reference after a return home; the operator pauses and drops its tracks for the same window, so a pan never reads as a scene change or a new person.
+- **The lease** (`feature/camera-control/services/ptz-lease`). Holders rank Argus < Viewer < Person. A person always preempts; Argus waits out `[ptz] park_seconds` after a person lets go, and an idle person is released after `idle_release_seconds`.
+- **Home.** `PATCH /camera/{id}/preset` takes `set_home` (stored as `homePreset` in the camera config, audited) and `go_home`. Argus returns home after a look or a follow (`return_after_look_seconds`, `return_after_follow_seconds`) under its own lease, with auto-track off for the move, and records `ptz_automatic_move`.
+- **Drift.** The health monitor reports `homeDrift`; the camera recalibrates the motor at most once per `calibrate_every_seconds`.
+- **A Guard on duty may aim.** `CameraAction::Move` (`ptz`) and `Preset` (`preset`) admit Resident and Guard in `role-access.hxx`. A Guard is admitted only while on duty in an environment: camera asks argus-guard's `PresenceService.GetDuty` (`[guard] duty_target`, the caller credential `duty_credential` paired with guard's `rpc.callers.camera`) and keeps the answer 15 s. An unreachable guard refuses the Guard (`GUARD_OFF_DUTY`, 403). Saving, deleting a preset and setting home stay with the Owner and Residents (`PRESETS_NOT_YOURS`, 403).

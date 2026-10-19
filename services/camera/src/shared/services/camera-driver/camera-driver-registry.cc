@@ -45,6 +45,11 @@ Json::Value ICameraDriver::controlStatus() const
   return {};
 }
 
+DriverResult ICameraDriver::calibrate()
+{
+  return DriverResult::failed("This camera cannot recalibrate its motor");
+}
+
 DriverResult ICameraDriver::sdDays(const DriverSdDaysInput&)
 {
   return DriverResult::failed("This camera keeps no recordings Argus can list");

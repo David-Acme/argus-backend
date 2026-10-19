@@ -214,6 +214,14 @@ HealthMetrics CameraHealthMonitor::measure(const TickInput& input,
   };
 
   const CameraScene scene = CameraSceneLog::instance().sceneOf(input.camera.id);
+  const bool settlingHome = scene.returnsHome && scene.moveEndedAtMs > 0 &&
+                            input.capturedAtMs < scene.moveEndedAtMs + 2 * config_.intervalMs;
+  if (scene.moving(input.capturedAtMs) || settlingHome) {
+    state.previous = input.rgb;
+    metrics.sceneDiff = 0.0;
+    metrics.paused = true;
+    return metrics;
+  }
   const bool settling = scene.aimedAtMs > 0 &&
                         input.capturedAtMs < scene.aimedAtMs + 2 * config_.intervalMs;
   if (settling || scene.aimedAtMs > state.referenceAtMs)
@@ -229,6 +237,10 @@ HealthMetrics CameraHealthMonitor::measure(const TickInput& input,
 
   metrics.sceneDiff = sceneDistance(current, state.reference);
   const double threshold = config_.thresholds.sceneDiff;
+  if (scene.returnsHome && scene.moveEndedAtMs > 0 && state.homeCheckedForMs != scene.moveEndedAtMs) {
+    state.homeCheckedForMs = scene.moveEndedAtMs;
+    metrics.homeDrift = metrics.sceneDiff > threshold;
+  }
   if (metrics.sceneDiff <= threshold) {
     state.newSceneSinceMs = 0;
     if (sane && metrics.sceneDiff <= threshold / 2.0)
@@ -412,6 +424,10 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
   }
   CameraHealthState status = sample.status;
   const HealthMetrics& metrics = sample.metrics;
+  if (metrics.homeDrift && dependencies_.homeDrift) {
+    LOG_WARN << "Camera health: " << camera.id << " came back home to a different view";
+    dependencies_.homeDrift(camera.id);
+  }
   const int64_t capturedAt = sample.capturedAt;
   const bool reachable = sample.reachable;
   const int frameWidth = sample.frameWidth;
@@ -425,7 +441,8 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
     state.sampledAtMs = capturedAt;
     state.sampled = true;
     state.misses = reachable ? 0 : state.misses + 1;
-    const bool held = !reachable && state.misses < kMissesBeforeOffline && state.published;
+    const bool held = (!reachable && state.misses < kMissesBeforeOffline && state.published) ||
+                      (reachable && metrics.paused && state.published);
     if (held) {
       status = state.lastStatus;
     }

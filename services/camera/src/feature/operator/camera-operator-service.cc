@@ -1,4 +1,5 @@
 #include <feature/operator/camera-operator-service.hxx>
+#include <shared/services/camera-driver/camera-scene-log.hxx>
 #include <shared/services/camera-motion/camera-motion-board.hxx>
 #include <shared/services/privacy/privacy-mask.hxx>
 #include <shared/services/privacy-state/privacy-state.hxx>
@@ -629,6 +630,15 @@ CameraOperatorService::analyse(const ProcessFrameInput& input)
   if (privacy_mask::covers(zones)) {
     rgb = rgb.clone();
     masked = privacy_mask::apply(rgb, zones);
+  }
+
+  if (CameraSceneLog::instance().moving(cameraId, nowMs())) {
+    std::lock_guard<std::mutex> lock(stateMutex_);
+    CameraState& moving = states_[cameraId];
+    moving.motionGray.clear();
+    moving.personTracks.clear();
+    moving.boxTracks.clear();
+    return nullptr;
   }
 
   {

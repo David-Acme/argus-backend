@@ -8,6 +8,8 @@ argus_module(NAME camera-control
         dtos/camera-snapshot-dto.cc
         dtos/camera-talk-dto.cc
         services/camera-control-feature-service.cc
+        services/duty-gate.cc
+        services/ptz-lease.cc
         services/still-flights.cc
     INCLUDES
         ../..
@@ -17,6 +19,7 @@ argus_module(NAME camera-control
         argus::camera-privacy-state
         argus::camera-repositories
         argus::camera-stream
+        argus::clients::guard
         argus::clients::tts
         argus::contracts::camera
         argus::lib::auth

@@ -27,6 +27,7 @@ public:
     IHealthEventSink* sink{nullptr};
     ICameraPresenceSink* presence{nullptr};
     std::function<bool()> active{};
+    std::function<void(int64_t)> homeDrift{};
   };
 
   struct CameraRef
@@ -66,6 +67,7 @@ private:
     bool sampled{false};
     int misses{0};
     int64_t privacyBackoffUntilMs{0};
+    int64_t homeCheckedForMs{0};
   };
 
   struct TickInput

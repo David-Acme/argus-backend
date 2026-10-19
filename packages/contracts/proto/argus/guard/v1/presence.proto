@@ -45,7 +45,19 @@ message ListPresenceResponse
   repeated UserPresence users = 1;
 }
 
+message DutyRequest
+{
+  int64 user_id = 1;
+}
+
+message DutyResponse
+{
+  bool on_duty = 1;
+  repeated int64 environment_ids = 2;
+}
+
 service PresenceService
 {
   rpc ListPresence(ListPresenceRequest) returns (ListPresenceResponse) {}
+  rpc GetDuty(DutyRequest) returns (DutyResponse) {}
 }

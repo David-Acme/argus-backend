@@ -130,7 +130,9 @@ enum class CameraAction : std::uint8_t
 {
   Talk = 0,
   Watch,
-  Siren
+  Siren,
+  Move,
+  Preset
 };
 
 struct CameraActionAccess
@@ -141,10 +143,12 @@ struct CameraActionAccess
   RoleMask roles;
 };
 
-inline constexpr std::array<CameraActionAccess, 3> kCameraActionAccess = {{
+inline constexpr std::array<CameraActionAccess, 5> kCameraActionAccess = {{
     {.action = CameraAction::Talk, .segment = "talk", .method = drogon::Post, .roles = kResidentAndGuard},
     {.action = CameraAction::Watch, .segment = "webrtc", .method = drogon::Post, .roles = kResidentGuardGuest},
     {.action = CameraAction::Siren, .segment = "siren", .method = drogon::Post, .roles = kResidentAndGuard},
+    {.action = CameraAction::Move, .segment = "ptz", .method = drogon::Patch, .roles = kResidentAndGuard},
+    {.action = CameraAction::Preset, .segment = "preset", .method = drogon::Patch, .roles = kResidentAndGuard},
 }};
 
 inline bool hasCameraAction(UserRole role, CameraAction action)
