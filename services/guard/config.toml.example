@@ -22,7 +22,6 @@ address = "127.0.0.1:7339"
 [rpc.callers]
 settings = ""
 sync = ""
-notification = ""
 llm = ""
 camera = ""
 

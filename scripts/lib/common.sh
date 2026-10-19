@@ -927,8 +927,6 @@ SECRETS
     "$deploy_dir/config.llm.toml" rpc.callers guard 32
   fill_config_pair "$deploy_dir/config.sync.toml" guard presence_credential \
     "$deploy_dir/config.guard.toml" rpc.callers sync 32
-  fill_config_pair "$deploy_dir/config.notification.toml" guard presence_credential \
-    "$deploy_dir/config.guard.toml" rpc.callers notification 32
   fill_config_pair "$deploy_dir/config.camera.toml" guard duty_credential \
     "$deploy_dir/config.guard.toml" rpc.callers camera 32
   ensure_fleet_callers deploy "$deploy_dir"
