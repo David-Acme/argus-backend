@@ -20,14 +20,12 @@ health_timeout_s = 180
 seed_wait_s = 300
 
 [rpc.callers]
-auth = ""
 camera = ""
 guard = ""
 identity = ""
 notification = ""
 productivity = ""
 sync = ""
-voice = ""
 llm = ""
 
 [internal_tls]

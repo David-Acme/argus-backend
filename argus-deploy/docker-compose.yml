@@ -477,6 +477,7 @@ services:
           - argus-guard
     ports:
       - "${GUARD_PORT:-7039}:7039"
+      - "127.0.0.1:${GUARD_RPC_TLS_PORT:-7339}:7339"
     entrypoint: ["/opt/argus/argus-guard"]
     volumes:
       - type: bind
@@ -550,6 +551,7 @@ services:
           - argus-settings
     ports:
       - "${SETTINGS_PORT:-7045}:7045"
+      - "127.0.0.1:${SETTINGS_RPC_TLS_PORT:-7247}:7247"
     entrypoint: ["/opt/argus/argus-settings"]
     volumes:
       - type: bind
@@ -627,6 +629,7 @@ services:
         ipv4_address: 172.19.0.29
     ports:
       - "127.0.0.1:${TTS_PORT:-7029}:7029"
+      - "127.0.0.1:${TTS_RPC_TLS_PORT:-7329}:7329"
     entrypoint: ["/opt/argus/argus-tts"]
     volumes:
       - type: bind
@@ -675,6 +678,7 @@ services:
         ipv4_address: 172.19.0.30
     ports:
       - "127.0.0.1:${STT_PORT:-7030}:7030"
+      - "127.0.0.1:${STT_RPC_TLS_PORT:-7330}:7330"
     entrypoint: ["/opt/argus/argus-stt"]
     volumes:
       - type: bind
@@ -723,6 +727,7 @@ services:
         ipv4_address: 172.19.0.31
     ports:
       - "127.0.0.1:${VLM_PORT:-7031}:7031"
+      - "127.0.0.1:${VLM_RPC_TLS_PORT:-7331}:7331"
     devices:
       - /dev/dri:/dev/dri
     entrypoint: ["/opt/argus/argus-vlm"]
@@ -772,6 +777,7 @@ services:
         ipv4_address: 172.19.0.32
     ports:
       - "127.0.0.1:${LLM_PORT:-7032}:7032"
+      - "127.0.0.1:${LLM_RPC_TLS_PORT:-7332}:7332"
     devices:
       - /dev/dri:/dev/dri
     entrypoint: ["/opt/argus/argus-llm"]
