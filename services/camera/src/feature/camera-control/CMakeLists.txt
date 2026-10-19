@@ -1,14 +1,22 @@
 argus_module(NAME camera-control
     SOURCES
         controllers/camera-control-controller.cc
+        controllers/camera-patrol-controller.cc
+        dtos/camera-patrol-dto.cc
         dtos/camera-preset-dto.cc
         dtos/camera-ptz-dto.cc
         dtos/camera-sd-dto.cc
         dtos/camera-settings-dto.cc
         dtos/camera-snapshot-dto.cc
         dtos/camera-talk-dto.cc
+        dtos/response-camera-patrol-dto.cc
+        repositories/camera-patrol/camera-patrol-repository.cc
+        schemas/camera-patrol/camera-patrol-schema.cc
         services/camera-control-feature-service.cc
+        services/camera-patrol-service.cc
         services/duty-gate.cc
+        services/patrol-plan.cc
+        services/patrol-runner.cc
         services/ptz-lease.cc
         services/still-flights.cc
     INCLUDES
@@ -22,10 +30,13 @@ argus_module(NAME camera-control
         argus::clients::guard
         argus::clients::tts
         argus::contracts::camera
+        argus::contracts::sync
         argus::lib::auth
         argus::lib::errors
         argus::lib::http
         argus::lib::runtime
+        argus::lib::sqlite
+        argus::lib::text
         argus::lib::validation
         Drogon::Drogon)
 

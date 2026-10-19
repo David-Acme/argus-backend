@@ -357,6 +357,69 @@ CameraControlFeatureService::returnHome(const CameraReturnHomeInput& input) cons
   co_return result;
 }
 
+drogon::Task<CameraControlResult>
+CameraControlFeatureService::patrolMove(const CameraPatrolMoveInput& input) const
+{
+  const int64_t cameraId = input.cameraId;
+  if (PrivacyStateService::instance().masked(cameraId))
+    co_return DriverResult{.ok = false,
+                           .error = "This camera is in privacy mode",
+                           .data = Json::Value(),
+                           .attempted = false,
+                           .failure = "privacy_on"};
+  const int64_t started = nowMs();
+  const PtzClaimResult claim =
+      PtzLease::instance().claim({.cameraId = cameraId, .holder = PtzHolder::Argus, .userId = 0, .atMs = started});
+  if (claim == PtzClaimResult::Refused)
+    co_return DriverResult{.ok = false,
+                           .error = "Someone is moving this camera",
+                           .data = Json::Value(),
+                           .attempted = false,
+                           .failure = "lease_held"};
+  const int64_t settle = ptzConfig().settleMs;
+  CameraSceneLog::instance().beginMove(
+      {.cameraId = cameraId, .startMs = started, .expectedEndMs = started + settle, .returnsHome = false});
+  const std::string presetId = input.presetId;
+  const auto result = co_await onDevice(cameraId, [presetId](ICameraDriver& driver) {
+    return driver.preset({.action = "goto", .id = presetId, .name = {}});
+  });
+  drogon::app().getLoop()->runAfter(static_cast<double>(settle) / 1000.0, [cameraId] {
+    CameraSceneLog::instance().endMove({.cameraId = cameraId, .atMs = nowMs()});
+  });
+  co_return result;
+}
+
+drogon::Task<void> CameraControlFeatureService::endPatrol(const CameraPatrolEndInput& input) const
+{
+  PtzLease::instance().release(
+      {.cameraId = input.cameraId, .holder = PtzHolder::Argus, .userId = 0, .atMs = nowMs()});
+  if (!input.returnHome)
+    co_return;
+  const auto result = co_await returnHome({.cameraId = input.cameraId, .reason = "patrol"});
+  if (result && !result->ok && result->failure != "no_home" && result->failure != "lease_held")
+    LOG_WARN << "Camera " << input.cameraId << ": the patrol ended but the way home failed ("
+             << result->error << ")";
+}
+
+drogon::Task<void> CameraControlFeatureService::recordPatrol(const CameraPatrolEvent& event) const
+{
+  const CameraChangeSink* sink = camera_change::getSink();
+  if (sink == nullptr)
+    co_return;
+  Json::Value newData(Json::objectValue);
+  newData["event"] = "ptz_patrol";
+  newData["phase"] = event.phase;
+  newData["reason"] = event.reason;
+  co_await sink->publishAction({.event = {.userId = 0,
+                                          .recordId = event.cameraId,
+                                          .tableName = TableName::Camera,
+                                          .action = UserAction::Update,
+                                          .oldData = Json::Value(),
+                                          .newData = std::move(newData),
+                                          .ipAddress = ""},
+                                .client = nullptr});
+}
+
 drogon::Task<CameraControlResult> CameraControlFeatureService::calibrate(int64_t cameraId) const
 {
   co_return co_await onDevice(cameraId, [](ICameraDriver& driver) { return driver.calibrate(); });

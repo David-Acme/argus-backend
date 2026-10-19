@@ -9,6 +9,8 @@
 #include <shared/repositories/zone/zone-repository.hxx>
 #include <drogon/utils/coroutine.h>
 #include <feature/camera-control/controllers/camera-control-controller.hxx>
+#include <feature/camera-control/controllers/camera-patrol-controller.hxx>
+#include <feature/camera-control/services/patrol-runner.hxx>
 #include <functional>
 #include <chrono>
 #include <mutex>
@@ -338,6 +340,7 @@ int main()
   drogon::app().registerController(std::make_shared<CameraController>());
   drogon::app().registerController(std::make_shared<ZoneController>());
   drogon::app().registerController(std::make_shared<CameraControlController>());
+  drogon::app().registerController(std::make_shared<CameraPatrolController>());
   drogon::app().registerController(std::make_shared<CameraWebRtcController>());
   drogon::app().registerController(std::make_shared<ClipController>());
 
@@ -653,6 +656,11 @@ int main()
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*healthMonitor, "camera-health"));
   }
+  PatrolRunner patrolRunner({.settleMs = CameraConfig::resolvePtz().settleMs,
+                             .tickSeconds = 2.0,
+                             .active = surveillanceActive});
+  drogon::app().registerBeginningAdvice([&patrolRunner]() { patrolRunner.start(); });
+  shutdown_signal::onStop(shutdown_signal::drainOf(patrolRunner, "camera-patrol"));
   shutdown_signal::onStop(shutdown_signal::drainOf(talkService, "camera-talk"));
   shutdown_signal::onStop(shutdown_signal::drainOf(rpc, "camera-rpc"));
   shutdown_signal::onStop(shutdown_signal::drainOf(cameraActionRpc, "camera-actions"));

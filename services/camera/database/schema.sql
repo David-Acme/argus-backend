@@ -196,3 +196,16 @@ CREATE TABLE IF NOT EXISTS change_outbox (
 
 CREATE INDEX IF NOT EXISTS idx_change_outbox_status
     ON change_outbox (status, created_at);
+
+CREATE TABLE IF NOT EXISTS camera_patrol (
+    camera_id     INTEGER NOT NULL  PRIMARY KEY REFERENCES camera(id) ON DELETE CASCADE,
+    stops         TEXT    NOT NULL  DEFAULT '[]',
+    dwell_seconds INTEGER NOT NULL  DEFAULT 30
+                                    CHECK (dwell_seconds BETWEEN 5 AND 600),
+    is_enabled    INTEGER NOT NULL  DEFAULT 1  CHECK (is_enabled IN (0, 1)),
+    start_hour    INTEGER           CHECK (start_hour BETWEEN 0 AND 23),
+    end_hour      INTEGER           CHECK (end_hour BETWEEN 0 AND 23),
+    created_at    INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    updated_at    INTEGER,
+    CHECK ((start_hour IS NULL) = (end_hour IS NULL))
+);

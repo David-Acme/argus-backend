@@ -26,6 +26,9 @@ camera	GET	/camera/{1}/capabilities	DeviceFilter,JwtFilter,RoleFilter	-	services
 camera	GET	/camera/{1}/clips	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/recording/controllers/clip-controller.hxx
 camera	DELETE	/camera/{1}/clips/{2}	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/recording/controllers/clip-controller.hxx
 camera	GET	/camera/{1}/clips/{2}/preview	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/recording/controllers/clip-controller.hxx
+camera	DELETE	/camera/{1}/patrol	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-patrol-controller.hxx
+camera	GET	/camera/{1}/patrol	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-patrol-controller.hxx
+camera	PATCH	/camera/{1}/patrol	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-patrol-controller.hxx
 camera	PATCH	/camera/{1}/preset	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	GET	/camera/{1}/presets	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	PATCH	/camera/{1}/ptz	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx

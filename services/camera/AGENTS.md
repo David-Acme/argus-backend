@@ -65,7 +65,9 @@ argus-camera/
                         ONVIF cameras answer through the ONVIF driver
                         (pan, tilt and presets the camera itself reports),
                         RTSP cameras through the stream-only driver (every
-                        control false, streamOnly true)
+                        control false, streamOnly true); the patrol
+                        (/camera/{id}/patrol, its camera_patrol repository
+                        and the PatrolRunner that walks the presets as Argus)
   src/feature/health/   grpc.health.v1 service
   src/feature/media/    the camera media WebSocket and its service
   src/feature/monitor/  camera health monitor, its NATS sink and the presence
