@@ -1918,6 +1918,21 @@ of `guard_schema::migrate` copies its pending rows across, idempotently, so a ro
 that was never published is not lost. Dropping the table is a named cleanup for
 the plan's debt list, not a side effect of this build.
 
+**Retired (2026-10-19, D7, the release step).** `retireEncounterOutbox` (in
+`guard_schema::migrate`) now finishes the job in the same boot step: it runs the
+same idempotent copy, then counts the legacy `pending` rows that have no
+`change_outbox` row with their event id, and drops `guard_encounter_outbox` only
+when that count is zero. A row that did not cross (a constraint the copy ignored)
+keeps the table and logs one WARN with the count; the next boot tries again. The
+drop logs one INFO line with the number of legacy rows. No step is in a
+transaction because each one is idempotent: a boot that stops between the copy
+and the drop repeats both. `sent` rows go with the table, because they were
+delivered and nothing reads them. This is the "later release" the debt list
+names: every installation is a development one (owner, 2026-10-19), so the
+release that carries the copy and the release that retires the table can be the
+same. `guard-migration-test` pins that the pending row crosses with its units
+converted, the sent one does not, and the legacy table is gone after migrate.
+
 Two units meet in that copy, and the conversion is explicit: the old table stored
 `created_at` in seconds (`strftime('%s')`) and the change outbox stores it in
 milliseconds (lib/outbox writes `nowMs()` and its relay reads the column that

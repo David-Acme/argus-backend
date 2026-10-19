@@ -546,6 +546,7 @@ TEST_CASE("a legacy guard database migrates in place without data loss")
   CHECK(scalar("SELECT COUNT(*) FROM change_outbox WHERE event_id = "
                "'enc:sent'") == "0");
   CHECK(scalar("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND "
-               "name = 'guard_encounter_outbox'") == "1");
-  CHECK(scalar("SELECT COUNT(*) FROM guard_encounter_outbox") == "2");
+               "name = 'guard_encounter_outbox'") == "0");
+  CHECK(scalar("SELECT COUNT(*) FROM change_outbox WHERE event_id = "
+               "'enc:pending'") == "1");
 }
