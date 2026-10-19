@@ -1304,13 +1304,15 @@ What a household of one gets:
   alert has the same plan as a panic (`everyone`, the actor excluded), so one
   answer covers both.
 
-DESIGN FORK, left to the owner: a duress alert with nobody to receive it. (a)
-Keep it terminal and say so beforehand (`alertsReach`), which is what is built.
-(b) Tell the actor afterwards, discreetly, once they next disarm with their
-real code, that a silent alert reached nobody. (c) Refuse to enable duress
-codes or a phrase while `alertsReach` is `nobody`. (a) is the conservative
-choice: (b) risks telling an attacker who still holds the phone, and (c)
-would block a household that is about to add members.
+DECIDED by the owner (2026-10-19): a duress alert with nobody to receive it
+stays terminal and is said beforehand, (a). Enabling duress while
+`alertsReach` is `nobody` or `contacts` asks for an explicit "Activar
+igualmente" / "Enable anyway" in the app, which says the alert will be
+recorded but reach nobody until someone else joins the household. Rejected:
+(b) telling the actor afterwards, which can tell an attacker who still holds
+the phone, and (c) refusing to enable, which blocks a household about to add
+members. A duress code is only useful with someone on the other end, as with
+a commercial alarm's monitoring centre.
 
 **The duress phrase (voice, 2026-10-13, F4).** The household's spoken twin
 of the duress code: a phrase that, said to Argus, raises the same silent alert
