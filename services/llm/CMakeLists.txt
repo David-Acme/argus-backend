@@ -101,39 +101,7 @@ if(PROJECT_IS_TOP_LEVEL)
                          ${CMAKE_BINARY_DIR}/clients/guard EXCLUDE_FROM_ALL)
     endif()
 
-    if(NOT TARGET llama)
-        set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_APP OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_UI OFF CACHE BOOL "" FORCE)
-        set(LLAMA_USE_PREBUILT_UI OFF CACHE BOOL "" FORCE)
-        set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_MTMD OFF CACHE BOOL "" FORCE)
-        set(GGML_NATIVE ON CACHE BOOL "" FORCE)
-        set(GGML_OPENMP ON CACHE BOOL "" FORCE)
-        set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-        set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-        set(GGML_CUDA OFF CACHE BOOL "" FORCE)
-        set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
-
-        include(CheckLanguage)
-        check_language(CUDA)
-        if(CMAKE_CUDA_COMPILER)
-            set(GGML_CUDA ON CACHE BOOL "" FORCE)
-        else()
-            find_package(Vulkan QUIET COMPONENTS glslc)
-            find_package(SPIRV-Headers CONFIG QUIET)
-            if(Vulkan_FOUND AND Vulkan_GLSLC_EXECUTABLE AND SPIRV-Headers_FOUND)
-                set(GGML_VULKAN ON CACHE BOOL "" FORCE)
-            endif()
-        endif()
-
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/llama.cpp
-                         llama-build EXCLUDE_FROM_ALL)
-    endif()
+    argus_vendored_llama()
 endif()
 
 if(NOT COMMAND argus_settings_rpc_contract)
@@ -199,7 +167,7 @@ add_executable(llm-wire-test tests/unit/llm-wire-test.cc)
 target_compile_definitions(llm-wire-test PRIVATE
     ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/llm")
 
-target_link_libraries(llm-wire-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-wire-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-wire-test PRIVATE -Wall -Wextra)
 
@@ -213,7 +181,7 @@ target_compile_definitions(llm-rpc-test PRIVATE
     ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/llm")
 
 target_link_libraries(llm-rpc-test PRIVATE argus::llm-rpc argus::llm
-    argus::lib::grpc-test-support doctest::doctest)
+    argus::lib::grpc-test-support argus::lib::doctest-main)
 
 target_compile_options(llm-rpc-test PRIVATE -Wall -Wextra)
 
@@ -230,7 +198,7 @@ target_compile_definitions(llm-settings-test PRIVATE
     ARGUS_TEST_LLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/llm")
 
 target_link_libraries(llm-settings-test PRIVATE argus::llm-settings argus::llm
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(llm-settings-test PRIVATE -Wall -Wextra)
 
@@ -240,7 +208,7 @@ add_test(NAME llm-settings-test COMMAND llm-settings-test)
 
 add_executable(llm-app-command-test tests/unit/llm-app-command-test.cc)
 
-target_link_libraries(llm-app-command-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-app-command-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-app-command-test PRIVATE -Wall -Wextra)
 
@@ -251,7 +219,7 @@ add_test(NAME llm-app-command-test COMMAND llm-app-command-test)
 add_executable(llm-tool-providers-test tests/unit/llm-tool-providers-test.cc)
 
 target_link_libraries(llm-tool-providers-test PRIVATE argus::llm
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(llm-tool-providers-test PRIVATE -Wall -Wextra)
 
@@ -261,7 +229,7 @@ add_test(NAME llm-tool-providers-test COMMAND llm-tool-providers-test)
 
 add_executable(llm-reply-claims-test tests/unit/llm-reply-claims-test.cc)
 
-target_link_libraries(llm-reply-claims-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-reply-claims-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-reply-claims-test PRIVATE -Wall -Wextra)
 
@@ -271,7 +239,7 @@ add_test(NAME llm-reply-claims-test COMMAND llm-reply-claims-test)
 
 add_executable(llm-plain-turn-test tests/unit/llm-plain-turn-test.cc)
 
-target_link_libraries(llm-plain-turn-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-plain-turn-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-plain-turn-test PRIVATE -Wall -Wextra)
 
@@ -281,7 +249,7 @@ add_test(NAME llm-plain-turn-test COMMAND llm-plain-turn-test)
 
 add_executable(llm-module-command-test tests/unit/llm-module-command-test.cc)
 
-target_link_libraries(llm-module-command-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-module-command-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_definitions(llm-module-command-test PRIVATE
     ARGUS_EVAL_CASES_FILE="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/eval/cases.jsonl"
@@ -294,7 +262,7 @@ set_target_properties(llm-module-command-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME llm-module-command-test COMMAND llm-module-command-test)
 
 add_executable(llm-duress-screen-test tests/unit/llm-duress-screen-test.cc)
-target_link_libraries(llm-duress-screen-test PRIVATE argus::duress argus::llm argus::memory doctest::doctest)
+target_link_libraries(llm-duress-screen-test PRIVATE argus::duress argus::llm argus::memory argus::lib::doctest-main)
 target_compile_definitions(llm-duress-screen-test PRIVATE
     ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(llm-duress-screen-test PRIVATE -Wall -Wextra)
@@ -303,7 +271,7 @@ add_test(NAME llm-duress-screen-test COMMAND llm-duress-screen-test)
 
 add_executable(llm-turn-flow-test tests/unit/llm-turn-flow-test.cc)
 
-target_link_libraries(llm-turn-flow-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-turn-flow-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-turn-flow-test PRIVATE -Wall -Wextra)
 
@@ -313,7 +281,7 @@ add_test(NAME llm-turn-flow-test COMMAND llm-turn-flow-test)
 
 add_executable(llm-speech-acts-test tests/unit/llm-speech-acts-test.cc)
 
-target_link_libraries(llm-speech-acts-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-speech-acts-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-speech-acts-test PRIVATE -Wall -Wextra)
 
@@ -326,7 +294,7 @@ set_tests_properties(llm-speech-acts-test PROPERTIES
 
 add_executable(llm-speech-cues-test tests/unit/llm-speech-cues-test.cc)
 
-target_link_libraries(llm-speech-cues-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-speech-cues-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-speech-cues-test PRIVATE -Wall -Wextra)
 
@@ -336,7 +304,7 @@ add_test(NAME llm-speech-cues-test COMMAND llm-speech-cues-test)
 
 add_executable(llm-speech-guard-test tests/unit/llm-speech-guard-test.cc)
 
-target_link_libraries(llm-speech-guard-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-speech-guard-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-speech-guard-test PRIVATE -Wall -Wextra)
 
@@ -346,7 +314,7 @@ add_test(NAME llm-speech-guard-test COMMAND llm-speech-guard-test)
 
 add_executable(llm-context-selector-test tests/unit/llm-context-selector-test.cc)
 
-target_link_libraries(llm-context-selector-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-context-selector-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-context-selector-test PRIVATE -Wall -Wextra)
 
@@ -359,7 +327,7 @@ set_tests_properties(llm-context-selector-test PROPERTIES
 
 add_executable(llm-bundle-loader-test tests/unit/llm-bundle-loader-test.cc)
 
-target_link_libraries(llm-bundle-loader-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-bundle-loader-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-bundle-loader-test PRIVATE -Wall -Wextra)
 
@@ -385,7 +353,7 @@ set_tests_properties(llm-bundle-check-decide llm-bundle-check-extract PROPERTIES
 
 add_executable(llm-bundle-golden-test tests/unit/llm-bundle-golden-test.cc)
 
-target_link_libraries(llm-bundle-golden-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-bundle-golden-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-bundle-golden-test PRIVATE -Wall -Wextra)
 
@@ -400,7 +368,7 @@ target_compile_definitions(llm-turn-engines-test PRIVATE
     ARGUS_TEST_LAYA_LABELS="${CMAKE_CURRENT_SOURCE_DIR}/tools/laya-labels.tsv"
     ARGUS_TEST_PRODUCTION_TRAFFIC="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/intent/eval-production.tsv")
 
-target_link_libraries(llm-turn-engines-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-turn-engines-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-turn-engines-test PRIVATE -Wall -Wextra)
 
@@ -415,7 +383,7 @@ target_compile_definitions(llm-sp-tokenizer-test PRIVATE
     ARGUS_TEST_LAYA_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-mvp"
     ARGUS_TEST_NFC_PAIRS="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/laya/nfc-pairs.json")
 
-target_link_libraries(llm-sp-tokenizer-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-sp-tokenizer-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-sp-tokenizer-test PRIVATE -Wall -Wextra)
 
@@ -429,7 +397,7 @@ target_compile_definitions(llm-laya-runtime-test PRIVATE
     ARGUS_TEST_LAYA_PILOT="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/laya/parity-pilot.json"
     ARGUS_TEST_LAYA_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-mvp")
 
-target_link_libraries(llm-laya-runtime-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-laya-runtime-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-laya-runtime-test PRIVATE -Wall -Wextra)
 
@@ -443,7 +411,7 @@ target_compile_definitions(llm-gliner-decoder-test PRIVATE
     ARGUS_TEST_GLINER_OVERLAP="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/gliner/overlap.json"
     ARGUS_TEST_GLINER_RANDOM="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/gliner/random-overlap.json")
 
-target_link_libraries(llm-gliner-decoder-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-gliner-decoder-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-gliner-decoder-test PRIVATE -Wall -Wextra)
 
@@ -457,7 +425,7 @@ target_compile_definitions(llm-gliner-runtime-test PRIVATE
     ARGUS_TEST_GLINER_PARITY="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/gliner/parity-pilot.json"
     ARGUS_TEST_GLINER_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/bundle-gliner-pilot")
 
-target_link_libraries(llm-gliner-runtime-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-gliner-runtime-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-gliner-runtime-test PRIVATE -Wall -Wextra)
 
@@ -471,7 +439,7 @@ target_compile_definitions(llm-e2e-turn-test PRIVATE
     ARGUS_TEST_LAYA_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/decide/bundle-laya-mvp"
     ARGUS_TEST_GLINER_BUNDLE="${CMAKE_CURRENT_SOURCE_DIR}/../../models/extract/bundle-gliner-pilot")
 
-target_link_libraries(llm-e2e-turn-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-e2e-turn-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-e2e-turn-test PRIVATE -Wall -Wextra)
 
@@ -481,7 +449,7 @@ add_test(NAME llm-e2e-turn-test COMMAND llm-e2e-turn-test)
 
 add_executable(llm-spoken-intent-test tests/unit/llm-spoken-intent-test.cc)
 
-target_link_libraries(llm-spoken-intent-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-spoken-intent-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-spoken-intent-test PRIVATE -Wall -Wextra)
 
@@ -491,7 +459,7 @@ add_test(NAME llm-spoken-intent-test COMMAND llm-spoken-intent-test)
 
 add_executable(llm-time-arguments-test tests/unit/llm-time-arguments-test.cc)
 
-target_link_libraries(llm-time-arguments-test PRIVATE argus::llm doctest::doctest)
+target_link_libraries(llm-time-arguments-test PRIVATE argus::llm argus::lib::doctest-main)
 
 target_compile_options(llm-time-arguments-test PRIVATE -Wall -Wextra)
 
@@ -502,7 +470,7 @@ add_test(NAME llm-time-arguments-test COMMAND llm-time-arguments-test)
 add_executable(llm-pending-intent-test tests/unit/llm-pending-intent-test.cc)
 
 target_link_libraries(llm-pending-intent-test PRIVATE argus::llm argus::pending-intent
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_definitions(llm-pending-intent-test PRIVATE
     ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -516,7 +484,7 @@ add_test(NAME llm-pending-intent-test COMMAND llm-pending-intent-test)
 add_executable(llm-tool-runtime-test tests/unit/llm-tool-runtime-test.cc)
 
 target_link_libraries(llm-tool-runtime-test PRIVATE argus::llm
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(llm-tool-runtime-test PRIVATE -Wall -Wextra)
 
@@ -528,7 +496,7 @@ add_executable(encounter-closed-consumer-test
     tests/unit/encounter-closed-consumer-test.cc)
 
 target_link_libraries(encounter-closed-consumer-test PRIVATE
-    argus::encounter-closed argus::memory doctest::doctest)
+    argus::encounter-closed argus::memory argus::lib::doctest-main)
 
 target_compile_definitions(encounter-closed-consumer-test PRIVATE
     ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -545,7 +513,7 @@ add_executable(encounter-closed-live-test
     tests/unit/encounter-closed-live-test.cc)
 
 target_link_libraries(encounter-closed-live-test PRIVATE
-    argus::encounter-closed argus::memory doctest::doctest)
+    argus::encounter-closed argus::memory argus::lib::doctest-main)
 
 target_compile_definitions(encounter-closed-live-test PRIVATE
     ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -560,7 +528,7 @@ argus_nats_scratch_test(NAME encounter-closed-live-test)
 add_executable(memory-replica-test tests/unit/memory-replica-test.cc)
 
 target_link_libraries(memory-replica-test PRIVATE argus::memory
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_definitions(memory-replica-test PRIVATE
     ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -574,7 +542,7 @@ add_test(NAME memory-replica-test COMMAND memory-replica-test)
 add_executable(memory-backpressure-test tests/unit/memory-backpressure-test.cc)
 
 target_link_libraries(memory-backpressure-test PRIVATE argus::memory
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_definitions(memory-backpressure-test PRIVATE
     ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql"
@@ -589,7 +557,7 @@ add_test(NAME memory-backpressure-test COMMAND memory-backpressure-test)
 add_executable(memory-reminder-test tests/unit/memory-reminder-test.cc)
 
 target_link_libraries(memory-reminder-test PRIVATE argus::memory
-    argus::contracts::auth doctest::doctest)
+    argus::contracts::auth argus::lib::doctest-main)
 
 target_compile_definitions(memory-reminder-test PRIVATE
     ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql"
@@ -603,7 +571,7 @@ add_test(NAME memory-reminder-test COMMAND memory-reminder-test)
 
 add_executable(notification-reminder-calls-test tests/unit/notification-reminder-calls-test.cc)
 
-target_link_libraries(notification-reminder-calls-test PRIVATE argus::memory doctest::doctest)
+target_link_libraries(notification-reminder-calls-test PRIVATE argus::memory argus::lib::doctest-main)
 
 target_compile_options(notification-reminder-calls-test PRIVATE -Wall -Wextra)
 
@@ -613,7 +581,7 @@ add_test(NAME notification-reminder-calls-test COMMAND notification-reminder-cal
 
 add_executable(reminder-readback-test tests/unit/reminder-readback-test.cc)
 
-target_link_libraries(reminder-readback-test PRIVATE argus::memory doctest::doctest)
+target_link_libraries(reminder-readback-test PRIVATE argus::memory argus::lib::doctest-main)
 
 target_compile_options(reminder-readback-test PRIVATE -Wall -Wextra)
 
@@ -623,7 +591,7 @@ add_test(NAME reminder-readback-test COMMAND reminder-readback-test)
 
 add_executable(call-time-test tests/unit/call-time-test.cc)
 
-target_link_libraries(call-time-test PRIVATE argus::memory doctest::doctest)
+target_link_libraries(call-time-test PRIVATE argus::memory argus::lib::doctest-main)
 
 target_compile_options(call-time-test PRIVATE -Wall -Wextra)
 
@@ -634,7 +602,7 @@ add_test(NAME call-time-test COMMAND call-time-test)
 add_executable(encounter-inbox-test tests/unit/encounter-inbox-test.cc)
 
 target_link_libraries(encounter-inbox-test PRIVATE argus::memory
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_definitions(encounter-inbox-test PRIVATE
     ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -648,7 +616,7 @@ add_test(NAME encounter-inbox-test COMMAND encounter-inbox-test)
 add_executable(memory-forget-test tests/unit/memory-forget-test.cc)
 
 target_link_libraries(memory-forget-test PRIVATE argus::memory
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_definitions(memory-forget-test PRIVATE
     ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -662,7 +630,7 @@ add_test(NAME memory-forget-test COMMAND memory-forget-test)
 add_executable(memory-vec-layout-test tests/unit/memory-vec-layout-test.cc)
 
 target_link_libraries(memory-vec-layout-test PRIVATE argus::memory
-    argus::contracts::auth doctest::doctest)
+    argus::contracts::auth argus::lib::doctest-main)
 
 target_compile_definitions(memory-vec-layout-test PRIVATE
     ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql"
@@ -677,7 +645,7 @@ add_test(NAME memory-vec-layout-test COMMAND memory-vec-layout-test)
 add_executable(extract-tier-split-test tests/unit/extract-tier-split-test.cc)
 
 target_link_libraries(extract-tier-split-test PRIVATE argus::memory
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_definitions(extract-tier-split-test PRIVATE
     ARGUS_TEST_MEMORY_FIXTURES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/memory")
@@ -693,7 +661,7 @@ add_subdirectory(tests/eval)
 add_executable(llm-components-test tests/unit/llm-components-test.cc)
 
 target_link_libraries(llm-components-test PRIVATE argus::llm-settings argus::llm-config
-    argus::contracts::settings-wire doctest::doctest)
+    argus::contracts::settings-wire argus::lib::doctest-main)
 argus_runtime_rpath(llm-components-test)
 
 target_compile_options(llm-components-test PRIVATE -Wall -Wextra)

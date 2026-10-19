@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
 #include <auth/module-gate.hxx>
@@ -12,6 +11,7 @@
 #include <ctime>
 #include <filesystem>
 #include <string>
+#include <unistd.h>
 #include <vector>
 
 #ifndef ARGUS_IDENTITY_SCHEMA

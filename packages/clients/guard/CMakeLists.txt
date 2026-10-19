@@ -17,43 +17,45 @@ if(NOT TARGET argus::clients::guard)
       INCLUDES src)
 endif()
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-if(NOT TARGET guard-presence-client-test)
-  add_executable(guard-presence-client-test
-      tests/unit/guard-presence-client-test.cc)
+    if(NOT TARGET guard-presence-client-test)
+      add_executable(guard-presence-client-test
+          tests/unit/guard-presence-client-test.cc)
 
-  set_target_properties(guard-presence-client-test PROPERTIES
-      EXCLUDE_FROM_ALL FALSE)
+      set_target_properties(guard-presence-client-test PROPERTIES
+          EXCLUDE_FROM_ALL FALSE)
 
-  target_link_libraries(guard-presence-client-test PRIVATE
-      argus::clients::guard argus::lib::grpc-test-support argus_client_grpc_base
-      doctest::doctest)
+      target_link_libraries(guard-presence-client-test PRIVATE
+          argus::clients::guard argus::lib::grpc-test-support argus_client_grpc_base
+          argus::lib::doctest-main)
 
-  target_compile_options(guard-presence-client-test PRIVATE -Wall -Wextra)
+      target_compile_options(guard-presence-client-test PRIVATE -Wall -Wextra)
 
-  add_test(NAME guard-presence-client-test
-           COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
-                   $<TARGET_FILE:guard-presence-client-test> 3)
-  set_tests_properties(guard-presence-client-test PROPERTIES SKIP_RETURN_CODE 77)
-endif()
+      add_test(NAME guard-presence-client-test
+               COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                       $<TARGET_FILE:guard-presence-client-test> 3)
+      set_tests_properties(guard-presence-client-test PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
 
-if(NOT TARGET guard-duress-client-test)
-  add_executable(guard-duress-client-test
-      tests/unit/guard-duress-client-test.cc)
+    if(NOT TARGET guard-duress-client-test)
+      add_executable(guard-duress-client-test
+          tests/unit/guard-duress-client-test.cc)
 
-  set_target_properties(guard-duress-client-test PROPERTIES
-      EXCLUDE_FROM_ALL FALSE)
+      set_target_properties(guard-duress-client-test PROPERTIES
+          EXCLUDE_FROM_ALL FALSE)
 
-  target_link_libraries(guard-duress-client-test PRIVATE
-      argus::clients::guard argus::lib::grpc-test-support argus_client_grpc_base
-      doctest::doctest)
+      target_link_libraries(guard-duress-client-test PRIVATE
+          argus::clients::guard argus::lib::grpc-test-support argus_client_grpc_base
+          argus::lib::doctest-main)
 
-  target_compile_options(guard-duress-client-test PRIVATE -Wall -Wextra)
+      target_compile_options(guard-duress-client-test PRIVATE -Wall -Wextra)
 
-  add_test(NAME guard-duress-client-test
-           COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
-                   $<TARGET_FILE:guard-duress-client-test> 5)
-  set_tests_properties(guard-duress-client-test PROPERTIES SKIP_RETURN_CODE 77)
+      add_test(NAME guard-duress-client-test
+               COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                       $<TARGET_FILE:guard-duress-client-test> 5)
+      set_tests_properties(guard-duress-client-test PROPERTIES SKIP_RETURN_CODE 77)
+    endif()
 endif()

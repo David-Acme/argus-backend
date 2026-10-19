@@ -39,40 +39,7 @@ if(PROJECT_IS_TOP_LEVEL)
                          ${CMAKE_BINARY_DIR}/clients/vlm)
     endif()
 
-    if(NOT TARGET llama)
-        set(LLAMA_BUILD_COMMON OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_SERVER OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_APP OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_UI OFF CACHE BOOL "" FORCE)
-        set(LLAMA_USE_PREBUILT_UI OFF CACHE BOOL "" FORCE)
-        set(LLAMA_CURL OFF CACHE BOOL "" FORCE)
-        set(LLAMA_BUILD_MTMD ON CACHE BOOL "" FORCE)
-        set(MTMD_VIDEO OFF CACHE BOOL "" FORCE)
-        set(GGML_NATIVE ON CACHE BOOL "" FORCE)
-        set(GGML_OPENMP ON CACHE BOOL "" FORCE)
-        set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-        set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-        set(GGML_CUDA OFF CACHE BOOL "" FORCE)
-        set(GGML_VULKAN OFF CACHE BOOL "" FORCE)
-
-        include(CheckLanguage)
-        check_language(CUDA)
-        if(CMAKE_CUDA_COMPILER)
-            set(GGML_CUDA ON CACHE BOOL "" FORCE)
-        else()
-            find_package(Vulkan QUIET COMPONENTS glslc)
-            find_package(SPIRV-Headers CONFIG QUIET)
-            if(Vulkan_FOUND AND Vulkan_GLSLC_EXECUTABLE AND SPIRV-Headers_FOUND)
-                set(GGML_VULKAN ON CACHE BOOL "" FORCE)
-            endif()
-        endif()
-
-        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/llama.cpp
-                         llama-build EXCLUDE_FROM_ALL)
-    endif()
+    argus_vendored_llama()
 endif()
 
 if(NOT COMMAND argus_settings_rpc_contract)
@@ -131,7 +98,7 @@ target_include_directories(vlm-wire-test PRIVATE
 target_compile_definitions(vlm-wire-test PRIVATE
     ARGUS_TEST_VLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/vision/lfm2vl-25")
 
-target_link_libraries(vlm-wire-test PRIVATE argus::vlm doctest::doctest)
+target_link_libraries(vlm-wire-test PRIVATE argus::vlm argus::lib::doctest-main)
 
 target_compile_options(vlm-wire-test PRIVATE -Wall -Wextra)
 
@@ -141,7 +108,7 @@ add_executable(vlm-jpeg-gate-test tests/unit/vlm-jpeg-gate-test.cc)
 
 set_target_properties(vlm-jpeg-gate-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(vlm-jpeg-gate-test PRIVATE argus::vlm doctest::doctest)
+target_link_libraries(vlm-jpeg-gate-test PRIVATE argus::vlm argus::lib::doctest-main)
 
 target_compile_options(vlm-jpeg-gate-test PRIVATE -Wall -Wextra)
 
@@ -153,7 +120,7 @@ target_include_directories(vlm-rpc-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 
 target_link_libraries(vlm-rpc-test PRIVATE argus::vlm-rpc
-    argus::lib::grpc-test-support doctest::doctest)
+    argus::lib::grpc-test-support argus::lib::doctest-main)
 target_compile_definitions(vlm-rpc-test PRIVATE
     ARGUS_TEST_VLM_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/vision/lfm2vl-25")
 argus_runtime_rpath(vlm-rpc-test)
@@ -170,7 +137,7 @@ set_tests_properties(vlm-rpc-test PROPERTIES SKIP_RETURN_CODE 77)
 add_executable(vlm-settings-test tests/unit/vlm-settings-test.cc)
 
 target_link_libraries(vlm-settings-test PRIVATE argus::vlm-rpc argus::vlm-settings
-    argus::vlm-config doctest::doctest)
+    argus::vlm-config argus::lib::doctest-main)
 argus_runtime_rpath(vlm-settings-test)
 
 target_compile_options(vlm-settings-test PRIVATE -Wall -Wextra)
@@ -186,7 +153,7 @@ target_include_directories(vlm-components-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/http/tests/unit/download)
 
 target_link_libraries(vlm-components-test PRIVATE argus::vlm-components argus::vlm
-    argus::vlm-config argus::vlm-settings doctest::doctest)
+    argus::vlm-config argus::vlm-settings argus::lib::doctest-main)
 argus_runtime_rpath(vlm-components-test)
 
 target_compile_options(vlm-components-test PRIVATE -Wall -Wextra)

@@ -6,7 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 ENV ARGUS_SYSTEM_PROTOBUF=ON
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential ca-certificates cmake git libssl-dev ninja-build \
+      build-essential ca-certificates ccache cmake git libssl-dev ninja-build \
       pkg-config python3 python3-pip python3-venv libvulkan-dev glslc \
       libprotobuf-dev protobuf-compiler protobuf-compiler-grpc \
       libgrpc++-dev libgrpc-dev \
@@ -27,6 +27,8 @@ ARG CMAKE_BUILD_PARALLEL_LEVEL
 ARG ARGUS_LINK_POOLS
 RUN --mount=type=cache,target=/root/.conan2/p \
     --mount=type=cache,target=/root/.conan2/b \
+    --mount=type=cache,target=/root/.cache/ccache \
+    --mount=type=cache,target=/root/.cache/argus/vendored \
     ./scripts/build-all.sh prod --no-tests --only voice
 
 FROM build AS test
@@ -35,6 +37,8 @@ ARG CMAKE_BUILD_PARALLEL_LEVEL
 ARG ARGUS_LINK_POOLS
 RUN --mount=type=cache,target=/root/.conan2/p \
     --mount=type=cache,target=/root/.conan2/b \
+    --mount=type=cache,target=/root/.cache/ccache \
+    --mount=type=cache,target=/root/.cache/argus/vendored \
     ./scripts/build-all.sh prod --only voice
 
 FROM debian:trixie-slim AS runtime

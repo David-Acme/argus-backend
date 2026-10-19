@@ -43,31 +43,33 @@ target_link_libraries(argus_clients_tts PRIVATE argus::contracts::tts-wire
     argus::lib::net)
 target_compile_options(argus_clients_tts PRIVATE -Wall -Wextra)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(tts-client-test tests/unit/tts-client-test.cc)
+    add_executable(tts-client-test tests/unit/tts-client-test.cc)
 
-set_target_properties(tts-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(tts-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(tts-client-test PRIVATE argus::clients::tts
-    doctest::doctest)
+    target_link_libraries(tts-client-test PRIVATE argus::clients::tts
+        argus::lib::doctest-main)
 
-target_compile_options(tts-client-test PRIVATE -Wall -Wextra)
+    target_compile_options(tts-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME tts-client-test COMMAND tts-client-test)
+    add_test(NAME tts-client-test COMMAND tts-client-test)
 
-add_executable(tts-grpc-tls-test tests/unit/tts-grpc-tls-test.cc)
+    add_executable(tts-grpc-tls-test tests/unit/tts-grpc-tls-test.cc)
 
-set_target_properties(tts-grpc-tls-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(tts-grpc-tls-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(tts-grpc-tls-test PRIVATE argus::clients::tts
-    argus::contracts::tts-wire argus::lib::grpc-test-support argus_client_grpc_base
-    doctest::doctest)
+    target_link_libraries(tts-grpc-tls-test PRIVATE argus::clients::tts
+        argus::contracts::tts-wire argus::lib::grpc-test-support argus_client_grpc_base
+        argus::lib::doctest-main)
 
-target_compile_options(tts-grpc-tls-test PRIVATE -Wall -Wextra)
+    target_compile_options(tts-grpc-tls-test PRIVATE -Wall -Wextra)
 
-add_test(NAME tts-grpc-tls-test
-         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
-                 $<TARGET_FILE:tts-grpc-tls-test> 1)
-set_tests_properties(tts-grpc-tls-test PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME tts-grpc-tls-test
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                     $<TARGET_FILE:tts-grpc-tls-test> 1)
+    set_tests_properties(tts-grpc-tls-test PROPERTIES SKIP_RETURN_CODE 77)
+endif()

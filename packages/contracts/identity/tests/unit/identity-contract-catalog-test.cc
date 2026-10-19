@@ -1,10 +1,10 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <algorithm>
 #include <array>
 #include <cstddef>
 #include <doctest/doctest.h>
 #include <identity/identity-errors.hxx>
 #include <string>
+#include <vector>
 
 struct CatalogEntry
 {

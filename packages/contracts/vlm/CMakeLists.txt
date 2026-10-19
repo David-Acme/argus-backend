@@ -31,19 +31,21 @@ function(argus_vlm_rpc_contract)
     endif()
 endfunction()
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(vlm-contract-catalog-test
-    tests/unit/vlm-contract-catalog-test.cc)
-target_link_libraries(vlm-contract-catalog-test PRIVATE
-    argus::contracts::vlm doctest::doctest)
-target_compile_options(vlm-contract-catalog-test PRIVATE -Wall -Wextra)
-add_test(NAME vlm-contract-catalog-test COMMAND vlm-contract-catalog-test)
+    add_executable(vlm-contract-catalog-test
+        tests/unit/vlm-contract-catalog-test.cc)
+    target_link_libraries(vlm-contract-catalog-test PRIVATE
+        argus::contracts::vlm argus::lib::doctest-main)
+    target_compile_options(vlm-contract-catalog-test PRIVATE -Wall -Wextra)
+    add_test(NAME vlm-contract-catalog-test COMMAND vlm-contract-catalog-test)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

@@ -1,9 +1,9 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
 #include "fake-transport.hxx"
 #include "range-server.hxx"
 
+#include <algorithm>
 #include <atomic>
 #include <fcntl.h>
 #include <filesystem>

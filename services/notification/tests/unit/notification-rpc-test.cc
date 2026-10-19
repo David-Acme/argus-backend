@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <argus/notification/v1/notification.grpc.pb.h>
 #include <atomic>
 #include <chrono>

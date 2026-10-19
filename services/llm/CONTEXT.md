@@ -2420,37 +2420,23 @@ the eight frozen rows where greedy and the reference disagree
 (`tests/fixtures/gliner/overlap.json`) and to 400 random interval sets
 (`random-overlap.json`).
 
-## The fresh-tree Vulkan shader cost (2026-10-09)
+## The Vulkan shader cost, paid once per machine (2026-10-19)
 
-The vendored `third_party/llama.cpp` turns `GGML_VULKAN` on when Vulkan, glslc and
-SPIRV-Headers are present, and its `vulkan-shaders-gen` ExternalProject then pays a
-fixed cost in every fresh build tree: a wave of 137 shader-generation edges and
-1922 glslc runs, **about 425 s of edge time** (425.9 s cold; 429.5 s, 424.2 s and
-427.3 s in the later samples), beside the ~200 s the rest of a ccache-warm
-`./scripts/build-all.sh dev --only llm` takes. This is **a known cost of a fresh
-tree, not a defect.** It is paid in every fresh tree, patched or not; it does not
-recur on an incremental or no-op build; and `services/vlm` pays its own copy,
-because the two projects do not share a build tree. The shader block itself is
-recorded in `docs/operations/build-and-test.md`.
-
-**`BUILD_ALWAYS TRUE` is not the cause of it, and cannot be.** At
-`third_party/llama.cpp/ggml/src/ggml-vulkan/CMakeLists.txt:177-195` the generator
-is declared `ExternalProject_Add(… BUILD_ALWAYS TRUE)`, which re-runs only the
-external project's own build, install, done and complete steps — five `.ninja_log`
-entries, 47 ms on a second build. The 137 generation edges consume the generator
-binary, and CMake emits a dependency on a custom *target* as an **order-only**
-dependency: `|| … llama-build/ggml/src/ggml-vulkan/vulkan-shaders-gen` at
-`services/llm/build/dev/build.ninja:11492` and `:11501`. Re-dirtying the external
-project's stamps therefore cannot reach the generation edges, which is why
-`BUILD_ALWAYS` is not — and cannot be — what regenerates a shader.
-
-A patch that sets `BUILD_ALWAYS FALSE` and adds
-`ExternalProject_Add_StepDependencies` is proven, and saves exactly the four
-external-project edges (5 entries becomes 1, 35-100 ms on a second build) without
-removing any of the 425 s. It lives outside the repository, at
-`~/.cache/argus-scratch-backup/backend13/shaders/candidate-patch.patch`, because
-the tree has no durable mechanism for a submodule patch; it is recorded here so
-the cost is known rather than fought.
+On 2026-10-09 the vendored llama.cpp cost about 425 s of glslc edge time in every
+fresh build tree (137 generation edges, 1922 shader variants), and `services/vlm`
+paid its own copy. The shader generation is not ccache-able and llama.cpp b10305
+has no variable for a prebuilt generator, so the cost was moved instead of fought:
+`argus_vendored_llama()` (`cmake/argus-vendored.cmake`) builds llama.cpp once per
+machine and build type at configure time, with `LLAMA_BUILD_MTMD` ON, into
+`~/.cache/argus/vendored/llama-<type>-<key>`, and both this service and `services/vlm`
+import it from there (`find_package(llama CONFIG)` plus an imported `mtmd`). A new
+worktree or a deleted `build/` reuses the prefix in under a second;
+only a new submodule commit, a different option set or another compiler builds it
+again. The build type follows the consumer on purpose: a Release `libllama.so`
+imports `std::string` members that a Debug service's archives define weakly, and
+mold then extracts those members (turn engines, GLiNER, all of onnxruntime) into
+every test, which measured 90 MB → 1 GB per executable.
+`docs/history/plans/build-speed-plan.md` holds the numbers.
 
 ## Merge gate for the parked Laya/GLiNER branch
 

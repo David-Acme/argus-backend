@@ -16,33 +16,35 @@ if(NOT TARGET argus::clients::productivity)
       INCLUDES src)
 endif()
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(productivity-sync-client-test tests/unit/productivity-sync-client-test.cc)
+    add_executable(productivity-sync-client-test tests/unit/productivity-sync-client-test.cc)
 
-set_target_properties(productivity-sync-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(productivity-sync-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(productivity-sync-client-test PRIVATE argus::clients::productivity
-    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
+    target_link_libraries(productivity-sync-client-test PRIVATE argus::clients::productivity
+        argus::lib::grpc-test-support argus_client_grpc_base argus::lib::doctest-main)
 
-target_compile_options(productivity-sync-client-test PRIVATE -Wall -Wextra)
+    target_compile_options(productivity-sync-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME productivity-sync-client-test
-         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
-                 $<TARGET_FILE:productivity-sync-client-test> 3)
-set_tests_properties(productivity-sync-client-test PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME productivity-sync-client-test
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                     $<TARGET_FILE:productivity-sync-client-test> 3)
+    set_tests_properties(productivity-sync-client-test PROPERTIES SKIP_RETURN_CODE 77)
 
-add_executable(productivity-reminder-client-test tests/unit/productivity-reminder-client-test.cc)
+    add_executable(productivity-reminder-client-test tests/unit/productivity-reminder-client-test.cc)
 
-set_target_properties(productivity-reminder-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(productivity-reminder-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(productivity-reminder-client-test PRIVATE argus::clients::productivity
-    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
+    target_link_libraries(productivity-reminder-client-test PRIVATE argus::clients::productivity
+        argus::lib::grpc-test-support argus_client_grpc_base argus::lib::doctest-main)
 
-target_compile_options(productivity-reminder-client-test PRIVATE -Wall -Wextra)
+    target_compile_options(productivity-reminder-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME productivity-reminder-client-test
-         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
-                 $<TARGET_FILE:productivity-reminder-client-test> 1)
-set_tests_properties(productivity-reminder-client-test PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME productivity-reminder-client-test
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                     $<TARGET_FILE:productivity-reminder-client-test> 1)
+    set_tests_properties(productivity-reminder-client-test PROPERTIES SKIP_RETURN_CODE 77)
+endif()

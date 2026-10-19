@@ -27,7 +27,7 @@ add_executable(eval-corpus-test eval-corpus-test.cc)
 target_compile_definitions(eval-corpus-test PRIVATE
     ARGUS_EVAL_CASES="${CMAKE_CURRENT_SOURCE_DIR}/../fixtures/eval/cases.jsonl")
 
-target_link_libraries(eval-corpus-test PRIVATE llm-eval-core argus::lib::text doctest::doctest)
+target_link_libraries(eval-corpus-test PRIVATE llm-eval-core argus::lib::text argus::lib::doctest-main)
 
 target_compile_options(eval-corpus-test PRIVATE -Wall -Wextra)
 
@@ -113,7 +113,7 @@ endif()
 
 add_executable(eval-score-test eval-score-test.cc)
 
-target_link_libraries(eval-score-test PRIVATE llm-eval-core argus::lib::text doctest::doctest)
+target_link_libraries(eval-score-test PRIVATE llm-eval-core argus::lib::text argus::lib::doctest-main)
 
 target_compile_options(eval-score-test PRIVATE -Wall -Wextra)
 
@@ -123,7 +123,7 @@ add_test(NAME eval-score-test COMMAND eval-score-test)
 
 add_executable(eval-tools-test eval-tools-test.cc eval-tools.cc)
 
-target_link_libraries(eval-tools-test PRIVATE llm-eval-core argus::llm doctest::doctest)
+target_link_libraries(eval-tools-test PRIVATE llm-eval-core argus::llm argus::lib::doctest-main)
 
 target_compile_options(eval-tools-test PRIVATE -Wall -Wextra)
 
@@ -235,7 +235,7 @@ set_tests_properties(context-scenarios-eval PROPERTIES SKIP_RETURN_CODE 77 LABEL
 
 add_executable(context-checks-test context-checks-test.cc)
 
-target_link_libraries(context-checks-test PRIVATE llm-eval-core llm-context-eval argus::lib::text doctest::doctest)
+target_link_libraries(context-checks-test PRIVATE llm-eval-core llm-context-eval argus::lib::text argus::lib::doctest-main)
 
 target_compile_options(context-checks-test PRIVATE -Wall -Wextra)
 

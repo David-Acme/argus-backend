@@ -31,19 +31,21 @@ function(argus_stt_rpc_contract)
     endif()
 endfunction()
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(stt-contract-catalog-test
-    tests/unit/stt-contract-catalog-test.cc)
-target_link_libraries(stt-contract-catalog-test PRIVATE
-    argus::contracts::stt doctest::doctest)
-target_compile_options(stt-contract-catalog-test PRIVATE -Wall -Wextra)
-add_test(NAME stt-contract-catalog-test COMMAND stt-contract-catalog-test)
+    add_executable(stt-contract-catalog-test
+        tests/unit/stt-contract-catalog-test.cc)
+    target_link_libraries(stt-contract-catalog-test PRIVATE
+        argus::contracts::stt argus::lib::doctest-main)
+    target_compile_options(stt-contract-catalog-test PRIVATE -Wall -Wextra)
+    add_test(NAME stt-contract-catalog-test COMMAND stt-contract-catalog-test)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

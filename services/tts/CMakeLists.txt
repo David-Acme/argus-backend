@@ -82,8 +82,8 @@ if(DOCTEST_INCLUDE_DIRS)
 endif()
 
 set_target_properties(argus-tts PROPERTIES
-    BUILD_RPATH "$ORIGIN"
-    INSTALL_RPATH "$ORIGIN")
+    BUILD_RPATH "${ARGUS_RPATH_ORIGIN}"
+    INSTALL_RPATH "${ARGUS_RPATH_ORIGIN}")
 argus_runtime_rpath(argus-tts)
 
 add_custom_command(TARGET argus-tts POST_BUILD
@@ -100,7 +100,7 @@ target_compile_definitions(tts-wire-test PRIVATE
     ARGUS_TEST_TTS_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/tts")
 
 target_link_libraries(tts-wire-test PRIVATE
-    argus::tts-synthesis-http doctest::doctest)
+    argus::tts-synthesis-http argus::lib::doctest-main)
 
 target_compile_options(tts-wire-test PRIVATE -Wall -Wextra)
 
@@ -111,7 +111,7 @@ add_test(NAME tts-wire-test COMMAND tts-wire-test)
 add_executable(tts-rpc-test tests/unit/tts-rpc-test.cc)
 
 target_link_libraries(tts-rpc-test PRIVATE argus::tts-rpc argus::tts-synthesis
-    argus::lib::grpc-test-support doctest::doctest)
+    argus::lib::grpc-test-support argus::lib::doctest-main)
 target_compile_definitions(tts-rpc-test PRIVATE
     ARGUS_TEST_TTS_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/tts")
 argus_runtime_rpath(tts-rpc-test)
@@ -126,26 +126,26 @@ add_test(NAME tts-rpc-test
 set_tests_properties(tts-rpc-test PROPERTIES SKIP_RETURN_CODE 77)
 
 add_executable(tts-speech-text-test tests/unit/tts-speech-text-test.cc)
-target_link_libraries(tts-speech-text-test PRIVATE argus::tts-speech-text doctest::doctest)
+target_link_libraries(tts-speech-text-test PRIVATE argus::tts-speech-text argus::lib::doctest-main)
 target_compile_options(tts-speech-text-test PRIVATE -Wall -Wextra)
 set_target_properties(tts-speech-text-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME tts-speech-text-test COMMAND tts-speech-text-test)
 
 add_executable(pause-limiter-test tests/unit/pause-limiter-test.cc)
-target_link_libraries(pause-limiter-test PRIVATE argus::tts-synthesis doctest::doctest)
+target_link_libraries(pause-limiter-test PRIVATE argus::tts-synthesis argus::lib::doctest-main)
 target_compile_options(pause-limiter-test PRIVATE -Wall -Wextra)
 set_target_properties(pause-limiter-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME pause-limiter-test COMMAND pause-limiter-test)
 
 add_executable(tts-settings-test tests/unit/tts-settings-test.cc)
-target_link_libraries(tts-settings-test PRIVATE argus::tts-settings argus::tts-synthesis doctest::doctest)
+target_link_libraries(tts-settings-test PRIVATE argus::tts-settings argus::tts-synthesis argus::lib::doctest-main)
 argus_runtime_rpath(tts-settings-test)
 target_compile_options(tts-settings-test PRIVATE -Wall -Wextra)
 set_target_properties(tts-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME tts-settings-test COMMAND tts-settings-test)
 
 add_executable(tts-pocket-test tests/unit/tts-pocket-test.cc)
-target_link_libraries(tts-pocket-test PRIVATE argus::tts-synthesis doctest::doctest)
+target_link_libraries(tts-pocket-test PRIVATE argus::tts-synthesis argus::lib::doctest-main)
 target_compile_definitions(tts-pocket-test PRIVATE
     ARGUS_TEST_TTS_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/tts")
 argus_runtime_rpath(tts-pocket-test)
@@ -154,13 +154,13 @@ set_target_properties(tts-pocket-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME tts-pocket-test COMMAND tts-pocket-test)
 
 add_executable(tts-pocket-load-test tests/unit/tts-pocket-load-test.cc)
-target_link_libraries(tts-pocket-load-test PRIVATE argus::tts-pocket-load doctest::doctest)
+target_link_libraries(tts-pocket-load-test PRIVATE argus::tts-pocket-load argus::lib::doctest-main)
 target_compile_options(tts-pocket-load-test PRIVATE -Wall -Wextra)
 set_target_properties(tts-pocket-load-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 add_test(NAME tts-pocket-load-test COMMAND tts-pocket-load-test)
 
 add_executable(tts-provisioning-test tests/unit/tts-provisioning-test.cc)
-target_link_libraries(tts-provisioning-test PRIVATE argus::tts-provisioning argus::tts-settings doctest::doctest)
+target_link_libraries(tts-provisioning-test PRIVATE argus::tts-provisioning argus::tts-settings argus::lib::doctest-main)
 argus_runtime_rpath(tts-provisioning-test)
 target_compile_options(tts-provisioning-test PRIVATE -Wall -Wextra)
 set_target_properties(tts-provisioning-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
@@ -173,7 +173,7 @@ add_test(NAME tts-provision-test
 add_executable(tts-components-test tests/unit/tts-components-test.cc)
 
 target_link_libraries(tts-components-test PRIVATE argus::tts-settings argus::tts-config
-    argus::contracts::settings-wire doctest::doctest)
+    argus::contracts::settings-wire argus::lib::doctest-main)
 argus_runtime_rpath(tts-components-test)
 
 target_compile_options(tts-components-test PRIVATE -Wall -Wextra)

@@ -11,17 +11,28 @@ argus_lib(NAME test-support
     INCLUDES src
     DEPENDS Drogon::Drogon)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(NOT TARGET doctest::doctest)
+    find_package(doctest REQUIRED)
+endif()
 
-add_executable(app-runner-test tests/app-runner-test.cc)
-target_link_libraries(app-runner-test PRIVATE argus::lib::test-support doctest::doctest)
-target_compile_options(app-runner-test PRIVATE -Wall -Wextra)
-add_test(NAME app-runner-test COMMAND app-runner-test)
+argus_lib(NAME doctest-main
+    SOURCES
+        src/test-support/doctest-main.cc
+    INCLUDES src
+    DEPENDS doctest::doctest)
 
-add_test(NAME test-runner-lifetime-test
-    COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/check-runner-lifetime.py
-            --root ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
-add_test(NAME test-runner-lifetime-selftest
-    COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/check-runner-lifetime.py
-            --self-test ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+
+    add_executable(app-runner-test tests/app-runner-test.cc)
+    target_link_libraries(app-runner-test PRIVATE argus::lib::test-support argus::lib::doctest-main)
+    target_compile_options(app-runner-test PRIVATE -Wall -Wextra)
+    add_test(NAME app-runner-test COMMAND app-runner-test)
+
+    add_test(NAME test-runner-lifetime-test
+        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/check-runner-lifetime.py
+                --root ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+    add_test(NAME test-runner-lifetime-selftest
+        COMMAND python3 ${CMAKE_CURRENT_SOURCE_DIR}/tests/check-runner-lifetime.py
+                --self-test ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures)
+endif()

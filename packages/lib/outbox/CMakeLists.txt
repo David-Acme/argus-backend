@@ -51,26 +51,28 @@ argus_lib(NAME outbox
 target_link_libraries(argus_lib_outbox PRIVATE OpenSSL::Crypto)
 target_compile_options(argus_lib_outbox PRIVATE -Wall -Wextra)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
+
+    foreach(test_name IN ITEMS outbox-key-test outbox-repository-test)
+        add_executable(${test_name} tests/unit/${test_name}.cc)
+        target_link_libraries(${test_name} PRIVATE argus::lib::outbox
+                              argus::lib::doctest-main)
+        target_compile_options(${test_name} PRIVATE -Wall -Wextra)
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    endforeach()
+
+    add_executable(transactional-outbox-test tests/unit/transactional-outbox-test.cc)
+    target_link_libraries(transactional-outbox-test PRIVATE argus::lib::outbox
+                          argus::lib::doctest-main)
+    target_compile_options(transactional-outbox-test PRIVATE -Wall -Wextra)
+    argus_nats_scratch_test(NAME transactional-outbox-test)
 endif()
-
-foreach(test_name IN ITEMS outbox-key-test outbox-repository-test)
-    add_executable(${test_name} tests/unit/${test_name}.cc)
-    target_link_libraries(${test_name} PRIVATE argus::lib::outbox
-                          doctest::doctest)
-    target_compile_options(${test_name} PRIVATE -Wall -Wextra)
-    add_test(NAME ${test_name} COMMAND ${test_name})
-endforeach()
-
-add_executable(transactional-outbox-test tests/unit/transactional-outbox-test.cc)
-target_link_libraries(transactional-outbox-test PRIVATE argus::lib::outbox
-                      doctest::doctest)
-target_compile_options(transactional-outbox-test PRIVATE -Wall -Wextra)
-argus_nats_scratch_test(NAME transactional-outbox-test)

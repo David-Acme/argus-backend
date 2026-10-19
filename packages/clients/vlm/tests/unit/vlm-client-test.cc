@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <chrono>
 #include <config/config-service.hxx>
 #include <cstdint>

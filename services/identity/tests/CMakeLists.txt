@@ -2,7 +2,7 @@ add_executable(identity-config-test unit/identity-config-test.cc)
 target_link_libraries(identity-config-test PRIVATE
     argus::identity-config
     argus::lib::http
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-config-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-config-test)
 add_test(NAME identity-config-test COMMAND identity-config-test)
@@ -16,7 +16,7 @@ target_link_libraries(identity-user-update-test PRIVATE
     argus::lib::sqlite
     argus::lib::text
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-user-update-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-user-update-test)
 add_test(NAME identity-user-update-test COMMAND identity-user-update-test)
@@ -26,7 +26,7 @@ target_link_libraries(identity-role-input-test PRIVATE
     argus::identity-invitation
     argus::identity-user
     argus::lib::validation
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-role-input-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-role-input-test)
 add_test(NAME identity-role-input-test COMMAND identity-role-input-test)
@@ -34,7 +34,7 @@ add_test(NAME identity-role-input-test COMMAND identity-role-input-test)
 add_executable(identity-migration-test unit/identity-migration-test.cc)
 target_link_libraries(identity-migration-test PRIVATE
     identity-migration
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-migration-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-migration-test)
 add_test(NAME identity-migration-test COMMAND identity-migration-test)
@@ -46,7 +46,7 @@ target_link_libraries(identity-role-check-migration-test PRIVATE
     argus::identity-role-storage
     argus::lib::sqlite
     SQLite::SQLite3
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-role-check-migration-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-role-check-migration-test)
 add_test(NAME identity-role-check-migration-test COMMAND identity-role-check-migration-test)
@@ -63,7 +63,7 @@ target_link_libraries(identity-change-outbox-sink-test PRIVATE
     argus::lib::sqlite
     argus::contracts::sync
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-change-outbox-sink-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-change-outbox-sink-test)
 argus_nats_scratch_test(NAME identity-change-outbox-sink-test)
@@ -77,7 +77,7 @@ target_link_libraries(identity-sync-rpc-test PRIVATE
     argus::clients::identity
     argus::lib::sqlite
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-sync-rpc-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-sync-rpc-test)
 add_test(NAME identity-sync-rpc-test COMMAND identity-sync-rpc-test)
@@ -87,7 +87,7 @@ target_link_libraries(identity-rpc-callers-test PRIVATE
     argus::identity-rpc
     argus::clients::identity
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-rpc-callers-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-rpc-callers-test)
 add_test(NAME identity-rpc-callers-test COMMAND identity-rpc-callers-test)
@@ -104,7 +104,7 @@ target_link_libraries(identity-change-transaction-test PRIVATE
     argus::lib::sqlite
     argus::contracts::sync
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-change-transaction-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-change-transaction-test)
 add_test(NAME identity-change-transaction-test
@@ -113,7 +113,7 @@ add_test(NAME identity-change-transaction-test
 add_executable(identity-face-slots-test unit/identity-face-slots-test.cc)
 target_link_libraries(identity-face-slots-test PRIVATE
     argus::identity-shared
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-face-slots-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-face-slots-test)
 add_test(NAME identity-face-slots-test COMMAND identity-face-slots-test)
@@ -128,7 +128,7 @@ target_link_libraries(identity-candidate-retention-test PRIVATE
     argus::lib::sqlite
     argus::contracts::sync
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-candidate-retention-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-candidate-retention-test)
 add_test(NAME identity-candidate-retention-test
@@ -137,7 +137,7 @@ add_test(NAME identity-candidate-retention-test
 add_executable(identity-pairing-banner-test unit/identity-pairing-banner-test.cc)
 target_link_libraries(identity-pairing-banner-test PRIVATE
     argus::identity-pairing
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-pairing-banner-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-pairing-banner-test)
 add_test(NAME identity-pairing-banner-test COMMAND identity-pairing-banner-test)
@@ -146,7 +146,7 @@ add_executable(identity-voiceprint-audio-test
     unit/identity-voiceprint-audio-test.cc)
 target_link_libraries(identity-voiceprint-audio-test PRIVATE
     argus::identity-voiceprint
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-voiceprint-audio-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-voiceprint-audio-test)
 add_test(NAME identity-voiceprint-audio-test
@@ -156,7 +156,7 @@ add_executable(identity-voiceprint-passive-test
     unit/identity-voiceprint-passive-test.cc)
 target_link_libraries(identity-voiceprint-passive-test PRIVATE
     argus::identity-voiceprint
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-voiceprint-passive-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-voiceprint-passive-test)
 add_test(NAME identity-voiceprint-passive-test
@@ -174,7 +174,7 @@ target_link_libraries(identity-voiceprint-test PRIVATE
     argus::clients::identity
     argus::lib::sqlite
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-voiceprint-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-voiceprint-test)
 add_test(NAME identity-voiceprint-test COMMAND identity-voiceprint-test)
@@ -192,7 +192,7 @@ target_link_libraries(identity-voiceprint-verdict-test PRIVATE
     argus::clients::identity
     argus::lib::sqlite
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-voiceprint-verdict-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-voiceprint-verdict-test)
 add_test(NAME identity-voiceprint-verdict-test
@@ -207,7 +207,7 @@ target_link_libraries(identity-face-embedding-test PRIVATE
     argus::identity-shared
     argus::lib::sqlite
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-face-embedding-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-face-embedding-test)
 add_test(NAME identity-face-embedding-test
@@ -225,7 +225,7 @@ target_link_libraries(identity-privacy-test PRIVATE
     argus::lib::auth
     argus::lib::sqlite
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-privacy-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-privacy-test)
 add_test(NAME identity-privacy-test COMMAND identity-privacy-test)
@@ -241,7 +241,7 @@ target_link_libraries(identity-face-model-test PRIVATE
     argus::identity-shared
     argus::lib::sqlite
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-face-model-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-face-model-test)
 add_test(NAME identity-face-model-test COMMAND identity-face-model-test)
@@ -249,7 +249,7 @@ add_test(NAME identity-face-model-test COMMAND identity-face-model-test)
 add_executable(identity-visitor-policy-test unit/identity-visitor-policy-test.cc)
 target_link_libraries(identity-visitor-policy-test PRIVATE
     argus::identity-visitor
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-visitor-policy-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-visitor-policy-test)
 add_test(NAME identity-visitor-policy-test COMMAND identity-visitor-policy-test)
@@ -264,7 +264,7 @@ target_link_libraries(identity-person-feed-test PRIVATE
     argus::lib::sqlite
     argus::contracts::sync
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-person-feed-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-person-feed-test)
 add_test(NAME identity-person-feed-test COMMAND identity-person-feed-test)
@@ -281,7 +281,7 @@ target_link_libraries(identity-visitor-test PRIVATE
     argus::identity-shared
     argus::lib::sqlite
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-visitor-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-visitor-test)
 add_test(NAME identity-visitor-test COMMAND identity-visitor-test)
@@ -290,7 +290,7 @@ add_executable(identity-face-guard-test unit/identity-face-guard-test.cc)
 target_link_libraries(identity-face-guard-test PRIVATE
     argus::identity-enrollment
     argus::identity-shared
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-face-guard-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-face-guard-test)
 add_test(NAME identity-face-guard-test COMMAND identity-face-guard-test)
@@ -300,7 +300,7 @@ target_link_libraries(identity-pairing-code-test PRIVATE
     argus::identity-pairing
     argus::identity-rate-gate
     argus::lib::errors
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-pairing-code-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-pairing-code-test)
 add_test(NAME identity-pairing-code-test COMMAND identity-pairing-code-test)
@@ -312,7 +312,7 @@ target_compile_definitions(identity-liveness-test PRIVATE
 target_link_libraries(identity-liveness-test PRIVATE
     argus::identity-shared
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-liveness-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-liveness-test)
 add_test(NAME identity-liveness-test COMMAND identity-liveness-test)
@@ -329,7 +329,7 @@ target_link_libraries(identity-user-safety-test PRIVATE
     argus::identity-visitor
     argus::lib::sqlite
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-user-safety-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-user-safety-test)
 add_test(NAME identity-user-safety-test COMMAND identity-user-safety-test)
@@ -343,7 +343,7 @@ target_link_libraries(identity-invitation-module-test PRIVATE
     argus::identity-invitation
     argus::lib::sqlite
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-invitation-module-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-invitation-module-test)
 add_test(NAME identity-invitation-module-test COMMAND identity-invitation-module-test)
@@ -356,7 +356,7 @@ target_link_libraries(identity-module-impact-test PRIVATE
     argus::identity-user
     argus::lib::sqlite
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-module-impact-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-module-impact-test)
 add_test(NAME identity-module-impact-test COMMAND identity-module-impact-test)
@@ -369,7 +369,7 @@ target_link_libraries(identity-module-data-test PRIVATE
     argus::identity-module-data
     argus::lib::sqlite
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-module-data-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-module-data-test)
 add_test(NAME identity-module-data-test COMMAND identity-module-data-test)
@@ -386,7 +386,7 @@ target_link_libraries(identity-rpc-golden-test PRIVATE
     argus::lib::sqlite
     argus::lib::test-support
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-rpc-golden-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-rpc-golden-test)
 add_test(NAME identity-rpc-golden-test COMMAND identity-rpc-golden-test)
@@ -404,7 +404,7 @@ target_link_libraries(identity-rpc-server-test PRIVATE
     argus::lib::sqlite
     argus::lib::test-support
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(identity-rpc-server-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(identity-rpc-server-test)
 add_test(NAME identity-rpc-server-test

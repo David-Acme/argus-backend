@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
 #include <auth/jwt-filter.hxx>
@@ -12,6 +11,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <string>
+#include <unistd.h>
 
 #ifndef ARGUS_IDENTITY_SCHEMA
 #error "ARGUS_IDENTITY_SCHEMA must point at database/schema.sql"

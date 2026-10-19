@@ -36,24 +36,26 @@ argus_lib(NAME storage
 target_link_libraries(argus_lib_storage PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 target_compile_options(argus_lib_storage PRIVATE -Wall -Wextra)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(storage-vocabulary-test tests/unit/storage-vocabulary-test.cc)
-target_link_libraries(storage-vocabulary-test PRIVATE
-    argus::lib::storage doctest::doctest)
-target_compile_options(storage-vocabulary-test PRIVATE -Wall -Wextra)
-add_test(NAME storage-vocabulary-test COMMAND storage-vocabulary-test)
+    add_executable(storage-vocabulary-test tests/unit/storage-vocabulary-test.cc)
+    target_link_libraries(storage-vocabulary-test PRIVATE
+        argus::lib::storage argus::lib::doctest-main)
+    target_compile_options(storage-vocabulary-test PRIVATE -Wall -Wextra)
+    add_test(NAME storage-vocabulary-test COMMAND storage-vocabulary-test)
 
-add_executable(s3-credentials-test tests/unit/s3-credentials-test.cc)
-target_link_libraries(s3-credentials-test PRIVATE
-    argus::lib::storage OpenSSL::Crypto doctest::doctest)
-target_compile_options(s3-credentials-test PRIVATE -Wall -Wextra)
-add_test(NAME s3-credentials-test COMMAND s3-credentials-test)
+    add_executable(s3-credentials-test tests/unit/s3-credentials-test.cc)
+    target_link_libraries(s3-credentials-test PRIVATE
+        argus::lib::storage OpenSSL::Crypto argus::lib::doctest-main)
+    target_compile_options(s3-credentials-test PRIVATE -Wall -Wextra)
+    add_test(NAME s3-credentials-test COMMAND s3-credentials-test)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

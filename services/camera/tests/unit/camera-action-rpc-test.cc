@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "fake-stt-server.hxx"
 #include "fake-tts-server.hxx"
 #include <shared/services/privacy/camera-audio-policy.hxx>

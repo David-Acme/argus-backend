@@ -36,26 +36,28 @@ target_link_libraries(argus_lib_mdns PRIVATE mdns::mdns)
 
 target_compile_options(argus_lib_mdns PRIVATE -Wall -Wextra)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(mdns-service-test tests/unit/mdns-service-test.cc)
-target_link_libraries(mdns-service-test PRIVATE
-    argus::lib::mdns
-    doctest::doctest)
-target_compile_options(mdns-service-test PRIVATE -Wall -Wextra)
-add_test(NAME mdns-service-test COMMAND mdns-service-test)
+    add_executable(mdns-service-test tests/unit/mdns-service-test.cc)
+    target_link_libraries(mdns-service-test PRIVATE
+        argus::lib::mdns
+        argus::lib::doctest-main)
+    target_compile_options(mdns-service-test PRIVATE -Wall -Wextra)
+    add_test(NAME mdns-service-test COMMAND mdns-service-test)
 
-add_executable(mdns-link-filter-test tests/unit/mdns-link-filter-test.cc)
-target_link_libraries(mdns-link-filter-test PRIVATE
-    argus::lib::mdns
-    doctest::doctest)
-target_compile_options(mdns-link-filter-test PRIVATE -Wall -Wextra)
-add_test(NAME mdns-link-filter-test COMMAND mdns-link-filter-test)
+    add_executable(mdns-link-filter-test tests/unit/mdns-link-filter-test.cc)
+    target_link_libraries(mdns-link-filter-test PRIVATE
+        argus::lib::mdns
+        argus::lib::doctest-main)
+    target_compile_options(mdns-link-filter-test PRIVATE -Wall -Wextra)
+    add_test(NAME mdns-link-filter-test COMMAND mdns-link-filter-test)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

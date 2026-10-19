@@ -22,29 +22,31 @@ if(NOT TARGET argus::clients::voice)
           argus::contracts::auth)
 endif()
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(voice-client-test tests/unit/voice-client-test.cc)
+    add_executable(voice-client-test tests/unit/voice-client-test.cc)
 
-set_target_properties(voice-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(voice-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(voice-client-test PRIVATE argus::clients::voice
-    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
+    target_link_libraries(voice-client-test PRIVATE argus::clients::voice
+        argus::lib::grpc-test-support argus_client_grpc_base argus::lib::doctest-main)
 
-target_compile_options(voice-client-test PRIVATE -Wall -Wextra)
+    target_compile_options(voice-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME voice-client-test
-         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
-                 $<TARGET_FILE:voice-client-test> 10)
-set_tests_properties(voice-client-test PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME voice-client-test
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                     $<TARGET_FILE:voice-client-test> 10)
+    set_tests_properties(voice-client-test PROPERTIES SKIP_RETURN_CODE 77)
 
-add_executable(frame-queue-test tests/unit/frame-queue-test.cc)
+    add_executable(frame-queue-test tests/unit/frame-queue-test.cc)
 
-set_target_properties(frame-queue-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(frame-queue-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(frame-queue-test PRIVATE argus::clients::voice doctest::doctest)
+    target_link_libraries(frame-queue-test PRIVATE argus::clients::voice argus::lib::doctest-main)
 
-target_compile_options(frame-queue-test PRIVATE -Wall -Wextra)
+    target_compile_options(frame-queue-test PRIVATE -Wall -Wextra)
 
-add_test(NAME frame-queue-test COMMAND $<TARGET_FILE:frame-queue-test>)
+    add_test(NAME frame-queue-test COMMAND $<TARGET_FILE:frame-queue-test>)
+endif()

@@ -10,24 +10,26 @@ argus_lib(NAME phrase
 
 target_compile_options(argus_lib_phrase PRIVATE -Wall -Wextra)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(phrase-vocabulary-test tests/unit/phrase-vocabulary-test.cc)
-target_link_libraries(phrase-vocabulary-test PRIVATE
-    argus::lib::phrase doctest::doctest)
-target_compile_options(phrase-vocabulary-test PRIVATE -Wall -Wextra)
-add_test(NAME phrase-vocabulary-test COMMAND phrase-vocabulary-test)
+    add_executable(phrase-vocabulary-test tests/unit/phrase-vocabulary-test.cc)
+    target_link_libraries(phrase-vocabulary-test PRIVATE
+        argus::lib::phrase argus::lib::doctest-main)
+    target_compile_options(phrase-vocabulary-test PRIVATE -Wall -Wextra)
+    add_test(NAME phrase-vocabulary-test COMMAND phrase-vocabulary-test)
 
-add_executable(phrase-rule-parser-test tests/unit/rule-parser-test.cc)
-target_link_libraries(phrase-rule-parser-test PRIVATE
-    argus::lib::phrase doctest::doctest)
-target_compile_options(phrase-rule-parser-test PRIVATE -Wall -Wextra)
-add_test(NAME phrase-rule-parser-test COMMAND phrase-rule-parser-test)
+    add_executable(phrase-rule-parser-test tests/unit/rule-parser-test.cc)
+    target_link_libraries(phrase-rule-parser-test PRIVATE
+        argus::lib::phrase argus::lib::doctest-main)
+    target_compile_options(phrase-rule-parser-test PRIVATE -Wall -Wextra)
+    add_test(NAME phrase-rule-parser-test COMMAND phrase-rule-parser-test)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

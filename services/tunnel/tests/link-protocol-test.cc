@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "tls-hello.hxx"
 
 #include <link/protocol/client-hello.hxx>

@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <argus/camera/v1/actions.grpc.pb.h>
 #include <camera/camera-action-client.hxx>
 #include <doctest/doctest.h>

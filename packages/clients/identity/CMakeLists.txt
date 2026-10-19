@@ -19,50 +19,52 @@ if(NOT TARGET argus::clients::identity)
       INCLUDES src)
 endif()
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(identity-grpc-client-test tests/unit/identity-grpc-client-test.cc)
+    add_executable(identity-grpc-client-test tests/unit/identity-grpc-client-test.cc)
 
-set_target_properties(identity-grpc-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(identity-grpc-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(identity-grpc-client-test PRIVATE argus::clients::identity
-    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
+    target_link_libraries(identity-grpc-client-test PRIVATE argus::clients::identity
+        argus::lib::grpc-test-support argus_client_grpc_base argus::lib::doctest-main)
 
-target_compile_options(identity-grpc-client-test PRIVATE -Wall -Wextra)
+    target_compile_options(identity-grpc-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME identity-grpc-client-test
-         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
-                 $<TARGET_FILE:identity-grpc-client-test> 5)
-set_tests_properties(identity-grpc-client-test PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME identity-grpc-client-test
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                     $<TARGET_FILE:identity-grpc-client-test> 5)
+    set_tests_properties(identity-grpc-client-test PROPERTIES SKIP_RETURN_CODE 77)
 
-add_executable(identity-voiceprint-client-test
-    tests/unit/voiceprint-client-test.cc)
+    add_executable(identity-voiceprint-client-test
+        tests/unit/voiceprint-client-test.cc)
 
-set_target_properties(identity-voiceprint-client-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(identity-voiceprint-client-test PROPERTIES
+        EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(identity-voiceprint-client-test PRIVATE
-    argus::clients::identity argus::lib::grpc-test-support argus_client_grpc_base
-    doctest::doctest)
+    target_link_libraries(identity-voiceprint-client-test PRIVATE
+        argus::clients::identity argus::lib::grpc-test-support argus_client_grpc_base
+        argus::lib::doctest-main)
 
-target_compile_options(identity-voiceprint-client-test PRIVATE -Wall -Wextra)
+    target_compile_options(identity-voiceprint-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME identity-voiceprint-client-test
-         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
-                 $<TARGET_FILE:identity-voiceprint-client-test> 3)
-set_tests_properties(identity-voiceprint-client-test PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME identity-voiceprint-client-test
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                     $<TARGET_FILE:identity-voiceprint-client-test> 3)
+    set_tests_properties(identity-voiceprint-client-test PROPERTIES SKIP_RETURN_CODE 77)
 
-add_executable(identity-sync-client-test tests/unit/identity-sync-client-test.cc)
+    add_executable(identity-sync-client-test tests/unit/identity-sync-client-test.cc)
 
-set_target_properties(identity-sync-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(identity-sync-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(identity-sync-client-test PRIVATE argus::clients::identity
-    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
+    target_link_libraries(identity-sync-client-test PRIVATE argus::clients::identity
+        argus::lib::grpc-test-support argus_client_grpc_base argus::lib::doctest-main)
 
-target_compile_options(identity-sync-client-test PRIVATE -Wall -Wextra)
+    target_compile_options(identity-sync-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME identity-sync-client-test
-         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
-                 $<TARGET_FILE:identity-sync-client-test> 1)
-set_tests_properties(identity-sync-client-test PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME identity-sync-client-test
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                     $<TARGET_FILE:identity-sync-client-test> 1)
+    set_tests_properties(identity-sync-client-test PROPERTIES SKIP_RETURN_CODE 77)
+endif()

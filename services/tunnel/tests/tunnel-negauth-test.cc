@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "tunnel-harness.hxx"
 
 #include <doctest/doctest.h>

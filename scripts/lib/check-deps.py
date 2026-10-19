@@ -63,6 +63,9 @@ def balanced(src, start):
     raise ValueError("unbalanced parentheses")
 
 
+AGGREGATORS = {"packages/CMakeLists.txt"}
+
+
 def cmake_lists(root):
     try:
         listed = subprocess.run(["git", "ls-files", "--cached", "--others",
@@ -70,6 +73,7 @@ def cmake_lists(root):
                                  "services"], cwd=root, text=True,
                                 capture_output=True, check=True).stdout.split()
         files = [f for f in listed if f.endswith("CMakeLists.txt") and
+                 f not in AGGREGATORS and
                  not any(part in ("build", "third_party")
                          for part in f.split("/"))]
         if files:
@@ -85,7 +89,7 @@ def cmake_lists(root):
                 files.append(os.path.relpath(os.path.join(base,
                                                           "CMakeLists.txt"),
                                              root))
-    return sorted(files)
+    return sorted(f for f in files if f not in AGGREGATORS)
 
 
 def read(path):

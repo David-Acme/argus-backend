@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <ctime>
 #include <doctest/doctest.h>
 #include <feature/guard/dtos/update-camera-context-dto.hxx>

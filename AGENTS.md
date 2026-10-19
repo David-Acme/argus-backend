@@ -499,10 +499,15 @@ shared file-static behind a mutex.
 - **llama.cpp as a submodule** (`third_party/llama.cpp`, tag `b10305`) — powers
   the LLM **and** the VLM through `libmtmd`: each service's own feature module
   names the targets it uses in its `DEPENDS` — `llama` for `services/llm` (the
-  text decoder alone), `llama` and `mtmd` for `services/vlm` — so no target
-  name travels between the two, and each project sets its own
-  `LLAMA_BUILD_MTMD` (`ON` in `services/vlm`, `OFF` in `services/llm`).
-  Everything else OFF.
+  text decoder alone), `llama` and `mtmd` for `services/vlm`. Neither project
+  compiles it: `argus_vendored_llama()` (`cmake/argus-vendored.cmake`) builds
+  it ONCE per machine and build type (the consumer's: Debug for `dev`, Release
+  for `prod`), with `LLAMA_BUILD_MTMD` ON and everything else OFF, into
+  `~/.cache/argus/vendored/llama-<type>-<key>` (`ARGUS_VENDORED_ROOT`), the
+  key hashing the submodule commit (or its tree), the options, the
+  configuration flags and the compiler; both services and every worktree reuse that prefix, and its shared
+  libraries are copied into `build/<profile>/bin` as before. ncnn is built the
+  same way (`argus_vendored_ncnn()`, camera and identity).
   Vendored instead of taken from Conan because `llama-cpp/b6565` is the newest
   recipe on Conan Center, its `lfm2` projector still requires
   `mm.input_norm.*` (dropped by LFM2.5-VL), it ships CPU-only, and it exposes
@@ -510,8 +515,10 @@ shared file-static behind a mutex.
   `load_mode` (`LLAMA_LOAD_MODE_MMAP`), NOT `use_mmap`/`use_mlock`;
   `llama_sampler_init_penalties()` takes `n_vocab` as its first argument;
   `mtmd_input_text` has a `text_len` field that MUST be set.
-  `GGML_VULKAN` is enabled automatically when Vulkan + glslc + SPIRV-Headers
-  are present, otherwise the build falls back to CPU.
+  The ggml GPU backend is `ARGUS_GGML_GPU` (`AUTO` by default): Metal on
+  Apple, else CUDA when a CUDA compiler is found, else Vulkan when Vulkan +
+  glslc + SPIRV-Headers are present, else CPU; ncnn's Vulkan is
+  `ARGUS_NCNN_GPU` (`AUTO`: on outside Apple).
 - **Vision runs LiquidAI LFM2.5-VL-450M (GGUF Q8_0 + mmproj F16)** through
   llama.cpp + `libmtmd`, downloaded by `scripts/setup.sh` into
   `models/vision/lfm2vl-25/`. Unlike the previous SmolVLM2 ONNX pipeline it
@@ -1075,15 +1082,35 @@ DB file. The SDK/client is the whole point of the boundary.
 # All standalone projects (Release + tests)
 ./scripts/build-all.sh prod
 
-# One project
+# One project, or several
 ./scripts/build-all.sh dev --only camera
+./scripts/build-all.sh dev --only llm,vlm
 ```
+
+A full run configures every project, then builds up to
+`ARGUS_PARALLEL_PROJECTS` (4) of them at once over ONE GNU-make jobserver pool
+of `--jobs` slots (ninja ≥ 1.13, bash ≥ 5.1; otherwise one at a time), with a
+memory-derived job count (`ARGUS_MEM_PER_JOB_MB`, 1536 by default: the
+measured Debug peak is 1.4 GB; `ARGUS_MEM_RESERVE_MB`, 1024 by default, is the
+only memory held back — the machine is dedicated to the build) and each project's log in
+`build/<profile>/logs/<project>.log`; then it runs each project's tests with
+`ctest -j` (`ARGUS_TEST_JOBS`), every project's suite even when an earlier
+one fails. No test needs serialising: the heaviest model test peaks at
+1.2 GB (`tts-pocket-test`) and every model test together stays near 10 GB.
+`packages` is one project: every package and its own tests, built and run
+once; inside a service a package registers no tests (`ARGUS_PACKAGE_TESTS`
+is ON only when the top-level project is under `packages/`). Every test links
+the one doctest runner, `argus::lib::doctest-main`, and defines no
+`DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN` of its own. Debug builds use split DWARF
+and mold's `--gdb-index`. The clang-tidy scan caches each TU's findings under
+`~/.cache/argus/tidy` keyed by its preprocessed source, the tool, the checks
+and `.clang-tidy` (`ARGUS_TIDY_CACHE=off` disables it).
 
 Before any commit, verify the affected standalone project with
 `./scripts/build-all.sh dev --only <project>` and **0 errors, 0 warnings**.
 Run the full orchestrator when changing shared build infrastructure.
 
-The orchestrator runs four gates of its own, beyond the sixteen projects:
+The orchestrator runs four gates of its own, beyond the fifteen projects:
 `scripts/check-comments.sh` (rule 20), `scripts/check-deps.sh` (§2.4's tiers)
 and `scripts/check-routes.sh` (rule 5's filter chain, route by route, against
 `scripts/lib/route-baseline.txt`) before anything is built, and, at the end of

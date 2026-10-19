@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <argus/sync/v1/sync.grpc.pb.h>
 #include <array>
 #include <doctest/doctest.h>

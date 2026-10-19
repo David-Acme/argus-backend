@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <argus/camera/v1/sync.grpc.pb.h>
 #include <atomic>
 #include <camera/camera-sync-client.hxx>

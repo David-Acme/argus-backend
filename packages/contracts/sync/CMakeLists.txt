@@ -59,72 +59,74 @@ argus_contracts(NAME sync
         argus::lib::text
         Drogon::Drogon)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(sync-contract-vocabulary-test
-    tests/unit/sync-contract-vocabulary-test.cc)
-target_link_libraries(sync-contract-vocabulary-test PRIVATE
-    argus::contracts::sync doctest::doctest)
-target_compile_options(sync-contract-vocabulary-test PRIVATE -Wall -Wextra)
-add_test(NAME sync-contract-vocabulary-test COMMAND sync-contract-vocabulary-test)
+    add_executable(sync-contract-vocabulary-test
+        tests/unit/sync-contract-vocabulary-test.cc)
+    target_link_libraries(sync-contract-vocabulary-test PRIVATE
+        argus::contracts::sync argus::lib::doctest-main)
+    target_compile_options(sync-contract-vocabulary-test PRIVATE -Wall -Wextra)
+    add_test(NAME sync-contract-vocabulary-test COMMAND sync-contract-vocabulary-test)
 
-add_executable(sync-contract-catalog-test
-    tests/unit/sync-contract-catalog-test.cc)
-target_link_libraries(sync-contract-catalog-test PRIVATE
-    argus::contracts::sync doctest::doctest)
-target_compile_options(sync-contract-catalog-test PRIVATE -Wall -Wextra)
-add_test(NAME sync-contract-catalog-test COMMAND sync-contract-catalog-test)
+    add_executable(sync-contract-catalog-test
+        tests/unit/sync-contract-catalog-test.cc)
+    target_link_libraries(sync-contract-catalog-test PRIVATE
+        argus::contracts::sync argus::lib::doctest-main)
+    target_compile_options(sync-contract-catalog-test PRIVATE -Wall -Wextra)
+    add_test(NAME sync-contract-catalog-test COMMAND sync-contract-catalog-test)
 
-add_executable(resource-change-test tests/unit/resource-change-test.cc)
-target_link_libraries(resource-change-test PRIVATE
-    argus::contracts::sync doctest::doctest)
-target_compile_options(resource-change-test PRIVATE -Wall -Wextra)
-add_test(NAME resource-change-test COMMAND resource-change-test)
+    add_executable(resource-change-test tests/unit/resource-change-test.cc)
+    target_link_libraries(resource-change-test PRIVATE
+        argus::contracts::sync argus::lib::doctest-main)
+    target_compile_options(resource-change-test PRIVATE -Wall -Wextra)
+    add_test(NAME resource-change-test COMMAND resource-change-test)
 
-add_executable(sync-change-test tests/unit/sync-change-test.cc)
-target_link_libraries(sync-change-test PRIVATE
-    argus::contracts::sync
-    argus::contracts::auth
-    argus::lib::text
-    argus::lib::nats
-    doctest::doctest)
-target_compile_options(sync-change-test PRIVATE -Wall -Wextra)
-add_test(NAME sync-change-test COMMAND sync-change-test)
+    add_executable(sync-change-test tests/unit/sync-change-test.cc)
+    target_link_libraries(sync-change-test PRIVATE
+        argus::contracts::sync
+        argus::contracts::auth
+        argus::lib::text
+        argus::lib::nats
+        argus::lib::doctest-main)
+    target_compile_options(sync-change-test PRIVATE -Wall -Wextra)
+    add_test(NAME sync-change-test COMMAND sync-change-test)
 
-add_executable(user-action-event-test tests/unit/user-action-event-test.cc)
-target_link_libraries(user-action-event-test PRIVATE
-    argus::contracts::sync doctest::doctest)
-target_compile_options(user-action-event-test PRIVATE -Wall -Wextra)
-add_test(NAME user-action-event-test COMMAND user-action-event-test)
+    add_executable(user-action-event-test tests/unit/user-action-event-test.cc)
+    target_link_libraries(user-action-event-test PRIVATE
+        argus::contracts::sync argus::lib::doctest-main)
+    target_compile_options(user-action-event-test PRIVATE -Wall -Wextra)
+    add_test(NAME user-action-event-test COMMAND user-action-event-test)
 
-add_executable(action-journal-fields-test tests/unit/action-journal-fields-test.cc)
-target_link_libraries(action-journal-fields-test PRIVATE
-    argus::contracts::sync doctest::doctest)
-target_compile_options(action-journal-fields-test PRIVATE -Wall -Wextra)
-add_test(NAME action-journal-fields-test COMMAND action-journal-fields-test)
+    add_executable(action-journal-fields-test tests/unit/action-journal-fields-test.cc)
+    target_link_libraries(action-journal-fields-test PRIVATE
+        argus::contracts::sync argus::lib::doctest-main)
+    target_compile_options(action-journal-fields-test PRIVATE -Wall -Wextra)
+    add_test(NAME action-journal-fields-test COMMAND action-journal-fields-test)
 
-add_executable(stream-retention-test tests/unit/stream-retention-test.cc)
-target_link_libraries(stream-retention-test PRIVATE
-    argus::contracts::sync doctest::doctest)
-target_compile_options(stream-retention-test PRIVATE -Wall -Wextra)
-add_test(NAME stream-retention-test COMMAND stream-retention-test)
+    add_executable(stream-retention-test tests/unit/stream-retention-test.cc)
+    target_link_libraries(stream-retention-test PRIVATE
+        argus::contracts::sync argus::lib::doctest-main)
+    target_compile_options(stream-retention-test PRIVATE -Wall -Wextra)
+    add_test(NAME stream-retention-test COMMAND stream-retention-test)
 
-add_executable(audit-retention-test tests/unit/audit-retention-test.cc)
-target_link_libraries(audit-retention-test PRIVATE
-    argus::contracts::sync doctest::doctest)
-target_compile_options(audit-retention-test PRIVATE -Wall -Wextra)
-add_test(NAME audit-retention-test COMMAND audit-retention-test)
+    add_executable(audit-retention-test tests/unit/audit-retention-test.cc)
+    target_link_libraries(audit-retention-test PRIVATE
+        argus::contracts::sync argus::lib::doctest-main)
+    target_compile_options(audit-retention-test PRIVATE -Wall -Wextra)
+    add_test(NAME audit-retention-test COMMAND audit-retention-test)
 
-add_executable(sync-scope-query-test tests/unit/sync-scope-query-test.cc)
-target_link_libraries(sync-scope-query-test PRIVATE
-    argus::contracts::sync doctest::doctest)
-target_compile_options(sync-scope-query-test PRIVATE -Wall -Wextra)
-add_test(NAME sync-scope-query-test COMMAND sync-scope-query-test)
+    add_executable(sync-scope-query-test tests/unit/sync-scope-query-test.cc)
+    target_link_libraries(sync-scope-query-test PRIVATE
+        argus::contracts::sync argus::lib::doctest-main)
+    target_compile_options(sync-scope-query-test PRIVATE -Wall -Wextra)
+    add_test(NAME sync-scope-query-test COMMAND sync-scope-query-test)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

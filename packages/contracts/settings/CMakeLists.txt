@@ -58,24 +58,26 @@ if(NOT ARGUS_SYSTEM_PROTOBUF AND NOT TARGET gRPC::grpc++)
 endif()
 argus_settings_rpc_contract()
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(settings-contract-rpc-test tests/unit/settings-contract-rpc-test.cc)
-target_link_libraries(settings-contract-rpc-test PRIVATE
-    argus::contracts::settings-wire doctest::doctest)
-target_compile_options(settings-contract-rpc-test PRIVATE -Wall -Wextra)
-add_test(NAME settings-contract-rpc-test COMMAND settings-contract-rpc-test)
+    add_executable(settings-contract-rpc-test tests/unit/settings-contract-rpc-test.cc)
+    target_link_libraries(settings-contract-rpc-test PRIVATE
+        argus::contracts::settings-wire argus::lib::doctest-main)
+    target_compile_options(settings-contract-rpc-test PRIVATE -Wall -Wextra)
+    add_test(NAME settings-contract-rpc-test COMMAND settings-contract-rpc-test)
 
-add_executable(component-host-test tests/unit/component-host-test.cc)
-target_link_libraries(component-host-test PRIVATE
-    argus::contracts::settings-wire doctest::doctest)
-target_compile_options(component-host-test PRIVATE -Wall -Wextra)
-add_test(NAME component-host-test COMMAND component-host-test)
+    add_executable(component-host-test tests/unit/component-host-test.cc)
+    target_link_libraries(component-host-test PRIVATE
+        argus::contracts::settings-wire argus::lib::doctest-main)
+    target_compile_options(component-host-test PRIVATE -Wall -Wextra)
+    add_test(NAME component-host-test COMMAND component-host-test)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

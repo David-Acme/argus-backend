@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <argus/identity/v1/identity.grpc.pb.h>
 #include <doctest/doctest.h>
 #include <grpc-test-support/mutual-tls-endpoint.hxx>

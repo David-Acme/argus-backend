@@ -15,34 +15,36 @@ if(NOT TARGET argus::clients::camera)
       INCLUDES src)
 endif()
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(client-caller-identity-test
-    tests/unit/client-caller-identity-test.cc)
+    add_executable(client-caller-identity-test
+        tests/unit/client-caller-identity-test.cc)
 
-set_target_properties(client-caller-identity-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(client-caller-identity-test PROPERTIES
+        EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(client-caller-identity-test PRIVATE argus::clients::camera
-    doctest::doctest)
+    target_link_libraries(client-caller-identity-test PRIVATE argus::clients::camera
+        argus::lib::doctest-main)
 
-target_compile_options(client-caller-identity-test PRIVATE -Wall -Wextra)
+    target_compile_options(client-caller-identity-test PRIVATE -Wall -Wextra)
 
-add_test(NAME client-caller-identity-test COMMAND client-caller-identity-test)
+    add_test(NAME client-caller-identity-test COMMAND client-caller-identity-test)
 
-add_executable(camera-sync-client-test
-    tests/unit/camera-sync-client-test.cc)
+    add_executable(camera-sync-client-test
+        tests/unit/camera-sync-client-test.cc)
 
-set_target_properties(camera-sync-client-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(camera-sync-client-test PROPERTIES
+        EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(camera-sync-client-test PRIVATE argus::clients::camera
-    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
+    target_link_libraries(camera-sync-client-test PRIVATE argus::clients::camera
+        argus::lib::grpc-test-support argus_client_grpc_base argus::lib::doctest-main)
 
-target_compile_options(camera-sync-client-test PRIVATE -Wall -Wextra)
+    target_compile_options(camera-sync-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME camera-sync-client-test
-         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
-                 $<TARGET_FILE:camera-sync-client-test> 4)
-set_tests_properties(camera-sync-client-test PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME camera-sync-client-test
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                     $<TARGET_FILE:camera-sync-client-test> 4)
+    set_tests_properties(camera-sync-client-test PROPERTIES SKIP_RETURN_CODE 77)
+endif()

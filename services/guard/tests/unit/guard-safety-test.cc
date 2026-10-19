@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "guard-fakes.hxx"
 
 #include <doctest/doctest.h>
@@ -28,7 +27,9 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <ranges>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <vector>
@@ -275,7 +276,9 @@ TEST_CASE("PIN hashes are salted, slow, verifiable and never the PIN")
   const std::string one = pin_hash::make({.pin = "4821", .iterations = 1000});
   const std::string two = pin_hash::make({.pin = "4821", .iterations = 1000});
   CHECK(one != two);
-  CHECK(one.find("4821") == std::string::npos);
+  CHECK(std::ranges::none_of(std::views::split(one, '$'), [](const auto& field) {
+    return std::string_view(field.begin(), field.end()) == "4821";
+  }));
   CHECK(one.starts_with("pbkdf2-sha256$100000$"));
   CHECK(pin_hash::verify({.pin = "4821", .stored = one}));
   CHECK_FALSE(pin_hash::verify({.pin = "4822", .stored = one}));

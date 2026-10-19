@@ -174,7 +174,7 @@ foreach(TEST_NAME IN ITEMS guard-policy-test guard-assessment-test
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
     target_link_libraries(${TEST_NAME} PRIVATE argus::guard
-        argus::guard-presence-repository argus::lib::test-support doctest::doctest)
+        argus::guard-presence-repository argus::lib::test-support argus::lib::doctest-main)
     target_include_directories(${TEST_NAME} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
@@ -204,7 +204,7 @@ endforeach()
 
 add_executable(guard-mcp-test tests/unit/guard-mcp-test.cc)
 set_target_properties(guard-mcp-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-target_link_libraries(guard-mcp-test PRIVATE argus::guard-mcp doctest::doctest)
+target_link_libraries(guard-mcp-test PRIVATE argus::guard-mcp argus::lib::doctest-main)
 target_compile_options(guard-mcp-test PRIVATE -Wall -Wextra)
 add_test(NAME guard-mcp-test COMMAND guard-mcp-test)
 
@@ -215,7 +215,7 @@ target_link_libraries(guard-presence-test PRIVATE
     argus::guard-presence
     argus::guard-rpc
     argus::clients::guard
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_include_directories(guard-presence-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_definitions(guard-presence-test PRIVATE
@@ -230,7 +230,7 @@ target_link_libraries(guard-settings-test PRIVATE
     argus::guard-config
     argus::guard-settings
     argus::contracts::settings-wire
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(guard-settings-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(guard-settings-test)
 add_test(NAME guard-settings-test COMMAND guard-settings-test)
@@ -244,7 +244,7 @@ target_link_libraries(guard-dlq-service-live-test PRIVATE
     argus::lib::text
     argus::lib::nats
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_include_directories(guard-dlq-service-live-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_definitions(guard-dlq-service-live-test PRIVATE
@@ -260,7 +260,7 @@ target_link_libraries(guard-module-lifecycle-live-test PRIVATE
     argus::guard
     argus::lib::nats
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_include_directories(guard-module-lifecycle-live-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_definitions(guard-module-lifecycle-live-test PRIVATE
@@ -273,7 +273,7 @@ set_target_properties(guard-verdict-live-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(guard-verdict-live-test PRIVATE
     argus::guard
     argus::guard-presence-repository
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_include_directories(guard-verdict-live-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_definitions(guard-verdict-live-test PRIVATE
@@ -284,7 +284,7 @@ argus_nats_scratch_test(NAME guard-verdict-live-test)
 add_executable(guard-dlq-live-test tests/unit/guard-dlq-live-test.cc)
 set_target_properties(guard-dlq-live-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
-target_link_libraries(guard-dlq-live-test PRIVATE argus::lib::nats doctest::doctest)
+target_link_libraries(guard-dlq-live-test PRIVATE argus::lib::nats argus::lib::doctest-main)
 target_compile_options(guard-dlq-live-test PRIVATE -Wall -Wextra)
 argus_nats_scratch_test(NAME guard-dlq-live-test)
 
@@ -303,7 +303,7 @@ target_link_libraries(vlm-client-live-test PRIVATE
     argus::lib::validation
     argus::lib::http
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_include_directories(vlm-client-live-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_options(vlm-client-live-test PRIVATE -Wall -Wextra)
@@ -327,7 +327,7 @@ target_link_libraries(guard-assessment-live-test PRIVATE
     argus::lib::validation
     argus::lib::http
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_include_directories(guard-assessment-live-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_options(guard-assessment-live-test PRIVATE -Wall -Wextra)
@@ -340,7 +340,7 @@ target_link_libraries(guard-safety-test PRIVATE
     argus::guard-safety
     argus::guard-module-data
     argus::guard-presence-repository
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_include_directories(guard-safety-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_options(guard-safety-test PRIVATE -Wall -Wextra)
@@ -354,7 +354,7 @@ target_link_libraries(guard-siren-test PRIVATE
     argus::guard
     argus::guard-safety
     argus::clients::camera-actions
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_include_directories(guard-siren-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_options(guard-siren-test PRIVATE -Wall -Wextra)
@@ -369,7 +369,7 @@ target_link_libraries(guard-duress-phrase-test PRIVATE
     argus::guard-safety
     argus::guard-rpc
     argus::clients::guard
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_include_directories(guard-duress-phrase-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_options(guard-duress-phrase-test PRIVATE -Wall -Wextra)
@@ -382,7 +382,7 @@ set_target_properties(guard-module-data-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(guard-module-data-test PRIVATE
     argus::guard
     argus::guard-module-data
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_include_directories(guard-module-data-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 target_compile_options(guard-module-data-test PRIVATE -Wall -Wextra)
@@ -396,7 +396,7 @@ set_target_properties(guard-rpc-server-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(guard-rpc-server-test PRIVATE
     argus::guard-rpc
     argus::lib::grpc-test-support
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(guard-rpc-server-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(guard-rpc-server-test)
 add_test(NAME guard-rpc-server-test

@@ -11,7 +11,7 @@ target_link_libraries(sync-surface-test PRIVATE
     argus::contracts::auth
     argus::contracts::sync
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(sync-surface-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-surface-test)
 add_test(NAME sync-surface-test COMMAND sync-surface-test)
@@ -26,7 +26,7 @@ target_link_libraries(sync-context-test PRIVATE
     argus::contracts::auth
     argus::contracts::sync
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(sync-context-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-context-test)
 add_test(NAME sync-context-test COMMAND sync-context-test)
@@ -37,7 +37,7 @@ target_link_libraries(sync-remote-test PRIVATE
     argus::sync-services
     argus::contracts::routes
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(sync-remote-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-remote-test)
 add_test(NAME sync-remote-test COMMAND sync-remote-test)
@@ -53,7 +53,7 @@ target_link_libraries(audit-sync-read-test PRIVATE
     argus::contracts::auth
     argus::contracts::sync
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(audit-sync-read-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(audit-sync-read-test)
 add_test(NAME audit-sync-read-test COMMAND audit-sync-read-test)
@@ -68,7 +68,7 @@ target_link_libraries(audit-compaction-test PRIVATE
     argus::lib::text
     argus::contracts::sync
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(audit-compaction-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(audit-compaction-test)
 add_test(NAME audit-compaction-test COMMAND audit-compaction-test)
@@ -83,7 +83,7 @@ target_link_libraries(audit-retention-timer-test PRIVATE
     argus::lib::text
     argus::contracts::sync
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(audit-retention-timer-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(audit-retention-timer-test)
 add_test(NAME audit-retention-timer-test COMMAND audit-retention-timer-test)
@@ -97,7 +97,7 @@ target_link_libraries(notification-delivery-inbox-test PRIVATE
     argus::lib::sqlite
     argus::lib::nats
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(notification-delivery-inbox-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(notification-delivery-inbox-test)
 add_test(NAME notification-delivery-inbox-test
@@ -113,7 +113,7 @@ target_link_libraries(change-feed-consumer-test PRIVATE
     argus::lib::text
     argus::contracts::sync
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(change-feed-consumer-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(change-feed-consumer-test)
 add_test(NAME change-feed-consumer-test COMMAND change-feed-consumer-test)
@@ -124,7 +124,7 @@ target_link_libraries(resource-change-audience-test PRIVATE
     argus::sync-fanout
     argus::lib::text
     argus::contracts::sync
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(resource-change-audience-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(resource-change-audience-test)
 add_test(NAME resource-change-audience-test COMMAND resource-change-audience-test)
@@ -135,7 +135,7 @@ target_link_libraries(voice-leg-test PRIVATE
     argus::lib::config
     argus::lib::text
     argus::clients::voice
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(voice-leg-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(voice-leg-test)
 add_test(NAME voice-leg-test COMMAND voice-leg-test)
@@ -151,7 +151,7 @@ target_link_libraries(notification-delivery-live-test PRIVATE
     argus::lib::text
     argus::contracts::notification
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(notification-delivery-live-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(notification-delivery-live-test)
 argus_nats_scratch_test(NAME notification-delivery-live-test)
@@ -166,7 +166,7 @@ target_link_libraries(change-feed-live-test PRIVATE
     argus::lib::text
     argus::contracts::sync
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(change-feed-live-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(change-feed-live-test)
 argus_nats_scratch_test(NAME change-feed-live-test)
@@ -174,7 +174,7 @@ argus_nats_scratch_test(NAME change-feed-live-test)
 add_executable(sync-migration-test unit/sync-migration-test.cc)
 target_link_libraries(sync-migration-test PRIVATE
     sync-migration
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(sync-migration-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-migration-test)
 add_test(NAME sync-migration-test COMMAND sync-migration-test)
@@ -196,7 +196,7 @@ target_link_libraries(rtc-token-test PRIVATE
     argus::sync-rtc
     argus::lib::errors
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(rtc-token-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(rtc-token-test)
 add_test(NAME rtc-token-test COMMAND rtc-token-test)
@@ -215,7 +215,7 @@ target_link_libraries(sync-activity-test PRIVATE
     argus::lib::text
     argus::contracts::sync
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(sync-activity-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-activity-test)
 add_test(NAME sync-activity-test COMMAND sync-activity-test)
@@ -226,7 +226,7 @@ target_link_libraries(heartbeat-test PRIVATE
     argus::lib::text
     argus::lib::nats
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(heartbeat-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(heartbeat-test)
 add_test(NAME heartbeat-test COMMAND heartbeat-test)
@@ -235,7 +235,7 @@ add_executable(sync-control-callers-test unit/sync-control-callers-test.cc)
 target_link_libraries(sync-control-callers-test PRIVATE
     argus::sync-control-rpc
     argus::lib::test-support
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(sync-control-callers-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-control-callers-test)
 add_test(NAME sync-control-callers-test COMMAND sync-control-callers-test)
@@ -250,7 +250,7 @@ target_link_libraries(sync-role-revalidation-test PRIVATE
     argus::contracts::auth
     argus::contracts::sync
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(sync-role-revalidation-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-role-revalidation-test)
 add_test(NAME sync-role-revalidation-test COMMAND sync-role-revalidation-test)
@@ -262,7 +262,7 @@ target_link_libraries(sync-module-data-test PRIVATE
     argus::sync-module-data
     argus::lib::sqlite
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(sync-module-data-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-module-data-test)
 add_test(NAME sync-module-data-test COMMAND sync-module-data-test)
@@ -271,7 +271,7 @@ add_executable(sync-control-rpc-server-test unit/sync-control-rpc-server-test.cc
 target_link_libraries(sync-control-rpc-server-test PRIVATE
     argus::sync-control-rpc
     argus::lib::grpc-test-support
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(sync-control-rpc-server-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(sync-control-rpc-server-test)
 add_test(NAME sync-control-rpc-server-test

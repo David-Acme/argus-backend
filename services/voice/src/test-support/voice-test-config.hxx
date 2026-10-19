@@ -8,22 +8,27 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unistd.h>
 
 namespace voice_test_config
 {
 
-inline constexpr const char* kPath = "voice-test-config.toml";
+[[nodiscard]] inline const std::string& path()
+{
+  static const std::string name = "voice-test-config-" + std::to_string(::getpid()) + ".toml";
+  return name;
+}
 
 inline void writeOpening(std::string_view opening)
 {
   {
-    std::ofstream file(kPath);
+    std::ofstream file(path());
     file << "[voice]\n"
          << "opening = \"" << opening << "\"\n";
     if (!file)
-      throw std::runtime_error(std::string("voice-test-config: cannot write ") + kPath);
+      throw std::runtime_error(std::string("voice-test-config: cannot write ") + path());
   }
-  ConfigService::load(kPath);
+  ConfigService::load(path());
   if (ConfigService::getString("voice.opening") != opening)
     throw std::runtime_error("voice-test-config: opening '" + std::string(opening) +
                              "' did not take");
@@ -32,11 +37,11 @@ inline void writeOpening(std::string_view opening)
 inline void clearConfig()
 {
   {
-    std::ofstream file(kPath);
+    std::ofstream file(path());
     if (!file)
-      throw std::runtime_error(std::string("voice-test-config: cannot write ") + kPath);
+      throw std::runtime_error(std::string("voice-test-config: cannot write ") + path());
   }
-  ConfigService::load(kPath);
+  ConfigService::load(path());
   if (!ConfigService::getString("voice.opening").empty())
     throw std::runtime_error("voice-test-config: the config did not clear");
 }
@@ -61,7 +66,7 @@ inline void installSpokenOpening()
 
 inline void removeConfig()
 {
-  std::remove(kPath);
+  std::remove(path().c_str());
 }
 
 }

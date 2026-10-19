@@ -9,18 +9,20 @@ argus_lib(NAME audio
 
 target_compile_options(argus_lib_audio PRIVATE -Wall -Wextra)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(endpoint-detector-test
-    tests/unit/endpoint-detector-test.cc)
-target_link_libraries(endpoint-detector-test PRIVATE argus::lib::audio
-    doctest::doctest)
-target_compile_options(endpoint-detector-test PRIVATE -Wall -Wextra)
-add_test(NAME endpoint-detector-test COMMAND endpoint-detector-test)
+    add_executable(endpoint-detector-test
+        tests/unit/endpoint-detector-test.cc)
+    target_link_libraries(endpoint-detector-test PRIVATE argus::lib::audio
+        argus::lib::doctest-main)
+    target_compile_options(endpoint-detector-test PRIVATE -Wall -Wextra)
+    add_test(NAME endpoint-detector-test COMMAND endpoint-detector-test)
 
-add_executable(audio-resampler-test tests/unit/audio-resampler-test.cc)
-target_link_libraries(audio-resampler-test PRIVATE argus::lib::audio
-    doctest::doctest)
-target_compile_options(audio-resampler-test PRIVATE -Wall -Wextra)
-add_test(NAME audio-resampler-test COMMAND audio-resampler-test)
+    add_executable(audio-resampler-test tests/unit/audio-resampler-test.cc)
+    target_link_libraries(audio-resampler-test PRIVATE argus::lib::audio
+        argus::lib::doctest-main)
+    target_compile_options(audio-resampler-test PRIVATE -Wall -Wextra)
+    add_test(NAME audio-resampler-test COMMAND audio-resampler-test)
+endif()

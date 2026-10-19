@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
 #include <feature/role-storage/services/role-check-migration.hxx>
@@ -12,6 +11,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <unistd.h>
 
 namespace
 {

@@ -2,9 +2,11 @@
 
 import argparse
 import glob
+import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -41,7 +43,7 @@ def translation_units(root):
                 stale[os.path.relpath(database, root)] += 1
                 continue
             seen.add(path)
-            pairs.append((directory, path))
+            pairs.append((directory, path, entry))
     return pairs, stale
 
 
@@ -85,6 +87,91 @@ def find_tool(major):
     return fallback or (None, None, None)
 
 
+PREPROCESS_DROP = {"-c", "-MD", "-MMD"}
+PREPROCESS_DROP_WITH_VALUE = {"-o", "-MF", "-MT", "-MQ"}
+
+
+def compiler_arguments(entry):
+    if "arguments" in entry:
+        words = list(entry["arguments"])
+    else:
+        words = shlex.split(entry.get("command", ""))
+    for index, word in enumerate(words):
+        if os.path.basename(word) == "ccache":
+            words = words[index + 1:]
+            break
+    kept, skip = [], False
+    for word in words:
+        if skip:
+            skip = False
+            continue
+        if word in PREPROCESS_DROP_WITH_VALUE:
+            skip = True
+            continue
+        if word in PREPROCESS_DROP or word.startswith("-gsplit-dwarf"):
+            continue
+        kept.append(word)
+    return kept
+
+
+def cache_key(job, context):
+    directory, path, entry = job
+    root = context["root"]
+    command = compiler_arguments(entry)
+    try:
+        done = subprocess.run(command + ["-E"], cwd=entry.get("directory", directory),
+                              capture_output=True, timeout=300)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if done.returncode != 0:
+        return None
+    digest = hashlib.sha256()
+    for part in (context["version"], context["checks"], context["header_filter"],
+                 context["config"], " ".join(command).replace(root, "")):
+        digest.update(part.encode())
+        digest.update(b"\0")
+    digest.update(done.stdout.replace(root.encode(), b""))
+    return digest.hexdigest()
+
+
+def cached_tidy(job, checks, header_filter, tool, context):
+    directory, path, entry = job
+    root = context["root"]
+    cache = context["cache"]
+    key = cache_key(job, context) if cache else None
+    if key:
+        stored = os.path.join(cache, key[:2], key + ".json")
+        try:
+            with open(stored, encoding="utf-8") as cached:
+                record = json.load(cached)
+            return path, [(root + name, line, check, message)
+                          for name, line, check, message in record], None
+        except (OSError, ValueError):
+            pass
+    path, findings, failure = tidy((directory, path), checks, header_filter, tool)
+    if key and failure is None:
+        os.makedirs(os.path.dirname(stored), exist_ok=True)
+        relative = [(name[len(root):] if name.startswith(root) else name,
+                     line, check, message)
+                    for name, line, check, message in findings]
+        partial = stored + f".{os.getpid()}.tmp"
+        with open(partial, "w", encoding="utf-8") as out:
+            json.dump(relative, out)
+        os.replace(partial, stored)
+    return path, findings, failure
+
+
+def tidy_cache_dir():
+    configured = os.environ.get("ARGUS_TIDY_CACHE")
+    if configured == "off":
+        return None
+    if configured:
+        return configured
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(
+        os.path.expanduser("~"), ".cache")
+    return os.path.join(base, "argus", "tidy")
+
+
 def tidy(job, checks, header_filter, tool):
     database, path = job
     command = [tool, "-p", database, path, "-quiet",
@@ -111,14 +198,26 @@ def scan_workers():
     configured = os.environ.get("ARGUS_TIDY_JOBS", "")
     if configured.isdigit() and int(configured) > 0:
         return int(configured)
-    return max(1, len(os.sched_getaffinity(0)))
+    if hasattr(os, "sched_getaffinity"):
+        return max(1, len(os.sched_getaffinity(0)))
+    return max(1, os.cpu_count() or 1)
 
 
-def scan(root, jobs, checks, header_filter, tool):
+def scan(root, jobs, checks, header_filter, tool, version):
     distinct, failures = {}, []
+    config = os.path.join(root, ".clang-tidy")
+    context = {
+        "root": root,
+        "cache": tidy_cache_dir(),
+        "version": version or "",
+        "checks": checks,
+        "header_filter": header_filter.replace(re.escape(root), ""),
+        "config": open(config, encoding="utf-8").read() if os.path.exists(config) else "",
+    }
     with ThreadPoolExecutor(max_workers=scan_workers()) as pool:
         for path, findings, failure in pool.map(
-                lambda job: tidy(job, checks, header_filter, tool), jobs):
+                lambda job: cached_tidy(job, checks, header_filter, tool, context),
+                jobs):
             if failure:
                 failures.append((path, failure))
             for finding in findings:
@@ -196,7 +295,7 @@ def main():
               file=sys.stderr)
     counts, files, failures = scan(root, jobs, checks,
                                    r"^" + re.escape(root) + r"/(packages|services)",
-                                   tool)
+                                   tool, version)
 
     if arguments.write_baseline:
         if failures:

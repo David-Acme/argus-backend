@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <auth/jwt-filter.hxx>
 #include <auth/remote-config.hxx>
 #include <auth/remote-gate.hxx>

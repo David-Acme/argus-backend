@@ -166,7 +166,7 @@ foreach(TEST_NAME IN ITEMS productivity-schema-test productivity-migration-test)
     argus::contracts::sync
     argus::lib::http
     productivity-migration
-    doctest::doctest)
+    argus::lib::doctest-main)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
@@ -180,7 +180,7 @@ set_target_properties(productivity-change-outbox-sink-test PROPERTIES
 target_link_libraries(productivity-change-outbox-sink-test PRIVATE
     argus::productivity-change-sink
     argus::lib::nats
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_definitions(productivity-change-outbox-sink-test PRIVATE
     ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -212,7 +212,7 @@ target_link_libraries(productivity-controller-test PRIVATE
     argus::lib::sqlite
     argus::lib::validation
     argus::lib::http
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(productivity-controller-test PRIVATE -Wall -Wextra)
 
@@ -245,7 +245,7 @@ target_link_libraries(productivity-change-transaction-test PRIVATE
     argus::lib::sqlite
     argus::lib::validation
     argus::lib::http
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(productivity-change-transaction-test
                        PRIVATE -Wall -Wextra)
@@ -281,7 +281,7 @@ target_link_libraries(productivity-action-journal-test PRIVATE
     argus::lib::sqlite
     argus::lib::validation
     argus::lib::http
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(productivity-action-journal-test
                        PRIVATE -Wall -Wextra)
@@ -313,7 +313,7 @@ target_link_libraries(productivity-task-assignee-test PRIVATE
     argus::lib::sqlite
     argus::lib::validation
     argus::lib::http
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(productivity-task-assignee-test
                        PRIVATE -Wall -Wextra)
@@ -334,7 +334,7 @@ target_compile_definitions(productivity-agenda-test PRIVATE
 target_link_libraries(productivity-agenda-test PRIVATE
     argus::productivity-agenda
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(productivity-agenda-test PRIVATE -Wall -Wextra)
 
@@ -354,7 +354,7 @@ target_link_libraries(productivity-sync-rpc-test PRIVATE
     argus::clients::productivity
     argus::lib::sqlite
     argus::contracts::sync
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(productivity-sync-rpc-test PRIVATE -Wall -Wextra)
 
@@ -377,7 +377,7 @@ target_compile_definitions(productivity-module-data-test PRIVATE
 target_link_libraries(productivity-module-data-test PRIVATE
     argus::productivity-module-data
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(productivity-module-data-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-module-data-test
          COMMAND productivity-module-data-test)
@@ -397,7 +397,7 @@ target_link_libraries(productivity-reminder-test PRIVATE
     argus::lib::sqlite
     argus::lib::validation
     argus::contracts::sync
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(productivity-reminder-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-reminder-test COMMAND productivity-reminder-test)
 
@@ -413,7 +413,7 @@ target_link_libraries(productivity-mcp-test PRIVATE
     argus::lib::sqlite
     argus::lib::validation
     argus::contracts::sync
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(productivity-mcp-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-mcp-test COMMAND productivity-mcp-test)
 
@@ -422,7 +422,7 @@ target_compile_definitions(productivity-recurrence-test PRIVATE
     ARGUS_RECURRENCE_CASES="${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/fixtures/recurrence/cases.json")
 target_link_libraries(productivity-recurrence-test PRIVATE
     argus::productivity-recurrence
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(productivity-recurrence-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-recurrence-test COMMAND productivity-recurrence-test)
 
@@ -434,7 +434,7 @@ target_link_libraries(productivity-calendar-event-dto-test PRIVATE
     argus::productivity-recurrence
     argus::lib::errors
     argus::lib::validation
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(productivity-calendar-event-dto-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-calendar-event-dto-test COMMAND productivity-calendar-event-dto-test)
 
@@ -443,7 +443,7 @@ set_target_properties(productivity-rpc-server-test PROPERTIES EXCLUDE_FROM_ALL F
 target_link_libraries(productivity-rpc-server-test PRIVATE
     argus::productivity-rpc-server
     argus::lib::grpc-test-support
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(productivity-rpc-server-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-rpc-server-test
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh

@@ -93,7 +93,7 @@ if(DOCTEST_INCLUDE_DIRS)
 endif()
 
 add_executable(framing-test ${CMAKE_CURRENT_SOURCE_DIR}/tests/framing-test.cc)
-target_link_libraries(framing-test PRIVATE tunnel-core doctest::doctest)
+target_link_libraries(framing-test PRIVATE tunnel-core argus::lib::doctest-main)
 target_compile_options(framing-test PRIVATE -Wall -Wextra)
 
 add_executable(tunnel-integration-test
@@ -101,7 +101,7 @@ add_executable(tunnel-integration-test
 target_include_directories(tunnel-integration-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 target_link_libraries(tunnel-integration-test PRIVATE tunnel-core
-                                                      doctest::doctest)
+                                                      argus::lib::doctest-main)
 target_compile_options(tunnel-integration-test PRIVATE -Wall -Wextra)
 
 add_executable(tunnel-reconnect-test
@@ -109,7 +109,7 @@ add_executable(tunnel-reconnect-test
 target_include_directories(tunnel-reconnect-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 target_link_libraries(tunnel-reconnect-test PRIVATE tunnel-core
-                                                    doctest::doctest)
+                                                    argus::lib::doctest-main)
 target_compile_options(tunnel-reconnect-test PRIVATE -Wall -Wextra)
 
 add_executable(tunnel-negauth-test
@@ -117,7 +117,7 @@ add_executable(tunnel-negauth-test
 target_include_directories(tunnel-negauth-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 target_link_libraries(tunnel-negauth-test PRIVATE tunnel-core
-                                                  doctest::doctest)
+                                                  argus::lib::doctest-main)
 target_compile_options(tunnel-negauth-test PRIVATE -Wall -Wextra)
 
 add_executable(tunnel-hardening-test
@@ -125,13 +125,13 @@ add_executable(tunnel-hardening-test
 target_include_directories(tunnel-hardening-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests)
 target_link_libraries(tunnel-hardening-test PRIVATE tunnel-core
-                                                    doctest::doctest)
+                                                    argus::lib::doctest-main)
 target_compile_options(tunnel-hardening-test PRIVATE -Wall -Wextra)
 
 add_executable(service-config-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/service-config-test.cc)
 target_link_libraries(service-config-test PRIVATE tunnel-core
-                                                  doctest::doctest)
+                                                  argus::lib::doctest-main)
 target_compile_options(service-config-test PRIVATE -Wall -Wextra)
 
 
@@ -139,7 +139,7 @@ add_executable(tunnel-health-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/tunnel-health-test.cc)
 target_include_directories(tunnel-health-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-target_link_libraries(tunnel-health-test PRIVATE tunnel-core doctest::doctest)
+target_link_libraries(tunnel-health-test PRIVATE tunnel-core argus::lib::doctest-main)
 target_compile_options(tunnel-health-test PRIVATE -Wall -Wextra)
 
 execute_process(
@@ -155,7 +155,7 @@ add_executable(link-protocol-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/tls-hello.cc)
 target_include_directories(link-protocol-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-target_link_libraries(link-protocol-test PRIVATE tunnel-core doctest::doctest
+target_link_libraries(link-protocol-test PRIVATE tunnel-core argus::lib::doctest-main
                                             nlohmann_json::nlohmann_json)
 target_compile_options(link-protocol-test PRIVATE -Wall -Wextra)
 target_compile_definitions(link-protocol-test PRIVATE
@@ -169,7 +169,7 @@ add_executable(link-client-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/tls-hello.cc)
 target_include_directories(link-client-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-target_link_libraries(link-client-test PRIVATE tunnel-core doctest::doctest)
+target_link_libraries(link-client-test PRIVATE tunnel-core argus::lib::doctest-main)
 target_compile_options(link-client-test PRIVATE -Wall -Wextra)
 
 add_executable(cloud-interop-test
@@ -179,17 +179,17 @@ add_executable(cloud-interop-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-test-cert.cc)
 target_include_directories(cloud-interop-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-target_link_libraries(cloud-interop-test PRIVATE tunnel-core doctest::doctest)
+target_link_libraries(cloud-interop-test PRIVATE tunnel-core argus::lib::doctest-main)
 target_compile_options(cloud-interop-test PRIVATE -Wall -Wextra)
 
 add_executable(link-status-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-status-test.cc)
-target_link_libraries(link-status-test PRIVATE tunnel-core doctest::doctest)
+target_link_libraries(link-status-test PRIVATE tunnel-core argus::lib::doctest-main)
 target_compile_options(link-status-test PRIVATE -Wall -Wextra)
 
 add_executable(home-service-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/home-service-test.cc)
-target_link_libraries(home-service-test PRIVATE tunnel-core doctest::doctest)
+target_link_libraries(home-service-test PRIVATE tunnel-core argus::lib::doctest-main)
 target_compile_options(home-service-test PRIVATE -Wall -Wextra)
 
 add_executable(sealed-push-test
@@ -197,7 +197,7 @@ add_executable(sealed-push-test
                ${CMAKE_CURRENT_SOURCE_DIR}/tests/link-test-cert.cc)
 target_include_directories(sealed-push-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests)
-target_link_libraries(sealed-push-test PRIVATE tunnel-core doctest::doctest
+target_link_libraries(sealed-push-test PRIVATE tunnel-core argus::lib::doctest-main
                                                nlohmann_json::nlohmann_json
                                                OpenSSL::Crypto)
 target_compile_options(sealed-push-test PRIVATE -Wall -Wextra)

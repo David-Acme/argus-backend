@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <link/client/home-service.hxx>
 
 #include <doctest/doctest.h>

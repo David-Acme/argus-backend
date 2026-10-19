@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <server/service-config.hxx>
 #include <config/config-service.hxx>
 

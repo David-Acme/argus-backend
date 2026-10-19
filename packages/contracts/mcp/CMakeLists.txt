@@ -30,17 +30,19 @@ if(NOT ARGUS_SYSTEM_PROTOBUF AND NOT TARGET gRPC::grpc++)
 endif()
 argus_mcp_rpc_contract()
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(mcp-rpc-test tests/unit/mcp-rpc-test.cc)
-target_link_libraries(mcp-rpc-test PRIVATE argus::contracts::mcp-wire doctest::doctest)
-target_compile_options(mcp-rpc-test PRIVATE -Wall -Wextra)
-add_test(NAME mcp-rpc-test COMMAND mcp-rpc-test)
+    add_executable(mcp-rpc-test tests/unit/mcp-rpc-test.cc)
+    target_link_libraries(mcp-rpc-test PRIVATE argus::contracts::mcp-wire argus::lib::doctest-main)
+    target_compile_options(mcp-rpc-test PRIVATE -Wall -Wextra)
+    add_test(NAME mcp-rpc-test COMMAND mcp-rpc-test)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

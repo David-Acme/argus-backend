@@ -34,10 +34,12 @@ target_compile_options(argus_lib_cert PRIVATE -Wall -Wextra)
 
 find_package(doctest REQUIRED)
 
-add_executable(cert-san-test tests/unit/cert-san-test.cc)
-target_link_libraries(cert-san-test PRIVATE
-    argus::lib::cert
-    argus::lib::config
-    doctest::doctest)
-target_compile_options(cert-san-test PRIVATE -Wall -Wextra)
-add_test(NAME cert-san-test COMMAND cert-san-test)
+if(ARGUS_PACKAGE_TESTS)
+    add_executable(cert-san-test tests/unit/cert-san-test.cc)
+    target_link_libraries(cert-san-test PRIVATE
+        argus::lib::cert
+        argus::lib::config
+        argus::lib::doctest-main)
+    target_compile_options(cert-san-test PRIVATE -Wall -Wextra)
+    add_test(NAME cert-san-test COMMAND cert-san-test)
+endif()

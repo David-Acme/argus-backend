@@ -17,7 +17,7 @@ target_link_libraries(session-verdict-test PRIVATE
     argus::clients::auth
     argus::clients::identity
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(session-verdict-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(session-verdict-test)
 argus_nats_scratch_test(NAME session-verdict-test)
@@ -36,7 +36,7 @@ target_link_libraries(device-login-test PRIVATE
     argus::contracts::auth
     argus::clients::identity
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(device-login-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(device-login-test)
 add_test(NAME device-login-test COMMAND device-login-test)
@@ -49,7 +49,7 @@ target_link_libraries(change-outbox-test PRIVATE
     argus::lib::sqlite
     argus::lib::text
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(change-outbox-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(change-outbox-test)
 add_test(NAME change-outbox-test COMMAND change-outbox-test)
@@ -63,7 +63,7 @@ target_link_libraries(auth-rate-gate-test PRIVATE
     argus::lib::http
     argus::contracts::auth
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(auth-rate-gate-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(auth-rate-gate-test)
 add_test(NAME auth-rate-gate-test COMMAND auth-rate-gate-test)
@@ -75,7 +75,7 @@ target_link_libraries(auth-identity-config-test PRIVATE
     argus::lib::errors
     argus::lib::http
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(auth-identity-config-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(auth-identity-config-test)
 add_test(NAME auth-identity-config-test COMMAND auth-identity-config-test)
@@ -83,7 +83,7 @@ add_test(NAME auth-identity-config-test COMMAND auth-identity-config-test)
 add_executable(auth-migration-test unit/auth-migration-test.cc)
 target_link_libraries(auth-migration-test PRIVATE
     auth-migration
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(auth-migration-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(auth-migration-test)
 add_test(NAME auth-migration-test COMMAND auth-migration-test)
@@ -105,7 +105,7 @@ target_link_libraries(session-management-test PRIVATE
     argus::contracts::sync
     argus::clients::identity
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(session-management-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(session-management-test)
 add_test(NAME session-management-test COMMAND session-management-test)
@@ -115,7 +115,7 @@ target_link_libraries(auth-rpc-callers-test PRIVATE
     argus::auth-rpc
     argus::auth-config
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(auth-rpc-callers-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(auth-rpc-callers-test)
 add_test(NAME auth-rpc-callers-test COMMAND auth-rpc-callers-test)
@@ -138,7 +138,7 @@ target_link_libraries(auth-rpc-server-test PRIVATE
     argus::clients::identity
     argus::lib::grpc-test-support
     Drogon::Drogon
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(auth-rpc-server-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(auth-rpc-server-test)
 add_test(NAME auth-rpc-server-test

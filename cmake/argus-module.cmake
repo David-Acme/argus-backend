@@ -3,9 +3,32 @@ include_guard(GLOBAL)
 set(ARGUS_CMAKE_DIR ${CMAKE_CURRENT_LIST_DIR})
 get_filename_component(ARGUS_REPO_ROOT "${ARGUS_CMAKE_DIR}/.." ABSOLUTE)
 
+include(${ARGUS_CMAKE_DIR}/argus-vendored.cmake)
+
+cmake_path(IS_PREFIX ARGUS_REPO_ROOT "${CMAKE_SOURCE_DIR}" NORMALIZE argus_inside_repo)
+cmake_path(RELATIVE_PATH CMAKE_SOURCE_DIR BASE_DIRECTORY "${ARGUS_REPO_ROOT}"
+           OUTPUT_VARIABLE argus_top_relative)
+if(argus_inside_repo AND argus_top_relative MATCHES "^packages(/|$)")
+  set(argus_package_tests_default ON)
+else()
+  set(argus_package_tests_default OFF)
+endif()
+option(ARGUS_PACKAGE_TESTS
+       "argus: register the packages' own tests (ON when a package is the top-level project)"
+       ${argus_package_tests_default})
+message(STATUS "argus package tests: ${ARGUS_PACKAGE_TESTS}")
+
+function(argus_ensure_doctest_main)
+  if(TARGET doctest::doctest AND NOT TARGET argus::lib::doctest-main)
+    add_subdirectory(${ARGUS_REPO_ROOT}/packages/lib/test-support
+                     ${CMAKE_BINARY_DIR}/test-support)
+  endif()
+endfunction()
+cmake_language(DEFER DIRECTORY ${CMAKE_SOURCE_DIR} CALL argus_ensure_doctest_main)
+
 set(argus_link_budget_mb 4096)
 find_program(ARGUS_MOLD_EXECUTABLE NAMES mold)
-if(ARGUS_MOLD_EXECUTABLE AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.29)
+if(ARGUS_MOLD_EXECUTABLE AND NOT APPLE AND CMAKE_VERSION VERSION_GREATER_EQUAL 3.29)
   set(CMAKE_LINKER_TYPE MOLD)
   set(argus_link_budget_mb 3072)
   message(STATUS
@@ -15,7 +38,6 @@ else()
 endif()
 
 option(ARGUS_CCACHE "argus: cache compiler output with ccache when it is installed" ON)
-set(GGML_CCACHE OFF CACHE BOOL "ggml: use ccache if available" FORCE)
 
 find_program(ARGUS_CCACHE_EXECUTABLE NAMES ccache)
 if(ARGUS_CCACHE AND ARGUS_CCACHE_EXECUTABLE)
@@ -25,7 +47,7 @@ if(ARGUS_CCACHE AND ARGUS_CCACHE_EXECUTABLE)
   elseif(DEFINED ENV{HOME} AND NOT "$ENV{HOME}" STREQUAL "")
     set(argus_ccache_basedir "$ENV{HOME}")
   endif()
-  set(argus_ccache_env CCACHE_NOHASHDIR=1 CCACHE_MAXSIZE=15G)
+  set(argus_ccache_env CCACHE_NOHASHDIR=1 CCACHE_MAXSIZE=40G)
   if(argus_ccache_basedir)
     list(PREPEND argus_ccache_env "CCACHE_BASEDIR=${argus_ccache_basedir}")
   endif()
@@ -38,11 +60,26 @@ else()
   message(STATUS "argus compiler launcher: none")
 endif()
 
+if(NOT APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"
+   AND NOT CMAKE_CXX_FLAGS_DEBUG MATCHES "-g0")
+  add_compile_options($<$<CONFIG:Debug>:-gsplit-dwarf>)
+  if(CMAKE_LINKER_TYPE STREQUAL "MOLD")
+    add_link_options($<$<CONFIG:Debug>:LINKER:--gdb-index>)
+  endif()
+  message(STATUS "argus debug info: split DWARF")
+endif()
+
+if(APPLE)
+  set(ARGUS_RPATH_ORIGIN "@loader_path")
+else()
+  set(ARGUS_RPATH_ORIGIN "$ORIGIN")
+endif()
+
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 message(STATUS "argus C++20 module scanning: off")
 
 if(CMAKE_GENERATOR MATCHES "Ninja" AND NOT CMAKE_JOB_POOLS)
-  set(argus_reserve_mb 4096)
+  set(argus_reserve_mb 1024)
   set(argus_cap_mb 0)
   set(argus_cap_source "")
   set(argus_link_pool 0)
@@ -570,8 +607,8 @@ function(argus_service)
   target_link_libraries(${ARG_NAME} PRIVATE ${ARG_MODULES} ${ARG_DEPENDS})
   target_compile_options(${ARG_NAME} PRIVATE -Wall -Wextra)
   set_target_properties(${ARG_NAME} PROPERTIES
-      BUILD_RPATH "$ORIGIN"
-      INSTALL_RPATH "$ORIGIN")
+      BUILD_RPATH "${ARGUS_RPATH_ORIGIN}"
+      INSTALL_RPATH "${ARGUS_RPATH_ORIGIN}")
   argus_runtime_rpath(${ARG_NAME})
   if(ARG_PORTS)
     set_target_properties(${ARG_NAME} PROPERTIES ARGUS_PORTS "${ARG_PORTS}")

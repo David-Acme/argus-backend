@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include "guard-fakes.hxx"
 
 #include <doctest/doctest.h>

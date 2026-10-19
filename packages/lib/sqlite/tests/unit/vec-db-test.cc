@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 #include <sqlite/sqlite-stmt.hxx>
 #include <sqlite/vec-db.hxx>

@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <argus/voice/v1/voice.grpc.pb.h>
 #include <chrono>
 #include <condition_variable>

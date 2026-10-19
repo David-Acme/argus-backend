@@ -117,7 +117,7 @@ target_include_directories(stt-wire-test PRIVATE
 target_compile_definitions(stt-wire-test PRIVATE
     ARGUS_TEST_STT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/stt")
 
-target_link_libraries(stt-wire-test PRIVATE argus::stt doctest::doctest)
+target_link_libraries(stt-wire-test PRIVATE argus::stt argus::lib::doctest-main)
 
 target_compile_options(stt-wire-test PRIVATE -Wall -Wextra)
 
@@ -127,7 +127,7 @@ add_test(NAME stt-wire-test COMMAND stt-wire-test)
 
 add_executable(stt-transcribe-dto-test tests/unit/stt-transcribe-dto-test.cc)
 
-target_link_libraries(stt-transcribe-dto-test PRIVATE argus::stt doctest::doctest)
+target_link_libraries(stt-transcribe-dto-test PRIVATE argus::stt argus::lib::doctest-main)
 
 target_compile_options(stt-transcribe-dto-test PRIVATE -Wall -Wextra)
 
@@ -141,7 +141,7 @@ target_include_directories(stt-rpc-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
 
 target_link_libraries(stt-rpc-test PRIVATE argus::stt-rpc
-    argus::lib::grpc-test-support doctest::doctest)
+    argus::lib::grpc-test-support argus::lib::doctest-main)
 target_compile_definitions(stt-rpc-test PRIVATE
     ARGUS_TEST_STT_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/stt")
 argus_runtime_rpath(stt-rpc-test)
@@ -158,7 +158,7 @@ set_tests_properties(stt-rpc-test PROPERTIES SKIP_RETURN_CODE 77)
 add_executable(stt-settings-test tests/unit/stt-settings-test.cc)
 
 target_link_libraries(stt-settings-test PRIVATE argus::stt-rpc argus::stt-settings
-    argus::stt-config doctest::doctest)
+    argus::stt-config argus::lib::doctest-main)
 argus_runtime_rpath(stt-settings-test)
 
 target_compile_options(stt-settings-test PRIVATE -Wall -Wextra)
@@ -170,7 +170,7 @@ add_test(NAME stt-settings-test COMMAND stt-settings-test)
 add_executable(stt-components-test tests/unit/stt-components-test.cc)
 
 target_link_libraries(stt-components-test PRIVATE argus::stt-settings argus::stt-config
-    argus::contracts::settings-wire doctest::doctest)
+    argus::contracts::settings-wire argus::lib::doctest-main)
 argus_runtime_rpath(stt-components-test)
 
 target_compile_options(stt-components-test PRIVATE -Wall -Wextra)

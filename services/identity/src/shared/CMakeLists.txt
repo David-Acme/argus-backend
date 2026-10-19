@@ -52,9 +52,7 @@ argus_module(NAME identity-shared
         OpenSSL::Crypto)
 
 target_include_directories(argus_identity-shared SYSTEM PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/stb
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/ncnn/src
-    ${CMAKE_BINARY_DIR}/third_party/ncnn/src)
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/stb)
 
 if(ARGUS_NCNN_TARGET AND TARGET ${ARGUS_NCNN_TARGET})
     target_link_libraries(argus_identity-shared PUBLIC ${ARGUS_NCNN_TARGET})

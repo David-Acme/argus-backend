@@ -12,18 +12,20 @@ argus_contracts(NAME push
         src/push/push-envelope.hxx
     DEPENDS)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(push-contract-test tests/unit/push-contract-test.cc)
-target_link_libraries(push-contract-test PRIVATE
-    argus::contracts::push doctest::doctest)
-target_compile_options(push-contract-test PRIVATE -Wall -Wextra)
-add_test(NAME push-contract-test COMMAND push-contract-test)
+    add_executable(push-contract-test tests/unit/push-contract-test.cc)
+    target_link_libraries(push-contract-test PRIVATE
+        argus::contracts::push argus::lib::doctest-main)
+    target_compile_options(push-contract-test PRIVATE -Wall -Wextra)
+    add_test(NAME push-contract-test COMMAND push-contract-test)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

@@ -113,7 +113,7 @@ foreach(TEST_NAME IN ITEMS settings-gateway-test settings-dto-test settings-conf
     target_link_libraries(${TEST_NAME} PRIVATE
         argus::settings-gateway
         argus::contracts::settings-wire
-        doctest::doctest)
+        argus::lib::doctest-main)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
@@ -131,7 +131,7 @@ foreach(TEST_NAME IN ITEMS settings-modules-test settings-module-engine-test set
         argus::settings-modules
         argus::settings-rpc
         argus::contracts::settings-wire
-        doctest::doctest)
+        argus::lib::doctest-main)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
     target_compile_definitions(${TEST_NAME} PRIVATE
         ARGUS_SETTINGS_MODULES_FILE="${CMAKE_CURRENT_SOURCE_DIR}/modules.json"
@@ -141,13 +141,13 @@ endforeach()
 
 add_executable(settings-mcp-test tests/unit/settings-mcp-test.cc)
 set_target_properties(settings-mcp-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-target_link_libraries(settings-mcp-test PRIVATE argus::settings-mcp doctest::doctest)
+target_link_libraries(settings-mcp-test PRIVATE argus::settings-mcp argus::lib::doctest-main)
 target_compile_options(settings-mcp-test PRIVATE -Wall -Wextra)
 add_test(NAME settings-mcp-test COMMAND settings-mcp-test)
 
 add_executable(settings-engine-desk-test tests/unit/settings-engine-desk-test.cc)
 set_target_properties(settings-engine-desk-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-target_link_libraries(settings-engine-desk-test PRIVATE argus::settings-mcp argus::settings-modules doctest::doctest)
+target_link_libraries(settings-engine-desk-test PRIVATE argus::settings-mcp argus::settings-modules argus::lib::doctest-main)
 target_compile_options(settings-engine-desk-test PRIVATE -Wall -Wextra)
 target_compile_definitions(settings-engine-desk-test PRIVATE
     ARGUS_SETTINGS_SCHEMA_FILE="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -155,7 +155,7 @@ add_test(NAME settings-engine-desk-test COMMAND settings-engine-desk-test)
 
 add_executable(settings-modules-rpc-test tests/unit/settings-modules-rpc-test.cc)
 set_target_properties(settings-modules-rpc-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
-target_link_libraries(settings-modules-rpc-test PRIVATE argus::settings-rpc argus::lib::grpc-test-support doctest::doctest)
+target_link_libraries(settings-modules-rpc-test PRIVATE argus::settings-rpc argus::lib::grpc-test-support argus::lib::doctest-main)
 target_compile_options(settings-modules-rpc-test PRIVATE -Wall -Wextra)
 add_test(NAME settings-modules-rpc-test
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh

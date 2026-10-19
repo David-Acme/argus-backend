@@ -26,17 +26,7 @@ if(PROJECT_IS_TOP_LEVEL)
     endif()
     set(ARGUS_SQLITE_VEC_TARGET sqlite-vec)
 
-    set(NCNN_BUILD_BENCHMARK OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
-    set(NCNN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(NCNN_OPENMP ON CACHE BOOL "" FORCE)
-    set(NCNN_AVX2 ON CACHE BOOL "" FORCE)
-    set(NCNN_VULKAN ON CACHE BOOL "" FORCE)
-    set(NCNN_ENABLE_PIC ON CACHE BOOL "" FORCE)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn
-                     ${CMAKE_BINARY_DIR}/third_party/ncnn EXCLUDE_FROM_ALL)
-    set(ARGUS_NCNN_TARGET ncnn)
+    argus_vendored_ncnn()
     if(NOT TARGET argus::contracts::auth)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/contracts/auth
                          ${CMAKE_BINARY_DIR}/contracts/auth)
@@ -138,8 +128,6 @@ if(NOT COMMAND argus_mcp_rpc_contract)
 endif()
 argus_mcp_rpc_contract()
 
-set(NCNN_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../third_party/ncnn/src)
-
 add_subdirectory(src/config)
 add_subdirectory(src/shared/services/secret-box)
 add_subdirectory(src/shared/repositories)
@@ -228,7 +216,7 @@ foreach(TEST_NAME IN LISTS CAMERA_UNIT_TESTS)
 
     set_target_properties(${TEST_NAME} PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-    target_link_libraries(${TEST_NAME} PRIVATE doctest::doctest)
+    target_link_libraries(${TEST_NAME} PRIVATE argus::lib::doctest-main)
 
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
 
@@ -347,7 +335,7 @@ target_link_libraries(camera-talk-cutover-test PRIVATE
     argus::camera-driver
     argus::lib::errors
     argus::contracts::camera
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 set_target_properties(camera-talk-cutover-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -364,7 +352,7 @@ target_link_libraries(camera-talk-test PRIVATE
     argus::camera-talk
     argus::camera-driver
     argus::lib::config
-    doctest::doctest)
+    argus::lib::doctest-main)
 set_target_properties(camera-talk-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_compile_options(camera-talk-test PRIVATE -Wall -Wextra)
 add_test(NAME camera-talk-test COMMAND camera-talk-test)
@@ -379,7 +367,7 @@ target_link_libraries(camera-talk-module-test PRIVATE
     argus::lib::config
     argus::lib::errors
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_definitions(camera-talk-module-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 set_target_properties(camera-talk-module-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
@@ -392,7 +380,7 @@ target_link_libraries(camera-catalog-test PRIVATE
     argus::camera-catalog
     argus::camera-driver
     argus::camera-feature
-    doctest::doctest)
+    argus::lib::doctest-main)
 set_target_properties(camera-catalog-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_compile_options(camera-catalog-test PRIVATE -Wall -Wextra)
 add_test(NAME camera-catalog-test COMMAND camera-catalog-test)
@@ -403,7 +391,7 @@ add_executable(tapo-crypto-test
 target_link_libraries(tapo-crypto-test PRIVATE
     argus::camera-tapo
     argus::camera-driver
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 set_target_properties(tapo-crypto-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -417,7 +405,7 @@ add_executable(tapo-control-test
 
 target_link_libraries(tapo-control-test PRIVATE
     argus::camera-tapo
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 set_target_properties(tapo-control-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -432,7 +420,7 @@ add_executable(onvif-client-test
 target_link_libraries(onvif-client-test PRIVATE
     argus::camera-onvif
     argus::camera-driver
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_include_directories(onvif-client-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/tests/support)
@@ -455,7 +443,7 @@ target_include_directories(tapo-talk-client-test PRIVATE
 
 target_link_libraries(tapo-talk-client-test PRIVATE
     argus::camera-tapo
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 set_target_properties(tapo-talk-client-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -469,7 +457,7 @@ add_subdirectory(tools/tapo-probe)
 add_executable(camera-sync-auth-test tests/unit/camera-sync-auth-test.cc)
 target_link_libraries(camera-sync-auth-test PRIVATE
     argus::camera-sync
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(camera-sync-auth-test PRIVATE -Wall -Wextra)
 set_target_properties(camera-sync-auth-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 argus_runtime_rpath(camera-sync-auth-test)
@@ -479,7 +467,7 @@ add_executable(camera-audio-capture-test
     tests/unit/camera-audio-capture-test.cc)
 target_link_libraries(camera-audio-capture-test PRIVATE
     argus::camera-actions
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(camera-audio-capture-test PRIVATE -Wall -Wextra)
 set_target_properties(camera-audio-capture-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -500,7 +488,7 @@ target_link_libraries(camera-action-rpc-test PRIVATE
     argus::clients::camera-actions
     argus::lib::sqlite
     argus::contracts::camera
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(camera-action-rpc-test PRIVATE -Wall -Wextra)
 
@@ -511,7 +499,7 @@ add_test(NAME camera-action-rpc-test COMMAND camera-action-rpc-test)
 
 add_executable(camera-mcp-test tests/unit/camera-mcp-test.cc)
 
-target_link_libraries(camera-mcp-test PRIVATE argus::camera-mcp doctest::doctest)
+target_link_libraries(camera-mcp-test PRIVATE argus::camera-mcp argus::lib::doctest-main)
 
 target_compile_options(camera-mcp-test PRIVATE -Wall -Wextra)
 
@@ -524,7 +512,7 @@ add_executable(camera-action-migration-test
 target_link_libraries(camera-action-migration-test PRIVATE
     argus::camera-actions
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(camera-action-migration-test PRIVATE -Wall -Wextra)
 set_target_properties(camera-action-migration-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -536,7 +524,7 @@ target_link_libraries(camera-status-announce-test PRIVATE
     argus::camera-control
     argus::camera-privacy-state
     argus::lib::test-support
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_definitions(camera-status-announce-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(camera-status-announce-test PRIVATE -Wall -Wextra)
@@ -548,7 +536,7 @@ add_executable(detection-change-gate-test
     tests/unit/detection-change-gate-test.cc)
 target_link_libraries(detection-change-gate-test PRIVATE
     argus::camera-operator
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(detection-change-gate-test PRIVATE -Wall -Wextra)
 set_target_properties(detection-change-gate-test PROPERTIES
     EXCLUDE_FROM_ALL FALSE)
@@ -558,7 +546,7 @@ add_executable(object-event-outbox-test
     tests/unit/object-event-outbox-test.cc)
 target_link_libraries(object-event-outbox-test PRIVATE
     argus::camera-operator
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_definitions(object-event-outbox-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(object-event-outbox-test PRIVATE -Wall -Wextra)
@@ -570,7 +558,7 @@ add_executable(object-event-outbox-sink-test
     tests/unit/object-event-outbox-sink-test.cc)
 target_link_libraries(object-event-outbox-sink-test PRIVATE
     argus::camera-operator
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_definitions(object-event-outbox-sink-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(object-event-outbox-sink-test PRIVATE -Wall -Wextra)
@@ -584,7 +572,7 @@ target_link_libraries(camera-operator-start-test PRIVATE
     argus::camera-operator
     argus::camera-monitor
     argus::camera-stream
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_definitions(camera-operator-start-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(camera-operator-start-test PRIVATE -Wall -Wextra)
@@ -596,7 +584,7 @@ add_executable(change-outbox-sink-test
     tests/unit/change-outbox-sink-test.cc)
 target_link_libraries(change-outbox-sink-test PRIVATE
     argus::camera-change-sink
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_definitions(change-outbox-sink-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(change-outbox-sink-test PRIVATE -Wall -Wextra)
@@ -613,7 +601,7 @@ target_link_libraries(camera-settings-test PRIVATE
     argus::camera-stream
     argus::camera-media
     argus::contracts::settings-wire
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(camera-settings-test PRIVATE -Wall -Wextra)
 set_target_properties(camera-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 argus_runtime_rpath(camera-settings-test)
@@ -627,7 +615,7 @@ target_link_libraries(camera-hardening-test PRIVATE
     argus::camera-sync
     argus::camera-operator
     argus::camera-media
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(camera-hardening-test PRIVATE -Wall -Wextra)
 set_target_properties(camera-hardening-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 argus_runtime_rpath(camera-hardening-test)
@@ -637,7 +625,7 @@ add_executable(camera-module-data-test tests/unit/camera-module-data-test.cc)
 target_link_libraries(camera-module-data-test PRIVATE
     argus::camera-module-data
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_definitions(camera-module-data-test PRIVATE
     ARGUS_CAMERA_SCHEMA_PATH="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_compile_options(camera-module-data-test PRIVATE -Wall -Wextra)
@@ -650,7 +638,7 @@ set_target_properties(camera-rpc-server-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(camera-rpc-server-test PRIVATE
     argus::camera-rpc-server
     argus::lib::grpc-test-support
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(camera-rpc-server-test PRIVATE -Wall -Wextra)
 argus_runtime_rpath(camera-rpc-server-test)
 add_test(NAME camera-rpc-server-test

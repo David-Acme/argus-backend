@@ -15,21 +15,23 @@ if(NOT TARGET argus::clients::auth)
       INCLUDES src)
 endif()
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(auth-grpc-client-test tests/unit/auth-grpc-client-test.cc)
+    add_executable(auth-grpc-client-test tests/unit/auth-grpc-client-test.cc)
 
-set_target_properties(auth-grpc-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(auth-grpc-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(auth-grpc-client-test PRIVATE argus::clients::auth
-    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
+    target_link_libraries(auth-grpc-client-test PRIVATE argus::clients::auth
+        argus::lib::grpc-test-support argus_client_grpc_base argus::lib::doctest-main)
 
-target_compile_options(auth-grpc-client-test PRIVATE -Wall -Wextra)
+    target_compile_options(auth-grpc-client-test PRIVATE -Wall -Wextra)
 
-argus_runtime_rpath(auth-grpc-client-test)
+    argus_runtime_rpath(auth-grpc-client-test)
 
-add_test(NAME auth-grpc-client-test
-         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
-                 $<TARGET_FILE:auth-grpc-client-test> 5)
-set_tests_properties(auth-grpc-client-test PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME auth-grpc-client-test
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                     $<TARGET_FILE:auth-grpc-client-test> 5)
+    set_tests_properties(auth-grpc-client-test PROPERTIES SKIP_RETURN_CODE 77)
+endif()

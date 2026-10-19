@@ -171,7 +171,7 @@ endif()
 add_executable(voice-session-seam-test tests/unit/voice-session-seam-test.cc)
 
 target_link_libraries(voice-session-seam-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-session-seam-test PRIVATE -Wall -Wextra)
 
@@ -184,7 +184,7 @@ add_test(NAME voice-session-seam-test COMMAND voice-session-seam-test)
 add_executable(playout-buffering-test tests/unit/playout-buffering-test.cc)
 
 target_link_libraries(playout-buffering-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(playout-buffering-test PRIVATE -Wall -Wextra)
 
@@ -197,7 +197,7 @@ add_test(NAME playout-buffering-test COMMAND playout-buffering-test)
 add_executable(audio-level-meter-test tests/unit/audio-level-meter-test.cc)
 
 target_link_libraries(audio-level-meter-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(audio-level-meter-test PRIVATE -Wall -Wextra)
 
@@ -210,7 +210,7 @@ add_test(NAME audio-level-meter-test COMMAND audio-level-meter-test)
 add_executable(playout-rate-test tests/unit/playout-rate-test.cc)
 
 target_link_libraries(playout-rate-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(playout-rate-test PRIVATE -Wall -Wextra)
 
@@ -224,7 +224,7 @@ add_executable(opening-budget-test tests/unit/opening-budget-test.cc src/feature
 
 target_include_directories(opening-budget-test PRIVATE src)
 
-target_link_libraries(opening-budget-test PRIVATE doctest::doctest)
+target_link_libraries(opening-budget-test PRIVATE argus::lib::doctest-main)
 
 target_compile_options(opening-budget-test PRIVATE -Wall -Wextra)
 
@@ -235,7 +235,7 @@ add_test(NAME opening-budget-test COMMAND opening-budget-test)
 add_executable(voice-near-field-gate-test tests/unit/voice-near-field-gate-test.cc)
 
 target_link_libraries(voice-near-field-gate-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-near-field-gate-test PRIVATE -Wall -Wextra)
 
@@ -248,7 +248,7 @@ add_test(NAME voice-near-field-gate-test COMMAND voice-near-field-gate-test)
 add_executable(voice-turn-coherence-test tests/unit/voice-turn-coherence-test.cc)
 
 target_link_libraries(voice-turn-coherence-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-turn-coherence-test PRIVATE -Wall -Wextra)
 
@@ -261,7 +261,7 @@ add_test(NAME voice-turn-coherence-test COMMAND voice-turn-coherence-test)
 add_executable(voice-gate-replay-test tests/unit/voice-gate-replay-test.cc)
 
 target_link_libraries(voice-gate-replay-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-gate-replay-test PRIVATE -Wall -Wextra)
 
@@ -282,7 +282,7 @@ target_compile_definitions(voice-call-history-test PRIVATE
     ARGUS_CALL_KNOWN_EN="${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/call-known-en.txt")
 
 target_link_libraries(voice-call-history-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-call-history-test PRIVATE -Wall -Wextra)
 
@@ -295,7 +295,7 @@ add_test(NAME voice-call-history-test COMMAND voice-call-history-test)
 add_executable(voice-offer-reply-test tests/unit/voice-offer-reply-test.cc)
 
 target_link_libraries(voice-offer-reply-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-offer-reply-test PRIVATE -Wall -Wextra)
 
@@ -308,7 +308,7 @@ add_test(NAME voice-offer-reply-test COMMAND voice-offer-reply-test)
 add_executable(voice-rpc-auth-test tests/unit/voice-rpc-auth-test.cc)
 
 target_link_libraries(voice-rpc-auth-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-rpc-auth-test PRIVATE -Wall -Wextra)
 
@@ -321,7 +321,7 @@ add_test(NAME voice-rpc-auth-test COMMAND voice-rpc-auth-test)
 add_executable(voice-reactor-lifetime-test tests/unit/voice-reactor-lifetime-test.cc)
 
 target_link_libraries(voice-reactor-lifetime-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-reactor-lifetime-test PRIVATE -Wall -Wextra)
 
@@ -337,7 +337,7 @@ target_include_directories(voice-tts-remote-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/tts/tests/support)
 
 target_link_libraries(voice-tts-remote-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-tts-remote-test PRIVATE -Wall -Wextra)
 
@@ -353,7 +353,7 @@ target_include_directories(voice-stt-remote-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt/tests/support)
 
 target_link_libraries(voice-stt-remote-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-stt-remote-test PRIVATE -Wall -Wextra)
 
@@ -370,7 +370,7 @@ target_include_directories(voice-llm-remote-test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/stt/tests/support)
 
 target_link_libraries(voice-llm-remote-test PRIVATE argus::voice-core
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-llm-remote-test PRIVATE -Wall -Wextra)
 
@@ -383,7 +383,7 @@ add_test(NAME voice-llm-remote-test COMMAND voice-llm-remote-test)
 add_executable(voice-settings-test tests/unit/voice-settings-test.cc)
 
 target_link_libraries(voice-settings-test PRIVATE argus::voice-core
-    argus::voice-settings argus::voice-config doctest::doctest)
+    argus::voice-settings argus::voice-config argus::lib::doctest-main)
 
 target_compile_options(voice-settings-test PRIVATE -Wall -Wextra)
 
@@ -396,7 +396,7 @@ add_test(NAME voice-settings-test COMMAND voice-settings-test)
 add_executable(voice-rtc-wire-test tests/unit/voice-rtc-wire-test.cc)
 
 target_link_libraries(voice-rtc-wire-test PRIVATE argus::voice-rtc-wire
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-rtc-wire-test PRIVATE -Wall -Wextra)
 
@@ -409,7 +409,7 @@ add_test(NAME voice-rtc-wire-test COMMAND voice-rtc-wire-test)
 add_executable(voice-playout-gain-test tests/unit/voice-playout-gain-test.cc)
 
 target_link_libraries(voice-playout-gain-test PRIVATE argus::voice-rtc-wire
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-playout-gain-test PRIVATE -Wall -Wextra)
 
@@ -423,7 +423,7 @@ add_executable(voice-rpc-server-test tests/unit/voice-rpc-server-test.cc)
 
 target_link_libraries(voice-rpc-server-test PRIVATE argus::voice-rpc
     argus::lib::grpc-test-support
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(voice-rpc-server-test PRIVATE -Wall -Wextra)
 

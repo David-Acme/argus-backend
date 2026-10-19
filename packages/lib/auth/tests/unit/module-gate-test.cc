@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <auth/auth-errors.hxx>
 #include <auth/jwt-filter.hxx>
 #include <auth/module-feed.hxx>

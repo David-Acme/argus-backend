@@ -159,15 +159,15 @@ if [ "$neutralised" -eq 1 ]; then
   avail_after="$(meminfo_mb MemAvailable)"
   lo="$avail_before"; [ "$avail_after" -lt "$lo" ] && lo="$avail_after"
   hi="$avail_before"; [ "$avail_after" -gt "$hi" ] && hi="$avail_after"
-  want_lo=$(( (lo - 4096) / budget )); [ "$want_lo" -lt 1 ] && want_lo=1
-  want_hi=$(( (hi - 4096) / budget )); [ "$want_hi" -lt 1 ] && want_hi=1
+  want_lo=$(( (lo - 1024) / budget )); [ "$want_lo" -lt 1 ] && want_lo=1
+  want_hi=$(( (hi - 1024) / budget )); [ "$want_hi" -lt 1 ] && want_hi=1
   got="$(depth_of "$TMP/buildfallback")"
   if [ "$got" -lt "$want_lo" ] || [ "$got" -gt "$want_hi" ]; then
     echo "build-pool-test: no-cap fallback depth $got is outside the MemAvailable range $want_lo..$want_hi" >&2
     exit 1
   fi
   total_mb="$(meminfo_mb MemTotal)"
-  want_total=$(( (total_mb - 4096) / budget )); [ "$want_total" -lt 1 ] && want_total=1
+  want_total=$(( (total_mb - 1024) / budget )); [ "$want_total" -lt 1 ] && want_total=1
   if [ "$want_total" -ne "$want_lo" ] && [ "$want_total" -ne "$want_hi" ] && [ "$got" -eq "$want_total" ]; then
     echo "build-pool-test: the no-cap fallback used MemTotal, not MemAvailable (depth $got)" >&2
     exit 1

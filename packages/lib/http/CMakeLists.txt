@@ -90,57 +90,59 @@ argus_lib(NAME http-download
 
 target_compile_options(argus_lib_http-download PRIVATE -Wall -Wextra)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
+
+    add_executable(api-response-test tests/unit/api-response-test.cc)
+    target_link_libraries(api-response-test PRIVATE argus::lib::http argus::lib::doctest-main)
+    target_compile_options(api-response-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME api-response-test COMMAND api-response-test)
+
+    add_executable(logical-routes-test tests/unit/logical-routes-test.cc)
+    target_link_libraries(logical-routes-test PRIVATE argus::lib::http argus::lib::doctest-main)
+    target_compile_options(logical-routes-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME logical-routes-test COMMAND logical-routes-test)
+
+    add_executable(certificate-reload-test tests/unit/certificate-reload-test.cc)
+    target_link_libraries(certificate-reload-test PRIVATE argus::lib::http OpenSSL::Crypto argus::lib::doctest-main)
+    target_compile_options(certificate-reload-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME certificate-reload-test COMMAND certificate-reload-test)
+
+    add_executable(tls-health-test tests/unit/tls-health-test.cc)
+    target_link_libraries(tls-health-test PRIVATE argus::lib::http OpenSSL::Crypto argus::lib::doctest-main)
+    target_compile_options(tls-health-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME tls-health-test COMMAND tls-health-test)
+
+    add_executable(listener-config-test tests/unit/listener-config-test.cc)
+    target_link_libraries(listener-config-test PRIVATE argus::lib::http argus::lib::config argus::lib::doctest-main)
+    target_compile_options(listener-config-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME listener-config-test COMMAND listener-config-test)
+
+    add_executable(download-url-test tests/unit/download/download-url-test.cc)
+    target_link_libraries(download-url-test PRIVATE argus::lib::http-download argus::lib::doctest-main)
+    target_compile_options(download-url-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME download-url-test COMMAND download-url-test)
+
+    add_executable(file-download-test
+        tests/unit/download/file-download-test.cc
+        tests/unit/download/fake-transport.cc
+        tests/unit/download/range-server.cc)
+    target_link_libraries(file-download-test PRIVATE argus::lib::http-download argus::lib::doctest-main)
+    target_compile_options(file-download-test PRIVATE -Wall -Wextra)
+
+    add_test(NAME file-download-test COMMAND file-download-test)
 endif()
-
-add_executable(api-response-test tests/unit/api-response-test.cc)
-target_link_libraries(api-response-test PRIVATE argus::lib::http doctest::doctest)
-target_compile_options(api-response-test PRIVATE -Wall -Wextra)
-
-add_test(NAME api-response-test COMMAND api-response-test)
-
-add_executable(logical-routes-test tests/unit/logical-routes-test.cc)
-target_link_libraries(logical-routes-test PRIVATE argus::lib::http doctest::doctest)
-target_compile_options(logical-routes-test PRIVATE -Wall -Wextra)
-
-add_test(NAME logical-routes-test COMMAND logical-routes-test)
-
-add_executable(certificate-reload-test tests/unit/certificate-reload-test.cc)
-target_link_libraries(certificate-reload-test PRIVATE argus::lib::http OpenSSL::Crypto doctest::doctest)
-target_compile_options(certificate-reload-test PRIVATE -Wall -Wextra)
-
-add_test(NAME certificate-reload-test COMMAND certificate-reload-test)
-
-add_executable(tls-health-test tests/unit/tls-health-test.cc)
-target_link_libraries(tls-health-test PRIVATE argus::lib::http OpenSSL::Crypto doctest::doctest)
-target_compile_options(tls-health-test PRIVATE -Wall -Wextra)
-
-add_test(NAME tls-health-test COMMAND tls-health-test)
-
-add_executable(listener-config-test tests/unit/listener-config-test.cc)
-target_link_libraries(listener-config-test PRIVATE argus::lib::http argus::lib::config doctest::doctest)
-target_compile_options(listener-config-test PRIVATE -Wall -Wextra)
-
-add_test(NAME listener-config-test COMMAND listener-config-test)
-
-add_executable(download-url-test tests/unit/download/download-url-test.cc)
-target_link_libraries(download-url-test PRIVATE argus::lib::http-download doctest::doctest)
-target_compile_options(download-url-test PRIVATE -Wall -Wextra)
-
-add_test(NAME download-url-test COMMAND download-url-test)
-
-add_executable(file-download-test
-    tests/unit/download/file-download-test.cc
-    tests/unit/download/fake-transport.cc
-    tests/unit/download/range-server.cc)
-target_link_libraries(file-download-test PRIVATE argus::lib::http-download doctest::doctest)
-target_compile_options(file-download-test PRIVATE -Wall -Wextra)
-
-add_test(NAME file-download-test COMMAND file-download-test)

@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 #include <app/rpc/presence-rpc-service.hxx>
 #include <feature/presence/dtos/response-presence-dto.hxx>

@@ -41,14 +41,14 @@ run_build_all() {
     "$ROOT/scripts/build-all.sh" "$@" > "$CALL_OUT" 2>&1
 }
 
-run_build_all dev --only cert --install-only
+run_build_all dev --only packages --install-only
 grep -q '^conan install ' "$CALL_LOG"
 if grep -Eq '^(cmake|ctest) ' "$CALL_LOG"; then
   echo "--install-only invoked a build or test command" >&2
   exit 1
 fi
 
-run_build_all prod --only cert --no-tests
+run_build_all prod --only packages --no-tests
 test "$(grep -c '^cmake ' "$CALL_LOG")" -eq 2
 if grep -q '^ctest ' "$CALL_LOG"; then
   echo "--no-tests invoked ctest" >&2
@@ -57,35 +57,35 @@ fi
 
 run_build_all dev --only identity --no-tests
 test "$(grep -c '^cmake ' "$CALL_LOG")" -eq 3
-grep -q '^cmake --build build/dev -j 8 --target argus-migrate-identity$' "$CALL_LOG"
+grep -q '^cmake --build build/dev --target argus-migrate-identity -j 8$' "$CALL_LOG"
 
 run_build_all prod --only camera --no-tests
 test "$(grep -c '^cmake ' "$CALL_LOG")" -eq 3
-grep -q '^cmake --build build/prod -j 8 --target argus-migrate-camera argus-vulkan-probe$' "$CALL_LOG"
+grep -q '^cmake --build build/prod --target argus-migrate-camera argus-vulkan-probe -j 8$' "$CALL_LOG"
 
-run_build_all dev --only cert --jobs 3 --no-tests
+run_build_all dev --only packages --jobs 3 --no-tests
 grep -q '^cmake --build build/dev -j 3$' "$CALL_LOG"
 grep -Fq 'build jobs: 3 (--jobs)' "$CALL_OUT"
 
 run_build_all dev --only identity --jobs 3 --no-tests
-grep -q '^cmake --build build/dev -j 3 --target argus-migrate-identity$' "$CALL_LOG"
+grep -q '^cmake --build build/dev --target argus-migrate-identity -j 3$' "$CALL_LOG"
 
-run_build_all dev --only cert --no-tests
+run_build_all dev --only packages --no-tests
 grep -q '^cmake --build build/dev -j 8$' "$CALL_LOG"
 grep -Fq 'build jobs: 8 (CMAKE_BUILD_PARALLEL_LEVEL)' "$CALL_OUT"
 
-if run_build_all dev --only cert --jobs 0 --no-tests; then
+if run_build_all dev --only packages --jobs 0 --no-tests; then
   echo "--jobs 0 was accepted" >&2
   exit 1
 fi
 
-if run_build_all dev --only cert --jobs -1 --no-tests; then
+if run_build_all dev --only packages --jobs -1 --no-tests; then
   echo "--jobs -1 was accepted" >&2
   exit 1
 fi
 
 if PATH="$MOCK_BIN:$PATH" ARGUS_BUILD_ALL_TEST_LOG="$CALL_LOG" CMAKE_BUILD_PARALLEL_LEVEL=eight \
-    "$ROOT/scripts/build-all.sh" dev --only cert --no-tests > "$CALL_OUT" 2>&1; then
+    "$ROOT/scripts/build-all.sh" dev --only packages --no-tests > "$CALL_OUT" 2>&1; then
   echo "an invalid CMAKE_BUILD_PARALLEL_LEVEL was accepted" >&2
   exit 1
 fi
@@ -93,7 +93,7 @@ fi
 : > "$CALL_LOG"
 : > "$CALL_OUT"
 PATH="$MOCK_BIN:$PATH" ARGUS_BUILD_ALL_TEST_LOG="$CALL_LOG" \
-  env -u CMAKE_BUILD_PARALLEL_LEVEL "$ROOT/scripts/build-all.sh" dev --only cert --no-tests \
+  env -u CMAKE_BUILD_PARALLEL_LEVEL "$ROOT/scripts/build-all.sh" dev --only packages --no-tests \
   > "$CALL_OUT" 2>&1
 grep -Eq 'build jobs: [0-9]+ \(memory-derived: MemAvailable [0-9]+ MiB - reserve [0-9]+ MiB, cgroup headroom ([0-9]+ MiB|unlimited), over [0-9]+ MiB per job, [0-9]+ cpus\)' "$CALL_OUT"
 derived_jobs="$(sed -n 's/^.*build jobs: \([0-9][0-9]*\) (memory-derived:.*$/\1/p' "$CALL_OUT")"
@@ -106,7 +106,7 @@ grep -q "^cmake --build build/dev -j $derived_jobs$" "$CALL_LOG"
 
 run_build_all dev --only camera
 test "$(grep -c '^conan install ' "$CALL_LOG")" -eq 1
-grep -Fq "conan install $ROOT --output-folder=$ROOT/build/dev -s build_type=Debug --build=missing -c tools.build:jobs=8" "$CALL_LOG"
+grep -Fq "conan install $ROOT --output-folder=$ROOT/build/dev -s build_type=Release -s &:build_type=Debug --build=missing -c tools.build:jobs=8" "$CALL_LOG"
 test "$(grep -c '^ctest ' "$CALL_LOG")" -eq 1
 grep -Fq "cmake -S . -B build/dev -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$ROOT/build/dev/build/Debug/generators/conan_toolchain.cmake -DCMAKE_PREFIX_PATH=$ROOT/build/dev/build/Debug/generators -DCMAKE_CXX_STANDARD=20 -DCMAKE_EXPORT_COMPILE_COMMANDS=ON" "$CALL_LOG"
 if grep -q -- '--preset' "$CALL_LOG"; then
@@ -119,12 +119,12 @@ if grep -q -- '-g0' "$CALL_LOG"; then
 fi
 
 run_build_all ci --only camera --no-tests
-grep -Fq "conan install $ROOT --output-folder=$ROOT/build/ci -s build_type=Debug --build=missing -c tools.build:jobs=8 -c tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_FLAGS_DEBUG\": \"-O0 -g0\", \"CMAKE_CXX_FLAGS_DEBUG\": \"-O0 -g0\"} -c tools.build:cflags=[\"-g0\"] -c tools.build:cxxflags=[\"-g0\"]" "$CALL_LOG"
+grep -Fq "conan install $ROOT --output-folder=$ROOT/build/ci -s build_type=Debug -s &:build_type=Debug --build=missing -c tools.build:jobs=8 -c tools.cmake.cmaketoolchain:extra_variables={\"CMAKE_C_FLAGS_DEBUG\": \"-O0 -g0\", \"CMAKE_CXX_FLAGS_DEBUG\": \"-O0 -g0\"} -c tools.build:cflags=[\"-g0\"] -c tools.build:cxxflags=[\"-g0\"]" "$CALL_LOG"
 grep -Fq "cmake -S . -B build/ci -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_TOOLCHAIN_FILE=$ROOT/build/ci/build/Debug/generators/conan_toolchain.cmake" "$CALL_LOG"
 grep -Fq -- "-DCMAKE_C_FLAGS_DEBUG=-O0 -g0 -DCMAKE_CXX_FLAGS_DEBUG=-O0 -g0" "$CALL_LOG"
-grep -q '^cmake --build build/ci -j 8 --target argus-migrate-camera argus-vulkan-probe$' "$CALL_LOG"
+grep -q '^cmake --build build/ci --target argus-migrate-camera argus-vulkan-probe -j 8$' "$CALL_LOG"
 
-run_build_all prod --only cert --no-tests
+run_build_all prod --only packages --no-tests
 if grep -q -- '-g0' "$CALL_LOG"; then
   echo "the prod profile carries the ci flags" >&2
   exit 1
@@ -145,14 +145,14 @@ conan_home_seen() {
   grep '^conan CONAN_HOME=' "$ENV_LOG" | sed 's/^conan CONAN_HOME=//' | sort -u
 }
 
-run_without_conan_home "$ROOT/scripts/build-all.sh" dev --only cert --install-only
+run_without_conan_home "$ROOT/scripts/build-all.sh" dev --only packages --install-only
 [ "$(conan_home_seen)" = "<unset>" ] || { echo "the dev profile set a Conan home" >&2; exit 1; }
 if grep -q '^conan profile ' "$CALL_LOG"; then
   echo "the dev profile ran conan profile" >&2
   exit 1
 fi
 
-run_without_conan_home "$ROOT/scripts/build-all.sh" ci --only cert --install-only
+run_without_conan_home "$ROOT/scripts/build-all.sh" ci --only packages --install-only
 [ "$(conan_home_seen)" = "$CI_USER_HOME/.conan2-ci" ] \
   || { echo "the ci profile did not take \$HOME/.conan2-ci as its Conan home" >&2; exit 1; }
 grep -q '^conan profile detect$' "$CALL_LOG" \
@@ -162,16 +162,16 @@ grep -q '^conan profile detect$' "$CALL_LOG" \
 
 mkdir -p "$CI_USER_HOME/.conan2-ci/profiles"
 : > "$CI_USER_HOME/.conan2-ci/profiles/default"
-run_without_conan_home "$ROOT/scripts/build-all.sh" ci --only cert --install-only
+run_without_conan_home "$ROOT/scripts/build-all.sh" ci --only packages --install-only
 if grep -q '^conan profile ' "$CALL_LOG"; then
   echo "the ci profile detected over a profile its Conan home already has" >&2
   exit 1
 fi
 
-run_without_conan_home env CONAN_HOME_CI="$TEST_TMP/ci-cache" "$ROOT/scripts/build-all.sh" ci --only cert --install-only
+run_without_conan_home env CONAN_HOME_CI="$TEST_TMP/ci-cache" "$ROOT/scripts/build-all.sh" ci --only packages --install-only
 [ "$(conan_home_seen)" = "$TEST_TMP/ci-cache" ] || { echo "the ci profile ignored CONAN_HOME_CI" >&2; exit 1; }
 
-run_without_conan_home env CONAN_HOME="$TEST_TMP/own-home" "$ROOT/scripts/build-all.sh" ci --only cert --install-only
+run_without_conan_home env CONAN_HOME="$TEST_TMP/own-home" "$ROOT/scripts/build-all.sh" ci --only packages --install-only
 [ "$(conan_home_seen)" = "$TEST_TMP/own-home" ] \
   || { echo "the ci profile replaced a CONAN_HOME the caller set" >&2; exit 1; }
 
@@ -351,7 +351,7 @@ printf 'argus_lib(NAME y\n    DEPENDS\n        Drogon::Drogon)\n' \
   > "$NOGIT/packages/lib/y/CMakeLists.txt"
 : > "$CALL_LOG"
 if ! out="$(PATH="$MOCK_BIN:$PATH" ARGUS_BUILD_ALL_TEST_LOG="$CALL_LOG" \
-    "$NOGIT/scripts/build-all.sh" dev --only cert --install-only 2>&1)"; then
+    "$NOGIT/scripts/build-all.sh" dev --only packages --install-only 2>&1)"; then
   echo "build-all failed outside a git work tree, where an image builds:" >&2
   printf '%s\n' "$out" >&2
   exit 1

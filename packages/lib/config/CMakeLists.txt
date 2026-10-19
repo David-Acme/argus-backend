@@ -34,26 +34,28 @@ endforeach()
 
 target_compile_options(argus_lib_config PRIVATE -Wall -Wextra)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(config-service-test tests/unit/config-service-test.cc)
-target_link_libraries(config-service-test PRIVATE
-    argus::lib::config
-    doctest::doctest)
-target_compile_options(config-service-test PRIVATE -Wall -Wextra)
-add_test(NAME config-service-test COMMAND config-service-test)
+    add_executable(config-service-test tests/unit/config-service-test.cc)
+    target_link_libraries(config-service-test PRIVATE
+        argus::lib::config
+        argus::lib::doctest-main)
+    target_compile_options(config-service-test PRIVATE -Wall -Wextra)
+    add_test(NAME config-service-test COMMAND config-service-test)
 
-add_executable(settings-registry-test tests/unit/settings-registry-test.cc)
-target_link_libraries(settings-registry-test PRIVATE
-    argus::lib::config
-    doctest::doctest)
-target_compile_options(settings-registry-test PRIVATE -Wall -Wextra)
-add_test(NAME settings-registry-test COMMAND settings-registry-test)
+    add_executable(settings-registry-test tests/unit/settings-registry-test.cc)
+    target_link_libraries(settings-registry-test PRIVATE
+        argus::lib::config
+        argus::lib::doctest-main)
+    target_compile_options(settings-registry-test PRIVATE -Wall -Wextra)
+    add_test(NAME settings-registry-test COMMAND settings-registry-test)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

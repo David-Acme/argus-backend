@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <algorithm>
 #include <app/rpc/identity-callers.hxx>
 #include <app/rpc/identity-voiceprint-rpc-service.hxx>

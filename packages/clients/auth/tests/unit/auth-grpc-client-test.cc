@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <argus/auth/v1/auth.grpc.pb.h>
 #include <auth/auth-client.hxx>
 #include <doctest/doctest.h>

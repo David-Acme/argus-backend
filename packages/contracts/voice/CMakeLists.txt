@@ -7,20 +7,22 @@ argus_contracts(NAME voice
     SOURCES
         src/voice/voice-lang.hxx)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(voice-contract-vocabulary-test
-    tests/unit/voice-contract-vocabulary-test.cc)
-target_link_libraries(voice-contract-vocabulary-test PRIVATE
-    argus::contracts::voice doctest::doctest)
-target_compile_options(voice-contract-vocabulary-test PRIVATE -Wall -Wextra)
-add_test(NAME voice-contract-vocabulary-test
-         COMMAND voice-contract-vocabulary-test)
+    add_executable(voice-contract-vocabulary-test
+        tests/unit/voice-contract-vocabulary-test.cc)
+    target_link_libraries(voice-contract-vocabulary-test PRIVATE
+        argus::contracts::voice argus::lib::doctest-main)
+    target_compile_options(voice-contract-vocabulary-test PRIVATE -Wall -Wextra)
+    add_test(NAME voice-contract-vocabulary-test
+             COMMAND voice-contract-vocabulary-test)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

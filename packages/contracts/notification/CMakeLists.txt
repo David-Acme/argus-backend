@@ -16,30 +16,32 @@ argus_contracts(NAME notification
     DEPENDS
         argus::lib::errors)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(notification-contract-vocabulary-test
-    tests/unit/notification-contract-vocabulary-test.cc)
-target_link_libraries(notification-contract-vocabulary-test PRIVATE
-    argus::contracts::notification doctest::doctest)
-target_compile_options(notification-contract-vocabulary-test PRIVATE
-    -Wall -Wextra)
-add_test(NAME notification-contract-vocabulary-test
-         COMMAND notification-contract-vocabulary-test)
+    add_executable(notification-contract-vocabulary-test
+        tests/unit/notification-contract-vocabulary-test.cc)
+    target_link_libraries(notification-contract-vocabulary-test PRIVATE
+        argus::contracts::notification argus::lib::doctest-main)
+    target_compile_options(notification-contract-vocabulary-test PRIVATE
+        -Wall -Wextra)
+    add_test(NAME notification-contract-vocabulary-test
+             COMMAND notification-contract-vocabulary-test)
 
-add_executable(notification-contract-catalog-test
-    tests/unit/notification-contract-catalog-test.cc)
-target_link_libraries(notification-contract-catalog-test PRIVATE
-    argus::contracts::notification doctest::doctest)
-target_compile_options(notification-contract-catalog-test PRIVATE
-    -Wall -Wextra)
-add_test(NAME notification-contract-catalog-test
-         COMMAND notification-contract-catalog-test)
+    add_executable(notification-contract-catalog-test
+        tests/unit/notification-contract-catalog-test.cc)
+    target_link_libraries(notification-contract-catalog-test PRIVATE
+        argus::contracts::notification argus::lib::doctest-main)
+    target_compile_options(notification-contract-catalog-test PRIVATE
+        -Wall -Wextra)
+    add_test(NAME notification-contract-catalog-test
+             COMMAND notification-contract-catalog-test)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

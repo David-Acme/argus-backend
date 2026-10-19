@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <argus/productivity/v1/reminder.grpc.pb.h>
 #include <doctest/doctest.h>
 

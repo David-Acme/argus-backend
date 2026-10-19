@@ -30,7 +30,8 @@ the legacy's RAM/VRAM with zero functional risk. It mirrors the argus-tts
   Conan's llama-cpp recipe ships CPU-only with no mtmd and a projector that
   rejects LFM2.5-VL mmproj files). The standalone project links the exact
   vendored targets (`llama` and `mtmd`, named in the feature module's
-  `DEPENDS`) with the pinned cache variables.
+  `DEPENDS`), imported from the once-per-machine build that
+  `argus_vendored_llama()` shares with `services/llm`.
 - **The internal wire (Ruling BP)**:
   - `POST /vlm/v1/describe` — JSON body `{image_b64, prompt?, camera_id?}`.
     `image_b64` is a base64 JPEG: the in-process API takes a `cv::Mat`, so

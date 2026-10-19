@@ -15,19 +15,21 @@ if(NOT TARGET argus::clients::camera-actions)
       INCLUDES src)
 endif()
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(camera-action-client-test tests/unit/camera-action-client-test.cc)
+    add_executable(camera-action-client-test tests/unit/camera-action-client-test.cc)
 
-set_target_properties(camera-action-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(camera-action-client-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(camera-action-client-test PRIVATE argus::clients::camera-actions
-    argus::lib::grpc-test-support argus_client_grpc_base doctest::doctest)
+    target_link_libraries(camera-action-client-test PRIVATE argus::clients::camera-actions
+        argus::lib::grpc-test-support argus_client_grpc_base argus::lib::doctest-main)
 
-target_compile_options(camera-action-client-test PRIVATE -Wall -Wextra)
+    target_compile_options(camera-action-client-test PRIVATE -Wall -Wextra)
 
-add_test(NAME camera-action-client-test
-         COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
-                 $<TARGET_FILE:camera-action-client-test> 4)
-set_tests_properties(camera-action-client-test PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME camera-action-client-test
+             COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../../scripts/internal-tls-test.sh
+                     $<TARGET_FILE:camera-action-client-test> 4)
+    set_tests_properties(camera-action-client-test PROPERTIES SKIP_RETURN_CODE 77)
+endif()

@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <argus/identity/v1/sync.grpc.pb.h>
 #include <doctest/doctest.h>
 

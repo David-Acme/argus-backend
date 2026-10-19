@@ -28,19 +28,21 @@ argus_lib(NAME mcp
 
 target_compile_options(argus_lib_mcp PRIVATE -Wall -Wextra)
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
+
+    foreach(test_name json-rpc-test schema-test tool-test speech-test confirmation-test loop-tool-test mcp-server-test mcp-client-test)
+        add_executable(${test_name} tests/unit/${test_name}.cc)
+        target_link_libraries(${test_name} PRIVATE argus::lib::mcp argus::lib::doctest-main)
+        target_compile_options(${test_name} PRIVATE -Wall -Wextra)
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    endforeach()
 endif()
-
-foreach(test_name json-rpc-test schema-test tool-test speech-test confirmation-test loop-tool-test mcp-server-test mcp-client-test)
-    add_executable(${test_name} tests/unit/${test_name}.cc)
-    target_link_libraries(${test_name} PRIVATE argus::lib::mcp doctest::doctest)
-    target_compile_options(${test_name} PRIVATE -Wall -Wextra)
-    add_test(NAME ${test_name} COMMAND ${test_name})
-endforeach()

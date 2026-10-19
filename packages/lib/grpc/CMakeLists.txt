@@ -34,76 +34,78 @@ if(NOT TARGET argus::lib::grpc-test-support)
       DEPENDS argus::lib::grpc-health)
 endif()
 
-enable_testing()
-find_package(doctest REQUIRED)
+if(ARGUS_PACKAGE_TESTS)
+    enable_testing()
+    find_package(doctest REQUIRED)
 
-add_executable(grpc-server-identity-test tests/unit/grpc-server-identity-test.cc)
+    add_executable(grpc-server-identity-test tests/unit/grpc-server-identity-test.cc)
 
-set_target_properties(grpc-server-identity-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(grpc-server-identity-test PROPERTIES
+        EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(grpc-server-identity-test PRIVATE
-    argus_client_grpc_base
-    doctest::doctest)
-target_compile_options(grpc-server-identity-test PRIVATE -Wall -Wextra)
-add_test(NAME grpc-server-identity-test COMMAND grpc-server-identity-test)
+    target_link_libraries(grpc-server-identity-test PRIVATE
+        argus_client_grpc_base
+        argus::lib::doctest-main)
+    target_compile_options(grpc-server-identity-test PRIVATE -Wall -Wextra)
+    add_test(NAME grpc-server-identity-test COMMAND grpc-server-identity-test)
 
-add_executable(fleet-caller-gate-test tests/unit/fleet-caller-gate-test.cc)
+    add_executable(fleet-caller-gate-test tests/unit/fleet-caller-gate-test.cc)
 
-set_target_properties(fleet-caller-gate-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(fleet-caller-gate-test PROPERTIES
+        EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(fleet-caller-gate-test PRIVATE
-    argus_client_grpc_base
-    doctest::doctest)
-target_compile_options(fleet-caller-gate-test PRIVATE -Wall -Wextra)
-add_test(NAME fleet-caller-gate-test COMMAND fleet-caller-gate-test)
+    target_link_libraries(fleet-caller-gate-test PRIVATE
+        argus_client_grpc_base
+        argus::lib::doctest-main)
+    target_compile_options(fleet-caller-gate-test PRIVATE -Wall -Wextra)
+    add_test(NAME fleet-caller-gate-test COMMAND fleet-caller-gate-test)
 
-add_executable(grpc-server-drain-test tests/unit/grpc-server-drain-test.cc)
+    add_executable(grpc-server-drain-test tests/unit/grpc-server-drain-test.cc)
 
-set_target_properties(grpc-server-drain-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(grpc-server-drain-test PROPERTIES
+        EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(grpc-server-drain-test PRIVATE
-    argus::lib::grpc-health
-    doctest::doctest)
-target_compile_options(grpc-server-drain-test PRIVATE -Wall -Wextra)
-add_test(NAME grpc-server-drain-test COMMAND grpc-server-drain-test)
+    target_link_libraries(grpc-server-drain-test PRIVATE
+        argus::lib::grpc-health
+        argus::lib::doctest-main)
+    target_compile_options(grpc-server-drain-test PRIVATE -Wall -Wextra)
+    add_test(NAME grpc-server-drain-test COMMAND grpc-server-drain-test)
 
-get_filename_component(ARGUS_GRPC_REPO_ROOT
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
-add_executable(internal-tls-test tests/unit/internal-tls-test.cc)
+    get_filename_component(ARGUS_GRPC_REPO_ROOT
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+    add_executable(internal-tls-test tests/unit/internal-tls-test.cc)
 
-set_target_properties(internal-tls-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(internal-tls-test PROPERTIES
+        EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(internal-tls-test PRIVATE
-    argus::lib::grpc-health
-    doctest::doctest)
-target_compile_options(internal-tls-test PRIVATE -Wall -Wextra)
-add_test(NAME internal-tls-test
-         COMMAND bash ${ARGUS_GRPC_REPO_ROOT}/scripts/internal-tls-test.sh
-                 $<TARGET_FILE:internal-tls-test>)
-set_tests_properties(internal-tls-test PROPERTIES SKIP_RETURN_CODE 77)
+    target_link_libraries(internal-tls-test PRIVATE
+        argus::lib::grpc-health
+        argus::lib::doctest-main)
+    target_compile_options(internal-tls-test PRIVATE -Wall -Wextra)
+    add_test(NAME internal-tls-test
+             COMMAND bash ${ARGUS_GRPC_REPO_ROOT}/scripts/internal-tls-test.sh
+                     $<TARGET_FILE:internal-tls-test>)
+    set_tests_properties(internal-tls-test PROPERTIES SKIP_RETURN_CODE 77)
 
-add_executable(mutual-tls-endpoint-test tests/unit/mutual-tls-endpoint-test.cc)
+    add_executable(mutual-tls-endpoint-test tests/unit/mutual-tls-endpoint-test.cc)
 
-set_target_properties(mutual-tls-endpoint-test PROPERTIES
-    EXCLUDE_FROM_ALL FALSE)
+    set_target_properties(mutual-tls-endpoint-test PROPERTIES
+        EXCLUDE_FROM_ALL FALSE)
 
-target_link_libraries(mutual-tls-endpoint-test PRIVATE
-    argus_client_grpc_base
-    argus::lib::grpc-test-support
-    doctest::doctest)
-target_compile_options(mutual-tls-endpoint-test PRIVATE -Wall -Wextra)
-add_test(NAME mutual-tls-endpoint-test
-         COMMAND bash ${ARGUS_GRPC_REPO_ROOT}/scripts/internal-tls-test.sh
-                 $<TARGET_FILE:mutual-tls-endpoint-test> 2)
-set_tests_properties(mutual-tls-endpoint-test PROPERTIES SKIP_RETURN_CODE 77)
+    target_link_libraries(mutual-tls-endpoint-test PRIVATE
+        argus_client_grpc_base
+        argus::lib::grpc-test-support
+        argus::lib::doctest-main)
+    target_compile_options(mutual-tls-endpoint-test PRIVATE -Wall -Wextra)
+    add_test(NAME mutual-tls-endpoint-test
+             COMMAND bash ${ARGUS_GRPC_REPO_ROOT}/scripts/internal-tls-test.sh
+                     $<TARGET_FILE:mutual-tls-endpoint-test> 2)
+    set_tests_properties(mutual-tls-endpoint-test PROPERTIES SKIP_RETURN_CODE 77)
 
-get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
-                    INTERFACE_INCLUDE_DIRECTORIES)
-if(DOCTEST_INCLUDE_DIRS)
-    set_target_properties(doctest::doctest PROPERTIES
-        INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
+                        INTERFACE_INCLUDE_DIRECTORIES)
+    if(DOCTEST_INCLUDE_DIRS)
+        set_target_properties(doctest::doctest PROPERTIES
+            INTERFACE_SYSTEM_INCLUDE_DIRECTORIES "${DOCTEST_INCLUDE_DIRS}")
+    endif()
 endif()

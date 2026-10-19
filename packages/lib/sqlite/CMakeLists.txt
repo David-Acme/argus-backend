@@ -60,30 +60,32 @@ target_compile_options(argus_lib_sqlite PRIVATE -Wall -Wextra)
 
 find_package(doctest REQUIRED)
 
-add_executable(identity-client-test tests/unit/identity-client-test.cc)
-target_link_libraries(identity-client-test PRIVATE
-    argus::lib::sqlite
-    argus::lib::config
-    argus::lib::test-support
-    Drogon::Drogon
-    sqlite-vec
-    doctest::doctest)
-target_compile_options(identity-client-test PRIVATE -Wall -Wextra)
-add_test(NAME identity-client-test COMMAND identity-client-test)
+if(ARGUS_PACKAGE_TESTS)
+    add_executable(identity-client-test tests/unit/identity-client-test.cc)
+    target_link_libraries(identity-client-test PRIVATE
+        argus::lib::sqlite
+        argus::lib::config
+        argus::lib::test-support
+        Drogon::Drogon
+        sqlite-vec
+        argus::lib::doctest-main)
+    target_compile_options(identity-client-test PRIVATE -Wall -Wextra)
+    add_test(NAME identity-client-test COMMAND identity-client-test)
 
-add_executable(commit-observer-test tests/unit/commit-observer-test.cc)
-target_link_libraries(commit-observer-test PRIVATE
-    argus::lib::sqlite
-    doctest::doctest)
-target_compile_options(commit-observer-test PRIVATE -Wall -Wextra)
-add_test(NAME commit-observer-test COMMAND commit-observer-test)
+    add_executable(commit-observer-test tests/unit/commit-observer-test.cc)
+    target_link_libraries(commit-observer-test PRIVATE
+        argus::lib::sqlite
+        argus::lib::doctest-main)
+    target_compile_options(commit-observer-test PRIVATE -Wall -Wextra)
+    add_test(NAME commit-observer-test COMMAND commit-observer-test)
 
-add_executable(vec-db-test tests/unit/vec-db-test.cc)
-target_link_libraries(vec-db-test PRIVATE
-    argus::lib::sqlite
-    argus::lib::config
-    Drogon::Drogon
-    sqlite-vec
-    doctest::doctest)
-target_compile_options(vec-db-test PRIVATE -Wall -Wextra)
-add_test(NAME vec-db-test COMMAND vec-db-test)
+    add_executable(vec-db-test tests/unit/vec-db-test.cc)
+    target_link_libraries(vec-db-test PRIVATE
+        argus::lib::sqlite
+        argus::lib::config
+        Drogon::Drogon
+        sqlite-vec
+        argus::lib::doctest-main)
+    target_compile_options(vec-db-test PRIVATE -Wall -Wextra)
+    add_test(NAME vec-db-test COMMAND vec-db-test)
+endif()

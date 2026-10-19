@@ -181,7 +181,7 @@ foreach(TEST_NAME IN ITEMS notification-schema-test notification-migration-test)
     argus::lib::validation
     argus::lib::http
     notification-migration
-    doctest::doctest)
+    argus::lib::doctest-main)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
@@ -195,7 +195,7 @@ set_target_properties(notification-controller-test PROPERTIES
 target_link_libraries(notification-controller-test PRIVATE
     argus::notification-shared
     argus::notification-feature
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(notification-controller-test PRIVATE -Wall -Wextra)
 
@@ -215,7 +215,7 @@ target_compile_definitions(notification-rpc-test PRIVATE
 target_link_libraries(notification-rpc-test PRIVATE
     argus::notification-shared
     argus::notification-rpc
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(notification-rpc-test PRIVATE -Wall -Wextra)
 
@@ -234,7 +234,7 @@ target_compile_definitions(notification-no-nats-test PRIVATE
 target_link_libraries(notification-no-nats-test PRIVATE
     argus::notification-shared
     argus::notification-rpc
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(notification-no-nats-test PRIVATE -Wall -Wextra)
 
@@ -249,7 +249,7 @@ set_target_properties(notification-delivery-test PROPERTIES
 target_link_libraries(notification-delivery-test PRIVATE
     argus::notification-shared
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(notification-delivery-test PRIVATE -Wall -Wextra)
 
@@ -264,7 +264,7 @@ set_target_properties(notification-change-outbox-sink-test PROPERTIES
 target_link_libraries(notification-change-outbox-sink-test PRIVATE
     argus::notification-change-sink
     argus::lib::nats
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_definitions(notification-change-outbox-sink-test PRIVATE
     ARGUS_NOTIFICATION_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
@@ -288,7 +288,7 @@ target_link_libraries(notification-change-transaction-test PRIVATE
     argus::notification-shared
     argus::lib::nats
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(notification-change-transaction-test
                        PRIVATE -Wall -Wextra)
@@ -305,7 +305,7 @@ set_target_properties(notification-ack-test PROPERTIES
 target_link_libraries(notification-ack-test PRIVATE
     argus::notification-shared
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(notification-ack-test PRIVATE -Wall -Wextra)
 
@@ -328,7 +328,7 @@ target_link_libraries(notification-delivery-live-test PRIVATE
     argus::notification-shared
     argus::lib::nats
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(notification-delivery-live-test PRIVATE -Wall -Wextra)
 
@@ -341,7 +341,7 @@ set_target_properties(call-push-routing-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(call-push-routing-test PRIVATE
     argus::notification-call
     argus::contracts::push
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(call-push-routing-test PRIVATE -Wall -Wextra)
 
@@ -355,7 +355,7 @@ target_link_libraries(push-sealer-test PRIVATE
     argus::notification-call
     argus::contracts::push
     argus::lib::text
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_definitions(push-sealer-test PRIVATE
     ARGUS_PUSH_SEALED_VECTOR_FILE="${CMAKE_CURRENT_SOURCE_DIR}/../tunnel/tests/vectors/push-sealed.json")
@@ -372,7 +372,7 @@ target_link_libraries(call-push-delivery-test PRIVATE
     argus::notification-push-delivery
     argus::contracts::push
     argus::lib::text
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(call-push-delivery-test PRIVATE -Wall -Wextra)
 
@@ -382,7 +382,7 @@ set_target_properties(push-alert-intent-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 target_link_libraries(push-alert-intent-test PRIVATE
     argus::notification-push-delivery
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(push-alert-intent-test PRIVATE -Wall -Wextra)
 
@@ -398,7 +398,7 @@ target_link_libraries(push-alert-writer-test PRIVATE
     argus::notification-push-delivery
     argus::contracts::push
     argus::lib::text
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(push-alert-writer-test PRIVATE -Wall -Wextra)
 
@@ -415,7 +415,7 @@ target_link_libraries(notification-boot-probe-test PRIVATE
     argus::lib::test-support
     argus::notification-shared
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(notification-boot-probe-test PRIVATE -Wall -Wextra)
 
@@ -436,7 +436,7 @@ target_link_libraries(notification-push-outbox-test PRIVATE
     argus::notification-push-delivery
     argus::lib::nats
     argus::lib::sqlite
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(notification-push-outbox-test PRIVATE -Wall -Wextra)
 
@@ -448,7 +448,7 @@ set_target_properties(register-notification-token-dto-test PROPERTIES EXCLUDE_FR
 
 target_link_libraries(register-notification-token-dto-test PRIVATE
     argus::notification-feature
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(register-notification-token-dto-test PRIVATE -Wall -Wextra)
 
@@ -473,7 +473,7 @@ target_link_libraries(camera-notifier-test PRIVATE
     argus::lib::config
     argus::lib::sqlite
     argus::lib::text
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(camera-notifier-test PRIVATE -Wall -Wextra)
 
@@ -498,7 +498,7 @@ target_link_libraries(notification-module-request-test PRIVATE
     argus::lib::config
     argus::lib::sqlite
     argus::lib::text
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(notification-module-request-test PRIVATE -Wall -Wextra)
 
@@ -516,7 +516,7 @@ target_link_libraries(notification-settings-test PRIVATE
     argus::notification-rpc
     argus::notification-camera-notification
     argus::contracts::settings-wire
-    doctest::doctest)
+    argus::lib::doctest-main)
 
 target_compile_options(notification-settings-test PRIVATE -Wall -Wextra)
 
@@ -531,7 +531,7 @@ foreach(TEST_NAME IN ITEMS call-policy-test call-copy-test call-engine-test call
         argus::notification-call
         argus::lib::sqlite
         argus::lib::test-support
-        doctest::doctest)
+        argus::lib::doctest-main)
     target_compile_options(${TEST_NAME} PRIVATE -Wall -Wextra)
     add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 endforeach()
@@ -548,7 +548,7 @@ set_target_properties(notification-rpc-server-test PROPERTIES EXCLUDE_FROM_ALL F
 target_link_libraries(notification-rpc-server-test PRIVATE
     argus::notification-rpc
     argus::lib::grpc-test-support
-    doctest::doctest)
+    argus::lib::doctest-main)
 target_compile_options(notification-rpc-server-test PRIVATE -Wall -Wextra)
 add_test(NAME notification-rpc-server-test
          COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/../../scripts/internal-tls-test.sh

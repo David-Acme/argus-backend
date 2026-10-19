@@ -1,4 +1,3 @@
-#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <atomic>
 #include <camera/camera-action-client.hxx>
 #include <condition_variable>
