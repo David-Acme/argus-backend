@@ -967,7 +967,7 @@ name a first-party `argus::` alias by hand inside the dependency list of one of
 the group helpers: thirteen of the fifteen contracts (all but `routes` and
 `voice`, which name only their own test target; the `response`, `settings`,
 `stt`, `tts`, `llm`, `vlm` and `mcp` wire modules among the thirteen), eight of the
-fourteen clients (`llm`, `mcp`, `settings`, `stt`, `sync`, `tts`, `vlm`, `voice`)
+sixteen clients (`llm`, `mcp`, `settings`, `stt`, `sync`, `tts`, `vlm`, `voice`)
 and seven of the eighteen libs
 (`auth`, `http`, `mdns`, `nats`, `outbox`, `storage`, `validation`). Every package is in
 a group since Phase 4 step 7: `packages/memory` and `packages/intent` were the
@@ -981,8 +981,8 @@ The three groups sit where they belong — `packages/lib/<name>`,
 `packages/contracts/<domain>`, `packages/clients/<domain>`, each declared by
 its group's helper: `argus_lib_<name>` / `argus::lib::<name>`,
 `argus_contracts_<domain>` / `argus::contracts::<domain>`,
-`argus_clients_<domain>` / `argus::clients::<domain>`. Every one of the fourteen
-clients wraps a generated gRPC stub — eight of them pass `PROTO` to
+`argus_clients_<domain>` / `argus::clients::<domain>`. Every one of the sixteen
+clients wraps a generated gRPC stub — ten of them pass `PROTO` to
 `argus_clients`, the four wire clients (`llm`, `stt`, `tts`, `vlm`)
 speak HTTP beside the stub and reach it through a wire contract module
 (`argus::contracts::{llm,stt,tts,vlm}-wire`) instead of passing `PROTO`
@@ -1181,7 +1181,7 @@ their post-move spellings.
 | File | Purpose |
 |------|---------|
 | `packages/contracts/mcp/src/mcp/` | `argus.mcp.v1.Mcp/Rpc` (`McpRpcService`): one unary frame in, one out, on a provider's internal gRPC listener, admitted for the caller `llm` alone and never built open |
-| `packages/clients/<domain>/src/<domain>/` (all fourteen now hold a single `src/<domain>/`; `camera-actions` shares `camera`'s domain folder) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`auth`, `camera`, `identity`, `notification`, `productivity`, `settings`, `sync`, `voice`, `camera-actions` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::clients::<domain>` (rule 25, rule 27) |
+| `packages/clients/<domain>/src/<domain>/` (all sixteen now hold a single `src/<domain>/`; `camera-actions` and `camera-watch` share `camera`'s domain folder) | The SDK for one service: the only place its stub, URL, envelope parse, retry and auth pass-through exist (`auth`, `camera`, `guard`, `identity`, `notification`, `productivity`, `settings`, `sync`, `voice`, `camera-actions`, `camera-watch` + the `llm`/`stt`/`tts`/`vlm` wire clients). Callers link `argus::clients::<domain>` (rule 25, rule 27) |
 
 **Tier 4 — `lib/auth`**
 

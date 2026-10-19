@@ -35,6 +35,16 @@ std::optional<std::vector<int16_t>> TalkUplink::next()
   return packet;
 }
 
+std::optional<std::vector<int16_t>> TalkUplink::flush()
+{
+  if (queue_.empty())
+    return std::nullopt;
+  std::vector<int16_t> packet(queue_.begin(), queue_.end());
+  queue_.clear();
+  packet.resize(std::max(packet.size(), packetSamples_), 0);
+  return packet;
+}
+
 int TalkUplink::queuedMs() const
 {
   return static_cast<int>(queue_.size() * 1000 / kLineRate);

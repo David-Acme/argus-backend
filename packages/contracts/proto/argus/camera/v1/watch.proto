@@ -1,0 +1,103 @@
+syntax = "proto3";
+
+package argus.camera.v1;
+
+option cc_enable_arenas = true;
+
+enum WatchRefusal
+{
+  WATCH_REFUSAL_NONE = 0;
+  WATCH_REFUSAL_AUDIO_WITHHELD = 1;
+  WATCH_REFUSAL_WATCHMAN_OFF = 2;
+  WATCH_REFUSAL_CAMERA_OFF = 3;
+  WATCH_REFUSAL_NO_AUDIO = 4;
+  WATCH_REFUSAL_MASKED = 5;
+  WATCH_REFUSAL_DISABLED = 6;
+  WATCH_REFUSAL_MODULE_OFF = 7;
+  WATCH_REFUSAL_UNKNOWN_CAMERA = 8;
+  WATCH_REFUSAL_NO_TALK = 9;
+  WATCH_REFUSAL_SHUTTING_DOWN = 10;
+  WATCH_REFUSAL_CAPACITY = 11;
+}
+
+message WatchCamera
+{
+  int64 camera_id = 1;
+  string name = 2;
+  bool listening = 3;
+  WatchRefusal refusal = 4;
+  bool talk = 5;
+  bool pan_tilt = 6;
+}
+
+message ListWatchRequest
+{
+}
+
+message ListWatchResponse
+{
+  repeated WatchCamera cameras = 1;
+}
+
+message MicrophoneRequest
+{
+  int64 camera_id = 1;
+}
+
+message MicrophoneFrame
+{
+  bytes pcm = 1;
+  uint64 sequence = 2;
+  int64 captured_at_ms = 3;
+  bool gap = 4;
+}
+
+message SpeakOpen
+{
+  int64 camera_id = 1;
+  int32 sample_rate = 2;
+  bool earcon = 3;
+  string conversation_id = 4;
+}
+
+message SpeakEnd
+{
+}
+
+message SpeakFrame
+{
+  oneof body
+  {
+    SpeakOpen open = 1;
+    bytes pcm = 2;
+    SpeakEnd end = 3;
+  }
+}
+
+enum SpeakState
+{
+  SPEAK_STATE_UNSPECIFIED = 0;
+  SPEAK_STATE_READY = 1;
+  SPEAK_STATE_PLAYING = 2;
+  SPEAK_STATE_DONE = 3;
+  SPEAK_STATE_BUSY = 4;
+  SPEAK_STATE_REFUSED = 5;
+  SPEAK_STATE_LINE_LOST = 6;
+}
+
+message SpeakEvent
+{
+  SpeakState state = 1;
+  int64 played_ms = 2;
+  int64 queued_ms = 3;
+  int64 playback_end_ms = 4;
+  WatchRefusal refusal = 5;
+  string detail = 6;
+}
+
+service CameraWatchService
+{
+  rpc ListWatch(ListWatchRequest) returns (ListWatchResponse) {}
+  rpc OpenMicrophone(MicrophoneRequest) returns (stream MicrophoneFrame) {}
+  rpc Speak(stream SpeakFrame) returns (stream SpeakEvent) {}
+}

@@ -70,6 +70,37 @@ CameraPtzConfig CameraConfig::resolvePtz()
   return config;
 }
 
+CameraWatchConfig CameraConfig::resolveWatch()
+{
+  CameraWatchConfig config;
+  const auto positive = [](const std::string& key, int64_t fallback) {
+    const int64_t value = ConfigService::getInt(key);
+    return value > 0 ? value : fallback;
+  };
+  const auto nonNegative = [](const std::string& key, int64_t fallback) {
+    if (!ConfigService::hasKey(key))
+      return fallback;
+    const int64_t value = ConfigService::getInt(key);
+    return value >= 0 ? value : fallback;
+  };
+  config.micFrameMs = std::clamp<int64_t>(positive("watch.mic_frame_ms", config.micFrameMs), 10, 200);
+  config.micReconnectMs = positive("watch.mic_reconnect_ms", config.micReconnectMs);
+  config.micReconnectMaxMs =
+      std::max(config.micReconnectMs, positive("watch.mic_reconnect_max_ms", config.micReconnectMaxMs));
+  config.micLingerMs = nonNegative("watch.mic_linger_ms", config.micLingerMs);
+  config.gateRecheckMs = positive("watch.gate_recheck_ms", config.gateRecheckMs);
+  config.micQueueFrames = positive("watch.mic_queue_frames", config.micQueueFrames);
+  config.earconMs = nonNegative("watch.earcon_ms", config.earconMs);
+  config.leadSilenceMs = nonNegative("watch.lead_silence_ms", config.leadSilenceMs);
+  config.tailPadMs = nonNegative("watch.tail_pad_ms", config.tailPadMs);
+  config.speakQueueMs = positive("watch.speak_queue_ms", config.speakQueueMs);
+  config.speakIdleMs = positive("watch.speak_idle_ms", config.speakIdleMs);
+  config.packetMs = positive("watch.packet_ms", config.packetMs);
+  config.maxListeners = positive("watch.max_listeners", config.maxListeners);
+  config.boardRefreshMs = positive("watch.board_refresh_ms", config.boardRefreshMs);
+  return config;
+}
+
 CameraHealthConfig CameraConfig::resolveHealth()
 {
   CameraHealthConfig config;
@@ -112,12 +143,18 @@ std::string CameraConfig::resolveLlmCallerSecret()
   return ConfigService::getString("grpc.caller_llm");
 }
 
+std::string CameraConfig::resolveVoiceCallerSecret()
+{
+  return ConfigService::getString("grpc.caller_voice");
+}
+
 std::vector<argus::client::CallerCredential> CameraConfig::resolveSettingsCallers()
 {
   const std::string secret = ConfigService::getString("grpc.caller_settings");
   const std::array otherCallers{resolveGuardCallerSecret(),
                                 resolveSyncCallerSecret(),
-                                resolveLlmCallerSecret()};
+                                resolveLlmCallerSecret(),
+                                resolveVoiceCallerSecret()};
   if (std::ranges::find(otherCallers, secret) != otherCallers.end())
     return {};
   return settingsCallers({{kSettingsCaller, secret}});

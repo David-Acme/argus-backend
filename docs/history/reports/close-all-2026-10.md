@@ -92,3 +92,20 @@ The shipped bundles `decide/bundle-laya-mvp` and `extract/bundle-gliner-pilot` w
   - `llm-refusal-rules-test` drops its own doctest main and links `argus::lib::doctest-main`.
 - **Found on the way.** `llm-duress-screen-test`'s once-per-speaker case raced its 10 ms retry under a loaded build (4 raises for 3). It now runs with a 200 ms retry base, so the second utterance lands while the first raise is pending.
 - **After.** 2169 findings over 1368 TUs, no check above its count; the baseline is ratcheted to 2169.
+
+## Item 6: camera call CC1–CC8
+
+Track T1 of the close-all programme: the backend of the camera call plan (`docs/history/plans/camera-call-plan.md`), built on CC0 and AL-B1/B2. The owner ordered no compile and no test run in this track: every unit ships with its unit tests written but not built, and the full build and the suites run once after all tracks merge. The cheap static gates (`check-comments`, `check-deps`, `check-routes`) were run on every unit.
+
+### CC1: the camera's microphone feed and streaming speaker
+
+- **Contract.** `argus.camera.v1.CameraWatchService` (`packages/contracts/proto/argus/camera/v1/watch.proto`) on camera's internal listener, caller argus-voice only (`[grpc] caller_voice` ↔ voice `[camera] credential`, paired by setup, native-stack and provision-host; `voice camera grpc_target camera` in the internal PKI rows). Client: `argus::clients::camera-watch` (`CameraWatchClient`: `listWatch`, a blocking `readMicrophone` with a stop token, `speak` returning a `WatchSpeakerStream`).
+  - `ListWatch` → `{cameras: [{camera_id, name, listening, refusal, talk, pan_tilt}]}`.
+  - `OpenMicrophone {camera_id}` → stream of `{pcm (s16le 16 kHz mono, 32 ms), sequence, captured_at_ms, gap}`; a refusal ends the stream with `FAILED_PRECONDITION` and the `WatchRefusal` name.
+  - `Speak`: `open {camera_id, sample_rate, earcon, conversation_id}`, `pcm`…, `end` → events `READY`, `PLAYING {played_ms, queued_ms}`, `DONE {playback_end_ms}`, `BUSY`, `REFUSED {refusal}`, `LINE_LOST`.
+- **Gate.** Module, enabled camera, household watchman, household audio consent, the camera's watchman flag, its "sin audio" flag and the lens mask, rechecked while listening and while speaking.
+- **One reader per camera**, reconnecting with backoff, `gap` on the first frame after a loss; at most `max_listeners` cameras.
+- **The speaker** never forces the talk line (`BUSY`), and pads the Tapo start drop: 300 ms earcon (or silence), 700 ms silence, the speech paced in 120 ms packets, 300 ms of tail.
+- **Config** (`[watch]` in camera's `config.toml.example`, the deploy template and the settings catalog, group `watchman`): `mic_frame_ms` 32, `mic_reconnect_ms` 1000, `mic_reconnect_max_ms` 10000, `mic_linger_ms` 2000, `mic_queue_frames` 64, `gate_recheck_ms` 1000, `board_refresh_ms` 2000, `max_listeners` 16, `earcon_ms` 300, `lead_silence_ms` 700, `tail_pad_ms` 300, `packet_ms` 120, `speak_queue_ms` 60000, `speak_idle_ms` 15000.
+- **Tests written:** `camera-watch-test` (gate order, prologue lengths, little-endian pcm, one reader for two subscribers with a reconnect gap and a gate close, busy line, prologue + body + tail packet count), `camera-watch-client-test` (refusal parsing, microphone frames then refusal, speaker round trip).
+- **Found on the way, not fixed here:** `argus-deploy/config.camera.toml.example` keeps the identity keys (`auto_enroll`, `identify_interval_ms`, …) under `[notifications]` and, since AL-B1, under `[guard]`; `operator_config::resolveIdentity` reads them from `[identity]`, so the deploy template's values are ignored and the code defaults apply.

@@ -120,6 +120,7 @@ caller_guard = "CHANGE_ME_GUARD_CAMERA"
 caller_sync = "CHANGE_ME_SYNC_CAMERA"
 caller_llm = "CHANGE_ME_LLM_CAMERA"
 caller_settings = "CHANGE_ME_SETTINGS_CAMERA"
+caller_voice = "CHANGE_ME_VOICE_CAMERA"
 
 [objects]
 enabled = false
@@ -174,6 +175,22 @@ dark_threshold = 25.0
 bright_threshold = 235.0
 blur_threshold = 18.0
 scene_diff = 0.35
+
+[watch]
+mic_frame_ms = 32
+mic_reconnect_ms = 1000
+mic_reconnect_max_ms = 10000
+mic_linger_ms = 2000
+mic_queue_frames = 64
+gate_recheck_ms = 1000
+board_refresh_ms = 2000
+max_listeners = 16
+earcon_ms = 300
+lead_silence_ms = 700
+tail_pad_ms = 300
+packet_ms = 120
+speak_queue_ms = 60000
+speak_idle_ms = 15000
 
 [stt]
 remote_url = ""

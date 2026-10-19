@@ -507,6 +507,7 @@ productivity credential
 voice target
 voice credential
 camera credential
+camera grpc_target
 sync control_target
 sync control_credential
 grpc caller_guard
@@ -931,6 +932,8 @@ SECRETS
     "$deploy_dir/config.guard.toml" rpc.callers notification 32
   fill_config_pair "$deploy_dir/config.camera.toml" guard duty_credential \
     "$deploy_dir/config.guard.toml" rpc.callers camera 32
+  fill_config_pair "$deploy_dir/config.voice.toml" camera credential \
+    "$deploy_dir/config.camera.toml" grpc caller_voice 32
   ensure_fleet_callers deploy "$deploy_dir"
   ensure_settings_owners "$deploy_dir/config.settings.toml" deploy "$deploy_dir"
   ensure_livekit_key_pair "$deploy_dir/config.sync.toml"

@@ -20,6 +20,9 @@
 #include <feature/webrtc/controllers/camera-webrtc-controller.hxx>
 #include <feature/webrtc/services/webrtc-session-closer.hxx>
 #include <feature/actions/camera-action-rpc-service.hxx>
+#include <feature/watch/camera-watch-rpc-service.hxx>
+#include <feature/watch/infra/ffmpeg-microphone-source.hxx>
+#include <feature/watch/services/watch-gate.hxx>
 #include <feature/health/health-rpc-service.hxx>
 #include <feature/module-data/services/camera-module-data.hxx>
 #include <feature/module-data/services/camera-module-impact.hxx>
@@ -150,6 +153,33 @@ drogon::Task<void> applyInitialSources()
   }
 }
 
+drogon::Task<void> refreshWatchBoard(std::shared_ptr<WatchCameraBoard> board)
+{
+  try {
+    CameraRepository repository;
+    const auto cameras = co_await repository.findEnabled();
+    board->replace(cameras);
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Camera watch: the camera board was not refreshed: " << error.what();
+  }
+}
+
+std::function<argus::camera::v1::WatchRefusal(int64_t)> watchGateOf(std::shared_ptr<WatchCameraBoard> board)
+{
+  return [board = std::move(board)](int64_t cameraId) {
+    const std::optional<WatchCameraFlags> flags = board->flags(cameraId);
+    return watchGateVerdict({.known = flags.has_value(),
+                             .enabled = flags && flags->enabled,
+                             .moduleActive = moduleGate().enabled(role_access::kSurveillanceModule),
+                             .audioAllowed = CameraAudioPolicy::instance().allowed(),
+                             .householdWatchman = CameraAudioPolicy::instance().watchmanOn(),
+                             .cameraWatchman = flags && flags->watchman,
+                             .noAudio = flags && flags->noAudio,
+                             .masked = PrivacyStateService::instance().masked(cameraId)});
+  };
+}
+
 drogon::Task<void> reconcileCapabilities()
 {
   try {
@@ -274,13 +304,26 @@ int main()
            .service = "argus-guard",
            .secret = CameraConfig::resolveGuardCallerSecret()}},
        .transcriber = makeHttpSttTranscriber()});
+  const CameraWatchConfig watchConfig = CameraConfig::resolveWatch();
+  const auto watchBoard = std::make_shared<WatchCameraBoard>();
+  const auto watchGate = watchGateOf(watchBoard);
+  const auto microphoneHub = std::make_shared<MicrophoneHub>(
+      MicrophoneHubInput{.sources = ffmpegMicrophoneSources(), .gate = watchGate, .config = watchConfig});
+  CameraWatchRpcService cameraWatchRpc(
+      {.callers = {argus::client::CallerCredential{
+           .service = "argus-voice",
+           .secret = CameraConfig::resolveVoiceCallerSecret()}},
+       .hub = microphoneHub,
+       .board = watchBoard,
+       .gate = watchGate,
+       .config = watchConfig});
   HealthRpcService healthRpc;
   SettingsRegistry settings(cameraSettingsCatalog());
   settings.onChange([](const std::vector<std::string>&) {
     StreamHub::instance().refreshViewerLimits();
   });
   std::vector<grpc::Service*> rpcServices{&cameraSyncRpc, &cameraActionRpc,
-                                          &healthRpc};
+                                          &cameraWatchRpc, &healthRpc};
   std::unique_ptr<SettingsRpcService> settingsRpc;
   CameraModuleData moduleData;
   if (auto callers = CameraConfig::resolveSettingsCallers(); !callers.empty()) {
@@ -656,6 +699,13 @@ int main()
   shutdown_signal::onStop(shutdown_signal::drainOf(talkService, "camera-talk"));
   shutdown_signal::onStop(shutdown_signal::drainOf(rpc, "camera-rpc"));
   shutdown_signal::onStop(shutdown_signal::drainOf(cameraActionRpc, "camera-actions"));
+  shutdown_signal::onStop(shutdown_signal::drainOf(cameraWatchRpc, "camera-watch"));
+  drogon::app().registerBeginningAdvice([watchBoard, refreshMs = watchConfig.boardRefreshMs]() {
+    drogon::async_run([watchBoard]() { return refreshWatchBoard(watchBoard); });
+    drogon::app().getLoop()->runEvery(static_cast<double>(refreshMs) / 1000.0, [watchBoard]() {
+      drogon::async_run([watchBoard]() { return refreshWatchBoard(watchBoard); });
+    });
+  });
   shutdown_signal::onStop(
       shutdown_signal::drainOf(EvidenceUploader::instance(), "camera-evidence"));
   shutdown_signal::onStop(

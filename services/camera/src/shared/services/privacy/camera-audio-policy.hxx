@@ -24,7 +24,14 @@ public:
     return allowed_.load(std::memory_order_acquire);
   }
 
+  [[nodiscard]] bool watchmanOn() const
+  {
+    return watchman_.load(std::memory_order_acquire);
+  }
+
   bool apply(const argus::identity::v1::ListPrivacyResponse& privacy);
+
+  void setWatchman(bool on);
 
   void setAllowed(bool allowed);
 
@@ -36,6 +43,7 @@ private:
   CameraAudioPolicy() = default;
 
   std::atomic<bool> allowed_{false};
+  std::atomic<bool> watchman_{false};
   std::mutex mutex_;
   std::vector<Listener> listeners_;
 };
