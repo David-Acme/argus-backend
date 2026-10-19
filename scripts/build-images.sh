@@ -120,12 +120,28 @@ builder_memory_bytes() {
 }
 
 model_context() {
-  local resolved
-  resolved="$(readlink -f "$ROOT/models/$1" 2>/dev/null || true)"
+  local name="$1" resolved staged file
+  shift
+  resolved="$(readlink -f "$ROOT/models/$name" 2>/dev/null || true)"
+  if [ -n "$resolved" ] && [ -d "$resolved" ] && [ "$#" -gt 0 ]; then
+    staged="$OUT/model-contexts/$name"
+    rm -rf "$staged"
+    mkdir -p "$staged"
+    for file in "$@"; do
+      if [ -f "$resolved/$file" ]; then
+        ln "$(readlink -f "$resolved/$file")" "$staged/$file" 2>/dev/null || cp -L "$resolved/$file" "$staged/$file"
+      else
+        printf 'build-images: models/%s/%s is missing; its model tests will fail\n' "$name" "$file" >&2
+      fi
+    done
+    printf '%s\n' "$staged"
+    return
+  fi
   if [ -n "$resolved" ] && [ -d "$resolved" ]; then
     printf '%s\n' "$resolved"
     return
   fi
+  set -- "$name"
   mkdir -p "$OUT/no-models/$1"
   printf 'build-images: models/%s is missing; its model tests will fail\n' "$1" >&2
   printf '%s\n' "$OUT/no-models/$1"
@@ -230,7 +246,9 @@ main() {
     MODEL_ARGS=()
     case "$project" in
       stt) MODEL_ARGS=(--build-context "stt-models=$(model_context stt)") ;;
-      llm) MODEL_ARGS=(--build-context "memory-models=$(model_context memory)") ;;
+      vlm) MODEL_ARGS=(--build-context "vision-models=$(model_context vision)") ;;
+      llm) MODEL_ARGS=(--build-context "memory-models=$(model_context memory)"
+                       --build-context "llm-models=$(model_context llm LFM2.5-1.2B-Instruct-QAD-Q4_0.gguf)") ;;
     esac
 
     test_start="$(date +%s)"

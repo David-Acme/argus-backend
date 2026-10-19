@@ -40,6 +40,7 @@ RUN --mount=type=cache,target=/root/.conan2/p \
     --mount=type=cache,target=/root/.cache/ccache \
     --mount=type=cache,target=/root/.cache/argus/vendored \
     --mount=type=bind,from=memory-models,target=/opt/argus/models/memory \
+    --mount=type=bind,from=llm-models,target=/opt/argus/models/llm \
     ./scripts/build-all.sh prod --only llm
 
 FROM debian:trixie-slim AS runtime
