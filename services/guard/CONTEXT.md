@@ -625,11 +625,14 @@ owner page lists guard without a hand edit.
 | `guard.signature_min_similarity` | advanced | live | tracking | 0.5-0.99 | 0.82 |
 | `guard.loiter_checks` | advanced | live | tracking | 1-20 | 3 |
 | `guard.staging` | advanced | live | tracking | toggle | true |
+| `guard.posture_interval_s` | advanced | live | tracking | 5-600 | 30 |
+| `guard.episode_touch_publish_s` | advanced | live | tracking | 5-300 | 15 |
 | `guard.encounter_timeout_s` | advanced | live | tracking | 30-3600 | 300 |
 | `guard.tamper_sustained_s` | advanced | live | health | 30-3600 | 300 |
 | `guard.offline_sustained_s` | advanced | live | health | 60-3600 | 240 |
 | `guard.health_stale_s` | advanced | live | health | 30-3600 | 300 |
 | `guard.journal_retention_days` | advanced | live | history | 1-60 | 30 |
+| `guard.marked_retention_days` | advanced | live | history | 30-120 | 120 |
 
 The levels are danger ranks (1 low, 2 medium, 3 high, 4 critical): a response
 fires when the rank reaches its level. Announce and alarm accept 5, which no
