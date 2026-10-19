@@ -92,3 +92,29 @@ The shipped bundles `decide/bundle-laya-mvp` and `extract/bundle-gliner-pilot` w
   - `llm-refusal-rules-test` drops its own doctest main and links `argus::lib::doctest-main`.
 - **Found on the way.** `llm-duress-screen-test`'s once-per-speaker case raced its 10 ms retry under a loaded build (4 raises for 3). It now runs with a 200 ms retry base, so the second utterance lands while the first raise is pending.
 - **After.** 2169 findings over 1368 TUs, no check above its count; the baseline is ratcheted to 2169.
+
+## Item 3: the deploy security cleanups, proven on a live stack
+
+- **What landed.**
+  - The shared NATS `argus` user is gone: one nkey per service.
+  - The shared S3 key pair is gone: each writer signs with its own bucket-scoped account.
+  - No plaintext internal gRPC listener is deployed; every internal surface answers mutual TLS only.
+  - The compose network name and subnet are variables.
+- **Proof.**
+  - The 14 images were built, with each test stage green except argus-llm's quality evals (item 15). argus-llm's runtime image was built from the same commit.
+  - The stack was provisioned from scratch with `provision-host.sh` into a data dir outside `/tmp`, then started.
+  - `deploy-security-check.sh` live: 35 green, 0 expected, 0 red; relay and tunnel are reported as not deployed, because their profile is off.
+  - Static (`--no-docker --no-probe`): 37 green.
+  - `deploy-security-check-test.sh` green.
+- **Found only by deploying, and fixed.**
+  - guard gated its whole RPC server on the retired plaintext `[rpc] address`, so it served no presence, settings, tools or duress RPC.
+  - The guard templates named a `notification` presence caller nothing provisions, so guard refused to boot. Settings named `auth` and `voice` callers that install no module gate; those slots and their fleet pairing rows are gone.
+  - guard, settings, tts, stt, vlm and llm did not publish their mutual TLS port on loopback, so the check could not reach them.
+  - The argus-llm runtime image lacked `libatomic1`.
+  - **Two OpenSSLs in one binary.**
+    - Debian's `pkg-config --libs grpc++` put `-lssl -lcrypto` (system 3.5) ahead of the Conan archives, so a binary's own OpenSSL calls split between the two copies.
+    - argus-vlm and argus-voice crashed in X509 code: first in gRPC's server handshake, then in `/health`.
+    - The link lines now carry Conan's OpenSSL alone (`libgrpc.so` brings its own dependency), and `--exclude-libs` keeps the static copy out of the dynamic table.
+  - The image test stages linked the vendored llama/ggml libraries at a BuildKit cache path that is gone at test time. The imported targets now point at the copies in `build/<profile>/bin`, the engines are built with an `$ORIGIN` rpath, and the model tests receive their model folders through named build contexts.
+  - Two latent races surfaced under load: the guard saga test against its retry worker, and a use-after-free when the safety service was destroyed with a delivery in flight.
+- **Disk.** The laptop disk filled during the image builds. The build directories of two retired worktrees were removed (142 GB freed); no source or data was touched.
