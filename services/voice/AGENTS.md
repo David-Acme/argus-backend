@@ -14,7 +14,10 @@ that apply to voice-service code; when in doubt, the root file wins.
    gRPC. The one outbound media path is the realtime agent: with `[rtc]
    enabled` it joins LiveKit rooms (`[rtc] url`, a plain ws on loopback or the
    docker gateway) with the token argus-sync hands it in `JoinRoom`, and holds
-   no LiveKit secret of its own.
+   no LiveKit secret of its own. The watchman's ear (`src/feature/watch/`)
+   is the other outbound path: argus-camera's `CameraWatchService` through
+   `argus::clients::camera-watch` (`[camera] grpc_target`/`credential`) and
+   argus-stt's keyword spotter `Spot` through `argus::clients::stt`.
 2. **Zero database** — no db clients, no schema, no repositories. The
    spoken-name write is the typed `IdentityService.UpdateUser` RPC to
    argus-identity.
@@ -76,6 +79,11 @@ argus-voice/
                         argus::voice-rtc (the LiveKit agent: RtcCall per room,
                         RtcAgentService); the pinned LiveKit C++ SDK archive
                         hashes and its NOTICE
+  src/feature/watch/    argus::voice-watch — the watchman: one ear per camera
+                        (microphone feed, VAD, 2 s RAM ring, keyword spotter or
+                        transcribed speech as stage one), stage two (the
+                        vocative rule), echo guard, broadcast drop, fire log and
+                        the coordinator
   src/shared/services/  vad
   src/shared/wrapper/   the ring the voice paths carry samples in
   src/test-support/     the fake voice sink the suites drive, and

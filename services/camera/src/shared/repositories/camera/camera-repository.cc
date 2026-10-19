@@ -206,6 +206,12 @@ CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
     sql += UPDATE_COL_NO_AUDIO;
     args.push_back(*input.noAudio ? "1" : "0");
   }
+  if (input.tvExclusion) {
+    if (!args.empty())
+      sql += ", ";
+    sql += UPDATE_COL_TV_EXCLUSION;
+    args.push_back(*input.tvExclusion ? "1" : "0");
+  }
 
   if (input.resetTapoTrust && !args.empty()) {
     sql += ", ";
@@ -350,12 +356,18 @@ bool CameraRepository::acceptPrivacyState()
   bool obeyed = false;
   bool watchman = false;
   bool noAudio = false;
+  bool tvExclusion = false;
   for (const auto& row : client->execSqlSync(std::string(TABLE_COLUMNS))) {
     const auto name = row["name"].as<std::string>();
     state = state || name == "privacy_state";
     obeyed = obeyed || name == "privacy_obeyed";
     watchman = watchman || name == "watchman";
     noAudio = noAudio || name == "no_audio";
+    tvExclusion = tvExclusion || name == "tv_exclusion";
+  }
+  if (!tvExclusion) {
+    client->execSqlSync(std::string(ADD_TV_EXCLUSION));
+    LOG_INFO << "Camera schema: camera rows carry the TV exclusion flag";
   }
   if (!watchman)
     client->execSqlSync(std::string(ADD_WATCHMAN));

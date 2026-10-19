@@ -74,6 +74,10 @@ if(NOT TARGET argus::clients::identity)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/identity
                      ${CMAKE_BINARY_DIR}/clients/identity EXCLUDE_FROM_ALL)
 endif()
+if(NOT TARGET argus::clients::camera-watch)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/clients/camera-watch
+                     ${CMAKE_BINARY_DIR}/clients/camera-watch EXCLUDE_FROM_ALL)
+endif()
 if(NOT TARGET argus::lib::auth)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../packages/lib/auth
                      ${CMAKE_BINARY_DIR}/auth)
@@ -149,11 +153,13 @@ target_compile_options(argus_voice-core PRIVATE -Wall -Wextra)
 add_subdirectory(src/config)
 add_subdirectory(src/feature/settings)
 add_subdirectory(src/feature/rtc)
+add_subdirectory(src/feature/watch)
 add_subdirectory(src/app/rpc)
 
 argus_service(NAME argus-voice
     MAIN ${VOICE_SRC_ROOT}/app/main.cc
     MODULES argus::voice-config argus::voice-rpc argus::voice-core argus::voice-settings argus::voice-rtc
+            argus::voice-watch
     DEPENDS argus::clients::notification
     PORTS 7034 7035)
 
@@ -405,6 +411,19 @@ argus_runtime_rpath(voice-rtc-wire-test)
 set_target_properties(voice-rtc-wire-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-rtc-wire-test COMMAND voice-rtc-wire-test)
+
+add_executable(voice-watch-test tests/unit/voice-watch-test.cc)
+
+target_link_libraries(voice-watch-test PRIVATE argus::voice-watch
+    argus::lib::doctest-main)
+
+target_compile_options(voice-watch-test PRIVATE -Wall -Wextra)
+
+argus_runtime_rpath(voice-watch-test)
+
+set_target_properties(voice-watch-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME voice-watch-test COMMAND voice-watch-test)
 
 add_executable(voice-playout-gain-test tests/unit/voice-playout-gain-test.cc)
 

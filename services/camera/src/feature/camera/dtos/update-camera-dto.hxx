@@ -24,6 +24,7 @@ struct UpdateCameraDto
   std::optional<bool> isEnabled;
   std::optional<bool> watchman;
   std::optional<bool> noAudio;
+  std::optional<bool> tvExclusion;
   std::optional<std::string> streamPath;
   std::optional<std::string> subStreamPath;
   std::optional<std::string> catalogId;

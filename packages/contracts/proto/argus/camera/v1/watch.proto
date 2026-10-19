@@ -28,6 +28,7 @@ message WatchCamera
   WatchRefusal refusal = 4;
   bool talk = 5;
   bool pan_tilt = 6;
+  bool tv_exclusion = 7;
 }
 
 message ListWatchRequest

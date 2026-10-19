@@ -18,6 +18,7 @@ struct WatchCameraFlags
   bool noAudio{false};
   bool talk{false};
   bool panTilt{false};
+  bool tvExclusion{false};
 };
 
 class WatchCameraBoard

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <feature/spot/services/keyword-spotter.hxx>
 #include <feature/stt/services/stt-service.hxx>
 #include <stt/stt-client.hxx>
 #include <grpc/internal-tls.hxx>
@@ -22,6 +23,7 @@ struct SttRpcInput
   std::vector<grpc::Service*> services;
   std::string tlsAddress;
   std::optional<argus::client::InternalTlsMaterial> tls;
+  std::function<std::unique_ptr<SpotSession>()> spot;
 };
 
 class SttRpcServer

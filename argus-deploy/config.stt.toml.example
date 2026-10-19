@@ -17,6 +17,19 @@ language = "es"
 
 models_dir = "models/stt"
 
+[kws]
+model_dir = "models/kws"
+encoder = "encoder.onnx"
+decoder = "decoder.onnx"
+joiner = "joiner.onnx"
+tokens = "tokens.txt"
+keywords_file = "keywords.txt"
+threshold = 0.25
+score = 1.5
+max_active_paths = 4
+trailing_blanks = 1
+threads = 1
+
 [components]
 models_dir = "/opt/argus/models"
 

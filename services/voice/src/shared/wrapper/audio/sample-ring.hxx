@@ -54,6 +54,14 @@ public:
     pop(out.data(), out.size());
   }
 
+  void peekInto(std::vector<Sample>& out) const
+  {
+    out.resize(size_);
+    const size_t capacity = buffer_.size();
+    for (size_t index = 0; index < size_; ++index)
+      out[index] = buffer_[(head_ + index) % capacity];
+  }
+
   [[nodiscard]] size_t size() const { return size_; }
   [[nodiscard]] size_t capacity() const { return buffer_.size(); }
   void clear() { head_ = 0; size_ = 0; }

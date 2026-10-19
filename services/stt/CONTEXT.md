@@ -270,3 +270,10 @@ speech through a far-field microphone or a phone call. Common Voice names its ow
 85 words, which is too few to separate from the 5.8% mean, so it is reported and not gated. About
 2,000 words give a 95% interval of roughly one percentage point either way. OpenSLR 73 is
 CC-BY-SA, used here only to measure; no clip or transcript is stored in the repository.
+
+## The watchman's keyword spotter: `Spot` (2026-10, CC2 of the camera call plan)
+
+argus-stt builds sherpa-onnx's keyword spotter (`src/feature/spot/`, `argus::stt-spot`) and serves it as a bidirectional stream on the internal listener, `Transcription.Spot(stream SpotChunk) returns (stream SpotEvent)`: argus-voice streams each camera's speech frames (16 kHz) and receives `{keyword, at_sample, start_time}` on each hit. One spotter is shared and every stream decodes under one mutex (the model is about 3 M parameters).
+
+- **Model and keywords** (`[kws]`): `model_dir` with the transducer's `encoder`, `decoder`, `joiner` and `tokens`, `keywords_file` (the variant list "Argus", "Argos", "Árgus" written in the model's own tokens, one line per variant with its `:boost` and `#threshold`), `threshold`, `score`, `max_active_paths`, `trailing_blanks`, `threads`. Missing files are not an error: the spotter logs once, `Spot` answers `UNAVAILABLE`, and the watchman transcribes speech for stage one instead.
+- **Not done here.** The model choice and the tokenised keywords file are part of the owner's measurement M1 (sherpa-onnx's `text2token` for the chosen model); no model is downloaded by this change.

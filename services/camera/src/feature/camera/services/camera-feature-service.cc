@@ -166,6 +166,7 @@ CameraFeatureService::update(int64_t id, const UpdateCameraDto& body) const
     input.isEnabled = body.isEnabled;
     input.watchman = body.watchman;
     input.noAudio = body.noAudio;
+    input.tvExclusion = body.tvExclusion;
     if (body.ip && *body.ip != before.ip) {
       input.resetTapoTrust = true;
       if (!body.password)

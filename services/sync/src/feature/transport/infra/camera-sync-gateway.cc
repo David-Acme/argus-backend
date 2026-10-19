@@ -64,6 +64,7 @@ Json::Value cameraRowToJson(const argus::camera::v1::CameraRow& row)
   json["privacyObeyed"] = row.privacy_obeyed();
   json["watchman"] = row.watchman();
   json["noAudio"] = row.no_audio();
+  json["tvExclusion"] = row.tv_exclusion();
   json["retentionDays"] = row.has_retention_days()
                               ? Json::Value(Json::Int64(row.retention_days()))
                               : Json::Value();

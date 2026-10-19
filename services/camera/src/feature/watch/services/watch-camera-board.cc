@@ -13,7 +13,8 @@ WatchCameraFlags WatchCameraBoard::flagsOf(const CameraSchema& camera)
           .watchman = camera.watchman,
           .noAudio = camera.noAudio,
           .talk = capabilities.get("talk", false).asBool(),
-          .panTilt = capabilities.get("ptz", false).asBool()};
+          .panTilt = capabilities.get("ptz", false).asBool(),
+          .tvExclusion = camera.tvExclusion};
 }
 
 void WatchCameraBoard::replace(const std::vector<CameraSchema>& cameras)

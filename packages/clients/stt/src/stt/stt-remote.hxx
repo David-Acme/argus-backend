@@ -56,6 +56,8 @@ public:
                          const std::string& lang) const;
   [[nodiscard]] std::unique_ptr<argus::stt::TranscribeStream>
   openStream(argus::stt::StreamInput input) const;
+  [[nodiscard]] std::unique_ptr<argus::stt::SpotStream>
+  openSpot(argus::stt::SpotInput input) const;
   bool remote() const;
 
 private:

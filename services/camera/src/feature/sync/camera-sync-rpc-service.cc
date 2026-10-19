@@ -56,6 +56,7 @@ void toProto(const Json::Value& row, argus::camera::v1::CameraRow* out)
   out->set_privacy_obeyed(row["privacyObeyed"].asBool());
   out->set_watchman(row["watchman"].asBool());
   out->set_no_audio(row["noAudio"].asBool());
+  out->set_tv_exclusion(row["tvExclusion"].asBool());
   if (!row["retentionDays"].isNull())
     out->set_retention_days(row["retentionDays"].asInt64());
   out->set_capabilities(row["capabilities"].asString());

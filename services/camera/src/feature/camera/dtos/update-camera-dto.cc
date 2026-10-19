@@ -37,6 +37,8 @@ UpdateCameraDto UpdateCameraDto::fromJson(const Json::Value& json)
     dto.watchman = json["watchman"].asBool();
   if (json.isMember("noAudio") && json["noAudio"].isBool())
     dto.noAudio = json["noAudio"].asBool();
+  if (json.isMember("tvExclusion") && json["tvExclusion"].isBool())
+    dto.tvExclusion = json["tvExclusion"].asBool();
   if (json.isMember("streamPath") && json["streamPath"].isString())
     dto.streamPath = json["streamPath"].asString();
   if (json.isMember("subStreamPath") && json["subStreamPath"].isString())

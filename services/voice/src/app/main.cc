@@ -4,6 +4,7 @@
 #include <feature/rtc/rtc-agent-service.hxx>
 #include <feature/settings/voice-settings.hxx>
 #include <feature/voice/voice-rpc-service.hxx>
+#include <feature/watch/watch-coordinator.hxx>
 #include <grpc/internal-tls.hxx>
 #include <grpcpp/grpcpp.h>
 #include <http/cors.hxx>
@@ -174,6 +175,29 @@ int main()
                             .notificationCallerSecret = VoiceConfig::resolveNotificationCallerSecret(),
                             .rooms = rtc.get(),
                             .dispatchCleanup = {}});
+  const VoiceWatchConfig watchConfig = VoiceConfig::resolveWatch();
+  const VoiceCameraConfig cameraConfig = VoiceConfig::resolveCamera();
+  std::shared_ptr<const CameraWatchClient> watchCameras;
+  if (!cameraConfig.target.empty())
+    watchCameras = std::make_shared<CameraWatchClient>(
+        CameraWatchClientConfig{.target = cameraConfig.target, .credential = cameraConfig.credential});
+  const auto echo = std::make_shared<EchoGuard>(EchoGuardConfig{.tail = watchConfig.echoTail,
+                                                                .maxLag = watchConfig.echoMaxLag,
+                                                                .history = std::chrono::milliseconds(10000),
+                                                                .sampleRate = 16000});
+  SttWakeSpotter wakeSpotter;
+  WatchCoordinator watch({.config = watchConfig,
+                          .camera = watchCameras,
+                          .spotter = &wakeSpotter,
+                          .stt = &voiceStt(),
+                          .vad = &voiceVad(),
+                          .language = voiceLangToString(voiceSystemLang()),
+                          .echo = echo,
+                          .sameEnvironment = {},
+                          .onWake = {},
+                          .onFrame = {}});
+  watch.start();
+
   HealthRpcService healthRpc;
   SettingsRegistry settings(voiceSettingsCatalog());
   std::unique_ptr<SettingsRpcService> settingsRpc;
@@ -230,6 +254,7 @@ int main()
       .run();
 
   serverDrain.finish();
+  watch.shutdown();
   if (rtc)
     livekit::shutdown();
   return 0;

@@ -4,6 +4,7 @@
 #include <feature/stt/controllers/stt-controller.hxx>
 #include <feature/settings/stt-components.hxx>
 #include <feature/settings/stt-settings.hxx>
+#include <feature/spot/services/keyword-spotter.hxx>
 #include <feature/stt/services/stt-service.hxx>
 #include <grpc/internal-tls.hxx>
 #include <http/error-handler.hxx>
@@ -78,6 +79,9 @@ int main()
   DiskComponentHost components(sttComponents(
       {.modelsDir = SttConfig::resolveComponentsRoot(), .loaded = [] { return SttService::instance().isLoaded(); }}));
 
+  KeywordSpotterService spotter;
+  static_cast<void>(spotter.init(SttConfig::resolveSpot()));
+
   std::unique_ptr<SettingsRpcService> settingsRpc;
   std::unique_ptr<SttRpcServer> rpc;
   const SttRpcConfig rpcConfig = SttConfig::resolveRpc();
@@ -111,7 +115,8 @@ int main()
         .slots = ThreadBudget::inferenceSlots(),
         .services = std::move(services),
         .tlsAddress = internalTlsConfig.address,
-        .tls = internalTls});
+        .tls = internalTls,
+        .spot = [&spotter] { return spotter.open(); }});
   }
 
   if (rpc && !rpcConfig.address.empty())

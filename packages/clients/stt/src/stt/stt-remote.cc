@@ -196,6 +196,14 @@ SttClient::openStream(argus::stt::StreamInput input) const
   return nullptr;
 }
 
+std::unique_ptr<argus::stt::SpotStream>
+SttClient::openSpot(argus::stt::SpotInput input) const
+{
+  if (const auto client = rpcClient())
+    return client->openSpot(std::move(input));
+  return nullptr;
+}
+
 bool SttClient::remote() const
 {
   return !ConfigService::getString("stt.grpc_target").empty() ||

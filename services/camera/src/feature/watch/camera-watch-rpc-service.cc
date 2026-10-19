@@ -443,6 +443,7 @@ grpc::ServerUnaryReactor* CameraWatchRpcService::ListWatch(grpc::CallbackServerC
     camera->set_refusal(refusal);
     camera->set_talk(flags.talk);
     camera->set_pan_tilt(flags.panTilt);
+    camera->set_tv_exclusion(flags.tvExclusion);
   }
   reactor->Finish(grpc::Status::OK);
   return reactor;
