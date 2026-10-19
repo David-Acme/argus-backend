@@ -148,7 +148,7 @@ std::unique_ptr<argus::mcp::McpRpcService> toolsService(const RpcListenerInput& 
 RpcListener startRpcListener(const RpcListenerInput& input)
 {
   GuardRpcConfig rpc = GuardConfig::resolveRpc();
-  if (rpc.address.empty())
+  if (rpc.address.empty() && input.tlsAddress.empty())
     return {};
   RpcListener listener;
   std::vector<grpc::Service*> services;
