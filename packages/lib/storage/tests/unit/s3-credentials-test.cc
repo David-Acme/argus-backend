@@ -366,4 +366,3 @@ TEST_CASE("a request is signed with the credentials file's keys, and refused "
                   std::runtime_error);
   CHECK_FALSE(storage.isConfigured());
 }
-}

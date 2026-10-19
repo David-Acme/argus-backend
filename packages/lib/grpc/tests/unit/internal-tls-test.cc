@@ -388,19 +388,30 @@ TEST_CASE("material without an address opens no second port")
   CHECK_FALSE(ports[0].mutualTls);
 }
 
-TEST_CASE("no plaintext address opens nothing, mutual TLS included")
+TEST_CASE("with no plaintext address only the mutual TLS port opens")
 {
+  AlwaysServing health;
   const argus::client::ListenInput input{.address = "",
                                          .tlsAddress = "127.0.0.1:0",
                                          .tls = materialOf(
                                              serviceDirectory("auth")),
-                                         .services = {},
+                                         .services = {&health},
                                          .maxReceiveBytes = std::nullopt};
-  CHECK(argus::client::listenPorts(input).empty());
+  const auto ports = argus::client::listenPorts(input);
+  REQUIRE(ports.size() == 1);
+  CHECK(ports[0].mutualTls);
   const auto listener = argus::client::startListening(input);
-  CHECK(listener.server == nullptr);
+  CHECK(listener.server != nullptr);
   CHECK(listener.port == 0);
-  CHECK(listener.tlsPort == 0);
+  CHECK(listener.tlsPort > 0);
+
+  const argus::client::ListenInput neither{.address = "",
+                                           .tlsAddress = "",
+                                           .tls = materialOf(serviceDirectory("auth")),
+                                           .services = {},
+                                           .maxReceiveBytes = std::nullopt};
+  CHECK(argus::client::listenPorts(neither).empty());
+  CHECK(argus::client::startListening(neither).server == nullptr);
 }
 
 TEST_CASE("the mutual TLS port serves a peer of the internal CA and refuses "

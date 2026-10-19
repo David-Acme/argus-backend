@@ -117,6 +117,8 @@ TEST_CASE("the rpc config refuses a short credential and an unpaired exposed "
 {
   AuthRpcConfig config;
   config.listener.host = "0.0.0.0";
+  CHECK_FALSE(config.secretProblem().has_value());
+  config.listener.port = 7043;
   CHECK(config.secretProblem().has_value());
 
   config.callers = {{"camera", "CHANGE_ME_CAMERA_AUTH"}};

@@ -54,7 +54,8 @@ TEST_CASE("identity db and listener config resolve the service defaults")
 
   const IdentityRpcConfig rpc = IdentityConfig::resolveRpc();
   CHECK(rpc.listener.host == "127.0.0.1");
-  CHECK(rpc.listener.port == 7040);
+  CHECK(rpc.listener.port == 0);
+  CHECK(rpc.listener.address().empty());
   CHECK(rpc.secret.empty());
   CHECK_FALSE(rpc.reachableBeyondLoopback());
 
