@@ -5,6 +5,7 @@
 #include <auth/request-context.hxx>
 #include <camera/camera-errors.hxx>
 #include <errors/response-exception.hxx>
+#include <feature/camera-control/dtos/camera-aim-dto.hxx>
 #include <http/api-response.hxx>
 #include <string>
 namespace
@@ -110,4 +111,29 @@ CameraControlController::sdDay(drogon::HttpRequestPtr req, int64_t id)
 {
   const auto query = CameraSdDayDto::fromRequest(req);
   co_return respond(co_await service_.sdDay(id, query));
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+CameraControlController::aim(drogon::HttpRequestPtr req, int64_t id)
+{
+  const auto& jwt = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  co_return ApiResponse::ok(co_await service_.aimState({.cameraId = id, .userId = jwt.sub}));
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+CameraControlController::updateAim(drogon::HttpRequestPtr req, int64_t id)
+{
+  const auto body = CameraAimDto::fromJson(*req->getJsonObject());
+  const auto& jwt = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  co_return ApiResponse::ok(co_await service_.updateAim(
+      {.cameraId = id, .patch = body.patch, .actorUserId = jwt.sub}));
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+CameraControlController::lease(drogon::HttpRequestPtr req, int64_t id)
+{
+  const auto body = CameraLeaseDto::fromJson(*req->getJsonObject());
+  const auto& jwt = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  co_return ApiResponse::ok(co_await service_.lease(
+      {.cameraId = id, .actorUserId = jwt.sub, .actorRole = jwt.role, .hold = body.action == "hold"}));
 }

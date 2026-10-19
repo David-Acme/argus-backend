@@ -108,6 +108,10 @@ near_share = 0.12
 ask_answer_s = 60
 sweep_s = 5
 
+[guard.look]
+budget_ms = 8000
+cooldown_s = 60
+
 [guard.maintenance]
 default_minutes = 15
 max_minutes = 120

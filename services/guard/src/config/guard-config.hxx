@@ -88,6 +88,12 @@ struct TamperWindows
   int64_t sweepS{5};
 };
 
+struct LookVerification
+{
+  int64_t budgetMs{8000};
+  int64_t cooldownS{60};
+};
+
 struct MaintenanceConfig
 {
   int64_t defaultMinutes{15};
@@ -165,6 +171,7 @@ struct GuardServiceConfig
   int64_t healthStaleS{300};
   TamperWindows tamper{};
   MaintenanceConfig maintenance{};
+  LookVerification look{};
   std::function<bool(const std::string&)> failPoint;
 };
 

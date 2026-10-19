@@ -172,6 +172,7 @@ argus_service(NAME argus-camera
         argus::camera-rpc-server
         argus::camera-monitor
         argus::camera-operator
+        argus::camera-look
         argus::camera-recording
         argus::camera-onvif-events
         argus::camera-settings
@@ -205,6 +206,7 @@ set(CAMERA_UNIT_TESTS
     onvif-motion-events-test
     camera-health-test
     camera-tamper-test
+    camera-look-test
     event-intelligence-test
     camera-source-registrar-test
     camera-stream-test
@@ -287,6 +289,9 @@ target_link_libraries(camera-health-test PRIVATE
 
 target_link_libraries(camera-tamper-test PRIVATE
     argus::camera-monitor)
+
+target_link_libraries(camera-look-test PRIVATE
+    argus::camera-look)
 
 target_link_libraries(camera-privacy-test PRIVATE
     argus::camera-privacy)

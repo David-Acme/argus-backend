@@ -431,7 +431,7 @@ HealthMetrics CameraHealthMonitor::measure(const TickInput& input,
   const CameraScene scene = CameraSceneLog::instance().sceneOf(input.camera.id);
   const bool settlingHome = scene.returnsHome && scene.moveEndedAtMs > 0 &&
                             input.capturedAtMs < scene.moveEndedAtMs + 2 * intervalMs;
-  if (scene.moving(input.capturedAtMs) || settlingHome) {
+  if (scene.moving(input.capturedAtMs) || settlingHome || scene.argusAway) {
     pause();
     return metrics;
   }

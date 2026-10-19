@@ -175,6 +175,36 @@ bright_threshold = 235.0
 blur_threshold = 18.0
 scene_diff = 0.35
 
+[ptz]
+park_seconds = 60
+idle_release_seconds = 60
+settle_ms = 4000
+return_after_look_seconds = 10
+return_after_follow_seconds = 30
+calibrate_every_seconds = 86400
+daily_moves = 400
+moves_per_minute = 6
+dead_zone = 0.05
+fov_h_deg = 77.0
+fov_v_deg = 43.0
+look_budget_ms = 8000
+follow_lost_seconds = 10
+lead_min_samples = 3
+lead_consistency = 0.7
+patrol_enabled = false
+patrol_every_seconds = 600
+patrol_dwell_seconds = 8
+
+[look]
+enabled = true
+doubt_min_conf = 0.25
+small_box_share = 0.03
+grabs = 3
+budget_ms = 3000
+crop_scale = 2.0
+confirm_conf = 0.45
+cooldown_s = 60
+
 [tamper]
 saturated_share = 0.6
 whiteout_edge_ratio = 0.15

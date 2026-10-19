@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <feature/actions/stt-transcriber.hxx>
 #include <feature/camera-control/services/camera-control-feature-service.hxx>
+#include <feature/look/services/look-service.hxx>
 #include <grpc/grpc-server-identity.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
@@ -56,6 +57,11 @@ public:
   Relearn(grpc::CallbackServerContext* context,
           const argus::camera::v1::RelearnRequest* request,
           argus::camera::v1::RelearnResponse* response) override;
+
+  grpc::ServerUnaryReactor*
+  Look(grpc::CallbackServerContext* context,
+       const argus::camera::v1::LookRequest* request,
+       argus::camera::v1::LookResponse* response) override;
 
   bool migrateActionSchema();
 
@@ -127,4 +133,5 @@ private:
   ActionCommandRepository commandRepository_;
   CameraRepository cameraRepository_;
   CameraControlFeatureService cameraControlService_;
+  LookService lookService_;
 };

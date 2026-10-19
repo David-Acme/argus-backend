@@ -1,6 +1,7 @@
 #include "camera-action-client.hxx"
 
 #include <grpc/grpc-client-base.hxx>
+#include <algorithm>
 #include <utility>
 
 namespace
@@ -224,4 +225,35 @@ bool CameraActionClient::relearn(int64_t cameraId) const
   argus::camera::v1::RelearnResponse response;
   const grpc::Status status = stub_->Relearn(&context, request, &response);
   return status.ok() && response.accepted();
+}
+
+std::optional<CameraLookResult> CameraActionClient::look(const CameraLookInput& input) const
+{
+  constexpr int64_t kLookMarginMs = 5000;
+  if (input.cameraId <= 0)
+    return std::nullopt;
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, static_cast<int>(std::max<int64_t>(input.budgetMs, 1000) + kLookMarginMs));
+  argus::client::addCallerCredential(context, credential_);
+  argus::camera::v1::LookRequest request;
+  request.set_camera_id(input.cameraId);
+  request.set_track_id(input.trackId);
+  request.set_box_x(input.boxX);
+  request.set_box_y(input.boxY);
+  request.set_box_w(input.boxW);
+  request.set_box_h(input.boxH);
+  request.set_reason(input.reason);
+  request.set_budget_ms(input.budgetMs);
+  request.set_follow(input.follow);
+  argus::camera::v1::LookResponse response;
+  if (const grpc::Status status = stub_->Look(&context, request, &response); !status.ok())
+    return std::nullopt;
+  CameraLookResult result{.confirmed = response.confirmed(),
+                          .cls = response.class_name(),
+                          .confidence = response.confidence(),
+                          .cropIds = {},
+                          .moved = response.moved(),
+                          .detail = response.detail()};
+  result.cropIds.assign(response.crop_ids().begin(), response.crop_ids().end());
+  return result;
 }

@@ -8,6 +8,7 @@
     "reminder.list",
     "memory.recall",
     "app.open",
-    "app.show_camera"
+    "app.show_camera",
+    "guard.maintenance_status"
   ]
 }

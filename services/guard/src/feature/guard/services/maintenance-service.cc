@@ -6,6 +6,7 @@
 #include <feature/guard/guard-tamper-policy.hxx>
 #include <feature/guard/services/targeted-notice.hxx>
 #include <runtime/blocking-task.hxx>
+#include <text/name-match.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
@@ -21,6 +22,35 @@ constexpr int64_t kSecondsPerMinute = 60;
 bool household(UserRole role)
 {
   return role == UserRole::Owner || role == UserRole::Resident;
+}
+
+std::string pickText(bool english, const std::string& es, const std::string& en)
+{
+  return english ? en : es;
+}
+
+std::string lostWord(const std::string& status, bool english)
+{
+  if (status == "covered" || status == "whiteout")
+    return english ? "covered" : "tapada";
+  if (status == "blinded")
+    return english ? "blinded" : "deslumbrada";
+  if (status == "moved")
+    return english ? "turned" : "girada";
+  if (status == "partial_cover")
+    return english ? "partly covered" : "parcialmente tapada";
+  if (status == "blurred")
+    return english ? "out of focus" : "desenfocada";
+  if (status == "unreachable")
+    return english ? "without signal" : "sin señal";
+  if (status == "group")
+    return english ? "together with other cameras" : "junto con otras cámaras";
+  return english ? "without picture" : "sin imagen";
+}
+
+MaintenanceVoiceReply voiceFailure(const std::string& text, const std::string& code)
+{
+  return {.ok = false, .text = text, .code = code, .structured = Json::Value(Json::objectValue)};
 }
 }
 
@@ -326,4 +356,138 @@ drogon::Task<void> MaintenanceService::expireDue(int64_t at) const
   for (const MaintenanceWindow& window : co_await repository_.open())
     if (window.endsAt <= at)
       co_await close({.window = window, .reason = MaintenanceEndReason::Expired, .actorId = 0});
+}
+
+drogon::Task<MaintenanceVoiceReply> MaintenanceService::startByVoice(MaintenanceVoiceRequest request) const
+{
+  const bool english = request.lang == "en";
+  const MaintenanceActor actor{.userId = request.userId,
+                               .role = parseUserRole(request.role).value_or(UserRole::Unknown)};
+  std::vector<int64_t> cameraIds;
+  int64_t environmentId = 0;
+  if (!text_norm::folded(request.camera).empty()) {
+    const auto assignments = co_await environmentRepository_.cameraAssignments();
+    std::vector<std::string> names;
+    std::vector<int64_t> ids;
+    for (const CameraAssignment& assignment : assignments) {
+      const std::string name = dependencies_.cameraName ? dependencies_.cameraName(assignment.cameraId) : std::string();
+      if (name.empty())
+        continue;
+      names.push_back(name);
+      ids.push_back(assignment.cameraId);
+    }
+    const auto match = text_norm::matchName(names, request.camera);
+    if (match.kind != text_norm::NameMatchKind::Exact)
+      co_return voiceFailure(pickText(english, "No encuentro la cámara " + request.camera + ".",
+                                      "I could not find the " + request.camera + " camera."),
+                             "unknown_camera");
+    cameraIds.push_back(ids.at(match.hits.front()));
+  }
+  else if (actor.role == UserRole::Guard) {
+    const std::vector<int64_t> duty = co_await responseRepository_.dutyEnvironments(actor.userId);
+    environmentId = duty.empty() ? 0 : duty.front();
+  }
+  else {
+    environmentId = co_await environmentRepository_.defaultId();
+  }
+  try {
+    const MaintenanceWindow window = co_await open({.actor = actor,
+                                                    .cameraIds = cameraIds,
+                                                    .environmentId = environmentId,
+                                                    .minutes = request.minutes,
+                                                    .source = MaintenanceSource::Assistant});
+    const int64_t minutes = (window.endsAt - window.startedAt) / kSecondsPerMinute;
+    const std::string what = cameraIds.empty() ? pickText(english, "las cámaras", "the cameras")
+                                               : pickText(english, "la cámara " + request.camera,
+                                                          "the " + request.camera + " camera");
+    MaintenanceVoiceReply reply{
+        .ok = true,
+        .text = pickText(english,
+                         "Listo: durante " + std::to_string(minutes) + " minutos, tocar " + what +
+                             " no será una alarma. Dime «ya terminé» cuando acabes.",
+                         "Done: for " + std::to_string(minutes) + " minutes, handling " + what +
+                             " is not an alarm. Tell me \"I'm done\" when you finish."),
+        .code = {},
+        .structured = window.toJson({.owner = actor.role == UserRole::Owner, .now = now()})};
+    co_return reply;
+  }
+  catch (const ResponseException& error) {
+    if (error.errorCode() == "GUARD_OFF_DUTY")
+      co_return voiceFailure(pickText(english, "Solo puedes declarar un mantenimiento mientras estás de turno.",
+                                      "You can declare maintenance only while you are on duty."),
+                             error.errorCode());
+    if (error.errorCode() == "MAINTENANCE_OUT_OF_SCOPE")
+      co_return voiceFailure(pickText(english, "Esa cámara no es del lugar de tu turno.",
+                                      "That camera is not in the place of your shift."),
+                             error.errorCode());
+    co_return voiceFailure(pickText(english, "No pude abrir el mantenimiento.", "I could not open the maintenance."),
+                           error.errorCode());
+  }
+}
+
+drogon::Task<MaintenanceVoiceReply> MaintenanceService::endByVoice(MaintenanceVoiceRequest request) const
+{
+  const bool english = request.lang == "en";
+  int ended = 0;
+  for (const MaintenanceWindow& window : co_await activeWindows(now())) {
+    if (window.declaredBy != request.userId)
+      continue;
+    co_await close({.window = window, .reason = MaintenanceEndReason::Done, .actorId = request.userId});
+    ++ended;
+  }
+  if (ended == 0)
+    co_return voiceFailure(pickText(english, "No tienes ningún mantenimiento abierto.",
+                                    "You have no maintenance open."),
+                           "no_maintenance");
+  MaintenanceVoiceReply reply{.ok = true,
+                              .text = pickText(english,
+                                               "Cerré el mantenimiento; Argus vuelve a vigilar esas cámaras. Si "
+                                               "alguna quedó mirando distinto, te lo pregunto en la app.",
+                                               "I closed the maintenance; Argus watches those cameras again. If one "
+                                               "now looks somewhere else, I will ask you in the app."),
+                              .code = {},
+                              .structured = Json::Value(Json::objectValue)};
+  reply.structured["ended"] = ended;
+  co_return reply;
+}
+
+drogon::Task<MaintenanceVoiceReply> MaintenanceService::statusByVoice(MaintenanceVoiceRequest request) const
+{
+  const bool english = request.lang == "en";
+  const int64_t at = now();
+  std::string text;
+  Json::Value windows(Json::arrayValue);
+  for (const MaintenanceWindow& window : co_await activeWindows(at)) {
+    const int64_t left = std::max<int64_t>(1, (window.endsAt - at + kSecondsPerMinute - 1) / kSecondsPerMinute);
+    const std::string who = window.declaredName.empty() ? pickText(english, "alguien de casa", "someone at home")
+                                                        : window.declaredName;
+    text += pickText(english,
+                     "Hay un mantenimiento abierto por " + who + " en " + std::to_string(window.cameraIds.size()) +
+                         " cámara(s); quedan " + std::to_string(left) + " min. ",
+                     "There is maintenance open by " + who + " on " + std::to_string(window.cameraIds.size()) +
+                         " camera(s); " + std::to_string(left) + " min left. ");
+    windows.append(window.toJson({.owner = false, .now = at}));
+  }
+  Json::Value lost(Json::arrayValue);
+  for (const RecentTamper& tamper : co_await repository_.recentTampers(at - kRecentSeconds)) {
+    const int64_t minutes = std::max<int64_t>(1, (at - tamper.createdAt) / kSecondsPerMinute);
+    text += pickText(english,
+                     "La cámara " + tamper.cameraName + " perdió la imagen hace " + std::to_string(minutes) +
+                         " min (" + lostWord(tamper.status, false) + "). ",
+                     "The " + tamper.cameraName + " camera lost its picture " + std::to_string(minutes) +
+                         " min ago (" + lostWord(tamper.status, true) + "). ");
+    Json::Value entry(Json::objectValue);
+    entry["cameraId"] = static_cast<Json::Int64>(tamper.cameraId);
+    entry["camera"] = tamper.cameraName;
+    entry["status"] = tamper.status;
+    entry["at"] = static_cast<Json::Int64>(tamper.createdAt);
+    lost.append(entry);
+  }
+  if (text.empty())
+    text = pickText(english, "No hay mantenimientos abiertos y ninguna cámara perdió la imagen hoy.",
+                    "There is no maintenance open and no camera lost its picture today.");
+  MaintenanceVoiceReply reply{.ok = true, .text = text, .code = {}, .structured = Json::Value(Json::objectValue)};
+  reply.structured["windows"] = windows;
+  reply.structured["lost"] = lost;
+  co_return reply;
 }

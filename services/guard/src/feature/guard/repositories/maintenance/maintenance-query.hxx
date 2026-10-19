@@ -54,6 +54,10 @@ inline constexpr std::string_view PENDING_ASKS =
 inline constexpr std::string_view FIND_INCIDENT =
     "SELECT id, camera_id, rule FROM guard_incident WHERE id = ?";
 
+inline constexpr std::string_view RECENT_TAMPERS =
+    "SELECT camera_id, camera_name, event_json, created_at FROM guard_incident "
+    "WHERE rule = 'camera_tamper' AND created_at >= ? ORDER BY created_at DESC LIMIT 5";
+
 inline constexpr std::string_view ANSWER_ASK =
     "UPDATE guard_tamper_ask SET answer = ?, answered_by = ?, answered_at = ? "
     "WHERE id = ? AND answer = ''";
@@ -105,6 +109,14 @@ struct TamperAskOnsetInput
 {
   int64_t cameraId{0};
   int64_t onsetAt{0};
+};
+
+struct RecentTamper
+{
+  int64_t cameraId{0};
+  std::string cameraName;
+  std::string status;
+  int64_t createdAt{0};
 };
 
 struct IncidentRef

@@ -107,7 +107,7 @@ struct ActionPhrase
   std::string_view en;
 };
 
-constexpr std::array<ActionPhrase, 10> kActionPhrases{{
+constexpr std::array<ActionPhrase, 14> kActionPhrases{{
     {.tool = "calendar.create_event", .es = "agendar el evento", .en = "schedule the event"},
     {.tool = "calendar.cancel_event", .es = "cancelar el evento", .en = "cancel the event"},
     {.tool = "task.create", .es = "anotar la tarea", .en = "add the task"},
@@ -118,6 +118,10 @@ constexpr std::array<ActionPhrase, 10> kActionPhrases{{
     {.tool = "app.show_camera", .es = "mostrar la cámara", .en = "show the camera"},
     {.tool = "app.set_guard_mode", .es = "cambiar la vigilancia", .en = "change the guard mode"},
     {.tool = "camera.set_privacy", .es = "tapar la cámara", .en = "mask the camera"},
+    {.tool = "camera.goto_preset", .es = "girar la cámara", .en = "turn the camera"},
+    {.tool = "camera.look", .es = "mover la cámara", .en = "move the camera"},
+    {.tool = "guard.maintenance_start", .es = "anotar el mantenimiento", .en = "note the maintenance"},
+    {.tool = "guard.maintenance_end", .es = "cerrar el mantenimiento", .en = "close the maintenance"},
 }};
 
 std::string_view actionPhrase(std::string_view tool, std::string_view lang)

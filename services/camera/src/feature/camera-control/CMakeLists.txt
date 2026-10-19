@@ -1,12 +1,16 @@
 argus_module(NAME camera-control
     SOURCES
         controllers/camera-control-controller.cc
+        dtos/camera-aim-dto.cc
         dtos/camera-preset-dto.cc
         dtos/camera-ptz-dto.cc
         dtos/camera-sd-dto.cc
         dtos/camera-settings-dto.cc
         dtos/camera-snapshot-dto.cc
         dtos/camera-talk-dto.cc
+        services/aim-board.cc
+        services/aim-math.cc
+        services/aim-settings.cc
         services/camera-control-feature-service.cc
         services/duty-gate.cc
         services/ptz-lease.cc

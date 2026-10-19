@@ -168,6 +168,7 @@ public:
   {
     bool protects{false};
     bool armed{false};
+    bool away{false};
   };
 
   [[nodiscard]] HouseholdPosture householdPosture() const;
@@ -597,6 +598,15 @@ private:
 
   drogon::Task<SeenPerson> seenNear(const SeenLookup& input);
 
+  struct LookVerifyInput
+  {
+    const Json::Value& event;
+    int64_t cameraId{0};
+    int64_t now{0};
+  };
+
+  drogon::Task<bool> verifyByLook(const LookVerifyInput& input);
+
   struct PresenceLookup
   {
     int64_t environmentId{0};
@@ -791,6 +801,7 @@ private:
   std::map<int64_t, CameraPrivacy> privacyByCamera_;
   std::atomic<bool> householdProtects_{false};
   std::atomic<bool> householdArmed_{false};
+  std::atomic<bool> householdAway_{false};
 
   struct LangEntry
   {

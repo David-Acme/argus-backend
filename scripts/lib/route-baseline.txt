@@ -22,6 +22,8 @@ camera	POST	/camera/probe	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	se
 camera	GET	/camera/recording	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/recording/controllers/clip-controller.hxx
 camera	DELETE	/camera/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera/controllers/camera-controller.hxx
 camera	PATCH	/camera/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera/controllers/camera-controller.hxx
+camera	GET	/camera/{1}/aim	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
+camera	PATCH	/camera/{1}/aim	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	GET	/camera/{1}/capabilities	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	GET	/camera/{1}/clips	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/recording/controllers/clip-controller.hxx
 camera	DELETE	/camera/{1}/clips/{2}	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/recording/controllers/clip-controller.hxx
@@ -29,6 +31,7 @@ camera	GET	/camera/{1}/clips/{2}/preview	DeviceFilter,JwtFilter,RoleFilter	-	ser
 camera	PATCH	/camera/{1}/preset	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	GET	/camera/{1}/presets	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	PATCH	/camera/{1}/ptz	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
+camera	POST	/camera/{1}/ptz/lease	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	GET	/camera/{1}/sd/day	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	GET	/camera/{1}/sd/days	DeviceFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx
 camera	PATCH	/camera/{1}/settings	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/camera/src/feature/camera-control/controllers/camera-control-controller.hxx

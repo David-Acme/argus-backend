@@ -2036,3 +2036,11 @@ camera's own act (the Tapo app, a preset, the button) or the app's
 **Tests.** `guard-maintenance-test` (windows per mode, the group, the seen verdict, the ask rule, declared windows per role including a Guard off duty and out of scope, Guest and Unknown, duress, the unknown person, the view check and relearn, the three answers, the copy in es and en); `guard-notify-thread-test` keeps the episode cases on `covered` and adds the slow blur. Not run in T2.
 
 **Left.** The time from cover to alert per type and the false-alarm rate over a recorded normal day are measured in the sandbox at the end of the programme (plan A6). The memory episode per window and the assistant's view of the windows land with AL-B7.
+
+## Verification by a look, and the assistant's maintenance (2026-10, AL-B4 and B7)
+
+**Verification state.** Before an observation is claimed, `verifyByLook` reads the camera's `lookable` and `doubtful` flags. Outside protection nothing changes. In away, armed or night a doubtful observation on a lookable camera waits for camera's `Look` (`guard.look.budget_ms`, 8 s): confirmed, it goes on with the look's crops kept on the camera; not confirmed, it is dropped and the camera cools for `guard.look.cooldown_s` (`look_cooldown_<camera>` in `guard_state`), during which doubtful observations there are dropped too. A look that cannot run lets the observation go on as before. A clear observation never waits: the look runs beside it for evidence. In away or armed the look asks the camera to follow a confirmed person.
+
+**The assistant.** The guard's MCP server adds `guard.maintenance_start {camera?, minutes?}`, `guard.maintenance_end` and `guard.maintenance_status` (capability `guard.maintenance`: Owner, Resident, Guard), served by `MaintenanceService`'s voice flows through `MaintenanceVoicePorts` (`src/shared/vocabulary/maintenance-voice.hxx`, read by the guard and the MCP features). A Guard's window without a camera covers its duty environment, anyone else's the default one. The status answer names the open windows and the cameras that lost their picture in the last day. The heartbeat now carries `away` beside `protects` and `armed`.
+
+**Left.** Each window as a memory episode in the llm's graph is not built; the windows and outcomes are in the audit journal and `GET /guard/maintenance`.

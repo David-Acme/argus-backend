@@ -562,6 +562,7 @@ void GuardService::refresh(const Config& fresh)
     next->healthStaleS = fresh.healthStaleS;
     next->tamper = fresh.tamper;
     next->maintenance = fresh.maintenance;
+    next->look = fresh.look;
     config_ = std::move(next);
   }
   std::scoped_lock lock(beliefMutex_);
@@ -1045,7 +1046,8 @@ bool GuardService::cameraMasked(int64_t cameraId) const
 GuardService::HouseholdPosture GuardService::householdPosture() const
 {
   return {.protects = householdProtects_.load(std::memory_order_acquire),
-          .armed = householdArmed_.load(std::memory_order_acquire)};
+          .armed = householdArmed_.load(std::memory_order_acquire),
+          .away = householdAway_.load(std::memory_order_acquire)};
 }
 
 drogon::Task<void> GuardService::refreshHouseholdPosture(int64_t now)
@@ -1063,6 +1065,8 @@ drogon::Task<void> GuardService::refreshHouseholdPosture(int64_t now)
                              std::memory_order_release);
     householdArmed_.store(posture.mode == GuardMode::Armed,
                           std::memory_order_release);
+    householdAway_.store(posture.mode == GuardMode::Away,
+                         std::memory_order_release);
   }
   catch (const std::exception& error) {
     LOG_WARN << "Guard service: the household posture could not be resolved: "
@@ -1218,6 +1222,76 @@ drogon::Task<void> GuardService::checkPrivacyCoverage(int64_t now)
         {.key = key, .value = fingerprint, .updatedAt = now});
   }
   co_return;
+}
+
+drogon::Task<bool> GuardService::verifyByLook(const LookVerifyInput& input)
+{
+  if (dependencies_.actions == nullptr || !input.event.get("lookable", false).asBool())
+    co_return true;
+  const auto config = currentConfig();
+  const GuardEnvironmentScope scope = co_await environmentScope(input.cameraId);
+  const GuardSchedule schedule = guard_schedule::fromEnvironment(scope.environment);
+  const GuardPosture posture = postureAt({.schedule = schedule, .manual = scope.environment.mode, .now = input.now});
+  if (!protectionExpected(posture.mode))
+    co_return true;
+  const Json::Value& frame = input.event["frame"];
+  const double width = frame.get("width", 0).asDouble();
+  const double height = frame.get("height", 0).asDouble();
+  const int64_t trackId = input.event.get("trackId", 0).asInt64();
+  const Json::Value* primary = nullptr;
+  for (const auto& object : input.event["objects"])
+    if (object.get("class", "").asString() == "person" &&
+        (primary == nullptr || object.get("trackId", 0).asInt64() == trackId))
+      primary = &object;
+  if (primary == nullptr || width <= 0.0 || height <= 0.0)
+    co_return true;
+  const Json::Value& box = (*primary)["bbox"];
+  const CameraLookInput look{.cameraId = input.cameraId,
+                             .trackId = trackId,
+                             .boxX = box.get("x", 0.0).asDouble() / width,
+                             .boxY = box.get("y", 0.0).asDouble() / height,
+                             .boxW = box.get("w", 0.0).asDouble() / width,
+                             .boxH = box.get("h", 0.0).asDouble() / height,
+                             .reason = "verify",
+                             .budgetMs = config->look.budgetMs,
+                             .follow = posture.mode == GuardMode::Away || posture.mode == GuardMode::Armed};
+  CameraActionClient* actions = dependencies_.actions;
+  if (!input.event.get("doubtful", false).asBool()) {
+    drogon::async_run([actions, look, lifecycle = lifecycle_]() -> drogon::Task<void> {
+      const LifecycleGuard guard(lifecycle);
+      if (!guard.alive())
+        co_return;
+      static_cast<void>(co_await BlockingTask<std::optional<CameraLookResult>>(
+          [actions, look]() { return actions->look(look); }));
+    });
+    co_return true;
+  }
+  const std::string cooldownKey = "look_cooldown_" + std::to_string(input.cameraId);
+  int64_t cooling = 0;
+  const std::string stored = co_await repository_.state(cooldownKey, "");
+  static_cast<void>(std::from_chars(stored.data(), stored.data() + stored.size(), cooling));
+  if (cooling > input.now) {
+    LOG_INFO << "Guard look: camera " << input.cameraId << " is cooling down after a discarded look; "
+             << "the doubtful observation is dropped";
+    co_return false;
+  }
+  const auto verdict = co_await BlockingTask<std::optional<CameraLookResult>>(
+      [actions, look]() { return actions->look(look); });
+  if (!verdict) {
+    LOG_WARN << "Guard look: camera " << input.cameraId << " could not look; the observation goes on as it is";
+    co_return true;
+  }
+  if (verdict->confirmed) {
+    LOG_INFO << "Guard look: camera " << input.cameraId << " confirmed the person (" << verdict->confidence << ", "
+             << verdict->cropIds.size() << " crop(s))";
+    co_return true;
+  }
+  co_await repository_.setState({.key = cooldownKey,
+                                 .value = std::to_string(input.now + config->look.cooldownS),
+                                 .updatedAt = input.now});
+  LOG_INFO << "Guard look: camera " << input.cameraId << " did not confirm a person; discarded ("
+           << verdict->detail << ")";
+  co_return false;
 }
 
 drogon::Task<GuardService::SeenPerson> GuardService::seenNear(const SeenLookup& input)
@@ -2038,6 +2112,7 @@ void GuardService::publishHeartbeat()
   const HouseholdPosture posture = householdPosture();
   payload["protects"] = posture.protects;
   payload["armed"] = posture.armed;
+  payload["away"] = posture.away;
   payload["at"] = static_cast<Json::Int64>(std::time(nullptr));
   dependencies_.bus->publish(nats_subject::kGuardHeartbeat,
                              json_util::toString(payload));
@@ -2192,6 +2267,8 @@ GuardService::handleEvent(HandleEventInput input)
       co_await maintenance_->endForUnknownPerson({.environmentId = place.environment.id, .at = now});
     }
   }
+  if (!co_await verifyByLook({.event = input.event, .cameraId = signals.cameraId, .now = now}))
+    co_return true;
   const std::string eventId = input.event.get("eventId", "").asString();
   if (eventId.empty()) {
     co_await applyObservation({.event = input.event,

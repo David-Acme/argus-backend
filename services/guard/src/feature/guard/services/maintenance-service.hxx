@@ -9,6 +9,7 @@
 #include <feature/guard/repositories/response/response-repository.hxx>
 #include <feature/guard/services/response-plan.hxx>
 #include <sync/user-action.hxx>
+#include <shared/vocabulary/maintenance-voice.hxx>
 
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
@@ -93,6 +94,10 @@ public:
   [[nodiscard]] drogon::Task<Json::Value> answerView(const MaintenanceViewInput& input) const;
   [[nodiscard]] drogon::Task<Json::Value> claimIncident(const IncidentClaimInput& input) const;
   [[nodiscard]] drogon::Task<Json::Value> answerAsk(const TamperAskReply& input) const;
+
+  [[nodiscard]] drogon::Task<MaintenanceVoiceReply> startByVoice(MaintenanceVoiceRequest request) const;
+  [[nodiscard]] drogon::Task<MaintenanceVoiceReply> endByVoice(MaintenanceVoiceRequest request) const;
+  [[nodiscard]] drogon::Task<MaintenanceVoiceReply> statusByVoice(MaintenanceVoiceRequest request) const;
 
   [[nodiscard]] drogon::Task<std::vector<MaintenanceWindow>> activeWindows(int64_t now) const;
   [[nodiscard]] drogon::Task<void> endForUnknownPerson(const UnknownSighting& sighting) const;

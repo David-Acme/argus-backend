@@ -2,6 +2,7 @@
 
 #include <feature/llm/services/tools/app-command.hxx>
 #include <feature/llm/services/tools/module-command.hxx>
+#include <feature/llm/services/tools/sight-command.hxx>
 #include <feature/memory/services/extract/temporal-resolver.hxx>
 #include <phrase/rule-parser.hxx>
 #include <text/text-norm.hxx>
@@ -61,6 +62,15 @@ std::optional<Candidate> RuleDecider::decide(const DecideInput& input) const
                      .fill = {},
                      .confidence = kRuleConfidence,
                      .source = "app command",
+                     .decider = std::string(id()),
+                     .exact = true,
+                     .runnerUp = std::nullopt};
+  if (auto command = sightCommandFor(utterance); command && isOffered(input, command->name))
+    return Candidate{.tool = command->name,
+                     .arguments = command->arguments,
+                     .fill = {},
+                     .confidence = kRuleConfidence,
+                     .source = "sight command",
                      .decider = std::string(id()),
                      .exact = true,
                      .runnerUp = std::nullopt};

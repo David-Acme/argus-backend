@@ -217,7 +217,12 @@ Guard sound a camera's siren from the app (`POST /guard/siren`, the camera
 action `CameraAction::Siren`, behind the Owner's `guard.app_siren_enabled`,
 `services/guard/CONTEXT.md` "The app siren"); every role presses
 panic (`POST /guard/panic`) and reads its safety state (`GET /guard/safety`),
-and those two are the only guard routes a Guest has; creating, editing and
+and those two are the only guard routes a Guest has; camera maintenance windows (`/guard/maintenance`, the view question, "fui
+yo" on a tamper incident) are the Owner's, the Resident's and the Guard's,
+the Guard's only while on duty and for the cameras of its environment, and the
+home tamper question (`POST /guard/tamper/asks/{id}`) is the Owner's and the
+Resident's (`services/guard/CONTEXT.md`, "Loss of sight and the maintenance
+context"); creating, editing and
 removing environments, episode detail and review, camera context, decision
 review, feedback and person promotion stay Owner-only.
 

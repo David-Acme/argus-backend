@@ -315,6 +315,9 @@ GuardServiceConfig GuardConfig::resolveService()
       configInt64Or("guard.maintenance.duress_window_s", maintenance.duressWindowS);
   config.maintenance.defaultMinutes =
       std::clamp<int64_t>(config.maintenance.defaultMinutes, 1, config.maintenance.maxMinutes);
+  const LookVerification look;
+  config.look.budgetMs = configInt64Or("guard.look.budget_ms", look.budgetMs);
+  config.look.cooldownS = configInt64Or("guard.look.cooldown_s", look.cooldownS);
   return config;
 }
 

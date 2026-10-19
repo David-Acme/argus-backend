@@ -2,6 +2,7 @@
 
 #include <drogon/orm/Result.h>
 #include <sqlite/db-service.hxx>
+#include <text/json-util.hxx>
 
 #include <string>
 
@@ -167,4 +168,15 @@ drogon::Task<std::optional<IncidentRef>> MaintenanceRepository::incident(int64_t
   co_return IncidentRef{.id = rows[0]["id"].as<int64_t>(),
                         .cameraId = rows[0]["camera_id"].as<int64_t>(),
                         .rule = rows[0]["rule"].as<std::string>()};
+}
+
+drogon::Task<std::vector<RecentTamper>> MaintenanceRepository::recentTampers(int64_t since) const
+{
+  std::vector<RecentTamper> tampers;
+  for (const auto& row : co_await DbService::client()->execSqlCoro(std::string(RECENT_TAMPERS), since))
+    tampers.push_back({.cameraId = row["camera_id"].as<int64_t>(),
+                       .cameraName = row["camera_name"].as<std::string>(),
+                       .status = json_util::fromString(row["event_json"].as<std::string>()).get("status", "").asString(),
+                       .createdAt = row["created_at"].as<int64_t>()});
+  co_return tampers;
 }

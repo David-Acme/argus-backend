@@ -35,4 +35,6 @@ public:
   [[nodiscard]] drogon::Task<bool> answerAsk(const TamperAskAnswerInput& input) const;
 
   [[nodiscard]] drogon::Task<std::optional<IncidentRef>> incident(int64_t id) const;
+
+  [[nodiscard]] drogon::Task<std::vector<RecentTamper>> recentTampers(int64_t since) const;
 };

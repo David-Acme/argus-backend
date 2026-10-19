@@ -132,7 +132,7 @@ TEST_CASE("the camera catalog builds through the registry")
 {
   const auto catalog = cameraSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{cameraSettingsCatalog()});
-  CHECK(catalog.size() == 36);
+  CHECK(catalog.size() == 62);
   CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) == 8);
 
   std::vector<std::string> live;
@@ -207,6 +207,28 @@ TEST_CASE("every fallback is what the camera runs with when the key is absent")
   CHECK(std::stod(fallback("tamper.infrared_chroma")) == doctest::Approx(health.thresholds.infraredChroma));
   CHECK(std::stoll(fallback("tamper.protect_interval_ms")) == health.protectIntervalMs);
   CHECK(std::stoll(fallback("tamper.day_night_hold_s")) * 1000 == health.dayNightHoldMs);
+
+  const CameraPtzConfig ptz = CameraConfig::resolvePtz();
+  CHECK(std::stoll(fallback("ptz.park_seconds")) * 1000 == ptz.parkMs);
+  CHECK(std::stoll(fallback("ptz.settle_ms")) == ptz.settleMs);
+  CHECK(std::stoll(fallback("ptz.return_after_look_seconds")) * 1000 == ptz.returnAfterLookMs);
+  CHECK(std::stoll(fallback("ptz.daily_moves")) == ptz.dailyMoveCap);
+  CHECK(std::stoi(fallback("ptz.moves_per_minute")) == ptz.movesPerMinute);
+  CHECK(std::stod(fallback("ptz.dead_zone")) == doctest::Approx(ptz.deadZone));
+  CHECK(std::stod(fallback("ptz.fov_h_deg")) == doctest::Approx(ptz.fovHorizontalDeg));
+  CHECK(std::stoll(fallback("ptz.look_budget_ms")) == ptz.lookBudgetMs);
+  CHECK(std::stoll(fallback("ptz.follow_lost_seconds")) * 1000 == ptz.followLostMs);
+  CHECK((fallback("ptz.patrol_enabled") == "true") == ptz.patrolEnabled);
+  CHECK(std::stoll(fallback("ptz.patrol_every_seconds")) * 1000 == ptz.patrolEveryMs);
+
+  const CameraLookConfig look = CameraConfig::resolveLook();
+  CHECK((fallback("look.enabled") == "true") == look.enabled);
+  CHECK(std::stod(fallback("look.doubt_min_conf")) == doctest::Approx(look.doubtMinConfidence));
+  CHECK(std::stod(fallback("look.small_box_share")) == doctest::Approx(look.smallBoxShare));
+  CHECK(std::stoi(fallback("look.grabs")) == look.grabs);
+  CHECK(std::stoll(fallback("look.budget_ms")) == look.budgetMs);
+  CHECK(std::stod(fallback("look.confirm_conf")) == doctest::Approx(look.confirmConfidence));
+  CHECK(std::stoll(fallback("look.cooldown_s")) * 1000 == look.cooldownMs);
 }
 
 TEST_CASE("a viewer limit changed through the registry reaches the hub without a restart")

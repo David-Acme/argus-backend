@@ -123,6 +123,7 @@ struct RpcListenerInput
   OwnerPinHost& ownerPin;
   EnvironmentCatalog environments;
   MaskedCameraDirectory maskedCameras;
+  MaintenanceVoicePorts maintenance;
   std::shared_ptr<const SafetyService> safety;
   const SafetyActorDirectory* actors{nullptr};
   std::string tlsAddress;
@@ -138,7 +139,8 @@ std::unique_ptr<argus::mcp::McpRpcService> toolsService(const RpcListenerInput& 
   return std::make_unique<argus::mcp::McpRpcService>(argus::mcp::McpRpcInput{
       .server = guardToolServer({.catalog = input.environments,
                                  .maskedCameras = input.maskedCameras,
-                                 .loop = {}}),
+                                 .loop = {},
+                                 .maintenance = input.maintenance}),
       .gate = std::make_shared<const argus::client::FleetCallerGate>(argus::client::FleetGateConfig{
           .expectedCallers = {},
           .callerPairs = {{std::string(argus::mcp::kToolCaller), rpc.toolCredential}},
@@ -480,6 +482,15 @@ int main()
          co_return places;
        },
        .maskedCameras = maskedCameras,
+       .maintenance = {.start = [&maintenance](MaintenanceVoiceRequest request) {
+                         return maintenance.startByVoice(std::move(request));
+                       },
+                       .end = [&maintenance](MaintenanceVoiceRequest request) {
+                         return maintenance.endByVoice(std::move(request));
+                       },
+                       .status = [&maintenance](MaintenanceVoiceRequest request) {
+                         return maintenance.statusByVoice(std::move(request));
+                       }},
        .safety = safety,
        .actors = &safetyActors,
        .tlsAddress = internalTlsConfig.address,

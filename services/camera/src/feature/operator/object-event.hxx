@@ -56,6 +56,10 @@ struct ObjectDetectedEvent
   int frameWidth{0};
   int frameHeight{0};
   std::vector<DetectedEventObject> objects;
+  bool doubtful{false};
+  bool lookable{false};
+  std::string secondLook{};
+  float lookConfidence{0.0F};
 };
 
 namespace object_event

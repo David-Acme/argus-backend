@@ -300,12 +300,12 @@ TEST_CASE("saving or deleting a preset announces, and moving to one does not"){
   const auto moved = drogon::sync_wait(service.preset(
       {.cameraId = rig.cameraId, .body = CameraPresetDto{.action = "goto", .id = "1", .name = ""}, .actorUserId = 1}));
   REQUIRE(moved.has_value());
-  CHECK(rig.sink.notices.size() == 1);
+  CHECK(std::ranges::count(rig.sink.notices, ResourceScope::Status, &CameraResourceChange::scope) == 1);
 
   const auto removed = drogon::sync_wait(service.preset(
       {.cameraId = rig.cameraId, .body = CameraPresetDto{.action = "delete", .id = "1", .name = ""}, .actorUserId = 1}));
   REQUIRE(removed.has_value());
-  REQUIRE(rig.sink.notices.size() == 2);
+  REQUIRE(std::ranges::count(rig.sink.notices, ResourceScope::Status, &CameraResourceChange::scope) == 2);
   CHECK(rig.sink.notices.back().ids.front() == rig.cameraId);
 }
 

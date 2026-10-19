@@ -49,6 +49,9 @@
 #include <feature/recording/controllers/clip-controller.hxx>
 #include <feature/recording/services/clip-recorder.hxx>
 #include <feature/recording/services/clip-trigger-migration.hxx>
+#include <feature/look/services/follow-service.hxx>
+#include <feature/look/services/patrol-service.hxx>
+#include <feature/look/services/second-look.hxx>
 #include <feature/objects/ncnn-object-detector.hxx>
 #include <feature/onvif-events/onvif-motion-events.hxx>
 #include <feature/operator/camera-operator-service.hxx>
@@ -98,6 +101,7 @@ struct HouseholdPostureCache
 {
   std::atomic<bool> protects{false};
   std::atomic<bool> armed{false};
+  std::atomic<bool> away{false};
 };
 
 Json::Value drogonConfig(const CameraDbConfig& cameraDb,
@@ -442,6 +446,8 @@ int main()
                                     std::memory_order_release);
           household->armed.store(heartbeat.get("armed", false).asBool(),
                                  std::memory_order_release);
+          household->away.store(heartbeat.get("away", false).asBool(),
+                                std::memory_order_release);
         }));
   }
   const WebRtcSessionCloser webrtcSessions{};
@@ -488,12 +494,16 @@ int main()
   CameraPresenceRecorder presenceRecorder;
   std::unique_ptr<NatsHealthEventSink> healthSink;
   std::unique_ptr<CameraHealthMonitor> healthMonitor;
+  const CameraLookConfig lookConfig = CameraConfig::resolveLook();
+  std::unique_ptr<SecondLook> secondLook;
   if (objectsConfig.enabled) {
     ObjectDetectorOptions detectorOptions;
     detectorOptions.modelDir = objectsConfig.model;
     detectorOptions.classes = objectsConfig.classes;
     detectorOptions.inputSize = objectsConfig.inputSize;
-    detectorOptions.confidence = objectsConfig.confidence;
+    detectorOptions.confidence =
+        lookConfig.enabled ? std::min(objectsConfig.confidence, static_cast<float>(lookConfig.doubtMinConfidence))
+                           : objectsConfig.confidence;
     detectorOptions.useVulkan = objectsConfig.useVulkan;
     detector = std::make_unique<ObjectDetectorService>(detectorOptions);
     detector->init();
@@ -520,6 +530,16 @@ int main()
       inputs.dependencies.detections = &detectionChanges;
       inputs.dependencies.active = surveillanceActive;
       inputs.dependencies.motion = &motionBoard;
+      secondLook = std::make_unique<SecondLook>(
+          SecondLookDependencies{.detector = detector.get(), .source = &frameSource(), .config = lookConfig});
+      SecondLook::install(secondLook.get());
+      inputs.dependencies.secondLook = secondLook.get();
+      inputs.dependencies.protects = [household = &householdPosture] {
+        return household->protects.load(std::memory_order_acquire);
+      };
+      inputs.dependencies.lookable = [](int64_t cameraId) { return LookableCameras::instance().lookable(cameraId); };
+      inputs.dependencies.sighting = [](const TrackSighting& sighting) { FollowService::sighting(sighting); };
+      inputs.look = lookConfig;
       inputs.objects = objectsConfig;
       inputs.operator_ = operator_config::resolveOperator();
       if (inputs.operator_.zonesFromDb) {
@@ -677,6 +697,14 @@ int main()
     shutdown_signal::onStop(
         shutdown_signal::drainOf(*healthMonitor, "camera-health"));
   }
+  PatrolService patrol({.awayOrArmed =
+                             [household = &householdPosture] {
+                               return household->away.load(std::memory_order_acquire) ||
+                                      household->armed.load(std::memory_order_acquire);
+                             },
+                         .active = surveillanceActive});
+  drogon::app().registerBeginningAdvice([&patrol]() { patrol.start(); });
+  shutdown_signal::onStop(shutdown_signal::drainOf(patrol, "camera-patrol"));
   shutdown_signal::onStop(shutdown_signal::drainOf(talkService, "camera-talk"));
   shutdown_signal::onStop(shutdown_signal::drainOf(rpc, "camera-rpc"));
   shutdown_signal::onStop(shutdown_signal::drainOf(cameraActionRpc, "camera-actions"));
