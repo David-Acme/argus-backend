@@ -27,6 +27,7 @@
 #include <unistd.h>
 #include <utility>
 #include <vector>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -284,10 +285,9 @@ TEST_CASE("the admin API's answer is read with the fields it adds")
            R"({"credentials":{"accessKey":"JAO8WCU7XUN0E5ETQFO8","secretKey":"generated","sessionToken":"","expiration":"9999-12-31T23:59:59Z"}})"
            "\n"});
 
-  const auto read = s3_credentials::fromFile(path);
-  REQUIRE(read.has_value());
-  CHECK(read->accessKey == "JAO8WCU7XUN0E5ETQFO8");
-  CHECK(read->secretKey == "generated");
+  const auto read = valueOf(s3_credentials::fromFile(path));
+  CHECK(read.accessKey == "JAO8WCU7XUN0E5ETQFO8");
+  CHECK(read.secretKey == "generated");
 
   std::filesystem::remove(path);
 }
