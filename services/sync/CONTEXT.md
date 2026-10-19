@@ -731,6 +731,16 @@ the repository and the two schemas were removed instead of fixed, and
 shape is unchanged; if `event` ever gets an owner it is paged through that
 owner's client like the other domains.
 
+**The three writerless tables are measured before they go (2026-10-19, D8).**
+`event`, `camera_stream` and `reminder_detail` have no writer and the current
+app no longer pulls them; only schema v10/v11 installs still do, and nothing in
+a pull tells the server which schema asked. `noteWriterlessPull` logs one INFO
+line per process and per table the first time a pull carries one of the three
+keys, and the answers stay exactly as they were. The staged retirement (the app
+declares `clientSchema`, a schema-12 connection stops being answered, the code
+and then the owner tables go) is
+`docs/history/plans/writerless-tables-retirement-plan.md`.
+
 **Parallel pulls.** A `Synchronize` frame naming several tables pulls them
 four at a time (`kPullWidth`) instead of one after the other, so a bootstrap
 costs about its slowest pulls rather than their sum; four keeps a frame from
