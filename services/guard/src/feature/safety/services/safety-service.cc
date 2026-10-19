@@ -22,6 +22,7 @@
 #include <mutex>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -47,6 +48,8 @@ struct SafetyRuntime
 namespace
 {
 constexpr int64_t kPurgeIntervalS = 3600;
+constexpr std::chrono::seconds kDestroyDeadline{10};
+constexpr std::chrono::milliseconds kDestroyPoll{5};
 constexpr int64_t kSaidAtSkewS = 300;
 
 int64_t systemNow()
@@ -95,6 +98,14 @@ SafetyService::SafetyService(Dependencies dependencies, Config config)
 SafetyService::~SafetyService()
 {
   requestStop();
+  if (!drogon::app().isRunning())
+    return;
+  const auto deadline = std::chrono::steady_clock::now() + kDestroyDeadline;
+  while (!drained() && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::sleep_for(kDestroyPoll);
+  if (!drained())
+    LOG_ERROR << "Guard safety: destroyed with "
+              << runtime_->active.load(std::memory_order_acquire) << " delivery coroutine(s) still running";
 }
 
 int64_t SafetyService::now() const
