@@ -42,12 +42,11 @@ FaceService& FaceService::instance()
   return service;
 }
 
-bool FaceService::Impl::init(const std::string& modelDir)
+bool FaceService::Impl::init(const std::string& modelDir, bool vulkan)
 {
   const int threads = ThreadBudget::computeThreads();
 
-  auto* vkdev = HardwareProbe::get().vulkanDiscrete ? ncnn::get_gpu_device(0)
-                                                    : nullptr;
+  auto* vkdev = vulkan && HardwareProbe::get().vulkanDiscrete ? ncnn::get_gpu_device(0) : nullptr;
   if (vkdev) {
     pipelineCache = std::make_unique<ncnn::PipelineCache>(vkdev);
     pipelineCache->load_cache((modelDir + "/face.ncnn.vkcache").c_str());
@@ -94,10 +93,15 @@ void FaceService::init()
   init("models/face");
 }
 
+void FaceService::useVulkan(bool enabled)
+{
+  useVulkan_.store(enabled, std::memory_order_release);
+}
+
 void FaceService::init(const std::string& modelDir)
 {
   auto impl = std::make_unique<Impl>();
-  if (!impl->init(modelDir)) {
+  if (!impl->init(modelDir, useVulkan_.load(std::memory_order_acquire))) {
     LOG_WARN << "FaceService: models missing, recognition disabled";
     disable();
     return;

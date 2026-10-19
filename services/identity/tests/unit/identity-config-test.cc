@@ -61,6 +61,7 @@ TEST_CASE("identity db and listener config resolve the service defaults")
 
   CHECK(IdentityConfig::resolveSyncControl().target.empty());
   CHECK_FALSE(IdentityConfig::resolveFace().enabled);
+  CHECK_FALSE(IdentityConfig::resolveFace().useVulkan);
 }
 
 TEST_CASE("identity config honors the identity and cert section overrides")
@@ -127,12 +128,14 @@ TEST_CASE("identity peer and face config resolve from their sections")
                           "control_target = \"argus-sync:7041\"\n"
                           "control_secret = \"control-secret\"\n"
                           "[face]\n"
-                          "enabled = true\n");
+                          "enabled = true\n"
+                          "use_vulkan = true\n");
 
   const IdentitySyncControlConfig sync = IdentityConfig::resolveSyncControl();
   CHECK(sync.target == "argus-sync:7041");
   CHECK(sync.secret == "control-secret");
   CHECK(IdentityConfig::resolveFace().enabled);
+  CHECK(IdentityConfig::resolveFace().useVulkan);
 }
 
 TEST_CASE("a ceiling that crosses the identify threshold is clamped below it")

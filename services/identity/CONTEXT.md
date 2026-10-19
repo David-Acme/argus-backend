@@ -1584,3 +1584,7 @@ with the CHECKs put back, seeds every dependent table and proves that no row of
 any of them is lost, the cascades are still wired afterwards, ids continue, the
 backup keeps the old state, a second run is a no-op and a dangling reference
 aborts without a change.
+
+## The face models can see the GPU, and stay on the CPU until measured (2026-10, integration of the close batch)
+
+`argus_identity-shared` linked both hardware-profile variants, the ncnn-free one first, so `HardwareProbe::get()` always answered `vulkanDiscrete = false` and `FaceService` never used the GPU. The module now links only `argus::hardware-profile-gpu`, as camera's YOLO detector does since YG. The GPU is still off by default: `[face] use_vulkan` (false in both templates and in `IdentityFaceConfig`) must be on and a discrete Vulkan device present before the detector and the recognizer load on it. The default is revisited with the camera's after the GPU against CPU measurement at the end of the programme.

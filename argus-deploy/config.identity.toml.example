@@ -89,6 +89,7 @@ max_reconnects = 60
 [face]
 enabled = true
 top_k = 5
+use_vulkan = false
 
 [voiceprint]
 enabled = true

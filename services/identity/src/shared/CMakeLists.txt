@@ -43,7 +43,6 @@ argus_module(NAME identity-shared
         argus::contracts::auth
         argus::contracts::identity
         argus::contracts::sync
-        argus::hardware-profile
         argus::hardware-profile-gpu
         Drogon::Drogon
         nlohmann_json::nlohmann_json

@@ -90,6 +90,7 @@ login_margin = 0.05
 liveness_required = true
 liveness_threshold = 0.80
 liveness_model_dir = "models/face/anti-spoof"
+use_vulkan = false
 
 [voiceprint]
 enabled = true

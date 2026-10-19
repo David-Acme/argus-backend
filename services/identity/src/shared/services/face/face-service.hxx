@@ -35,6 +35,7 @@ public:
 
   void init();
   void init(const std::string& modelDir);
+  void useVulkan(bool enabled);
   AntiSpoofLoad initLiveness(const std::string& modelDir);
   void disable();
   void shutdown();
@@ -126,7 +127,7 @@ private:
     std::unique_ptr<ncnn::PipelineCache> pipelineCache;
     std::unique_ptr<ncnn::Net> detector;
     std::unique_ptr<ncnn::Net> recognizer;
-    bool init(const std::string& modelDir);
+    bool init(const std::string& modelDir, bool vulkan);
   };
 
   struct RunDetectorInput
@@ -157,6 +158,7 @@ private:
 
   InferenceSlots slots_;
   std::atomic<bool> disabled_{false};
+  std::atomic<bool> useVulkan_{false};
   mutable std::shared_mutex implMutex_;
   std::unique_ptr<Impl> impl_;
   AntiSpoofEngine antiSpoof_;

@@ -38,6 +38,7 @@ struct IdentityFaceConfig
   float livenessThreshold{0.80F};
   std::string livenessModelDir{"models/face/anti-spoof"};
   float loginMargin{0.05F};
+  bool useVulkan{false};
 };
 
 struct IdentityRateLimitConfig

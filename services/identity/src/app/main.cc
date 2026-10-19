@@ -455,6 +455,7 @@ int main()
     });
 
     if (face.enabled) {
+      FaceService::instance().useVulkan(face.useVulkan);
       FaceService::instance().init();
       if (!FaceService::instance().isLoaded()) {
         LOG_WARN << "FaceService not loaded — facial login disabled";

@@ -113,6 +113,7 @@ IdentityFaceConfig IdentityConfig::resolveFace()
     config.loginMargin = std::clamp(
         static_cast<float>(ConfigService::getDouble("face.login_margin")), 0.0F,
         IdentityFaceConfig::kMaxLoginMargin);
+  config.useVulkan = ConfigService::hasKey("face.use_vulkan") && ConfigService::getBool("face.use_vulkan");
   return config;
 }
 
