@@ -83,6 +83,11 @@ function(argus_vendored_build)
        "-DCMAKE_BUILD_TYPE=${build_type}"
        "-DCMAKE_CXX_FLAGS_${build_config}=${CMAKE_CXX_FLAGS_${build_config}}"
        "-DCMAKE_C_FLAGS_${build_config}=${CMAKE_CXX_FLAGS_${build_config}}")
+  if(APPLE)
+    list(APPEND ARG_OPTIONS "-DCMAKE_INSTALL_RPATH=@loader_path")
+  else()
+    list(APPEND ARG_OPTIONS "-DCMAKE_INSTALL_RPATH=\$ORIGIN")
+  endif()
   set(compiler_c "")
   if(DEFINED ENV{CC} AND NOT "$ENV{CC}" STREQUAL "")
     set(compiler_c "$ENV{CC}")
