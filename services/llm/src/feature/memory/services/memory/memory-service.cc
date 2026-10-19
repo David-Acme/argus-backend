@@ -766,7 +766,7 @@ bool MemoryService::vecLayoutOutdated()
   sqlite3* db = vecDb_.handle();
   if (!db || graphRepo_.vecLayout(db) >= memory_vec::kLayout)
     return false;
-  if (graphRepo_.hasVecRows(db))
+  if (graphRepo_.hasVecRows(db) || !graphRepo_.openFactIds(db).empty())
     return true;
   graphRepo_.setVecLayout(db, memory_vec::kLayout);
   return false;
