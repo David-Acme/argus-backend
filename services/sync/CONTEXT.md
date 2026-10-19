@@ -306,6 +306,43 @@ installation by `setup.sh` (native) and `provision-host.sh` (deploy, which
 also writes the 0600 `argus-deploy/livekit-keys.yaml` LiveKit reads through
 `key_file`). It never reaches a client, a log or argus-voice.
 
+### The TURN relay: `GET /rtc/ice` (2026-10-19, F1)
+
+Away from home a direct WebRTC path can fail (symmetric NAT, a carrier that
+drops UDP), so this service hands the app time-limited credentials for the
+house's own coturn relay, never a third party's. The app asks for them in two
+places: the call grant of `POST /rtc/token` carries `iceServers`, which the app
+passes to LiveKit's peer connection, and `GET /rtc/ice` answers
+`{iceServers, expiresAt}` for the camera's WebRTC live view, which needs them
+before it builds its offer. Every role with a session reads it (`kRtcAccess`,
+capability `calls.join`); the filter chain is the usual four.
+
+- **The credential is the TURN REST pair** coturn checks with
+  `use-auth-secret`: `username = "<expiry>:<userId>"` and
+  `credential = base64(HMAC-SHA1(secret, username))`
+  (`feature/rtc/services/turn-credentials.cc`). The expiry is now plus
+  `[turn] ttl_seconds` (3600, clamped 300–86400). The shared secret never leaves
+  the server; a credential is useless after its expiry and names the user.
+- **Config** (`[turn]`): `host` (the public name or IP clients dial; empty means
+  no relay), `port` 3478 (udp and tcp), `tls_port` 5349 (`turns:`; 0 leaves it
+  out), `secret` (at least 32 bytes, never a `CHANGE_ME` placeholder), and
+  `ttl_seconds`. A relay that is not fully configured answers an empty
+  `iceServers` list in both places, so the app dials directly as before; nothing
+  fails.
+- **Provisioning.** `setup.sh` and `provision-host.sh` generate the secret once
+  per installation (`ensure_turn_secret`, 32 random bytes in hex).
+  `provision-host.sh --turn-host <name>` (or `ARGUS_TURN_HOST`) writes `host`,
+  copies the secret to `${ARGUS_DATA_DIR}/coturn/secrets/turn_secret` (0600) for
+  the coturn container and turns the compose profile `turn` on
+  (`argus-deploy/CONTEXT.md`, "TURN relay").
+- **LiveKit's own TURN stays off** (`livekit.yaml` `turn.enabled: false`): the
+  client-side `rtcConfig.iceServers` replaces the servers LiveKit's join
+  response would offer, in both the JS SDK and the Rust SDK the desktop links,
+  so one relay serves calls and camera views.
+- `rtc-token-test` pins the credential against a vector computed independently,
+  the urls, the refusals (no host, short or placeholder secret, a host with a
+  character a URL cannot carry) and both routes' empty answer without a relay.
+
 ## Where the state lives
 
 Its own file, `database/sync.db`, resolved from `[sync] db` — the deploy binds

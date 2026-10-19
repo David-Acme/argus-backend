@@ -1,3 +1,7 @@
+if(NOT TARGET OpenSSL::Crypto)
+    find_package(OpenSSL REQUIRED)
+endif()
+
 argus_module(NAME sync-rtc
     SOURCES
         controllers/rtc-controller.cc
@@ -5,10 +9,12 @@ argus_module(NAME sync-rtc
         dtos/response-rtc-token-dto.cc
         dtos/rtc-decline-dto.cc
         dtos/response-rtc-decline-dto.cc
+        dtos/response-rtc-ice-dto.cc
         services/livekit-token.cc
         services/rtc-naming.cc
         services/rtc-token-service.cc
         services/rtc-session-revoker.cc
+        services/turn-credentials.cc
         infra/livekit-room-client.cc
         infra/voice-room-joiner.cc
         infra/notification-call-claimer.cc
@@ -26,6 +32,7 @@ argus_module(NAME sync-rtc
         argus::lib::text
         argus::lib::validation
         Drogon::Drogon
+        OpenSSL::Crypto
     SYSTEM_DEPENDS
         jwt-cpp::jwt-cpp
         nlohmann_json::nlohmann_json)

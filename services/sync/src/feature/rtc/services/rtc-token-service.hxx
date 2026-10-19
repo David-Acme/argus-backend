@@ -4,6 +4,7 @@
 #include <auth/user-directory.hxx>
 #include <config/sync-config.hxx>
 #include <feature/rtc/dtos/response-rtc-decline-dto.hxx>
+#include <feature/rtc/dtos/response-rtc-ice-dto.hxx>
 #include <feature/rtc/dtos/response-rtc-token-dto.hxx>
 #include <feature/rtc/dtos/rtc-decline-dto.hxx>
 #include <feature/rtc/dtos/rtc-token-dto.hxx>
@@ -41,6 +42,12 @@ struct RtcDeclineRequest
   JwtContext caller;
 };
 
+struct RtcIceRequest
+{
+  JwtContext caller;
+  int64_t now{0};
+};
+
 struct RtcCallSlotInput
 {
   int64_t userId{0};
@@ -55,6 +62,8 @@ public:
   drogon::Task<ResponseRtcTokenDto> issue(RtcTokenRequest request) const;
 
   drogon::Task<ResponseRtcDeclineDto> decline(RtcDeclineRequest request) const;
+
+  [[nodiscard]] ResponseRtcIceDto ice(const RtcIceRequest& request) const;
 
 private:
   struct InFlightCalls

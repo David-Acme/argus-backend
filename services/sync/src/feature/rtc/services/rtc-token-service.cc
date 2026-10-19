@@ -3,6 +3,7 @@
 #include <feature/rtc/rtc-errors.hxx>
 #include <feature/rtc/services/livekit-token.hxx>
 #include <feature/rtc/services/rtc-naming.hxx>
+#include <feature/rtc/services/turn-credentials.hxx>
 
 #include <drogon/drogon.h>
 #include <errors/response-exception.hxx>
@@ -11,6 +12,7 @@
 #include <algorithm>
 #include <chrono>
 #include <optional>
+#include <string>
 #include <utility>
 
 namespace
@@ -100,6 +102,14 @@ drogon::Task<ResponseRtcDeclineDto> RtcTokenService::decline(RtcDeclineRequest r
   throwForDecline(result.status);
   LOG_INFO << "RTC: call " << request.body.callId << " declined by user " << request.caller.sub;
   co_return ResponseRtcDeclineDto{};
+}
+
+ResponseRtcIceDto RtcTokenService::ice(const RtcIceRequest& request) const
+{
+  const std::string subject = std::to_string(request.caller.sub);
+  IceServers servers =
+      turn_credentials::iceServers({.relay = config_.turn, .subject = subject, .now = request.now});
+  return {.iceServers = std::move(servers.servers), .expiresAt = servers.expiresAt};
 }
 
 drogon::Task<ResponseRtcTokenDto> RtcTokenService::issue(RtcTokenRequest request) const
@@ -198,6 +208,12 @@ drogon::Task<ResponseRtcTokenDto> RtcTokenService::issue(RtcTokenRequest request
   response.callId = std::move(callId);
   response.expiresAt =
       std::chrono::duration_cast<std::chrono::seconds>((now + config_.tokenTtl).time_since_epoch()).count();
+  response.iceServers =
+      turn_credentials::iceServers(
+          {.relay = config_.turn,
+           .subject = std::to_string(caller.sub),
+           .now = std::chrono::duration_cast<std::chrono::seconds>(now.time_since_epoch()).count()})
+          .servers;
   if (claim)
     response.call = ResponseRtcCallDto{.kind = claim->kind,
                                        .summary = claim->summary,

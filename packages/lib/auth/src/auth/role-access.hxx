@@ -206,9 +206,10 @@ inline constexpr std::array<AuthRouteAccess, 7> kSessionAccess = {{
     {.path = "/auth/users/{id}/sessions/{id}", .method = drogon::Delete, .roles = kOwnerOnly},
 }};
 
-inline constexpr std::array<AuthRouteAccess, 2> kRtcAccess = {{
+inline constexpr std::array<AuthRouteAccess, 3> kRtcAccess = {{
     {.path = "/rtc/token", .method = drogon::Post, .roles = kEveryRoleBaseline},
     {.path = "/rtc/decline", .method = drogon::Post, .roles = kEveryRoleBaseline},
+    {.path = "/rtc/ice", .method = drogon::Get, .roles = kEveryRoleBaseline},
 }};
 
 inline constexpr std::array<AuthRouteAccess, 1> kSyncAccess = {{

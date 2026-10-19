@@ -813,6 +813,31 @@ ensure_livekit_key_pair() {
   toml_secret_generate "$config" rtc api_secret 24
 }
 
+ensure_turn_secret() {
+  local config="$1"
+  [ -f "$config" ] || return 0
+  toml_key_exists "$config" turn secret || return 0
+  toml_secret_set "$config" turn secret 32 && return 0
+  toml_secret_generate "$config" turn secret 32
+}
+
+write_turn_secret() {
+  local config="$1"
+  local target="$2"
+  local temp
+
+  if ! toml_secret_set "$config" turn secret 32; then
+    err "no [turn] secret in $config"
+    return 1
+  fi
+  mkdir -p "$(dirname "$target")"
+  chmod 700 "$(dirname "$target")"
+  temp="$(mktemp "${target}.tmp.XXXXXX")"
+  (umask 077 && toml_secret_emit "$config" turn secret > "$temp")
+  chmod 600 "$temp"
+  mv "$temp" "$target"
+}
+
 write_livekit_keys() {
   local config="$1"
   local keys="$2"
@@ -934,6 +959,7 @@ SECRETS
   ensure_fleet_callers deploy "$deploy_dir"
   ensure_settings_owners "$deploy_dir/config.settings.toml" deploy "$deploy_dir"
   ensure_livekit_key_pair "$deploy_dir/config.sync.toml"
+  ensure_turn_secret "$deploy_dir/config.sync.toml"
   if [ -f "$deploy_dir/config.sync.toml" ]; then
     write_livekit_keys "$deploy_dir/config.sync.toml" "$deploy_dir/livekit-keys.yaml"
   fi

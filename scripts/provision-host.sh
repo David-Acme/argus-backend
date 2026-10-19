@@ -17,6 +17,7 @@ WITH_MODELS=0
 WITH_S3=1
 START=0
 WITH_TUNNEL=0
+TURN_HOST_IN="${ARGUS_TURN_HOST:-}"
 MIGRATE_VOLUMES=0
 PRIVACY_ACTION="require"
 
@@ -41,6 +42,10 @@ Usage:
   ./scripts/provision-host.sh --mdns-address 192.168.1.20
   ./scripts/provision-host.sh --with-models       download engine weights
   ./scripts/provision-host.sh --with-tunnel       turn the remote tunnel profile on
+  ./scripts/provision-host.sh --turn-host turn.example.org
+                                                  run the coturn relay (profile turn) and
+                                                  hand the app time-limited credentials
+                                                  for it (also ARGUS_TURN_HOST)
   ./scripts/provision-host.sh --migrate-volumes   copy old named volumes
   ./scripts/provision-host.sh --no-docker -y
   ./scripts/provision-host.sh --no-s3             skip the object store
@@ -84,6 +89,7 @@ while [ "$#" -gt 0 ]; do
     --jurisdiction) [ "$#" -ge 2 ] || { err "--jurisdiction needs a code"; exit 2; }; PRIVACY_JURISDICTION="$2"; shift 2 ;;
     --data-dir) [ "$#" -ge 2 ] || { err "--data-dir needs a path"; exit 2; }; DATA_DIR_IN="$2"; shift 2 ;;
     --mdns-address) [ "$#" -ge 2 ] || { err "--mdns-address needs an IP"; exit 2; }; MDNS_ADDRESS_IN="$2"; shift 2 ;;
+    --turn-host) [ "$#" -ge 2 ] || { err "--turn-host needs a public name or IP"; exit 2; }; TURN_HOST_IN="$2"; shift 2 ;;
     *) err "unknown argument: $1"; usage >&2; exit 2 ;;
   esac
 done
@@ -337,6 +343,43 @@ configure_webrtc_candidate() {
   replace_toml_value streaming webrtc_candidates "$address:${CAMERA_WEBRTC_PORT:-8555}" "$config"
 }
 
+valid_turn_host() {
+  case "$1" in
+    ""|*[!A-Za-z0-9.:\[\]-]*) return 1 ;;
+  esac
+  return 0
+}
+
+configure_turn() {
+  local lan_address="$1"
+  local config="$DEPLOY_DIR/config.sync.toml"
+  local env_file="$DEPLOY_DIR/.env"
+  local host="$TURN_HOST_IN"
+
+  [ -f "$config" ] || return 0
+  if [ -z "$host" ]; then
+    host="$(toml_value "$config" turn host)"
+  fi
+  if [ -z "$host" ]; then
+    log "TURN relay off: no --turn-host, so the app is offered no relay"
+    return 0
+  fi
+  if ! valid_turn_host "$host"; then
+    err "--turn-host must be a host name or an IP address: $host"
+    return 1
+  fi
+  replace_toml_value turn host "$host" "$config"
+  write_turn_secret "$config" "$DATA_DIR/coturn/secrets/turn_secret"
+  ensure_env_value "$env_file" ARGUS_TURN_REALM "$host"
+  ensure_env_value "$env_file" ARGUS_TURN_ALLOWED_PEERS "$lan_address"
+  if [ -z "$lan_address" ]; then
+    warn "No LAN address detected: coturn may relay to no peer of this host; set ARGUS_MDNS_ADDRESS and re-run"
+  fi
+  ensure_compose_profile "$env_file" turn
+  log "TURN relay on: coturn answers for $host on 3478 (udp, tcp) and 5349 (tls), relays 49160-49199/udp"
+  log "Open those ports to the internet for calls away from home; the secret stays in $DATA_DIR/coturn/secrets (0600)"
+}
+
 ensure_secret_file() {
   local path="$1"
   shift
@@ -525,6 +568,7 @@ main() {
   if [ "$WITH_S3" -eq 1 ]; then
     ensure_object_store
   fi
+  configure_turn "$lan_address"
 
   install -d -m 0755 "$MODELS_DIR/vision" "$MODELS_DIR/decide" "$MODELS_DIR/extract"
   copy_bundle() {

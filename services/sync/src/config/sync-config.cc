@@ -72,6 +72,21 @@ SyncRtcConfig SyncConfig::resolveRtc()
   if (ConfigService::hasKey("rtc.max_concurrent_calls"))
     config.maxConcurrentCalls =
         std::clamp(ConfigService::getInt("rtc.max_concurrent_calls"), 1, 8);
+  config.turn.host = ConfigService::getString("turn.host");
+  config.turn.secret = ConfigService::getString("turn.secret");
+  if (ConfigService::hasKey("turn.port")) {
+    const int port = ConfigService::getInt("turn.port");
+    if (port > 0 && port <= 65535)
+      config.turn.port = static_cast<uint16_t>(port);
+  }
+  if (ConfigService::hasKey("turn.tls_port")) {
+    const int port = ConfigService::getInt("turn.tls_port");
+    if (port >= 0 && port <= 65535)
+      config.turn.tlsPort = static_cast<uint16_t>(port);
+  }
+  if (ConfigService::hasKey("turn.ttl_seconds"))
+    config.turn.ttl = std::chrono::seconds(
+        std::clamp(ConfigService::getInt("turn.ttl_seconds"), 300, 86400));
   constexpr std::size_t kMinSecretBytes = 32;
   config.enabled = ConfigService::hasKey("rtc.enabled") && ConfigService::getBool("rtc.enabled") &&
                    !config.apiKey.empty() && config.apiSecret.size() >= kMinSecretBytes &&

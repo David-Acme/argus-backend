@@ -567,6 +567,15 @@ TEST_CASE("every role may ask for a realtime call token, and only by POST")
   }
 }
 
+TEST_CASE("every role reads its relay credentials, only by GET")
+{
+  for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard, UserRole::Guest}) {
+    CHECK(role_access::hasHttpAccess({.role = role, .path = "/rtc/ice", .method = drogon::Get}));
+    CHECK_FALSE(role_access::hasHttpAccess({.role = role, .path = "/rtc/ice", .method = drogon::Post}));
+  }
+  CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Unknown, .path = "/rtc/ice", .method = drogon::Get}));
+}
+
 TEST_CASE("every role reads its own heartbeat, only by GET, and nothing else under /sync/")
 {
   for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest}) {

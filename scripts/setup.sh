@@ -275,6 +275,7 @@ ensure_local_config() {
   ensure_fleet_callers native "$ROOT"
   ensure_settings_owners "$ROOT/services/settings/config.toml" native "$ROOT"
   ensure_livekit_key_pair "$ROOT/services/sync/config.toml"
+  ensure_turn_secret "$ROOT/services/sync/config.toml"
   remove_toml_key tunnel max_reconnects "$ROOT/services/tunnel/config.toml"
   ensure_tunnel_secret "$ROOT/services/tunnel/config.toml"
   ensure_link_identity "$ROOT/services/tunnel/config.toml" \
