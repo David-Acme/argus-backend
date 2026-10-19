@@ -2,14 +2,14 @@
   "acceptedAdditions" : 
   [
     {
-      "commit" : "F6b",
+      "commit" : "09124f57",
       "path" : "sync-bootstrap.frames[0].json.info.calendar_event.created[0].recurrenceExceptions",
       "reason" : "a series row carries its changed and skipped occurrences, landed 2026-10-19 after this recording",
       "since" : "2026-10-19",
       "value" : "[]"
     },
     {
-      "commit" : "F6b",
+      "commit" : "09124f57",
       "path" : "sync-bootstrap.frames[0].json.info.reminder.created[0].recurrenceExceptions",
       "reason" : "a series row carries its changed and skipped occurrences, landed 2026-10-19 after this recording",
       "since" : "2026-10-19",
