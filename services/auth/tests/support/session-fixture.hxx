@@ -13,6 +13,7 @@
 #include <memory>
 #include <optional>
 #include <sqlite/db-service.hxx>
+#include <test-support/suite-end.hxx>
 #include <string>
 #include <text/sha256.hxx>
 #include <thread>
@@ -174,17 +175,19 @@ private:
   return booted;
 }
 
-[[nodiscard]] inline Fixture& fixture()
-{
-  auto& booted = fixtureStorage();
-  if (!booted)
-    booted = std::make_unique<Fixture>();
-  return *booted;
-}
-
 inline void stopFixture()
 {
   fixtureStorage().reset();
+}
+
+[[nodiscard]] inline Fixture& fixture()
+{
+  auto& booted = fixtureStorage();
+  if (!booted) {
+    booted = std::make_unique<Fixture>();
+    test_support::atSuiteEnd(stopFixture);
+  }
+  return *booted;
 }
 
 struct SessionSeed

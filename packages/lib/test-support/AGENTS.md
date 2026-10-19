@@ -47,3 +47,28 @@ join after it never returns. The guard is `drogon::app().getLoop()->isRunning()`
 is what the helper waits for.
 
 The rule matches the literal shape `if (drogon::app().isRunning()) { ... drogon::app().quit()`: a compound condition, or the flag read into a variable first, escapes it (failing every `quit()` in a test outside test-support would be the robust form, and would convert about 49 healthy sites).
+
+## The shared runner and the suite-end hooks (2026-10-19, D2)
+
+`argus::lib::doctest-main` is the one doctest `main()` every test links. It runs
+the suite and then, still inside `main()`, the hooks registered with
+`test_support::atSuiteEnd(hook)` (`test-support/suite-end.hxx`), last registered
+first. A suite whose Drogon application must stop during normal execution
+registers its stop there when it boots its fixture, instead of carrying a
+`main()` of its own.
+
+Why it exists: a binary that boots Drogon with a SQLite `DbClient`, connects and
+drains a `NatsBus`, and then lets Drogon's teardown run during exit-time static
+destruction aborts on a `DrogonIoLoop` thread with `corrupted double-linked list`
+(SIGABRT, exit 134), while the same binary that quits Drogon during normal
+execution is clean (`docs/history/plans/architecture-plan.md`, known defect 2).
+cnats registers its own `atexit` destructor the first time the library opens, so
+it runs before the static destructors of anything constructed earlier, Drogon's
+application included; quitting inside `main()` keeps the two teardowns from
+overlapping. Production already quits inside `main()` through
+`shutdown_signal::onStop`. The five auth suites that carried their own `main()`
+for this (`session-verdict`, `auth-rpc-server`, `device-login`, `change-outbox`,
+`session-management`) now register their fixture's stop with `atSuiteEnd` and
+link the shared runner like every other suite. The `Host`/`Rig` suites that build
+their application inside a custom `main()` for other reasons (an early exit 77,
+a boot that must succeed before any case) keep it.

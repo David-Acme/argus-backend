@@ -1,5 +1,6 @@
-#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
+
+#include <test-support/suite-end.hxx>
 
 #include <app/rpc/auth-callers.hxx>
 #include <app/rpc/auth-rpc-service.hxx>
@@ -260,17 +261,19 @@ private:
   return booted;
 }
 
-[[nodiscard]] Fixture& fixture()
-{
-  auto& booted = fixtureStorage();
-  if (!booted)
-    booted = std::make_unique<Fixture>();
-  return *booted;
-}
-
 void stopFixture()
 {
   fixtureStorage().reset();
+}
+
+[[nodiscard]] Fixture& fixture()
+{
+  auto& booted = fixtureStorage();
+  if (!booted) {
+    booted = std::make_unique<Fixture>();
+    test_support::atSuiteEnd(stopFixture);
+  }
+  return *booted;
 }
 
 void seedCredential(const std::string& secretHash)
@@ -1062,12 +1065,4 @@ TEST_CASE("argus-auth verifies its own devices and sessions in process once "
       "DELETE FROM device_credential WHERE secret_hash = ?", secretHash);
   ConfigService::setRuntimeString("auth.rpc_secret", "");
   ConfigService::setRuntimeString("device.identity_mode", "ip");
-}
-
-int main(int argc, char** argv)
-{
-  doctest::Context context(argc, argv);
-  const int result = context.run();
-  stopFixture();
-  return result;
 }

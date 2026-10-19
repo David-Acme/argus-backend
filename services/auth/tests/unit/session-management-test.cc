@@ -1,5 +1,6 @@
-#define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest/doctest.h>
+
+#include <test-support/suite-end.hxx>
 
 #include <app/rpc/auth-rpc-service.hxx>
 #include <auth/device-filter.hxx>
@@ -395,8 +396,10 @@ private:
 [[nodiscard]] bool startRuntime()
 {
   auto& booted = runtimeStorage();
-  if (!booted)
+  if (!booted) {
     booted = std::make_unique<Runtime>();
+    test_support::atSuiteEnd([] { runtimeStorage().reset(); });
+  }
   return booted->start();
 }
 
@@ -1329,12 +1332,4 @@ TEST_CASE("a disabled account loses every session and is refused at every way in
   CHECK(activeSessionIds(kDisabledId).size() == 1);
   CHECK_FALSE(authenticate(phone).has_value());
   CHECK_FALSE(authenticate(web).has_value());
-}
-
-int main(int argc, char** argv)
-{
-  doctest::Context context(argc, argv);
-  const int result = context.run();
-  runtimeStorage().reset();
-  return result;
 }
