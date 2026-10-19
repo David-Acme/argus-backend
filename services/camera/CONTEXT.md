@@ -186,8 +186,16 @@ sibling service: own binary, own CMake preset, own `camera.db`.
   `HardwareProbe::describe()` printed `vulkan=no` while
   `ncnn::get_gpu_count()` was 1 in the same process, and
   `argus-vulkan-probe` prints the RADV device. The detector runs on the CPU
-  on a Vulkan-capable host today. The fix is a link-order (or target-list)
-  change in this service; not made here.
+  on a Vulkan-capable host today. Fixed in T2 (YG, 2026-10-19): the
+  `camera-objects` module links only `argus::hardware-profile-gpu`, so the
+  probe the detector reads is the ncnn one and a GPU detector can be chosen.
+  The choice stays behind `objects.use_vulkan`, which now defaults to `false`
+  (template, deploy template and the C++ defaults; it stays out of the
+  settings catalog, which names no plumbing and refuses `vulkan` keys) until the GPU detector's latency and CPU cost are measured against the CPU
+  one on the reference host; that measurement comes at the end of the
+  close-all programme. Identity links both variants too (`src/shared`) and
+  so never sees the GPU either; that is left as it is, since FaceService
+  gates on a discrete GPU and changing it is not part of this unit.
 - **The detector's thread budget (2026-10-17)**: ncnn's `opt.num_threads` is
   `ThreadBudget::lightThreads()` (4 on the reference host; it was
   `computeThreads()`, 8). Measured on the prod build, a synthetic 1280×720

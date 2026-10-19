@@ -130,7 +130,7 @@ max_fps_inference = 2.0
 active_fps = 6.0
 burst_fps = 10.0
 burst_ms = 3000
-use_vulkan = true
+use_vulkan = false
 
 [operator]
 aggregation_window_ms = 1000

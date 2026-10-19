@@ -92,3 +92,14 @@ The shipped bundles `decide/bundle-laya-mvp` and `extract/bundle-gliner-pilot` w
   - `llm-refusal-rules-test` drops its own doctest main and links `argus::lib::doctest-main`.
 - **Found on the way.** `llm-duress-screen-test`'s once-per-speaker case raced its 10 ms retry under a loaded build (4 raises for 3). It now runs with a 200 ms retry base, so the second utterance lands while the first raise is pending.
 - **After.** 2169 findings over 1368 TUs, no check above its count; the baseline is ratcheted to 2169.
+
+## Items 7–9: TP, AL B3–B8, YG
+
+Track T2, camera sight (`docs/history/plans/camera-sight-plan.md`). By the owner's order nothing in this track was compiled, built or tested: the unit tests are written and run with the full build after every track merges. The static gates (`check-comments.sh`, `check-deps.sh`, `check-routes.sh`) were run.
+
+### 9. YG: the YOLO detector can see the GPU
+
+- **The defect.** `camera-objects` linked both `argus::hardware-profile` (built with `ARGUS_NO_NCNN_GPU`) and `argus::hardware-profile-gpu`; both define `HardwareProbe::get()`, the linker took the first, and the detector always read `vulkan=no`.
+- **The fix.** The module links only the `-gpu` variant, so the probe is ncnn's and `objects.use_vulkan` really chooses the backend.
+- **Behind a flag.** `objects.use_vulkan` now defaults to `false` in both templates and in the C++ defaults (`ObjectsConfig`, `ObjectDetectorOptions`). It stays out of the settings-wire catalog, whose own test refuses `vulkan` keys as plumbing.
+- **Left.** The measurement (GPU against CPU per frame, process CPU, on the reference host) comes at the end of the programme, after the merge; only then is the default revisited. Identity links both variants too and has the same blind probe; it is untouched, because FaceService gates on a discrete GPU and that change is not in T2.
