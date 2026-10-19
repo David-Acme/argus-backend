@@ -555,3 +555,17 @@ TEST_CASE("a visitor at a camera can only talk and ask for help")
   CHECK_FALSE(role_access::hasCameraVisitorCapability(all, "camera.view"));
   CHECK_FALSE(role_access::hasCameraVisitorCapability(all, "reminders.read"));
 }
+
+TEST_CASE("messages.relay is held by every registered role and by no role this build does not know")
+{
+  const auto modules = snapshotWith(true, true);
+  for (const auto role : kKnownRoles) {
+    CAPTURE(userRoleToString(role));
+    CHECK(role_access::hasCapability({.role = role, .modules = modules, .capability = "messages.relay"}));
+  }
+  CHECK_FALSE(role_access::hasCapability(
+      {.role = UserRole::Unknown, .modules = modules, .capability = "messages.relay"}));
+  const auto withoutSurveillance = snapshotWith(false, false);
+  CHECK(role_access::hasCapability(
+      {.role = UserRole::Guard, .modules = withoutSurveillance, .capability = "messages.relay"}));
+}

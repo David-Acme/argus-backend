@@ -56,6 +56,26 @@ LlmMemoryConfig LlmConfig::resolveMemory()
               ConfigService::getBool("memory.observe_camera_events")};
 }
 
+LlmConversationConfig LlmConfig::resolveConversation()
+{
+  LlmConversationConfig config;
+  if (ConfigService::hasKey("conversation.idle_seconds"))
+    config.idleSeconds = ConfigService::getInt("conversation.idle_seconds");
+  if (ConfigService::hasKey("conversation.retention_days"))
+    config.retentionDays = ConfigService::getInt("conversation.retention_days");
+  if (ConfigService::hasKey("conversation.switch_budget_ms"))
+    config.switchBudgetMs = ConfigService::getInt("conversation.switch_budget_ms");
+  return boundConversation(config);
+}
+
+LlmConversationConfig LlmConfig::boundConversation(LlmConversationConfig config)
+{
+  config.idleSeconds = std::clamp<int64_t>(config.idleSeconds, 60, 86400);
+  config.retentionDays = std::clamp<int64_t>(config.retentionDays, 1, 365);
+  config.switchBudgetMs = std::clamp<int64_t>(config.switchBudgetMs, 1, 1000);
+  return config;
+}
+
 std::optional<LlmDecisionConfig> LlmConfig::resolveDecision(std::string_view decider){
   const std::string section = decider.empty() ? std::string("decide") : "decide." + std::string(decider);
   if (!ConfigService::hasKey(section + ".act") || !ConfigService::hasKey(section + ".ask"))

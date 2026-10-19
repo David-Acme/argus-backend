@@ -3,6 +3,7 @@
 #include <config/config-service.hxx>
 
 #include <json/json.h>
+#include <llm/conversation-leg.hxx>
 #include <net/loopback-socket.hxx>
 
 #include <algorithm>
@@ -259,7 +260,7 @@ LlmHttpClient& LlmHttpClient::withCredential(std::string credential)
   return *this;
 }
 
-std::string LlmHttpClient::chatBody(const ChatRequest& request) const
+std::string chatRequestJson(const ChatRequest& request)
 {
   Json::Value body(Json::objectValue);
   Json::Value messages(Json::arrayValue);
@@ -292,10 +293,19 @@ std::string LlmHttpClient::chatBody(const ChatRequest& request) const
     body["session_id"] = request.sessionId;
   if (request.prefillOnly)
     body["prefill_only"] = true;
+  if (request.useConversation)
+    body["use_conversation"] = true;
+  if (request.conversationLeg)
+    body["conversation_leg"] = conversationLegKindToString(*request.conversationLeg);
 
   Json::StreamWriterBuilder builder;
   builder["indentation"] = "";
   return Json::writeString(builder, body);
+}
+
+std::string LlmHttpClient::chatBody(const ChatRequest& request) const
+{
+  return chatRequestJson(request);
 }
 
 std::string LlmHttpClient::chat(const ChatRequest& request) const

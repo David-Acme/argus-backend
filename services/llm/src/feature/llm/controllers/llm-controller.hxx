@@ -1,9 +1,12 @@
 #pragma once
 
 #include <drogon/HttpController.h>
+#include <functional>
+#include <memory>
 #include <drogon/HttpRequest.h>
 #include <drogon/HttpResponse.h>
 #include <drogon/utils/coroutine.h>
+#include <feature/conversation/services/conversation-store.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
 #include <llm/llm-service.hxx>
 #include <runtime/stream-slots.hxx>
@@ -83,6 +86,12 @@ public:
 
   [[nodiscard]] std::string screenText(const ChatRequest& request) const;
 
+  void setConversation(std::shared_ptr<ConversationStore> conversation);
+
+  void setTurnEngine(std::function<LlmChatOutcome(const ChatRequest&)> engine);
+
+  void requireConversationAccess(const ChatRequest& request) const;
+
   LlmChatOutcome chatSync(const ChatRequest& request);
   void chatStreamSync(const LlmStreamInput& input);
 
@@ -92,7 +101,22 @@ public:
   drogon::Task<drogon::HttpResponsePtr> screenUtterance(drogon::HttpRequestPtr req);
 
 private:
+  struct ConversationTurnPlan
+  {
+    ChatRequest request;
+    bool active{false};
+    int64_t userId{0};
+    ConversationLegKind leg{ConversationLegKind::Phone};
+    std::string userText;
+  };
+
+  [[nodiscard]] ConversationTurnPlan openConversationTurn(const ChatRequest& request);
+  void closeConversationTurn(const ConversationTurnPlan& plan, const std::string& reply) const;
+  LlmChatOutcome chatScreenedSync(const ChatRequest& request);
+
   LlmService service_;
+  std::shared_ptr<ConversationStore> conversation_;
+  std::function<LlmChatOutcome(const ChatRequest&)> turnEngine_;
   LfmAdapter adapter_;
   StreamSlots streams_;
   std::string identityCredential_;

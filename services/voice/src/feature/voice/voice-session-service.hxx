@@ -6,6 +6,8 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <llm/conversation-leg.hxx>
+#include <optional>
 #include <feature/voice/call-history.hxx>
 #include <feature/voice/turn-transcript.hxx>
 #include <feature/voice/unheard-reply.hxx>
@@ -235,6 +237,7 @@ private:
     bool unheardLast{false};
     std::string callId;
     int64_t userId{0};
+    std::optional<ConversationLegKind> leg;
     std::string role;
     std::string userName;
     std::atomic<bool> speaking{false};

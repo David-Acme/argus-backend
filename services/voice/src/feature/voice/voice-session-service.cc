@@ -14,6 +14,7 @@
 #include <auth/role-access.hxx>
 #include <auth/user-role.hxx>
 #include <config/config-service.hxx>
+#include <feature/voice/services/leg-arbiter/conversation-route.hxx>
 #include <config/voice-config.hxx>
 #include <feature/voice/offer-reply.hxx>
 #include <json/json.h>
@@ -526,6 +527,7 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
       SessionInit{.model = vad_.createModel(), .lang = lang, .unheardSeed = std::random_device{}()});
   session->sink = &sink;
   session->userId = identity.user_id();
+  session->leg = legFromVoiceValue(static_cast<uint32_t>(request.leg()));
   session->deviceHash = identity.device_hash();
   session->callKey = mintCallKey();
   session->role = identity.has_role() ? voiceRoleToString(identity.role())
@@ -1516,6 +1518,12 @@ ChatRequest VoiceSessionService::turnRequest(Session& session)
   req.role = userRoleFromString(session.role);
   req.lang = langCode(session.lang);
   req.sessionId = session.callId;
+  const ConversationRoute route = conversationRouteFor({.flagEnabled = ConfigService::hasKey("voice.use_conversation") &&
+                                                                       ConfigService::getBool("voice.use_conversation"),
+                                                        .userId = session.userId,
+                                                        .leg = session.leg});
+  req.useConversation = route.useConversation;
+  req.conversationLeg = route.leg;
   return req;
 }
 

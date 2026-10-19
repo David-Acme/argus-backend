@@ -170,3 +170,25 @@ CREATE TABLE IF NOT EXISTS duress_raise_outbox (
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_duress_raise_outbox_user
   ON duress_raise_outbox (user_id);
+
+CREATE TABLE IF NOT EXISTS conversation (
+  user_id        INTEGER NOT NULL PRIMARY KEY,
+  active_leg     TEXT    NOT NULL CHECK (active_leg IN ('camera', 'phone', 'laptop')),
+  summary        TEXT    NOT NULL DEFAULT '',
+  summary_turns  INTEGER NOT NULL DEFAULT 0,
+  last_turn_at   INTEGER NOT NULL DEFAULT 0,
+  created_at     INTEGER NOT NULL,
+  updated_at     INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS conversation_turn (
+  id          INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL REFERENCES conversation (user_id) ON DELETE CASCADE,
+  role        TEXT    NOT NULL CHECK (role IN ('user', 'assistant', 'note')),
+  leg         TEXT    NOT NULL CHECK (leg IN ('camera', 'phone', 'laptop')),
+  content     TEXT    NOT NULL,
+  created_at  INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversation_turn_user ON conversation_turn (user_id, id);
+CREATE INDEX IF NOT EXISTS idx_conversation_turn_created ON conversation_turn (created_at);

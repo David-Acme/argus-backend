@@ -2539,3 +2539,21 @@ tarea, en una sola pregunta corta"): `retryShare` 0.333333 to 0.111111 on the sh
 the pins were measured (the U19 prompt items); their fix is the call prompt
 (`services/voice/src/feature/voice/call-history.cc`, another unit's surface in this batch) or the corpus
 itself, never the fixture.
+
+## The conversation's stored text (2026-10-14)
+
+The conversation stores what the screen let through or rewrote, never the raw
+utterance when the screen changed it. The chat path screens the turn first, and
+only then opens the conversation (the leg takeover and the tail), so the stored
+user turn and the model's last user message are the same text: the screen's text.
+
+- A pass returns the utterance unchanged (the duress screen does this), so the
+  stored text is the spoken text of the request.
+- A rewrite that does not withhold replaces the request's user message, and the
+  stored turn is the rewrite.
+- A withheld turn is answered with the withheld speech, opens nothing, records
+  nothing and does not change the active leg.
+
+The reply is stored as the assistant turn on the same leg, only when it is not
+empty. Test: llm-controller-conversation-test (the rewriting screen case, and the
+withheld case).

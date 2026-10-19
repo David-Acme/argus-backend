@@ -5,6 +5,7 @@
 #include <feature/memory/repositories/memory-graph/memory-graph-repository.hxx>
 #include <feature/memory/services/embedding/embedding-service.hxx>
 #include <feature/memory/services/memory/entity-resolver.hxx>
+#include <shared/vocabulary/memory-scope.hxx>
 #include <sqlite/vec-db.hxx>
 #include <string>
 #include <vector>
@@ -36,6 +37,7 @@ struct GraphRecallHit
   float confidence;
   int hops;
   float score;
+  MemoryScope scope{MemoryScope::Personal};
 };
 
 struct GraphRecallResult
@@ -77,6 +79,14 @@ struct GraphRecallDeps
   EmbeddingService& embedding;
   VecDb& vecDb;
 };
+
+struct RecallAudience
+{
+  MemoryScope scope;
+  int64_t refId;
+};
+
+std::vector<RecallAudience> recallAudiences(int64_t listenerId);
 
 struct AliasRenderInput
 {

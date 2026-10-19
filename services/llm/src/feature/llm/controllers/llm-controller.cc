@@ -10,6 +10,8 @@
 #include <feature/llm/dtos/chat-dto.hxx>
 #include <feature/llm/dtos/response-screen-dto.hxx>
 #include <feature/llm/dtos/screen-dto.hxx>
+#include <feature/conversation/services/conversation-context.hxx>
+#include <feature/conversation/services/conversation-service.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
@@ -24,6 +26,7 @@
 #include <chrono>
 #include <exception>
 #include <memory>
+#include <ctime>
 #include <ranges>
 #include <string>
 #include <string_view>
@@ -233,6 +236,8 @@ ChatRequest boundToCaller(ChatRequest request, std::string_view caller)
   request.toolsEnabled = false;
   request.clientActions = false;
   request.sessionId.clear();
+  request.conversationLeg.reset();
+  request.useConversation = false;
   return request;
 }
 
@@ -271,7 +276,7 @@ ScreenedRequest screenTurn(const turn::UtteranceScreen* screen, ChatRequest requ
   if (utterance.empty())
     return {.request = std::move(request), .withheld = false};
   turn::ScreenedText screened = screen->screen({.userId = request.userId, .role = request.role, .text = utterance});
-  if (screened.withheld)
+  if (screened.withheld || screened.text != utterance)
     last->content = std::move(screened.text);
   return {.request = std::move(request), .withheld = screened.withheld};
 }
@@ -282,15 +287,103 @@ std::string LlmController::screenText(const ChatRequest& request) const
   return screened.request.messages.empty() ? std::string{} : screened.request.messages.back().content;
 }
 
+namespace
+{
+constexpr int kConversationTailTurns = 10;
+
+std::vector<ConversationMessage> toConversationMessages(const std::vector<ChatMessage>& messages)
+{
+  std::vector<ConversationMessage> out;
+  out.reserve(messages.size());
+  for (const auto& message : messages)
+    out.push_back({.role = message.role, .content = message.content});
+  return out;
+}
+
+std::vector<ChatMessage> toChatMessages(const std::vector<ConversationMessage>& messages)
+{
+  std::vector<ChatMessage> out;
+  out.reserve(messages.size());
+  for (const auto& message : messages)
+    out.push_back({.role = message.role, .content = message.content});
+  return out;
+}
+}
+
+void LlmController::setConversation(std::shared_ptr<ConversationStore> conversation)
+{
+  conversation_ = std::move(conversation);
+}
+
+void LlmController::setTurnEngine(std::function<LlmChatOutcome(const ChatRequest&)> engine)
+{
+  turnEngine_ = std::move(engine);
+}
+
+void LlmController::requireConversationAccess(const ChatRequest& request) const
+{
+  if (!request.useConversation)
+    return;
+  if (!conversation_)
+    throw ResponseException(LlmErrors::ConversationUnavailable);
+  if (request.userId <= 0 || !request.conversationLeg)
+    throw ResponseException(LlmErrors::ConversationNeedsUserAndLeg);
+}
+
+LlmController::ConversationTurnPlan LlmController::openConversationTurn(const ChatRequest& request)
+{
+  ConversationTurnPlan plan{.request = request,
+                            .active = false,
+                            .userId = 0,
+                            .leg = ConversationLegKind::Phone,
+                            .userText = {}};
+  if (!request.useConversation)
+    return plan;
+  requireConversationAccess(request);
+  const ConversationContext context = openConversation(
+      *conversation_, {.userId = request.userId,
+                       .leg = *request.conversationLeg,
+                       .lang = request.lang,
+                       .at = std::time(nullptr),
+                       .tailTurns = kConversationTailTurns,
+                       .requestMessages = toConversationMessages(request.messages)});
+  plan.request.messages = toChatMessages(context.messages);
+  plan.active = true;
+  plan.userId = request.userId;
+  plan.leg = *request.conversationLeg;
+  plan.userText = context.latestUserText;
+  return plan;
+}
+
+void LlmController::closeConversationTurn(const ConversationTurnPlan& plan, const std::string& reply) const
+{
+  if (!plan.active || reply.empty())
+    return;
+  if (!recordExchange(*conversation_, {.userId = plan.userId,
+                                       .leg = plan.leg,
+                                       .userText = plan.userText,
+                                       .reply = reply,
+                                       .at = std::time(nullptr)}))
+    LOG_WARN << "LLM chat: the exchange was not stored";
+}
+
 LlmChatOutcome LlmController::chatSync(const ChatRequest& unscreened)
 {
   const ScreenedRequest screened = screenTurn(screen_, unscreened);
-  LlmChatOutcome outcome;
   if (screened.withheld) {
-    outcome.speech = std::string(llm_speech::kUnheard);
-    return outcome;
+    LlmChatOutcome withheld;
+    withheld.speech = std::string(llm_speech::kUnheard);
+    return withheld;
   }
-  const ChatRequest& request = screened.request;
+  const ConversationTurnPlan plan = openConversationTurn(screened.request);
+  LlmChatOutcome outcome = turnEngine_ ? turnEngine_(plan.request) : chatScreenedSync(plan.request);
+  closeConversationTurn(plan, outcome.text);
+  return outcome;
+}
+
+LlmChatOutcome LlmController::chatScreenedSync(const ChatRequest& request)
+{
+  LlmChatOutcome outcome;
   const auto tools = requestTools(adapter_.executor(), request);
   if (tools.empty()) {
     const ToolChatOutput plain = adapter_.chatPlain(request);
@@ -332,19 +425,23 @@ void LlmController::chatStreamSync(const LlmStreamInput& unscreened)
     unscreened.onToken("", true);
     return;
   }
+  const ConversationTurnPlan plan = openConversationTurn(screened.request);
   LlmStreamInput input = unscreened;
-  input.request = std::move(screened.request);
+  input.request = plan.request;
   LlmPrefillStats* stats = input.stats;
-  const TokenCallback emit = [this, stats,
+  const auto reply = std::make_shared<std::string>();
+  const TokenCallback emit = [this, stats, reply,
                               forward = input.onToken](const std::string& token,
                                                        bool done) {
     if (done && stats)
       *stats = service_.lastPrefillStats();
+    reply->append(token);
     forward(token, done);
   };
   const auto tools = requestTools(adapter_.executor(), input.request);
   if (tools.empty()) {
     adapter_.chatPlainStream({.request = input.request, .onToken = emit});
+    closeConversationTurn(plan, *reply);
     return;
   }
   const ToolChatInput loop = toolLoopInput({.tools = tools,
@@ -355,6 +452,7 @@ void LlmController::chatStreamSync(const LlmStreamInput& unscreened)
   std::vector<ChatMessage> history = input.request.messages;
   const ToolChatOutput output = adapter_.chatWithToolsStream(
       {.input = loop, .history = history, .onToken = emit});
+  closeConversationTurn(plan, *reply);
   if (input.speech != nullptr)
     *input.speech = output.speech;
   if (input.act != nullptr)
@@ -373,12 +471,14 @@ LlmController::chat(drogon::HttpRequestPtr req)
     co_return badRequest();
 
   const auto body = ChatCompletionDto::fromJson(*req->getJsonObject());
+  const ChatRequest bound = boundToCredential(body.request(),
+                                              {.presented = req->getHeader(kCallerCredentialHeader),
+                                               .expected = identityCredential_});
+  requireConversationAccess(bound);
 
   const auto t0 = std::chrono::steady_clock::now();
   auto outcome = co_await BlockingTask<LlmChatOutcome>(
-      [this, request = boundToCredential(body.request(),
-                                         {.presented = req->getHeader(kCallerCredentialHeader),
-                                          .expected = identityCredential_})] {
+      [this, request = bound] {
         return chatSync(request);
       },
       BlockingLane::Heavy);
@@ -415,6 +515,10 @@ LlmController::chatStream(drogon::HttpRequestPtr req)
     co_return badRequest();
 
   const auto body = ChatCompletionDto::fromJson(*req->getJsonObject());
+  const ChatRequest bound = boundToCredential(body.request(),
+                                              {.presented = req->getHeader(kCallerCredentialHeader),
+                                               .expected = identityCredential_});
+  requireConversationAccess(bound);
 
   auto lease = streams_.tryAcquire();
   if (!lease)
@@ -422,9 +526,7 @@ LlmController::chatStream(drogon::HttpRequestPtr req)
   auto job = std::make_shared<ChatStreamJob>(ChatStreamJob{
       .lease = std::move(*lease),
       .owner = this,
-      .request = boundToCredential(body.request(),
-                                   {.presented = req->getHeader(kCallerCredentialHeader),
-                                    .expected = identityCredential_}),
+      .request = bound,
       .stream = nullptr,
       .stats = {},
       .speech = {},

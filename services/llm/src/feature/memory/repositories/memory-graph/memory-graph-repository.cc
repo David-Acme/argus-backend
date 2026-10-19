@@ -178,7 +178,8 @@ int64_t MemoryGraphRepository::upsertFact(sqlite3* db,
     stmt.bindInt64(1, input.now);
     stmt.bindInt64(2, input.now);
     stmt.bindInt64(3, oldId);
-    stmt.bindInt64(4, input.refId);
+    stmt.bindText(4, input.scope);
+    stmt.bindInt64(5, input.refId);
     if (stmt.step() == SQLITE_DONE && sqlite3_changes(db) > 0)
       insertEdge(db, {.kind = "supersedes",
                       .src = oldId,
@@ -204,7 +205,8 @@ bool MemoryGraphRepository::closeFact(sqlite3* db, const FactCloseInput& input)
   stmt.bindInt64(1, input.at);
   stmt.bindInt64(2, input.at);
   stmt.bindInt64(3, input.factId);
-  stmt.bindInt64(4, input.refId);
+  stmt.bindText(4, input.scope);
+  stmt.bindInt64(5, input.refId);
   return stmt.step() == SQLITE_DONE && sqlite3_changes(db) > 0;
 }
 

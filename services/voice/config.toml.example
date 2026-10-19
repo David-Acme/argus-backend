@@ -14,6 +14,7 @@ caller_notification = ""
 [voice]
 opening = "none"
 trace_latency = false
+use_conversation = false
 
 [identity]
 target = "tls:127.0.0.1:7240"

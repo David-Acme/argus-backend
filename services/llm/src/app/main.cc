@@ -1,6 +1,8 @@
 #include <app/rpc/llm-rpc-server.hxx>
 #include <config/llm-config.hxx>
 #include <camera/camera-sync-client.hxx>
+#include <feature/conversation/services/conversation-purge.hxx>
+#include <feature/conversation/services/conversation-service.hxx>
 #include <feature/memory/infra/notification-reminder-calls.hxx>
 #include <feature/memory/infra/productivity-reminder-rows.hxx>
 #include <feature/pending-intent/infra/notification-intent-notifier.hxx>
@@ -253,6 +255,14 @@ int main()
     llama_backend_free();
     return 1;
   }
+  const auto conversation = std::make_shared<ConversationService>(
+      ConversationServiceDeps{.db = VecDb::instance().handle(),
+                              .mutex = VecDb::instance().mutex(),
+                              .policy = {.idleSeconds = LlmConfig::resolveConversation().idleSeconds}});
+  llm->setConversation(conversation);
+  const auto conversationPurge = std::make_shared<ConversationPurgeTask>(
+      conversation, [] { return LlmConfig::resolveConversation().retentionDays; }, DailyClock{.hour = 4, .minute = 30});
+  conversationPurge->start();
   std::shared_ptr<NotificationClient> notificationClient;
   if (const LlmNotificationConfig notifications = LlmConfig::resolveNotifications();
       !notifications.target.empty() && !notifications.credential.empty()) {
@@ -561,6 +571,7 @@ int main()
     replica->stop();
   if (encounterConsumer)
     encounterConsumer->stop();
+  conversationPurge->stop();
   memory.shutdown();
   llm->shutdownEngine();
   llama_backend_free();

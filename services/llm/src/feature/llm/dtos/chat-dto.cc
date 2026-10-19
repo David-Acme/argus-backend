@@ -1,5 +1,7 @@
 #include "chat-dto.hxx"
 
+#include <llm/conversation-leg.hxx>
+
 namespace
 {
 
@@ -45,6 +47,10 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
     dto.sessionId = json["session_id"].asString();
   if (json.isMember("prefill_only") && json["prefill_only"].isBool())
     dto.prefillOnly = json["prefill_only"].asBool();
+  if (json.isMember("use_conversation") && json["use_conversation"].isBool())
+    dto.useConversation = json["use_conversation"].asBool();
+  if (json.isMember("conversation_leg") && json["conversation_leg"].isString())
+    dto.conversationLeg = json["conversation_leg"].asString();
 
   START_VALIDATION(ChatCompletionDto, dto)
   ARRAY_NOT_EMPTY(messages, ChatMessageDto)
@@ -115,5 +121,7 @@ ChatRequest ChatCompletionDto::request() const
   req.lang = lang.value_or(std::string());
   req.sessionId = sessionId;
   req.prefillOnly = prefillOnly;
+  req.useConversation = useConversation;
+  req.conversationLeg = conversationLegKindFromString(conversationLeg);
   return req;
 }

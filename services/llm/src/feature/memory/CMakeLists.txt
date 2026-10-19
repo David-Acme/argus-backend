@@ -14,6 +14,7 @@ argus_module(NAME memory
         services/memory/entity-resolver.cc
         services/memory/graph-recall.cc
         services/memory/memory-formation.cc
+        services/memory/memory-scope-classifier.cc
         services/memory/memory-service.cc
         services/memory/memory-tool-descriptors.cc
         services/memory/reminder-readback.cc

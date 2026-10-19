@@ -34,6 +34,13 @@ enum CallerRole {
   CALLER_ROLE_GUEST = 4;
 }
 
+enum ConversationLeg {
+  CONVERSATION_LEG_UNSPECIFIED = 0;
+  CONVERSATION_LEG_CAMERA = 1;
+  CONVERSATION_LEG_PHONE = 2;
+  CONVERSATION_LEG_LAPTOP = 3;
+}
+
 message ChatRequest {
   repeated ChatMessage messages = 1;
   int32 max_tokens = 2;
@@ -48,6 +55,8 @@ message ChatRequest {
   bool client_actions = 11;
   string session_id = 12;
   bool prefill_only = 13;
+  ConversationLeg conversation_leg = 17;
+  bool use_conversation = 18;
   reserved 14, 15, 16;
   reserved "turn_speaker", "holder_name", "context_facts";
 }

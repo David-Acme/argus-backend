@@ -10,6 +10,8 @@ endif()
 argus_contracts(NAME llm
     INCLUDES src
     SOURCES
+        src/llm/conversation-leg.hxx
+        src/llm/conversation-leg-wire.hxx
         src/llm/llm-errors.hxx
         src/llm/llm-speech.hxx
     DEPENDS argus::lib::errors)
@@ -42,6 +44,14 @@ if(ARGUS_PACKAGE_TESTS)
         argus::contracts::llm argus::lib::doctest-main)
     target_compile_options(llm-contract-catalog-test PRIVATE -Wall -Wextra)
     add_test(NAME llm-contract-catalog-test COMMAND llm-contract-catalog-test)
+
+    foreach(test_name llm-conversation-leg-test llm-conversation-leg-wire-test)
+        add_executable(${test_name} tests/unit/${test_name}.cc)
+        target_link_libraries(${test_name} PRIVATE
+            argus::contracts::llm argus::lib::doctest-main)
+        target_compile_options(${test_name} PRIVATE -Wall -Wextra)
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    endforeach()
 
     get_target_property(DOCTEST_INCLUDE_DIRS doctest::doctest
                         INTERFACE_INCLUDE_DIRECTORIES)

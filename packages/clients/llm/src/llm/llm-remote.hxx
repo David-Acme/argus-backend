@@ -17,6 +17,8 @@ struct LlmRemoteConfig
   static LlmRemoteConfig resolve();
 };
 
+[[nodiscard]] std::string chatRequestJson(const ChatRequest& request);
+
 class LlmHttpClient
 {
 public:

@@ -104,6 +104,8 @@ argus_module(NAME voice-core
         src/feature/voice/opening-budget.cc
         src/feature/voice/voice-engine-seam.cc
         src/feature/voice/voice-rpc-service.cc
+        src/feature/voice/services/leg-arbiter/leg-arbiter.cc
+        src/feature/voice/services/leg-arbiter/conversation-route.cc
         src/feature/health/health-rpc-service.cc
         ${VOICE_ENGINE_SOURCES}
     INCLUDES
@@ -291,6 +293,20 @@ argus_runtime_rpath(voice-call-history-test)
 set_target_properties(voice-call-history-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME voice-call-history-test COMMAND voice-call-history-test)
+
+add_executable(voice-leg-arbiter-test tests/unit/voice-leg-arbiter-test.cc)
+target_link_libraries(voice-leg-arbiter-test PRIVATE argus::voice-core argus::lib::doctest-main)
+target_compile_options(voice-leg-arbiter-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(voice-leg-arbiter-test)
+set_target_properties(voice-leg-arbiter-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME voice-leg-arbiter-test COMMAND voice-leg-arbiter-test)
+
+add_executable(voice-conversation-route-test tests/unit/voice-conversation-route-test.cc)
+target_link_libraries(voice-conversation-route-test PRIVATE argus::voice-core argus::lib::doctest-main)
+target_compile_options(voice-conversation-route-test PRIVATE -Wall -Wextra)
+argus_runtime_rpath(voice-conversation-route-test)
+set_target_properties(voice-conversation-route-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME voice-conversation-route-test COMMAND voice-conversation-route-test)
 
 add_executable(voice-offer-reply-test tests/unit/voice-offer-reply-test.cc)
 

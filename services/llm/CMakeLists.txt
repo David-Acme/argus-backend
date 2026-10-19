@@ -679,3 +679,102 @@ target_compile_options(llm-components-test PRIVATE -Wall -Wextra)
 set_target_properties(llm-components-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-components-test COMMAND llm-components-test)
+
+add_executable(memory-scope-test tests/unit/memory-scope-test.cc)
+target_link_libraries(memory-scope-test PRIVATE argus::llm-shared argus::lib::doctest-main)
+target_compile_options(memory-scope-test PRIVATE -Wall -Wextra)
+set_target_properties(memory-scope-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME memory-scope-test COMMAND memory-scope-test)
+
+add_executable(llm-conversation-config-test tests/unit/llm-conversation-config-test.cc)
+target_link_libraries(llm-conversation-config-test PRIVATE argus::llm-config argus::lib::doctest-main)
+target_compile_options(llm-conversation-config-test PRIVATE -Wall -Wextra)
+set_target_properties(llm-conversation-config-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME llm-conversation-config-test COMMAND llm-conversation-config-test)
+
+add_executable(llm-conversation-repository-test tests/unit/llm-conversation-repository-test.cc)
+target_link_libraries(llm-conversation-repository-test PRIVATE argus::conversation argus::contracts::llm
+    argus::lib::sqlite argus::lib::doctest-main)
+target_compile_definitions(llm-conversation-repository-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(llm-conversation-repository-test PRIVATE -Wall -Wextra)
+set_target_properties(llm-conversation-repository-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME llm-conversation-repository-test COMMAND llm-conversation-repository-test)
+
+add_executable(llm-conversation-switch-note-test tests/unit/llm-conversation-switch-note-test.cc)
+target_link_libraries(llm-conversation-switch-note-test PRIVATE argus::conversation argus::contracts::llm argus::lib::doctest-main)
+target_compile_options(llm-conversation-switch-note-test PRIVATE -Wall -Wextra)
+set_target_properties(llm-conversation-switch-note-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME llm-conversation-switch-note-test COMMAND llm-conversation-switch-note-test)
+
+add_executable(memory-recall-scope-test tests/unit/memory-recall-scope-test.cc)
+target_link_libraries(memory-recall-scope-test PRIVATE argus::memory argus::llm-shared argus::lib::doctest-main)
+target_compile_definitions(memory-recall-scope-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(memory-recall-scope-test PRIVATE -Wall -Wextra)
+set_target_properties(memory-recall-scope-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME memory-recall-scope-test COMMAND memory-recall-scope-test)
+
+add_executable(memory-scope-classifier-test tests/unit/memory-scope-classifier-test.cc)
+target_link_libraries(memory-scope-classifier-test PRIVATE argus::memory argus::llm-shared argus::lib::doctest-main)
+target_compile_options(memory-scope-classifier-test PRIVATE -Wall -Wextra)
+set_target_properties(memory-scope-classifier-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME memory-scope-classifier-test COMMAND memory-scope-classifier-test)
+
+add_executable(llm-conversation-service-test tests/unit/llm-conversation-service-test.cc)
+target_link_libraries(llm-conversation-service-test PRIVATE argus::conversation argus::contracts::llm argus::lib::sqlite argus::lib::doctest-main)
+target_compile_definitions(llm-conversation-service-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(llm-conversation-service-test PRIVATE -Wall -Wextra)
+set_target_properties(llm-conversation-service-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME llm-conversation-service-test COMMAND llm-conversation-service-test)
+
+add_executable(llm-conversation-retention-test tests/unit/llm-conversation-retention-test.cc)
+target_link_libraries(llm-conversation-retention-test PRIVATE argus::llm-settings argus::conversation argus::contracts::llm argus::lib::sqlite argus::lib::doctest-main)
+target_compile_definitions(llm-conversation-retention-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(llm-conversation-retention-test PRIVATE -Wall -Wextra)
+set_target_properties(llm-conversation-retention-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME llm-conversation-retention-test COMMAND llm-conversation-retention-test)
+
+add_executable(memory-recall-vec-e2e-test tests/unit/memory-recall-vec-e2e-test.cc)
+target_link_libraries(memory-recall-vec-e2e-test PRIVATE argus::memory argus::contracts::auth argus::lib::doctest-main)
+target_compile_definitions(memory-recall-vec-e2e-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql"
+    ARGUS_TEST_MEMORY_MODELS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/../../models/memory")
+target_compile_options(memory-recall-vec-e2e-test PRIVATE -Wall -Wextra)
+set_target_properties(memory-recall-vec-e2e-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME memory-recall-vec-e2e-test COMMAND memory-recall-vec-e2e-test)
+set_tests_properties(memory-recall-vec-e2e-test PROPERTIES SKIP_RETURN_CODE 77 LABELS phase2)
+
+add_executable(llm-conversation-context-test tests/unit/llm-conversation-context-test.cc)
+target_link_libraries(llm-conversation-context-test PRIVATE argus::conversation argus::contracts::llm argus::lib::doctest-main)
+target_compile_options(llm-conversation-context-test PRIVATE -Wall -Wextra)
+set_target_properties(llm-conversation-context-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME llm-conversation-context-test COMMAND llm-conversation-context-test)
+
+add_executable(llm-conversation-exchange-test tests/unit/llm-conversation-exchange-test.cc)
+target_link_libraries(llm-conversation-exchange-test PRIVATE argus::conversation argus::contracts::llm argus::lib::sqlite argus::lib::doctest-main)
+target_compile_definitions(llm-conversation-exchange-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+target_compile_options(llm-conversation-exchange-test PRIVATE -Wall -Wextra)
+set_target_properties(llm-conversation-exchange-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME llm-conversation-exchange-test COMMAND llm-conversation-exchange-test)
+
+add_executable(llm-conversation-purge-test tests/unit/llm-conversation-purge-test.cc)
+target_link_libraries(llm-conversation-purge-test PRIVATE argus::conversation argus::lib::doctest-main)
+target_compile_options(llm-conversation-purge-test PRIVATE -Wall -Wextra)
+set_target_properties(llm-conversation-purge-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME llm-conversation-purge-test COMMAND llm-conversation-purge-test)
+
+add_executable(llm-controller-conversation-test tests/unit/llm-controller-conversation-test.cc)
+target_link_libraries(llm-controller-conversation-test PRIVATE argus::llm argus::conversation argus::contracts::llm argus::lib::doctest-main)
+target_compile_options(llm-controller-conversation-test PRIVATE -Wall -Wextra)
+set_target_properties(llm-controller-conversation-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME llm-controller-conversation-test COMMAND llm-controller-conversation-test)
+
+add_executable(llm-chat-conversation-http-test tests/unit/llm-chat-conversation-http-test.cc)
+target_link_libraries(llm-chat-conversation-http-test PRIVATE argus::llm argus::clients::llm argus::contracts::llm argus::lib::doctest-main)
+target_compile_options(llm-chat-conversation-http-test PRIVATE -Wall -Wextra)
+set_target_properties(llm-chat-conversation-http-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+add_test(NAME llm-chat-conversation-http-test COMMAND llm-chat-conversation-http-test)
