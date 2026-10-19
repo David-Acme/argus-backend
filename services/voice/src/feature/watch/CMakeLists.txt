@@ -3,11 +3,13 @@ argus_module(NAME voice-watch
         camera-conversation.cc
         camera-ear.cc
         camera-gains.cc
+        camera-identity.cc
         camera-level.cc
         conversation-policy.cc
         echo-guard.cc
         fire-log.cc
         room-directory.cc
+        speaker-resolution.cc
         stage-two.cc
         wake-spotter.cc
         wake-words.cc
@@ -20,6 +22,7 @@ argus_module(NAME voice-watch
         argus::voice-config
         argus::clients::camera-watch
         argus::clients::guard
+        argus::clients::identity
         argus::clients::stt
         argus::contracts::voice
         argus::lib::audio

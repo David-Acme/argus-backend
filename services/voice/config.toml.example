@@ -80,6 +80,7 @@ max_length_ms = 600000
 resumable_ms = 180000
 reply_gap_ms = 700
 camera_drop_ms = 3000
+face_window_ms = 1500
 
 [stt]
 remote_url = "127.0.0.1:7030"

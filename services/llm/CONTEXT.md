@@ -2539,3 +2539,7 @@ tarea, en una sola pregunta corta"): `retryShare` 0.333333 to 0.111111 on the sh
 the pins were measured (the U19 prompt items); their fix is the call prompt
 (`services/voice/src/feature/voice/call-history.cc`, another unit's surface in this batch) or the corpus
 itself, never the fixture.
+
+## The camera surface (2026-10, CC5 of the camera call plan)
+
+`ChatRequest.surface` (`ConversationSurface`: `app`, `camera`, `camera_visitor`; wire field 17 and HTTP `surface`) tells argus-llm the turn comes from a camera conversation. `ToolAudience` carries it, and `ToolExecutor::execute` refuses any decided tool whose capability is outside `kCameraWatchCapabilities` (camera) or `kCameraVisitorCapabilities` (visitor). For a member on a camera the refusal sends a `watch_confirm` notification to their own phone (`infra/watch-confirm-notifier`, data `{kind, url, tool, arguments}`, `url` an in-app path) and answers `confirm_in_app`; otherwise it answers `camera_floor`. The offer is unchanged, so the decider still recognises the request and the refusal is spoken about, never silently dropped.

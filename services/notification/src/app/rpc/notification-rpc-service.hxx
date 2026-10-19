@@ -40,6 +40,7 @@ private:
   std::vector<argus::client::CallerCredential> guardCallers_;
   std::vector<argus::client::CallerCredential> assistantCallers_;
   std::vector<argus::client::CallerCredential> syncCallers_;
+  std::vector<argus::client::CallerCredential> watchCallers_;
   std::shared_ptr<const CallEngine> callEngine_;
   std::shared_ptr<TaskGate> tasks_;
   std::shared_ptr<const NotificationService> notificationService_;

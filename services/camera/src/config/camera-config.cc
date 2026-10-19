@@ -98,6 +98,8 @@ CameraWatchConfig CameraConfig::resolveWatch()
   config.packetMs = positive("watch.packet_ms", config.packetMs);
   config.maxListeners = positive("watch.max_listeners", config.maxListeners);
   config.boardRefreshMs = positive("watch.board_refresh_ms", config.boardRefreshMs);
+  config.faceWindowMaxMs = positive("watch.face_window_max_ms", config.faceWindowMaxMs);
+  config.faceWindowMaxCrops = positive("watch.face_window_max_crops", config.faceWindowMaxCrops);
   return config;
 }
 

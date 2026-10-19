@@ -539,6 +539,7 @@ void VoiceSessionService::start(VoiceSessionSink& sink,
                                                        .unheardSeed = std::random_device{}(),
                                                        .vadConfig = vadConfig});
   session->askAddressed = options.askAddressed;
+  session->surface = options.surface;
   session->incompleteHold = options.incompleteHold;
   session->incomplete = options.incomplete;
   session->sink = &sink;
@@ -636,6 +637,16 @@ void VoiceSessionService::feedSamples(VoiceSessionSink& sink, std::span<const fl
     session->pcmRing.push(samples.data(), samples.size());
   }
   session->pcmCv.notify_one();
+}
+
+size_t VoiceSessionService::liveSessions(int64_t userId) const
+{
+  if (userId <= 0)
+    return 0;
+  std::scoped_lock lock(mutex_);
+  return static_cast<size_t>(std::ranges::count_if(sessions_, [userId](const auto& entry) {
+    return entry.second->userId == userId && entry.second->active.load();
+  }));
 }
 
 void VoiceSessionService::setLiveness(SessionLiveness value)
@@ -1298,6 +1309,11 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
 
   session.history.addUser(userText);
   observeSpeaker(session, awaitSpeaker(speakerProbe));
+  if (session.sink != nullptr && !session.sink->admitsTurn(userText, session.speakerVerdict)) {
+    session.history.rollbackUser();
+    LOG_INFO << "Voice: a turn in another voice, not addressed to Argus, is left out";
+    return;
+  }
 
   if (session.userId > 0 && session.userName.empty()) {
     if (const auto name = extractName(userText)) {
@@ -1607,6 +1623,7 @@ ChatRequest VoiceSessionService::turnRequest(Session& session)
   req.role = userRoleFromString(session.role);
   req.lang = langCode(session.lang);
   req.sessionId = session.callId;
+  req.surface = session.surface;
   return req;
 }
 

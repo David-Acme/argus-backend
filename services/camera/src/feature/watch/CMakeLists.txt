@@ -16,6 +16,8 @@ argus_module(NAME camera-watch
         argus::camera-stream
         argus::camera-talk
         argus::clients::camera-watch
+        argus::clients::identity
+        argus::lib::runtime
         argus::contracts::camera
         Drogon::Drogon)
 

@@ -187,6 +187,8 @@ tail_pad_ms = 300
 packet_ms = 120
 speak_queue_ms = 60000
 speak_idle_ms = 15000
+face_window_max_ms = 3000
+face_window_max_crops = 6
 
 [stt]
 remote_url = "127.0.0.1:7030"

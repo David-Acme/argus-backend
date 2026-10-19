@@ -60,3 +60,5 @@ struct WakeRuleInput
 [[nodiscard]] bool trailsOff(std::string_view text);
 
 [[nodiscard]] bool panicPhrase(std::string_view text);
+
+[[nodiscard]] bool delegationPhrase(std::string_view text);

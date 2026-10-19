@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <auth/user-role.hxx>
+#include <llm/conversation-surface.hxx>
 #include <cstddef>
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
@@ -50,6 +51,7 @@ struct ChatRequest
   bool toolCallsAllowed{true};
   bool prefillOnly{false};
   std::vector<ContextFact> contextFacts{};
+  ConversationSurface surface{ConversationSurface::App};
 };
 
 struct UtteranceScreenRequest

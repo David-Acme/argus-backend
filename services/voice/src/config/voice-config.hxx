@@ -136,6 +136,7 @@ struct VoiceWatchConfig
   std::chrono::milliseconds resumable{180000};
   std::chrono::milliseconds replyGap{700};
   std::chrono::milliseconds cameraDrop{3000};
+  std::chrono::milliseconds faceWindow{1500};
 };
 
 class VoiceConfig

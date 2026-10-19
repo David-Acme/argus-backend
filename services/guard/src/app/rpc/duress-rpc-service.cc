@@ -8,6 +8,8 @@
 #include <feature/safety/services/safety-service.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <algorithm>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -121,5 +123,47 @@ grpc::ServerUnaryReactor* DuressRpcService::RaiseSpoken(grpc::CallbackServerCont
           }
         });
       });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* DuressRpcService::RaiseCameraPanic(grpc::CallbackServerContext* context,
+                                                             const v1::CameraPanicRequest* request,
+                                                             v1::CameraPanicResponse* response)
+{
+  if (!argus::client::authorizeCaller(context, input_.panicCredentials))
+    return refuse(context, grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "Caller credential missing or invalid"));
+  if (!input_.safety)
+    return refuse(context, grpc::Status(grpc::StatusCode::UNAVAILABLE, "Safety is not wired"));
+  if (request->camera_id() <= 0)
+    return refuse(context, grpc::Status(grpc::StatusCode::INVALID_ARGUMENT, "A camera is required"));
+  auto* reactor = context->DefaultReactor();
+  drogon::app().getLoop()->queueInLoop([safety = input_.safety,
+                                        environmentOf = input_.environmentOf,
+                                        cameraId = request->camera_id(),
+                                        userId = std::max<int64_t>(0, request->user_id()),
+                                        speaker = request->speaker(),
+                                        reactor,
+                                        response]() {
+    drogon::async_run([safety, environmentOf, cameraId, userId, speaker, reactor, response]() -> drogon::Task<void> {
+      try {
+        int64_t environment = 0;
+        if (environmentOf)
+          environment = co_await environmentOf(cameraId);
+        const PanicResult result = co_await safety->panic(
+            {.userId = userId,
+             .userName = speaker,
+             .environmentId = environment > 0 ? std::optional<int64_t>(environment) : std::nullopt});
+        response->set_sent(result.sent);
+        response->set_repeated(result.repeated);
+        response->set_alert_id(result.alertId);
+        LOG_WARN << "Duress RPC: panic raised through camera " << cameraId << " (alert " << result.alertId << ")";
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Duress RPC: a camera panic could not be recorded: " << error.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, "Safety failed"));
+      }
+    });
+  });
   return reactor;
 }

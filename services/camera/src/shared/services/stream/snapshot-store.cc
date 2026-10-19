@@ -83,3 +83,16 @@ std::optional<CameraSnapshot> SnapshotStore::latestPersonCrop(
     return std::nullopt;
   return *latest;
 }
+
+std::vector<CameraSnapshot> SnapshotStore::personCropsSince(int64_t cameraId, int64_t sinceMs) const
+{
+  std::vector<CameraSnapshot> out;
+  std::lock_guard<std::mutex> lock(mutex_);
+  const auto camera = crops_.find(cameraId);
+  if (camera == crops_.end())
+    return out;
+  for (const auto& [trackId, snapshot] : camera->second)
+    if (snapshot.atMs >= sinceMs)
+      out.push_back(snapshot);
+  return out;
+}

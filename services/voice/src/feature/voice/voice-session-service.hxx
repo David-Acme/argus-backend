@@ -7,6 +7,7 @@
 #include <deque>
 #include <functional>
 #include <feature/voice/call-history.hxx>
+#include <feature/voice/speaker-verdict.hxx>
 #include <feature/voice/turn-transcript.hxx>
 #include <feature/voice/unheard-reply.hxx>
 #include <feature/voice/voice-engine-seam.hxx>
@@ -44,6 +45,7 @@ public:
   virtual void duckPlayout(bool) {}
   [[nodiscard]] virtual int playoutRate() const { return kSinkPcmRate; }
   [[nodiscard]] virtual std::string shapeSpeech(const std::string& text) const { return text; }
+  [[nodiscard]] virtual bool admitsTurn(const std::string&, VoiceSpeakerVerdict) { return true; }
 };
 
 struct PcmFrame
@@ -54,6 +56,7 @@ struct PcmFrame
 
 struct VoiceSessionOptions
 {
+  ConversationSurface surface{ConversationSurface::App};
   std::optional<int> minSilenceFrames;
   std::optional<int> maxTurnFrames;
   bool askAddressed{true};
@@ -93,6 +96,7 @@ public:
   void feedPcm(VoiceSessionSink& sink, const PcmFrame& frame);
   void feedSamples(VoiceSessionSink& sink, std::span<const float> samples);
   bool announce(int64_t userId, const std::string& text);
+  [[nodiscard]] size_t liveSessions(int64_t userId) const;
   void farewell(VoiceSessionSink& sink);
   [[nodiscard]] static VoiceLang langOf(const argus::voice::v1::VoiceIdentity& identity);
   [[nodiscard]] static bool openingWillBeSpoken(const argus::voice::v1::VoiceStart& request);
@@ -310,6 +314,7 @@ private:
     std::chrono::milliseconds incompleteHold{0};
     std::function<bool(std::string_view)> incomplete;
     HeldTurn held;
+    ConversationSurface surface{ConversationSurface::App};
   };
 
   struct HeardTurn

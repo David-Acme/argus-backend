@@ -293,5 +293,17 @@ std::vector<SettingSpec> cameraSettingsCatalog()
                .apply = SettingApply::Restart,
                .range = {.min = 1000, .max = 120000, .step = 1000},
                .fallback = "15000"}),
+      integer({.key = "watch.face_window_max_ms",
+               .group = "watchman",
+               .level = SettingLevel::Advanced,
+               .apply = SettingApply::Restart,
+               .range = {.min = 500, .max = 10000, .step = 100},
+               .fallback = "3000"}),
+      integer({.key = "watch.face_window_max_crops",
+               .group = "watchman",
+               .level = SettingLevel::Advanced,
+               .apply = SettingApply::Restart,
+               .range = {.min = 1, .max = 16, .step = 1},
+               .fallback = "6"}),
   };
 }

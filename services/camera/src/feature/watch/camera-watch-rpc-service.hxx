@@ -7,12 +7,14 @@
 #include <config/camera-config.hxx>
 #include <grpc/grpc-server-identity.hxx>
 #include <grpcpp/grpcpp.h>
+#include <identity/identity-client.hxx>
 
 #include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -23,6 +25,7 @@ struct CameraWatchServiceInput
   std::shared_ptr<WatchCameraBoard> board;
   std::function<argus::camera::v1::WatchRefusal(int64_t)> gate;
   CameraWatchConfig config;
+  std::function<std::optional<argus::identity::v1::IdentifyPersonResponse>(const CameraIdentifyInput&)> identify;
 };
 
 class WatchReactorRegistry
@@ -52,6 +55,10 @@ public:
   grpc::ServerBidiReactor<argus::camera::v1::SpeakFrame, argus::camera::v1::SpeakEvent>*
   Speak(grpc::CallbackServerContext* context) override;
 
+  grpc::ServerUnaryReactor* FaceWindow(grpc::CallbackServerContext* context,
+                                       const argus::camera::v1::FaceWindowRequest* request,
+                                       argus::camera::v1::FaceWindowResponse* response) override;
+
   void requestStop();
   [[nodiscard]] bool drained() const;
 
@@ -63,6 +70,7 @@ private:
   std::shared_ptr<WatchCameraBoard> board_;
   std::function<argus::camera::v1::WatchRefusal(int64_t)> gate_;
   CameraWatchConfig config_;
+  std::function<std::optional<argus::identity::v1::IdentifyPersonResponse>(const CameraIdentifyInput&)> identify_;
   std::shared_ptr<WatchReactorRegistry> reactors_{std::make_shared<WatchReactorRegistry>()};
   std::atomic<uint64_t> nextId_{1};
   std::atomic<bool> stopping_{false};

@@ -9,6 +9,7 @@
 #include <feature/watch/watch-coordinator.hxx>
 
 #include <camera/camera-watch-client.hxx>
+#include <guard/guard-duress-client.hxx>
 #include <config/voice-config.hxx>
 
 #include <cstdint>
@@ -25,6 +26,7 @@ struct ConversationOpening
 {
   argus::voice::v1::VoiceIdentity identity;
   ConversationAudience audience{ConversationAudience::Guest};
+  ConversationSurface surface{ConversationSurface::CameraVisitor};
   std::vector<std::string> notes;
 };
 
@@ -44,6 +46,7 @@ struct ConversationManagerInput
   std::function<bool(int64_t, const std::vector<float>&)> sameSpeaker;
   std::function<void(const ConversationSnapshot&)> onUpdate;
   std::function<void(const ConversationEnded&)> onEnded;
+  std::function<void(const CameraPanicCall&)> panic;
 };
 
 struct HopChoiceInput
@@ -77,6 +80,7 @@ public:
   [[nodiscard]] std::optional<ConversationSnapshot> find(const std::string& conversationId) const;
   [[nodiscard]] bool end(int64_t userId, const std::string& conversationId);
   [[nodiscard]] bool occupied(int64_t cameraId) const;
+  [[nodiscard]] size_t liveFor(int64_t userId) const;
   [[nodiscard]] std::shared_ptr<CameraConversation> live(const std::string& conversationId) const;
   [[nodiscard]] std::map<int64_t, float> speakerLevels(const std::string& conversationId) const;
   void forget(const std::string& conversationId);
@@ -84,6 +88,7 @@ public:
 private:
   void reap(const std::stop_token& stop);
   void ended(const ConversationEnded& ended);
+  void heard(const std::string& conversationId, const std::string& text);
   [[nodiscard]] std::shared_ptr<CameraConversation> onCamera(int64_t cameraId) const;
 
   ConversationManagerInput input_;

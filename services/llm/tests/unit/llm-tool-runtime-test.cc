@@ -65,7 +65,7 @@ tools::ToolCall bareCall(const std::string& name)
 
 ToolAudience audienceOf(UserRole role)
 {
-  return {.role = role, .modules = {}};
+  return {.role = role, .modules = {}, .surface = ConversationSurface::App};
 }
 
 const tools::ToolDescriptor* declaredByMemory(const std::string& name)
@@ -269,7 +269,7 @@ TEST_CASE("a destructive preview and a module offer are remembered for the next 
   off.id = "productivity";
   off.enabled = false;
   off.name = {.es = "Productividad", .en = "Productivity"};
-  const ToolAudience inactive{.role = UserRole::Owner, .modules = ModuleSnapshot({off})};
+  const ToolAudience inactive{.role = UserRole::Owner, .modules = ModuleSnapshot({off}), .surface = ConversationSurface::App};
   auto list = callFor("task.list");
   list.context.turn = 2;
   CHECK(executor.execute(list, inactive).code == "module_inactive");
@@ -473,4 +473,42 @@ TEST_CASE("the app tool names are recognised by their prefix alone")
   CHECK(isAppTool("app.show_camera"));
   CHECK_FALSE(isAppTool("memory.recall"));
   CHECK_FALSE(isAppTool("modules.open_purge_screen"));
+}
+
+TEST_CASE("a camera conversation never runs a tool outside the camera set and asks the phone instead")
+{
+  Probe sensitive;
+  Probe allowed;
+  ToolRegistry registry;
+  registry.registerTool(probeDescriptor("probe.settings", sensitive, "settings.manage"));
+  registry.registerTool(probeDescriptor("probe.reminder", allowed, "reminders.write"));
+  ToolExecutor executor(registry);
+  std::vector<CameraConfirmRequest> asked;
+  executor.attachConfirmations([&asked](const CameraConfirmRequest& request) { asked.push_back(request); });
+
+  const ToolAudience camera{.role = UserRole::Owner, .modules = {}, .surface = ConversationSurface::Camera};
+  const auto refused = executor.execute(callFor("probe.settings"), camera);
+  CHECK_FALSE(refused.ok);
+  CHECK(refused.code == "confirm_in_app");
+  CHECK_FALSE(sensitive.ran);
+  REQUIRE(asked.size() == 1);
+  CHECK(asked.front().userId == 7);
+  CHECK(asked.front().tool == "probe.settings");
+
+  const auto reminder = executor.execute(callFor("probe.reminder"), camera);
+  CHECK(reminder.ok);
+  CHECK(allowed.ran);
+
+  const ToolAudience visitor{.role = UserRole::Owner, .modules = {}, .surface = ConversationSurface::CameraVisitor};
+  allowed.ran = false;
+  const auto stranger = executor.execute(callFor("probe.reminder"), visitor);
+  CHECK_FALSE(stranger.ok);
+  CHECK(stranger.code == "camera_floor");
+  CHECK_FALSE(allowed.ran);
+  CHECK(asked.size() == 1);
+
+  const ToolAudience app{.role = UserRole::Owner, .modules = {}, .surface = ConversationSurface::App};
+  CHECK(executor.execute(callFor("probe.settings"), app).ok);
+  CHECK(sensitive.ran);
+  CHECK(cameraFloorLine("es", true) == "Eso no se hace por la cámara; te dejé la confirmación en tu celular.");
 }

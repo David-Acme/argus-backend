@@ -1380,3 +1380,7 @@ Tests:
 - Backlog debt: the per-user reads of the call table (`exists`, `findRingingFor`, `ringStats`)
   run one per user, outside the alert transaction. Batch them in the call repository when the
   alert volume asks for it.
+
+## Watchman notices (2026-10, the camera call plan)
+
+`CreateNotifications` admits argus-voice (`grpc.caller_voice`) for exactly one recipient and the types `watch_busy`, `watch_resume`, `watch_details`, `watch_confirm` and `watch_message`, and argus-llm for `assistant_task`, `watch_details` and `watch_confirm`, always without a `response` plan.

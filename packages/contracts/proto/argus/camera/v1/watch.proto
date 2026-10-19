@@ -96,9 +96,35 @@ message SpeakEvent
   string detail = 6;
 }
 
+message FaceWindowRequest
+{
+  int64 camera_id = 1;
+  int32 window_ms = 2;
+}
+
+message SeenFace
+{
+  int64 person_id = 1;
+  int64 user_id = 2;
+  string name = 3;
+  string role = 4;
+  float confidence = 5;
+  string quality = 6;
+  bool visitor = 7;
+  bool trusted = 8;
+  bool matched = 9;
+}
+
+message FaceWindowResponse
+{
+  repeated SeenFace faces = 1;
+  int32 crops = 2;
+}
+
 service CameraWatchService
 {
   rpc ListWatch(ListWatchRequest) returns (ListWatchResponse) {}
   rpc OpenMicrophone(MicrophoneRequest) returns (stream MicrophoneFrame) {}
   rpc Speak(stream SpeakFrame) returns (stream SpeakEvent) {}
+  rpc FaceWindow(FaceWindowRequest) returns (FaceWindowResponse) {}
 }

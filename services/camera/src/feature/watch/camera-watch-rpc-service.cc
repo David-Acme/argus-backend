@@ -4,7 +4,13 @@
 #include <feature/watch/services/speaker-session.hxx>
 #include <feature/watch/services/watch-gate.hxx>
 
+#include <runtime/blocking-pool.hxx>
+#include <shared/services/stream/snapshot-store.hxx>
 #include <trantor/utils/Logger.h>
+
+#include <algorithm>
+#include <chrono>
+#include <thread>
 
 #include <deque>
 #include <optional>
@@ -416,7 +422,8 @@ CameraWatchRpcService::CameraWatchRpcService(CameraWatchServiceInput input)
       hub_(std::move(input.hub)),
       board_(std::move(input.board)),
       gate_(std::move(input.gate)),
-      config_(input.config)
+      config_(input.config),
+      identify_(std::move(input.identify))
 {
 }
 
@@ -471,6 +478,70 @@ grpc::ServerBidiReactor<v1::SpeakFrame, v1::SpeakEvent>* CameraWatchRpcService::
   reactors_->add(id, stream);
   stream->begin(authorized(context) && !stopping_.load());
   return stream.get();
+}
+
+grpc::ServerUnaryReactor* CameraWatchRpcService::FaceWindow(grpc::CallbackServerContext* context,
+                                                            const v1::FaceWindowRequest* request,
+                                                            v1::FaceWindowResponse* response)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!authorized(context)) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED, "argus-voice caller credential required"));
+    return reactor;
+  }
+  const int64_t cameraId = request->camera_id();
+  if (const v1::WatchRefusal refusal = gate_ ? gate_(cameraId) : v1::WATCH_REFUSAL_UNKNOWN_CAMERA;
+      refusal != v1::WATCH_REFUSAL_NONE) {
+    reactor->Finish(refusalStatus(refusal));
+    return reactor;
+  }
+  if (!identify_) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "no identity target to match faces with"));
+    return reactor;
+  }
+  const auto window = std::chrono::milliseconds(
+      std::clamp<int64_t>(request->window_ms(), 100, config_.faceWindowMaxMs));
+  const auto startMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                           std::chrono::system_clock::now().time_since_epoch())
+                           .count();
+  blocking_pool::submit(BlockingLane::Light, [this, reactor, response, cameraId, window, startMs] {
+    std::this_thread::sleep_for(window);
+    if (const v1::WatchRefusal refusal = gate_(cameraId); refusal != v1::WATCH_REFUSAL_NONE) {
+      reactor->Finish(refusalStatus(refusal));
+      return;
+    }
+    const int64_t since = startMs - window.count();
+    std::vector<CameraSnapshot> crops = SnapshotStore::instance().personCropsSince(cameraId, since);
+    if (crops.empty()) {
+      if (const auto frame = SnapshotStore::instance().frame(cameraId); frame && frame->atMs >= since)
+        crops.push_back(*frame);
+    }
+    std::ranges::sort(crops, std::ranges::greater{}, &CameraSnapshot::atMs);
+    if (std::cmp_greater(crops.size(), config_.faceWindowMaxCrops))
+      crops.resize(static_cast<size_t>(config_.faceWindowMaxCrops));
+    std::vector<int64_t> seen;
+    for (const CameraSnapshot& crop : crops) {
+      const auto found = identify_({.image = crop.jpeg, .cameraId = cameraId, .observedAt = crop.atMs / 1000});
+      if (!found || (!found->face_found() && !found->matched()))
+        continue;
+      if (found->person_id() > 0 && std::ranges::find(seen, found->person_id()) != seen.end())
+        continue;
+      seen.push_back(found->person_id());
+      auto* face = response->add_faces();
+      face->set_person_id(found->person_id());
+      face->set_user_id(found->user_id());
+      face->set_name(found->name());
+      face->set_role(found->role());
+      face->set_confidence(found->confidence());
+      face->set_quality(found->face_quality());
+      face->set_visitor(found->visitor());
+      face->set_trusted(found->trusted());
+      face->set_matched(found->matched());
+    }
+    response->set_crops(static_cast<int32_t>(crops.size()));
+    reactor->Finish(grpc::Status::OK);
+  });
+  return reactor;
 }
 
 void CameraWatchRpcService::requestStop()

@@ -3492,7 +3492,8 @@ TEST_CASE("A camera session takes its own endpointing, never asks whether it is 
   start.mutable_identity()->set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
   start.set_mode(argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
   session.start(sink, start,
-                VoiceSessionOptions{.minSilenceFrames = 22,
+                VoiceSessionOptions{.surface = ConversationSurface::Camera,
+                                    .minSilenceFrames = 22,
                                     .maxTurnFrames = 937,
                                     .askAddressed = false,
                                     .incompleteHold = std::chrono::milliseconds(1300),
@@ -3500,6 +3501,7 @@ TEST_CASE("A camera session takes its own endpointing, never asks whether it is 
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   CHECK(sess->vad.minSilenceFrames() == 22);
   CHECK_FALSE(sess->askAddressed);
+  CHECK(sess->surface == ConversationSurface::Camera);
   CHECK(waitFor([&] { return !sess->speaking.load(); }));
 
   const std::vector<float> samples(1600, 0.1F);

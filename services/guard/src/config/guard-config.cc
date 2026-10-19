@@ -139,17 +139,21 @@ GuardRpcConfig GuardConfig::resolveRpc()
   const auto callers = ConfigService::getStringPairs("rpc.callers");
   std::vector<std::pair<std::string, std::string>> presence;
   std::string tools;
+  std::string voice;
   for (const auto& caller : callers) {
     if (caller.first == "sync" || caller.first == "notification" || caller.first == "camera" ||
         caller.first == "voice")
       presence.push_back(caller);
     if (caller.first == "llm")
       tools = caller.second;
+    if (caller.first == "voice")
+      voice = caller.second;
   }
   return {.address = ConfigService::getString("rpc.address"),
           .settingsCredentials = settingsCallers(callers),
           .presenceCredentials = argus::client::callerCredentialsFromPairs(presence),
-          .toolCredential = std::move(tools)};
+          .toolCredential = std::move(tools),
+          .voiceCredential = std::move(voice)};
 }
 
 GuardPeerConfig GuardConfig::resolveNotifications()

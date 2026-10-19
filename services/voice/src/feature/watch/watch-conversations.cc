@@ -1,5 +1,7 @@
 #include "watch-conversations.hxx"
 
+#include <feature/watch/wake-words.hxx>
+
 #include <trantor/utils/Logger.h>
 
 #include <chrono>
@@ -94,6 +96,14 @@ std::shared_ptr<CameraConversation> ConversationManager::onCamera(int64_t camera
   return nullptr;
 }
 
+size_t ConversationManager::liveFor(int64_t userId) const
+{
+  std::scoped_lock lock(mutex_);
+  return static_cast<size_t>(std::ranges::count_if(live_, [userId](const auto& entry) {
+    return !entry.second->closed() && entry.second->userId() == userId;
+  }));
+}
+
 bool ConversationManager::occupied(int64_t cameraId) const
 {
   return onCamera(cameraId) != nullptr;
@@ -133,6 +143,7 @@ void ConversationManager::onWake(const ConfirmedWake& wake)
       .cameraName = wake.cameraName,
       .start = start,
       .audience = opening.audience,
+      .surface = opening.surface,
       .sessions = input_.sessions,
       .camera = input_.camera,
       .echo = input_.echo,
@@ -150,7 +161,7 @@ void ConversationManager::onWake(const ConfirmedWake& wake)
                           .occupied = [this](int64_t camera) { return occupied(camera); }});
       },
       .onEnded = [this](const ConversationEnded& done) { ended(done); },
-      .onUserText = {}});
+      .onUserText = [this, id](const std::string& text) { heard(id, text); }});
   {
     std::scoped_lock lock(mutex_);
     live_[id] = conversation;
@@ -273,6 +284,24 @@ void ConversationManager::forget(const std::string& conversationId)
 {
   std::scoped_lock lock(mutex_);
   finished_.erase(conversationId);
+}
+
+void ConversationManager::heard(const std::string& conversationId, const std::string& text)
+{
+  if (!input_.panic || !panicPhrase(text))
+    return;
+  const auto conversation = live(conversationId);
+  if (!conversation)
+    return;
+  const ConversationSnapshot snapshot = conversation->snapshot();
+  const std::string speaker = input_.lang == VoiceLang::En ? "Someone at the " + snapshot.cameraName + " camera"
+                                                           : "Alguien en la cámara " + snapshot.cameraName;
+  LOG_WARN << "Voice watch: panic heard on camera " << snapshot.cameraId;
+  input_.panic({.cameraId = snapshot.cameraId,
+                .userId = snapshot.userId,
+                .speaker = speaker,
+                .saidAt = epochSeconds(),
+                .conversationId = conversationId});
 }
 
 void ConversationManager::ended(const ConversationEnded& ended)

@@ -157,6 +157,7 @@ VoiceWatchConfig VoiceConfig::resolveWatch()
   config.resumable = positiveMs("watch.resumable_ms", config.resumable);
   config.replyGap = positiveMs("watch.reply_gap_ms", config.replyGap);
   config.cameraDrop = positiveMs("watch.camera_drop_ms", config.cameraDrop);
+  config.faceWindow = positiveMs("watch.face_window_ms", config.faceWindow);
   return config;
 }
 

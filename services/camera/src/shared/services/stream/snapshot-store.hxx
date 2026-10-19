@@ -5,6 +5,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <vector>
 
 struct CameraSnapshot
 {
@@ -39,6 +40,7 @@ public:
   std::optional<CameraSnapshot> personCrop(int64_t cameraId,
                                            int64_t trackId) const;
   std::optional<CameraSnapshot> latestPersonCrop(int64_t cameraId) const;
+  std::vector<CameraSnapshot> personCropsSince(int64_t cameraId, int64_t sinceMs) const;
 
   void forget(int64_t cameraId);
 

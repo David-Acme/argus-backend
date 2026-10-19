@@ -72,6 +72,9 @@ public:
 
   [[nodiscard]] virtual std::unique_ptr<WatchSpeakerStream> speak(const WatchSpeakInput& input) const;
 
+  [[nodiscard]] virtual std::optional<argus::camera::v1::FaceWindowResponse> faceWindow(int64_t cameraId,
+                                                                                        int windowMs) const;
+
   static constexpr int kListTimeoutMs = 3000;
 
 private:

@@ -309,6 +309,11 @@ int main()
   const auto watchGate = watchGateOf(watchBoard);
   const auto microphoneHub = std::make_shared<MicrophoneHub>(
       MicrophoneHubInput{.sources = ffmpegMicrophoneSources(), .gate = watchGate, .config = watchConfig});
+  std::shared_ptr<const IdentityClient> watchIdentity;
+  if (const IdentityConfig identity = operator_config::resolveIdentity(); !identity.target.empty())
+    watchIdentity = std::make_shared<IdentityClient>(
+        identity.target,
+        argus::client::PeerCredential{.credential = identity.credential, .fleetSecret = identity.rpcSecret});
   CameraWatchRpcService cameraWatchRpc(
       {.callers = {argus::client::CallerCredential{
            .service = "argus-voice",
@@ -316,7 +321,13 @@ int main()
        .hub = microphoneHub,
        .board = watchBoard,
        .gate = watchGate,
-       .config = watchConfig});
+       .config = watchConfig,
+       .identify = [watchIdentity](const CameraIdentifyInput& input)
+           -> std::optional<argus::identity::v1::IdentifyPersonResponse> {
+         if (!watchIdentity)
+           return std::nullopt;
+         return watchIdentity->identifyForCamera(input);
+       }});
   HealthRpcService healthRpc;
   SettingsRegistry settings(cameraSettingsCatalog());
   settings.onChange([](const std::vector<std::string>&) {

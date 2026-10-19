@@ -184,7 +184,7 @@ struct World
                               argus::mcp::ClientIdentity{.name = "e2e", .version = "1"})});
     registry.refresh();
     const ToolExecutor executor(registry);
-    offered = executor.offered({.role = UserRole::Owner, .modules = {}});
+    offered = executor.offered({.role = UserRole::Owner, .modules = {}, .surface = ConversationSurface::App});
   }
 };
 
@@ -220,7 +220,7 @@ struct TurnInputs
 ToolChatInput inputsFor(const TurnInputs& args)
 {
   return {.tools = args.world.offered,
-          .audience = {.role = UserRole::Owner, .modules = {}},
+          .audience = {.role = UserRole::Owner, .modules = {}, .surface = ConversationSurface::App},
           .context = {.userId = 7,
                       .role = UserRole::Owner,
                       .lang = "es",

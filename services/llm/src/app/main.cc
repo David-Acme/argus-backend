@@ -12,6 +12,7 @@
 #include <feature/duress/services/duress-screen.hxx>
 #include <guard/guard-duress-client.hxx>
 #include <auth/capability.hxx>
+#include <feature/llm/infra/watch-confirm-notifier.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
 #include <feature/llm/services/tools/core-tools.hxx>
 #include <feature/llm/services/tools/tool-directory.hxx>
@@ -411,7 +412,8 @@ int main()
       PendingIntentDependencies{
           .graph = static_cast<SqliteGraph*>(&memory.graph()),
           .run = [&llm](const tools::ToolCall& call, UserRole role) {
-            return llm->adapter().executor().execute(call, {.role = role, .modules = moduleGate().snapshot()});
+            return llm->adapter().executor().execute(
+                call, {.role = role, .modules = moduleGate().snapshot(), .surface = ConversationSurface::App});
           },
           .notifier = notificationClient ? std::make_shared<NotificationIntentNotifier>(notificationClient) : nullptr,
           .reminders = reminderRows,
@@ -427,6 +429,7 @@ int main()
           .clock = {}},
       PendingIntentLimits{});
   llm->adapter().executor().attachLedger(intents);
+  llm->adapter().executor().attachConfirmations(watchConfirmNotifier(notificationClient));
   std::unique_ptr<ModuleIntentFeed> intentFeed;
   if (bus)
     intentFeed = std::make_unique<ModuleIntentFeed>(bus, *intents, ModuleIntentFeed::defaults());

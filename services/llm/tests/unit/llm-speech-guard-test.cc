@@ -429,7 +429,7 @@ TEST_CASE("a choose is asked by the app itself, naming every option, and never r
   history.push_back({.role = "system", .content = "persona"});
   history.push_back({.role = "user", .content = "apunta la reunión con Andrea pe"});
   ToolChatInput loop;
-  loop.audience = {.role = UserRole::Owner, .modules = {}};
+  loop.audience = {.role = UserRole::Owner, .modules = {}, .surface = ConversationSurface::App};
   loop.context = {.userId = 7,
                   .role = UserRole::Owner,
                   .lang = "es",

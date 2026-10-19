@@ -1280,7 +1280,7 @@ RenderRecord renderOne(const RenderRunInput& input, const RenderCase& item)
   Speech speech{.acts = {item.act}, .lang = item.lang, .now = input.now};
   const std::string tail = turn::speech::actTail({.speech = speech, .contextBlock = {}});
   ToolChatInput loop;
-  loop.audience = {.role = UserRole::Owner, .modules = {}};
+  loop.audience = {.role = UserRole::Owner, .modules = {}, .surface = ConversationSurface::App};
   loop.context = {.userId = kEvalUser,
                   .role = UserRole::Owner,
                   .lang = item.lang,
@@ -1640,7 +1640,7 @@ int main(int argc, char** argv)
   const std::string renderEs = withSpeaker(personaEs, "es", kEvalRole, {});
   const std::string renderEn = withSpeaker(personaEn, "en", kEvalRole, {});
   const std::vector<tools::ToolHandle> offered =
-      controller.adapter().executor().offered({.role = UserRole::Owner, .modules = moduleGate().snapshot()});
+      controller.adapter().executor().offered({.role = UserRole::Owner, .modules = moduleGate().snapshot(), .surface = ConversationSurface::App});
   const TurnEngines engines = setupEngines(controller, options);
   std::cout << std::format("pipeline: {}\n", engines.pipeline());
   if (engines.laya == nullptr || engines.gliner == nullptr) {

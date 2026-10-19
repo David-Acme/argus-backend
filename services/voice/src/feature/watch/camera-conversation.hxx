@@ -40,6 +40,7 @@ struct CameraConversationInput
   std::string cameraName;
   argus::voice::v1::VoiceStart start;
   ConversationAudience audience{ConversationAudience::Guest};
+  ConversationSurface surface{ConversationSurface::CameraVisitor};
   VoiceSessionService* sessions{nullptr};
   std::shared_ptr<const CameraWatchClient> camera;
   std::shared_ptr<EchoGuard> echo;
@@ -83,6 +84,7 @@ public:
   void sendServerFrame(argus::voice::v1::ServerFrame frame) override;
   [[nodiscard]] int playoutRate() const override { return kWatchRate; }
   [[nodiscard]] std::string shapeSpeech(const std::string& text) const override;
+  [[nodiscard]] bool admitsTurn(const std::string& text, VoiceSpeakerVerdict verdict) override;
 
 private:
   void tick(const std::stop_token& stop);
@@ -116,6 +118,7 @@ private:
   bool speakerLost_{false};
   bool acked_{false};
   bool closeAfterReply_{false};
+  bool delegated_{false};
   ConversationEnd requested_{ConversationEnd::None};
   std::atomic<bool> started_{false};
   std::atomic<bool> closed_{false};

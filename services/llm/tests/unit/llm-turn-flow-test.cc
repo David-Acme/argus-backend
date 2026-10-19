@@ -96,7 +96,7 @@ struct World
   turn::TurnFlow flow;
   std::vector<tools::ToolCall> ran;
   std::vector<tools::ToolHandle> offered;
-  ToolAudience audience{.role = UserRole::Owner, .modules = {}};
+  ToolAudience audience{.role = UserRole::Owner, .modules = {}, .surface = ConversationSurface::App};
   tools::ToolContext context;
   int64_t now{static_cast<int64_t>(std::time(nullptr))};
   bool createOk{true};

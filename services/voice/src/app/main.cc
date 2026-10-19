@@ -4,6 +4,7 @@
 #include <feature/rtc/rtc-agent-service.hxx>
 #include <feature/settings/voice-settings.hxx>
 #include <feature/voice/voice-rpc-service.hxx>
+#include <feature/watch/camera-identity.hxx>
 #include <feature/watch/watch-conversations.hxx>
 #include <feature/watch/watch-coordinator.hxx>
 #include <grpc/internal-tls.hxx>
@@ -194,24 +195,50 @@ int main()
   const auto rooms = std::make_shared<RoomDirectory>();
   SttWakeSpotter wakeSpotter;
   std::unique_ptr<WatchCoordinator> watch;
-  ConversationManager conversations({.config = watchConfig,
-                                     .sessions = &sessions,
-                                     .camera = watchCameras,
-                                     .echo = echo,
-                                     .rooms = rooms,
-                                     .tts = &voiceTts(),
-                                     .stt = &voiceStt(),
-                                     .lang = voiceSystemLang(),
-                                     .cameraInfo = [&watch](int64_t cameraId) -> std::optional<WatchCameraInfo> {
-                                       return watch ? watch->camera(cameraId) : std::nullopt;
-                                     },
-                                     .listening = [&watch](int64_t cameraId) {
-                                       return watch && watch->listening(cameraId);
-                                     },
-                                     .resolve = {},
-                                     .sameSpeaker = {},
-                                     .onUpdate = {},
-                                     .onEnded = {}});
+  std::shared_ptr<const VoiceprintClient> watchVoiceprint;
+  if (const std::string identityTarget = ConfigService::getString("identity.target"); !identityTarget.empty())
+    watchVoiceprint = std::make_shared<VoiceprintClient>(
+        VoiceprintClientConfig{.target = identityTarget,
+                               .credential = ConfigService::getString("identity.credential"),
+                               .fleetSecret = ConfigService::getString("identity.rpc_secret")});
+  std::shared_ptr<const GuardDuressClient> guardDuress;
+  if (!guardConfig.target.empty())
+    guardDuress = std::make_shared<GuardDuressClient>(
+        GuardDuressClientConfig{.target = guardConfig.target, .credential = guardConfig.credential});
+  std::unique_ptr<ConversationManager> conversationsHolder;
+  const CameraIdentityResolver speakers({.camera = watchCameras,
+                                         .voiceprint = watchVoiceprint,
+                                         .faceWindow = watchConfig.faceWindow,
+                                         .lang = voiceSystemLang(),
+                                         .inCall = [&sessions, &conversationsHolder](int64_t userId) {
+                                           const size_t camera =
+                                               conversationsHolder ? conversationsHolder->liveFor(userId) : 0;
+                                           return sessions.liveSessions(userId) > camera;
+                                         }});
+  conversationsHolder = std::make_unique<ConversationManager>(ConversationManagerInput{
+      .config = watchConfig,
+      .sessions = &sessions,
+      .camera = watchCameras,
+      .echo = echo,
+      .rooms = rooms,
+      .tts = &voiceTts(),
+      .stt = &voiceStt(),
+      .lang = voiceSystemLang(),
+      .cameraInfo = [&watch](int64_t cameraId) -> std::optional<WatchCameraInfo> {
+        return watch ? watch->camera(cameraId) : std::nullopt;
+      },
+      .listening = [&watch](int64_t cameraId) { return watch && watch->listening(cameraId); },
+      .resolve = [&speakers](const ConfirmedWake& wake) { return speakers.resolve(wake); },
+      .sameSpeaker = [&speakers](int64_t userId, const std::vector<float>& samples) {
+        return speakers.sameSpeaker(userId, samples);
+      },
+      .onUpdate = {},
+      .onEnded = {},
+      .panic = [guardDuress](const CameraPanicCall& call) {
+        if (!guardDuress || !guardDuress->raiseCameraPanic(call))
+          LOG_WARN << "Voice watch: the panic heard on camera " << call.cameraId << " did not reach argus-guard";
+      }});
+  ConversationManager& conversations = *conversationsHolder;
   watch = std::make_unique<WatchCoordinator>(WatchCoordinatorInput{
       .config = watchConfig,
       .camera = watchCameras,

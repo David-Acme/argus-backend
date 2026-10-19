@@ -49,6 +49,8 @@ struct CameraWatchConfig
   int64_t packetMs{120};
   int64_t maxListeners{16};
   int64_t boardRefreshMs{2000};
+  int64_t faceWindowMaxMs{3000};
+  int64_t faceWindowMaxCrops{6};
 };
 
 struct GuardDutyConfig

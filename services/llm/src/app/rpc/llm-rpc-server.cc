@@ -123,6 +123,17 @@ ChatRequest chatRequest(const wire::ChatRequest& wireRequest, std::string_view c
   request.clientActions = wireRequest.client_actions();
   request.sessionId = wireRequest.session_id();
   request.prefillOnly = wireRequest.prefill_only();
+  switch (wireRequest.surface()) {
+    case wire::CONVERSATION_SURFACE_CAMERA:
+      request.surface = ConversationSurface::Camera;
+      break;
+    case wire::CONVERSATION_SURFACE_CAMERA_VISITOR:
+      request.surface = ConversationSurface::CameraVisitor;
+      break;
+    default:
+      request.surface = ConversationSurface::App;
+      break;
+  }
   return boundToCaller(std::move(request), caller);
 }
 

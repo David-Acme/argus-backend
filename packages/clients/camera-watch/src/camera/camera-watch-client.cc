@@ -187,3 +187,19 @@ std::unique_ptr<WatchSpeakerStream> CameraWatchClient::speak(const WatchSpeakInp
     return nullptr;
   return std::make_unique<GrpcSpeakerStream>(*stub_, credential_, input);
 }
+
+std::optional<v1::FaceWindowResponse> CameraWatchClient::faceWindow(int64_t cameraId, int windowMs) const
+{
+  if (cameraId <= 0 || windowMs <= 0)
+    return std::nullopt;
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, windowMs + kListTimeoutMs * 3);
+  argus::client::addCallerCredential(context, credential_);
+  v1::FaceWindowRequest request;
+  request.set_camera_id(cameraId);
+  request.set_window_ms(windowMs);
+  v1::FaceWindowResponse response;
+  if (const grpc::Status status = stub_->FaceWindow(&context, request, &response); !status.ok())
+    return std::nullopt;
+  return response;
+}

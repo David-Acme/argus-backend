@@ -45,6 +45,8 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
     dto.sessionId = json["session_id"].asString();
   if (json.isMember("prefill_only") && json["prefill_only"].isBool())
     dto.prefillOnly = json["prefill_only"].asBool();
+  if (json.isMember("surface") && json["surface"].isString())
+    dto.surface = json["surface"].asString();
 
   START_VALIDATION(ChatCompletionDto, dto)
   ARRAY_NOT_EMPTY(messages, ChatMessageDto)
@@ -94,6 +96,7 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
   })
   IS_IN_OPTIONAL(role, "owner", "resident", "guard", "guest")
   IS_IN_OPTIONAL(lang, "es", "en")
+  IS_IN_OPTIONAL(surface, "app", "camera", "camera_visitor")
   END_VALIDATION()
   return dto;
 }
@@ -115,5 +118,6 @@ ChatRequest ChatCompletionDto::request() const
   req.lang = lang.value_or(std::string());
   req.sessionId = sessionId;
   req.prefillOnly = prefillOnly;
+  req.surface = conversationSurfaceFromString(surface.value_or("app")).value_or(ConversationSurface::App);
   return req;
 }

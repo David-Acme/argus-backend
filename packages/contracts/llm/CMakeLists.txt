@@ -10,6 +10,7 @@ endif()
 argus_contracts(NAME llm
     INCLUDES src
     SOURCES
+        src/llm/conversation-surface.hxx
         src/llm/llm-errors.hxx
         src/llm/llm-speech.hxx
     DEPENDS argus::lib::errors)

@@ -1,7 +1,9 @@
 #include <doctest/doctest.h>
 
 #include <feature/watch/camera-level.hxx>
+#include <feature/watch/camera-identity.hxx>
 #include <feature/watch/conversation-policy.hxx>
+#include <feature/watch/speaker-resolution.hxx>
 #include <feature/watch/watch-conversations.hxx>
 #include <feature/watch/echo-guard.hxx>
 #include <feature/watch/fire-log.hxx>
@@ -347,4 +349,67 @@ TEST_CASE("a dropped or busy camera hands the conversation to a free talking cam
                          .listening = [](int64_t) { return false; },
                          .occupied = {}})
                   .has_value());
+}
+
+TEST_CASE("face first: one member, strangers, several members and no face give their own sets")
+{
+  const SeenFaceEvidence david{.personId = 1, .userId = 10, .name = "David", .role = "owner", .confidence = 0.9F,
+                               .accepted = true, .visitor = false, .trusted = false};
+  const SeenFaceEvidence maria{.personId = 2, .userId = 11, .name = "María", .role = "resident", .confidence = 0.8F,
+                               .accepted = true, .visitor = false, .trusted = false};
+  const SeenFaceEvidence stranger{.personId = 30, .userId = 0, .name = "", .role = "", .confidence = 0.7F,
+                                  .accepted = true, .visitor = true, .trusted = false};
+  SeenFaceEvidence blurry = david;
+  blurry.accepted = false;
+
+  const SpeakerResolution member = resolveSpeaker({.faces = {david}, .voice = std::nullopt, .lang = VoiceLang::Es});
+  CHECK(member.audience == ConversationAudience::Member);
+  CHECK(member.surface == ConversationSurface::Camera);
+  CHECK(member.userId == 10);
+
+  const SpeakerResolution discreet =
+      resolveSpeaker({.faces = {david, stranger}, .voice = std::nullopt, .lang = VoiceLang::Es});
+  CHECK(discreet.audience == ConversationAudience::Discreet);
+  CHECK(discreet.userId == 10);
+  CHECK(std::ranges::find(discreet.notes, discreetNote(VoiceLang::Es)) != discreet.notes.end());
+
+  CHECK(resolveSpeaker({.faces = {david, maria}, .voice = std::nullopt, .lang = VoiceLang::Es}).audience ==
+        ConversationAudience::Guest);
+  const SpeakerResolution visitor = resolveSpeaker({.faces = {stranger}, .voice = std::nullopt, .lang = VoiceLang::Es});
+  CHECK(visitor.audience == ConversationAudience::Visitor);
+  CHECK(visitor.userId == 0);
+  CHECK(visitor.strangerPersonId == 30);
+  CHECK(resolveSpeaker({.faces = {blurry}, .voice = std::nullopt, .lang = VoiceLang::Es}).audience ==
+        ConversationAudience::Guest);
+
+  const SpeakerResolution voiceOnly = resolveSpeaker(
+      {.faces = {}, .voice = HeardVoiceEvidence{.matched = true, .userId = 10, .name = "David", .score = 0.9F},
+       .lang = VoiceLang::Es});
+  CHECK(voiceOnly.audience == ConversationAudience::Guest);
+  CHECK(voiceOnly.userId == 0);
+
+  const SpeakerResolution disagree = resolveSpeaker(
+      {.faces = {david}, .voice = HeardVoiceEvidence{.matched = true, .userId = 11, .name = "María", .score = 0.8F},
+       .lang = VoiceLang::Es});
+  CHECK(disagree.disagreement);
+  CHECK(disagree.audience == ConversationAudience::Guest);
+  CHECK(disagree.userId == 0);
+  CHECK(std::ranges::find(member.notes, floorNote(VoiceLang::Es)) != member.notes.end());
+}
+
+TEST_CASE("the face window's answer keeps only the quality the matcher accepted")
+{
+  argus::camera::v1::FaceWindowResponse response;
+  auto* good = response.add_faces();
+  good->set_user_id(5);
+  good->set_quality("accepted");
+  auto* turned = response.add_faces();
+  turned->set_user_id(6);
+  turned->set_quality("turned");
+  const std::vector<SeenFaceEvidence> faces = facesOf(response);
+  REQUIRE(faces.size() == 2);
+  CHECK(faces[0].accepted);
+  CHECK_FALSE(faces[1].accepted);
+  CHECK(delegationPhrase("Argus, puedes hablar con ella"));
+  CHECK_FALSE(delegationPhrase("hablamos luego"));
 }

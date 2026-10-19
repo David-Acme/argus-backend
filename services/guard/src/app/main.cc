@@ -195,11 +195,24 @@ RpcListener startRpcListener(const RpcListenerInput& input)
   listener.tools = toolsService(input, rpc);
   if (listener.tools)
     services.push_back(listener.tools.get());
-  if (argus::client::FleetCallerGate::pairedSecret(rpc.toolCredential)) {
+  const bool toolDuress = argus::client::FleetCallerGate::pairedSecret(rpc.toolCredential);
+  const bool voicePanic = argus::client::FleetCallerGate::pairedSecret(rpc.voiceCredential);
+  if (toolDuress || voicePanic) {
+    std::vector<argus::client::CallerCredential> toolCallers;
+    if (toolDuress)
+      toolCallers.push_back({.service = std::string(argus::mcp::kToolCaller), .secret = rpc.toolCredential});
+    std::vector<argus::client::CallerCredential> panicCallers;
+    if (voicePanic)
+      panicCallers.push_back({.service = "argus-voice", .secret = rpc.voiceCredential});
     listener.duress = std::make_unique<DuressRpcService>(DuressRpcInput{
         .safety = input.safety,
         .actors = input.actors,
-        .credentials = {{.service = std::string(argus::mcp::kToolCaller), .secret = rpc.toolCredential}}});
+        .credentials = std::move(toolCallers),
+        .panicCredentials = std::move(panicCallers),
+        .environmentOf = [](int64_t cameraId) -> drogon::Task<int64_t> {
+          const CameraContextRepository contexts;
+          co_return (co_await contexts.find(cameraId)).environmentId;
+        }});
     services.push_back(listener.duress.get());
   }
   if (!listener.settings && !listener.presence && !listener.tools && !listener.duress)

@@ -41,6 +41,21 @@ void ToolExecutor::attachLedger(std::shared_ptr<tools::IntentLedger> ledger)
   ledger_ = std::move(ledger);
 }
 
+void ToolExecutor::attachConfirmations(CameraConfirmSink sink)
+{
+  confirmations_ = std::move(sink);
+}
+
+std::string cameraFloorLine(std::string_view lang, bool confirmed)
+{
+  const bool english = lang == "en";
+  if (confirmed)
+    return english ? "That is not done through a camera; the confirmation is waiting on your phone."
+                   : "Eso no se hace por la cámara; te dejé la confirmación en tu celular.";
+  return english ? "That is not done through a camera; it is done in the app."
+                 : "Eso no se hace por la cámara; se hace en la app.";
+}
+
 std::vector<tools::ToolHandle> ToolExecutor::offered(const ToolAudience& audience) const
 {
   std::vector<tools::ToolHandle> out;
@@ -85,6 +100,19 @@ tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call, const ToolA
   time_arguments::normalize({.call = prepared, .spec = spec, .now = prepared.context.now.value_or(static_cast<int64_t>(std::time(nullptr)))});
   if (const auto invalid = argus::mcp::schema::violation(spec.inputSchema, prepared.arguments))
     return refused(call, "invalid_arguments", *invalid);
+  if (!tool_access::surfaceAllows(audience, spec)) {
+    const bool confirm = audience.surface == ConversationSurface::Camera && confirmations_ &&
+                         prepared.context.userId > 0 && tool_access::runnable(audience, spec);
+    if (confirm)
+      confirmations_({.userId = prepared.context.userId,
+                      .tool = spec.name,
+                      .arguments = prepared.arguments,
+                      .lang = prepared.context.lang});
+    tools::ToolResult result = refused(call, confirm ? "confirm_in_app" : "camera_floor",
+                                       cameraFloorLine(prepared.context.lang, confirm));
+    result.data["surface"] = std::string(conversationSurfaceToString(audience.surface));
+    return result;
+  }
   if (tool_access::moduleInactive(audience, spec))
     return inactive(prepared, *tool, audience);
   const GroundingInput grounding{.call = prepared, .spec = spec, .audience = audience};

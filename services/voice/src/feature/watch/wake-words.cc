@@ -37,6 +37,11 @@ constexpr std::array kPanic = std::to_array<std::string_view>(
     {"auxilio", "socorro", "ayuda ayuda", "llama a la policia", "llamen a la policia", "emergencia", "help me",
      "call the police", "emergency"});
 
+constexpr std::array kDelegation = std::to_array<std::string_view>(
+    {"puedes hablar con ella", "puedes hablar con el", "habla con ella", "habla con el", "respondele",
+     "presentate", "contestale", "you can talk to her", "you can talk to him", "talk to her", "talk to him",
+     "answer her", "answer him", "introduce yourself"});
+
 std::optional<char> foldLatin(unsigned char second)
 {
   switch (second) {
@@ -349,4 +354,9 @@ bool trailsOff(std::string_view text)
 bool panicPhrase(std::string_view text)
 {
   return hasPhrase(text, kPanic);
+}
+
+bool delegationPhrase(std::string_view text)
+{
+  return hasPhrase(text, kDelegation);
 }

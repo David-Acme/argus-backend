@@ -92,7 +92,8 @@ void CameraConversation::open(const std::vector<float>& initialAudio)
   const VoiceWatchConfig& config = input_.config;
   input_.sessions->start(
       *this, input_.start,
-      VoiceSessionOptions{.minSilenceFrames = static_cast<int>(config.endSilence.count() / kVadWindowMs),
+      VoiceSessionOptions{.surface = input_.surface,
+                          .minSilenceFrames = static_cast<int>(config.endSilence.count() / kVadWindowMs),
                           .maxTurnFrames = static_cast<int>(config.maxTurn.count() / kVadWindowMs),
                           .askAddressed = false,
                           .incompleteHold = config.incompleteHold - config.endSilence,
@@ -171,6 +172,22 @@ bool CameraConversation::connected() const
 std::string CameraConversation::shapeSpeech(const std::string& text) const
 {
   return withoutSelfName(text, input_.lang);
+}
+
+bool CameraConversation::admitsTurn(const std::string& text, VoiceSpeakerVerdict verdict)
+{
+  const bool holder = verdict == VoiceSpeakerVerdict::Holder || verdict == VoiceSpeakerVerdict::Unknown;
+  std::scoped_lock lock(mutex_);
+  if (holder && delegationPhrase(text)) {
+    delegated_ = true;
+    return true;
+  }
+  if (holder || userId() <= 0 || delegated_ || mentionsWake({.text = text, .maxDistance = input_.config.wakeMaxDistance}))
+    return true;
+  userTurnAt_ = 0;
+  if (!snapshot_.turns.empty() && snapshot_.turns.back().role == "user")
+    snapshot_.turns.pop_back();
+  return false;
 }
 
 void CameraConversation::sendServerFrame(argus::voice::v1::ServerFrame frame)

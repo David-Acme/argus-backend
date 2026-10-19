@@ -125,6 +125,7 @@ wire::ChatRequest wireRequest(const ChatRequest& request)
   wire.set_client_actions(request.clientActions);
   wire.set_session_id(request.sessionId);
   wire.set_prefill_only(request.prefillOnly);
+  wire.set_surface(static_cast<wire::ConversationSurface>(static_cast<int>(request.surface)));
   return wire;
 }
 }

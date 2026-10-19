@@ -45,7 +45,7 @@ drogon::HttpResponsePtr badRequest()
 
 ToolAudience audienceOf(const ChatRequest& request)
 {
-  return {.role = request.role, .modules = moduleGate().snapshot()};
+  return {.role = request.role, .modules = moduleGate().snapshot(), .surface = request.surface};
 }
 
 std::vector<tools::ToolHandle> requestTools(const ToolExecutor& executor, const ChatRequest& request)

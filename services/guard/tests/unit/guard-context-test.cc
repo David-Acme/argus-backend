@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 #include <feature/guard/guard-context.hxx>
 #include <feature/guard/guard-policy.hxx>
+#include <feature/guard/services/camera-room.hxx>
 
 #include <algorithm>
 #include <ctime>
@@ -205,4 +206,28 @@ TEST_CASE("window specs are validated strictly")
   CHECK_FALSE(guard_schedule::validWindows("mon-fri 08:00-18:00, nope"));
   CHECK_FALSE(guard_schedule::validWindows("25:00-26:00"));
   CHECK_FALSE(guard_schedule::validWindows("08:00-08:00"));
+}
+
+TEST_CASE("indoor cameras with the same room role in one environment share a room")
+{
+  GuardCameraContext living = camera(CameraRole::Living, false, false);
+  living.environmentId = 3;
+  GuardCameraContext otherLiving = living;
+  otherLiving.cameraId = 2;
+  CHECK(cameraRoomKey(living) == "3:living");
+  CHECK(cameraRoomKey(otherLiving) == cameraRoomKey(living));
+
+  GuardCameraContext garden = camera(CameraRole::Perimeter, true, false);
+  garden.environmentId = 3;
+  garden.cameraId = 9;
+  CHECK(cameraRoomKey(garden) == "3:camera:9");
+
+  GuardCameraContext porch = camera(CameraRole::Entrance, true, false);
+  porch.environmentId = 3;
+  porch.cameraId = 4;
+  CHECK(cameraRoomKey(porch) == "3:camera:4");
+
+  GuardCameraContext elsewhere = living;
+  elsewhere.environmentId = 5;
+  CHECK(cameraRoomKey(elsewhere) != cameraRoomKey(living));
 }
