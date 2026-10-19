@@ -221,3 +221,24 @@ TEST_CASE("a user-targeted resource frame answers for the role this process know
   CHECK(denied.rooms.empty());
   CHECK(denied.refused);
 }
+
+TEST_CASE("a user-targeted resource frame for a user whose role this build does not know is acked quietly")
+{
+  const ResourceRoute* pin =
+      resourceRouteOf(ResourceDomain::Guard, ResourceScope::SafetyPin);
+  REQUIRE(pin != nullptr);
+  const ModuleSnapshot modules = everyModuleEnabled();
+
+  userContext().remember(774, UserRole::Unknown);
+  const auto unknownRole = sync_fan_out::resourceDelivery(*pin, modules, 774);
+  CHECK(unknownRole.rooms.empty());
+  CHECK_FALSE(unknownRole.refused);
+
+  userContext().remember(775, UserRole::Guard);
+  REQUIRE(sync_fan_out::resourceDelivery(*pin, modules, 775).rooms ==
+          std::vector<RoomId>{userRoom(775)});
+  userContext().remember(775, UserRole::Unknown);
+  const auto demoted = sync_fan_out::resourceDelivery(*pin, modules, 775);
+  CHECK(demoted.rooms.empty());
+  CHECK_FALSE(demoted.refused);
+}

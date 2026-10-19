@@ -1268,6 +1268,15 @@ verdict passes for that user's role, which is the role this service remembered
 for them at connect and at every revalidation (`UserContextService::roleOf`,
 fed by `remember`/`userChanged`).
 
+A target this process cannot place is acknowledged quietly, never terminated
+with a warning (2026-10-19, R1): a user that has not connected since sync
+started has no remembered role, and a user whose stored role this build does
+not know is remembered as `UserRole::Unknown`, which holds no permission and
+has no socket that could read the frame anyway. Both answer no room and no
+refusal, so the message is acked with a DEBUG line. Only a known role that the
+verdict denies is terminated with the warning, because that is a producer
+addressing someone who may not read the route.
+
 The frame carries no rows, so `ids` reaches everyone in the audience — which is
 exactly the set of people allowed to read those rows, which is why a
 notification is enough and no data ever travels with it. It is never persisted

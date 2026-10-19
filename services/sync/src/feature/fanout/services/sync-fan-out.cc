@@ -493,7 +493,7 @@ ResourceDelivery resourceDelivery(const ResourceRoute& route,
   if (!user.has_value())
     return {.rooms = resourceAudience(route, modules), .refused = false};
   const auto role = userContext().roleOf(*user);
-  if (!role.has_value())
+  if (!role.has_value() || *role == UserRole::Unknown)
     return {.rooms = {}, .refused = false};
   if (role_access::routeVerdict({.role = *role,
                                  .path = route.path,
