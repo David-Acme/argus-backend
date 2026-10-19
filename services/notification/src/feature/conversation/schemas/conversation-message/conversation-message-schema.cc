@@ -1,5 +1,11 @@
 #include "conversation-message-schema.hxx"
 
+#include <drogon/orm/Field.h>
+#include <drogon/orm/Row.h>
+
+#include <cstdint>
+#include <optional>
+
 namespace
 {
 std::optional<int64_t> optionalInt(const drogon::orm::Field& field)

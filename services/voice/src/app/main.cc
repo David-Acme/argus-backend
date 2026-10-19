@@ -302,8 +302,8 @@ int main()
       .guard = guardPresence,
       .rooms = rooms,
       .onWake = [&conversations](const ConfirmedWake& wake) { conversations.onWake(wake); },
-      .onFrame = [&conversations](const EarFrame& frame) { conversations.onFrame(frame); },
-      .onPlaybackFire = [&conversations](const EarFire& fire) { return conversations.onPlaybackFire(fire); }});
+      .onPlaybackFire = [&conversations](const EarFire& fire) { return conversations.onPlaybackFire(fire); },
+      .onFrame = [&conversations](const EarFrame& frame) { conversations.onFrame(frame); }});
   conversations.start();
   watch->start();
 

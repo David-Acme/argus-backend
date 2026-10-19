@@ -1,5 +1,6 @@
 #pragma once
 
+#include <shared/services/vad/near-field-gate.hxx>
 #include <chrono>
 #include <cstddef>
 #include <deque>
@@ -20,7 +21,6 @@ struct LevelFrame
   bool speech{false};
 };
 
-[[nodiscard]] float rmsDbOf(std::span<const float> samples);
 
 class CameraLevel
 {

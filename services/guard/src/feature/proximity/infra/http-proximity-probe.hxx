@@ -2,7 +2,13 @@
 
 #include <feature/proximity/services/proximity-ports.hxx>
 
+#include <drogon/utils/coroutine.h>
+#include <json/value.h>
+
+#include <cstdint>
+#include <optional>
 #include <string>
+#include <vector>
 
 struct HttpProximityProbeConfig
 {

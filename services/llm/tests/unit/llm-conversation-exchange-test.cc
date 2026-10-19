@@ -1,6 +1,7 @@
 #include <doctest/doctest.h>
 
 #include <feature/conversation/services/conversation-context.hxx>
+#include <feature/conversation/services/conversation-service.hxx>
 
 #include <sqlite3.h>
 

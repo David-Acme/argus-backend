@@ -35,8 +35,8 @@ FireLog::FireLog(size_t capacity) : capacity_(capacity == 0 ? 1 : capacity) {}
 
 void FireLog::record(const WakeFireRecord& record)
 {
-  LOG_INFO << "Voice watch: wake on camera " << record.cameraId << " source=" << record.source
-           << " verdict=" << wakeVerdictToString(record.verdict) << " snr_db=" << record.snrDb
+  LOG_INFO << "Voice watch: wake on camera " << record.cameraId << " source=" << std::string(record.source)
+           << " verdict=" << std::string(wakeVerdictToString(record.verdict)) << " snr_db=" << record.snrDb
            << " distance=" << record.distance << " stage2=" << record.stageTwo << " score=" << record.score;
   std::scoped_lock lock(mutex_);
   records_.push_back(record);

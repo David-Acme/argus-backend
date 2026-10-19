@@ -92,7 +92,7 @@ std::optional<ConversationOpening> CameraIdentityResolver::resolve(const Confirm
     opening.identity.set_role(voiceRoleToProto(parseUserRole(resolution.role).value_or(UserRole::Unknown)));
   }
   LOG_INFO << "Voice watch: camera " << wake.cameraId << " conversation audience "
-           << conversationAudienceToString(resolution.audience);
+           << std::string(conversationAudienceToString(resolution.audience));
   return opening;
 }
 

@@ -1,18 +1,9 @@
 #include "camera-level.hxx"
 
+#include <shared/services/vad/near-field-gate.hxx>
+
 #include <algorithm>
 #include <cmath>
-
-float rmsDbOf(std::span<const float> samples)
-{
-  if (samples.empty())
-    return -120.0F;
-  double sum = 0.0;
-  for (const float sample : samples)
-    sum += static_cast<double>(sample) * sample;
-  const double rms = std::sqrt(sum / static_cast<double>(samples.size()));
-  return rms <= 1e-6 ? -120.0F : static_cast<float>(20.0 * std::log10(rms));
-}
 
 CameraLevel::CameraLevel(CameraLevelConfig config) : config_(config), floorDb_(config.initialFloorDb) {}
 

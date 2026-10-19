@@ -577,7 +577,7 @@ void CameraConversation::close(ConversationEnd reason)
         resumable ? snapshot_.updatedAt + (input_.config.resumable.count() / 1000) : 0;
     ended = {.snapshot = snapshot_, .reason = reason, .carry = device ? std::nullopt : carry};
   }
-  LOG_INFO << "Voice watch: conversation " << input_.id << " ends (" << conversationEndToString(reason) << ")";
+  LOG_INFO << "Voice watch: conversation " << input_.id << " ends (" << std::string(conversationEndToString(reason)) << ")";
   publish();
   if (input_.onEnded)
     input_.onEnded(ended);

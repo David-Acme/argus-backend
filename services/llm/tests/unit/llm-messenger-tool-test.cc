@@ -208,7 +208,7 @@ TEST_CASE("the rules tier picks the relay only when the tool is offered, and an 
   const std::vector<tools::ToolHandle> offered{handle};
   const std::vector<tools::ToolHandle> none;
   const ModuleSnapshot modules;
-  const RuleDecider decider;
+  const turn::RuleDecider decider;
 
   const auto picked = decider.decide({.utterance = "Argus, llama a Ana Lopez y dile que venga a comer",
                                       .lang = "es",
