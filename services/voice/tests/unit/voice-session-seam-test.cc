@@ -3497,12 +3497,13 @@ TEST_CASE("A camera session takes its own endpointing, never asks whether it is 
                                     .maxTurnFrames = 937,
                                     .askAddressed = false,
                                     .incompleteHold = std::chrono::milliseconds(1300),
-                                    .incomplete = [](std::string_view text) { return text.ends_with(" y"); }});
+                                    .incomplete = [](std::string_view text) { return text.ends_with(" y"); },
+                                    .carry = std::nullopt});
   auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
   CHECK(sess->vad.minSilenceFrames() == 22);
   CHECK_FALSE(sess->askAddressed);
   CHECK(sess->surface == ConversationSurface::Camera);
-  CHECK(waitFor([&] { return !sess->speaking.load(); }));
+  REQUIRE(waitFor([&] { return llm.primeCalls.load() >= 1 && !sess->speaking.load(); }));
 
   const std::vector<float> samples(1600, 0.1F);
   VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});

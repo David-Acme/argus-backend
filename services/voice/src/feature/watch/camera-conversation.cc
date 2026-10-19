@@ -97,7 +97,8 @@ void CameraConversation::open(const std::vector<float>& initialAudio)
                           .maxTurnFrames = static_cast<int>(config.maxTurn.count() / kVadWindowMs),
                           .askAddressed = false,
                           .incompleteHold = config.incompleteHold - config.endSilence,
-                          .incomplete = [](std::string_view text) { return trailsOff(text); }});
+                          .incomplete = [](std::string_view text) { return trailsOff(text); },
+                          .carry = std::nullopt});
   input_.sessions->context(*this, noteOf(cameraNote(input_.lang, input_.cameraName)));
   for (const std::string& note : input_.notes)
     input_.sessions->context(*this, noteOf(note));
