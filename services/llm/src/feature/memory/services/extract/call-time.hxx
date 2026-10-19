@@ -29,6 +29,27 @@ struct DayConflict
   int relative{-1};
 };
 
+enum class DayPart : unsigned char
+{
+  None,
+  Morning,
+  Afternoon,
+  Night
+};
+
+struct ClockHeard
+{
+  std::string_view text;
+  DayPart part{DayPart::None};
+};
+
+struct ClockOfDay
+{
+  int minuteOfDay{0};
+  std::size_t phraseBegin{0};
+  std::size_t phraseEnd{0};
+};
+
 struct CallReading
 {
   std::optional<CallTime> time{};
@@ -44,4 +65,6 @@ namespace call_time
 [[nodiscard]] std::optional<CallTime> resolve(const CallTimeInput& input);
 
 [[nodiscard]] std::string withoutPhrase(std::string_view text, const CallTime& time);
+
+[[nodiscard]] std::optional<ClockOfDay> clockOf(const ClockHeard& heard);
 }

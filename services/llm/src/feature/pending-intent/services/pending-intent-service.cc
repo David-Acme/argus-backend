@@ -201,7 +201,8 @@ void PendingIntentService::fail(const PendingIntentRow& row, const std::string& 
                                                       .role = row.role,
                                                       .title = summary,
                                                       .scheduledAt = reminderTime(arguments, now()),
-                                                      .commandId = "intent-" + std::to_string(row.id)});
+                                                      .commandId = "intent-" + std::to_string(row.id),
+                                                      .recurrenceRule = std::nullopt});
   const std::string name = dependencies_.moduleName ? dependencies_.moduleName({.module = row.module, .lang = row.lang}) : row.module;
   const std::string why = reasonText(reason, english);
   std::string body = english ? "I could not turn on " + name + " (" + why + "). " : "No pude activar " + name + " (" + why + "). ";

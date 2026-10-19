@@ -779,3 +779,91 @@ TEST_CASE("a call the notification service did not confirm is never said to be s
   service.shutdown();
   std::remove(kScratchConfig);
 }
+
+TEST_CASE("a recurring reminder writes one series row per day it repeats on, with the rule productivity reads, and no call")
+{
+  std::filesystem::create_directories(kScratchDir);
+  writeConfig("series.db");
+  ConfigService::load(kScratchConfig);
+  std::filesystem::remove(std::string(kScratchDir) + "/series.db");
+
+  SilentChat chat;
+  MemoryService service(VecDb::instance(), chat);
+  service.init({});
+  REQUIRE(service.isLoaded());
+  const auto rows = std::make_shared<RecordingRows>();
+  const auto calls = std::make_shared<RecordingCalls>();
+  service.setReminderRows(rows);
+  service.setReminderCalls(calls);
+
+  const auto descriptors = service.toolDescriptors();
+  const auto run = [&descriptors](const tools::ToolCall& call) {
+    for (const auto& descriptor : descriptors)
+      if (descriptor.spec.name == call.name)
+        return descriptor.handler(call);
+    return tools::ToolResult{};
+  };
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+
+  auto weekly = remindCall(kSpeaker, "Recuérdame los lunes y miércoles a las 8 sacar la basura.");
+  weekly.arguments["repeat"] = "FREQ=WEEKLY;BYDAY=MO,WE";
+  const auto saved = run(weekly);
+  INFO("weekly output: " << saved.output);
+  REQUIRE(saved.ok);
+  REQUIRE(rows->created.size() == 2);
+  for (const ReminderRowRequest& row : rows->created) {
+    CHECK(row.userId == kSpeaker);
+    CHECK(row.role == "resident");
+    CHECK(row.recurrenceRule.value_or("") == "FREQ=WEEKLY");
+    CHECK(row.title.find("basura") != std::string::npos);
+    CHECK(row.title.find("lunes") == std::string::npos);
+    CHECK(row.title.find("8") == std::string::npos);
+    CHECK(row.scheduledAt > now);
+    CHECK(row.scheduledAt <= now + int64_t{7} * 24 * 3600);
+    const auto seconds = static_cast<std::time_t>(row.scheduledAt);
+    std::tm local{};
+    localtime_r(&seconds, &local);
+    CHECK(local.tm_hour == 8);
+    CHECK(local.tm_min == 0);
+    CHECK((local.tm_wday == 1 || local.tm_wday == 3));
+  }
+  CHECK(rows->created.front().commandId != rows->created.back().commandId);
+  CHECK(rows->created.front().scheduledAt < rows->created.back().scheduledAt);
+  CHECK(calls->scheduled.empty());
+  CHECK(saved.output.find(" Te lo recordaré los lunes y miércoles a las 8 de la mañana; la primera vez será ") != std::string::npos);
+  CHECK(saved.output.find("llamaré") == std::string::npos);
+  CHECK(saved.data["readback"].asString() == "los lunes y miércoles a las 8 de la mañana");
+  CHECK_FALSE(saved.data["callScheduled"].asBool());
+  CHECK(saved.data["repeat"].asString() == "FREQ=WEEKLY;BYDAY=MO,WE");
+
+  const std::size_t afterWeekly = rows->created.size();
+  const auto daily = run(remindCall(kSpeaker, "Recuérdame todos los días a las 9 tomar las pastillas."));
+  INFO("daily output: " << daily.output);
+  REQUIRE(daily.ok);
+  REQUIRE(rows->created.size() == afterWeekly + 1);
+  CHECK(rows->created.back().recurrenceRule.value_or("") == "FREQ=DAILY");
+  CHECK(rows->created.back().scheduledAt > now);
+  CHECK(rows->created.back().scheduledAt <= now + int64_t{24} * 3600);
+  CHECK(calls->scheduled.empty());
+
+  const std::size_t afterDaily = rows->created.size();
+  const auto hourly = run(remindCall(kSpeaker, "Recuérdame cada hora tomar agua."));
+  CHECK_FALSE(hourly.ok);
+  CHECK(hourly.code == "unreadable_repeat");
+  CHECK(hourly.output == "No entendí cada cuánto repetirlo, así que no guardé el recordatorio.");
+  CHECK(rows->created.size() == afterDaily);
+
+  auto unknownRule = remindCall(kSpeaker, "Recuérdame cada lunes a las 8 sacar la basura.");
+  unknownRule.arguments["repeat"] = "FREQ=HOURLY";
+  CHECK_FALSE(run(unknownRule).ok);
+  CHECK(rows->created.size() == afterDaily);
+
+  const auto untimed = run(remindCall(kSpeaker, "Recuérdame cada lunes sacar la basura."));
+  if (untimed.ok)
+    CHECK(untimed.output.find("No me dijiste a qué hora") != std::string::npos);
+  CHECK(rows->created.size() == afterDaily);
+  CHECK(calls->scheduled.empty());
+
+  service.shutdown();
+  std::remove(kScratchConfig);
+}

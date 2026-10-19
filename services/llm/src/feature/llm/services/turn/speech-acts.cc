@@ -63,6 +63,8 @@ std::string_view reasonName(AskReason reason)
       return "project_name";
     case AskReason::ProjectNoneYet:
       return "project_none_yet";
+    case AskReason::RepeatTime:
+      return "repeat_time";
   }
   return "missing";
 }

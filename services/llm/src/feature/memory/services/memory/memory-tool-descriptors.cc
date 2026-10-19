@@ -38,7 +38,8 @@ std::vector<tools::ToolDescriptor> memoryToolDescriptors()
                                "con un momento concreto. Si dice la hora, Argus le "
                                "llama a esa hora para recordárselo",
                 .inputSchema = schema::object({{.name = "text", .schema = schema::text(), .required = false},
-                                               {.name = "when", .schema = schema::text(), .required = false}}),
+                                               {.name = "when", .schema = schema::text(), .required = false},
+                                               {.name = "repeat", .schema = schema::text(), .required = false}}),
                 .annotations = {},
                 .module = kCore,
                 .capability = "reminders.write"},

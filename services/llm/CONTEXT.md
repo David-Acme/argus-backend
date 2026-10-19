@@ -518,7 +518,8 @@ receipt captures exactly one owner-scoped episode through `observeSystemEvent`
    that", ...) and routes `memory.remember`, or `memory.remind` when the
    utterance asks to be reminded (`recuérdame`, `avísame`, `remind me`, an
    alarm or a timer) **and** names one non-recurring instant
-   (`TemporalResolver`); "apunta que el mecánico llega el martes" is a fact.
+   (`TemporalResolver`) or a recurrence ("Recurring reminders from the
+   assistant" below); "apunta que el mecánico llega el martes" is a fact.
    Its candidate is exact, at confidence 1.0, with the source
    `memory_save, trigger` or `reminder_set, trigger`, so it acts without a
    second signal.
@@ -669,7 +670,8 @@ session to lose on a restart.
   whatever the model puts in the arguments, and another user's row is a 404 in
   productivity; there is no second write path and no Owner override.
   `reminder.list` reads the caller's own rows the same way. A reminder with no
-  time creates no row.
+  time creates no row. A recurring reminder carries a `repeat` argument and
+  writes series rows ("Recurring reminders from the assistant").
 - **App actions.** A provider that wants the app to do something returns
   `argus/appAction {name, arguments}`; `remote-tool.cc` hands it to
   `ToolContext::emitAction`, which the controller turns into a `ClientAction`
@@ -1628,6 +1630,132 @@ Whether the scheduled call rings, is only a
 notification or is spoken into a live call is the user's call preference
 (`assistant`), decided by the notification service. The descriptor no longer
 says "no suena ninguna alarma".
+
+## Recurring reminders from the assistant (F6a, 2026-10-19)
+
+"Recuérdame cada lunes a las 8 sacar la basura" and "remind me every day at
+9 to take my pills" become one productivity reminder series each, through the
+same `memory.remind` tool and the same row writer as a one-off reminder.
+Productivity already stores and fires a series (`recurrence_rule` on the
+reminder RPC, `services/productivity/CONTEXT.md` "Recurring reminders and
+snooze"); the RPC path forwards the rule untouched, so productivity did not
+change.
+
+**The rule tier reads the recurrence** (`repeat_rule::read`,
+`src/feature/memory/services/extract/repeat-rule.{hxx,cc}`, beside
+`call-time`, whose fold and tokens it reuses). It is deterministic and reads
+es (Peruvian forms included) and en in one pass, whatever the call language:
+
+| Heard | Rule (`repeat` argument) |
+|---|---|
+| "cada día", "todos los días", "a diario", "diario" (not after an article: "el diario" is a newspaper), "diariamente", "todas las mañanas/tardes/noches", "cada noche", "every day", "everyday", "daily" (not after an article), "every morning/evening/night", "once a day", "una vez al día" | `FREQ=DAILY` |
+| "cada 2 días", "cada dos días", "interdiario", "día por medio", "día de por medio", "un día sí y otro no", "every other day", "every 2 days", "cada quincena" (15 days) | `FREQ=DAILY;INTERVAL=n` |
+| "cada lunes", "todos los lunes", "los lunes", "los lunes y miércoles", "los martes, jueves y sábados", "every Monday", "each Monday", "on Mondays and Wednesdays", "mondays" | `FREQ=WEEKLY;BYDAY=MO[,WE...]` |
+| "entre semana", "de lunes a viernes", "del lunes al viernes", "los días hábiles/laborables/útiles", "días de semana", "every weekday", "on weekdays", "Monday through Friday", "from Monday to Friday" | `FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR` |
+| "los fines de semana", "cada fin de semana", "every weekend", "on weekends" | `FREQ=WEEKLY;BYDAY=SU,SA` |
+| "cada semana", "todas las semanas", "semanalmente", "una vez por semana", "every week", "weekly" (not after an article), "once a week" | `FREQ=WEEKLY` (the first occurrence's weekday) |
+| "cada dos semanas los viernes", "cada dos lunes", "every other Monday", "every 2 weeks" | `FREQ=WEEKLY;INTERVAL=2[;BYDAY=FR]` |
+| "cada mes", "todos los meses", "mensualmente", "una vez al mes", "every month", "monthly", "once a month" | `FREQ=MONTHLY` (the first occurrence's day) |
+| "el día 5 de cada mes", "el 5 de cada mes", "cada 5 de mes", "on the 5th of every month", "every month on the 5th" | `FREQ=MONTHLY;BYMONTHDAY=5` |
+| "cada año", "todos los años", "anualmente", "every year", "yearly", "annually", only with a named month ("cada año el 5 de marzo") | `FREQ=YEARLY` |
+
+The argument grammar is the RFC 5545 subset `FREQ=DAILY|WEEKLY|MONTHLY|YEARLY`
+with optional `INTERVAL=1..999`, `BYDAY=SU,MO,TU,WE,TH,FR,SA` (weekly only)
+and `BYMONTHDAY=1..31` (monthly only), each key once, written in that order
+by `repeat_rule::format` and read in any order by `repeat_rule::parse`.
+
+Not a recurrence, and so a one-off reminder or no reminder at all, exactly as
+before: "cada vez que" / "every time", "cada uno", "el lunes" / "on Monday"
+alone, "este fin de semana", "el diario", "the weekly report".
+
+**Heard but not keepable is refused, never shrunk to a one-off.** A
+recurrence the reminders cannot store is still heard as one
+(`RepeatReading::mentioned` without a `repeat`): any hour or minute unit
+("cada hora", "cada 2 horas", "every hour"), more than once per unit ("dos
+veces al día", "twice a day", "3 times a week"), vague cadences ("de vez en
+cuando", "from time to time", "cada rato", "every so often"), an exception
+("todos los días excepto el domingo", "except"), a yearly cadence with no
+month, and mixes the store has no shape for ("el primer lunes de cada mes").
+The turn answers `speech::Refused{memory.remind, unreadable_repeat}`, a fixed
+line in the user's language ("No entendí cada cuánto repetirlo, así que no lo
+guardé. Puedo repetir un recordatorio cada día, ciertos días de la semana,
+cada semana, cada mes o cada año, por ejemplo: cada lunes a las 8."), and runs
+nothing. The handler refuses the same way (`code: unreadable_repeat`) when it
+is reached without the turn, and a `repeat` argument it cannot parse is
+refused too.
+
+**The time comes from the existing clock reader.** `call_time::clockOf` reads
+the clock part alone (the same clock grammar as the one-off table above) and
+answers a minute of the day, with the day part the recurrence named as its
+qualifier ("todas las noches a las 9" is 21:00), and the bare-hour reading
+used when a day is named (1 to 6 the afternoon, 7 to 11 the morning). It
+never takes the evening fallback a one-off "a las 8" takes after 08:00,
+because a series has no "today". The first occurrence is the next matching
+instant from now in the host's local clock (Lima's in production):
+`repeat_rule::firstOccurrences` returns one instant per named weekday, the
+next valid month that has the named day for a monthly series (the 31st skips
+November), and today or tomorrow at that time otherwise. A yearly series
+anchors at the instant `call_time::resolve` reads from its date.
+
+**The turn** (`TurnFlow::proceed`, for `memory.remind` only and not while a
+slot is being answered) reads the recurrence from the user's words, writes
+`repeat` into the call's arguments and skips the one-off day questions (a
+conflict, a passed hour, a far date) that have no meaning for a series. A
+readable recurrence with no time asks "¿A qué hora te lo recuerdo cada vez?" /
+"At what time should I remind you each time?" (`AskReason::RepeatTime`, a
+pending `Awaiting::Clock`); the answer is appended to the original words, so
+the call runs with "recuérdame cada lunes sacar la basura a las 8" and every
+slot is read again from them. An answer with no clock is asked once more and
+then given up (`Misunderstood`); a new command or a no replaces the question.
+The GLiNER extractor leaves `repeat` empty: the rule tier is its only filler,
+and with no bundle at all the recurrence still routes and fills, which keeps
+the degradation contract.
+
+**The trigger decider** routes an explicit recurring ask to `memory.remind`
+even when the phrase catalog has no trigger for it ("recuérdame cada lunes a
+las 8 sacar la basura" has no "que"): the utterance must ask to be reminded
+(`kReminderAsks`), must not be a question (`RuleParser::isQuestion`, which
+also counts the recall markers such as "recuérdame el día", so "recuérdame el
+día 5 de cada mes" is left to Laya), and must name a recurrence. A readable
+one that the catalog also parses as a save ("recuérdame que mi hermana viene
+los domingos") needs a clock to become a reminder; without one it stays a
+fact, as it was. An unreadable one always goes to `memory.remind`, so the
+refusal is said instead of a fact being stored.
+
+**The handler** (`MemoryService::handleRemind`) stores the fact as before and
+then, for a series, writes one productivity row per named weekday (a series
+row has one anchor, and productivity's rule grammar has no `BYDAY`, so "los
+lunes y miércoles" is two weekly series, each anchored on its own day), with
+`recurrenceRule` the productivity rule (`FREQ` and `INTERVAL` only:
+`repeat_rule::productivityRule`) and the idempotency key
+`memory-remind:<factId>:<firstAt>`. The title is the reminder's words without
+the recurrence and the clock phrases. **No call is scheduled for a series**:
+the notification service's call is a single instant, and calling only for the
+first occurrence would be a promise the later ones break; productivity fires
+every occurrence through its own agenda notices. `callScheduled` is false, so
+the reply guard cuts any "te llamaré".
+
+**What is said.** The tool result carries `readback`, the cadence and the time
+(`reminder_readback::repeatMoment`: "cada lunes a las 8 de la mañana", "los
+lunes y miércoles a las 7 de la mañana", "de lunes a viernes a las 7 de la
+mañana", "el día 5 de cada mes a las 9 de la mañana", "every Monday at 8 AM",
+"every weekday at 7 AM", "on the 5th of every month at 9 AM"), and the
+sentence "Te lo recordaré cada lunes a las 8 de la mañana; la primera vez será
+el lunes 12." / "I will remind you every Monday at 8 AM, starting on Monday
+the 12th." The done act keeps the read-back and the speech guard asks for a
+reply that carries it, as for a one-off. A series no row writer accepted says
+"Lo guardé, pero no pude dejarlo en tus recordatorios, así que no se
+repetirá."; one with no time says "No me dijiste a qué hora, así que todavía
+no quedó en tus recordatorios."
+
+Tests: `repeat-rule-test` (the phrase table es/en, the unreadable and the
+one-off negatives, the clock reader, the grammar round trip, the first
+occurrences), `reminder-readback-test` (the spoken cadence in both languages),
+`llm-turn-flow-test` (the rule reaches the tool's arguments, the refusal, the
+time question and its answer, the trigger routing) and `memory-reminder-test`
+(one row per weekday with the productivity rule, no call, the refusal). The
+judge corpus carries `remind-076` to `remind-082`, which check the `repeat`
+argument by value.
 
 ## Audit fixes (2026-10-05, cloud audit #31-#35, #96-#99, #111)
 

@@ -1,11 +1,13 @@
 #include <doctest/doctest.h>
 
+#include <feature/memory/services/extract/repeat-rule.hxx>
 #include <feature/memory/services/memory/reminder-readback.hxx>
 
 #include <cstdint>
 #include <cstdlib>
 #include <ctime>
 #include <string>
+#include <string_view>
 
 namespace
 {
@@ -116,4 +118,101 @@ TEST_CASE("the moment a reply must carry is the day and time with its prepositio
         "el jueves 8 a las 3 de la tarde");
   CHECK(reminder_readback::moment(spokenOf({.moment = {.day = 8, .hour = 15}, .lang = "en", .call = Call::Failed})) ==
         "on Thursday the 8th at 3 PM");
+}
+
+namespace
+{
+struct Series
+{
+  std::string_view rule;
+  Moment first;
+  std::string_view lang;
+  bool listed{true};
+};
+
+std::string seriesSaid(const Series& series)
+{
+  const auto parsed = repeat_rule::parse(series.rule);
+  if (!parsed)
+    return "unparsed";
+  return reminder_readback::repeatSentence({.repeat = *parsed,
+                                            .firstAt = at(series.first),
+                                            .now = at({.day = 7, .hour = 15, .minute = 20}),
+                                            .lang = series.lang,
+                                            .listed = series.listed});
+}
+
+std::string seriesMoment(const Series& series)
+{
+  const auto parsed = repeat_rule::parse(series.rule);
+  if (!parsed)
+    return "unparsed";
+  return reminder_readback::repeatMoment({.repeat = *parsed,
+                                          .firstAt = at(series.first),
+                                          .now = at({.day = 7, .hour = 15, .minute = 20}),
+                                          .lang = series.lang,
+                                          .listed = series.listed});
+}
+}
+
+TEST_CASE("a recurring reminder is confirmed with how often it repeats, its time and its first day, in Spanish and in English")
+{
+  CHECK(seriesSaid({.rule = "FREQ=WEEKLY;BYDAY=MO", .first = {.day = 12, .hour = 8}, .lang = "es"}) ==
+        " Te lo recordaré cada lunes a las 8 de la mañana; la primera vez será el lunes 12.");
+  CHECK(seriesSaid({.rule = "FREQ=WEEKLY;BYDAY=MO", .first = {.day = 12, .hour = 8}, .lang = "en"}) ==
+        " I will remind you every Monday at 8 AM, starting on Monday the 12th.");
+  CHECK(seriesSaid({.rule = "FREQ=DAILY", .first = {.day = 8, .hour = 9}, .lang = "es"}) ==
+        " Te lo recordaré todos los días a las 9 de la mañana; la primera vez será mañana.");
+  CHECK(seriesSaid({.rule = "FREQ=DAILY", .first = {.day = 8, .hour = 9}, .lang = "en"}) ==
+        " I will remind you every day at 9 AM, starting tomorrow.");
+  CHECK(seriesSaid({.rule = "FREQ=DAILY", .first = {.day = 8, .hour = 9}, .lang = "es", .listed = false}) ==
+        " Lo guardé, pero no pude dejarlo en tus recordatorios, así que no se repetirá.");
+  CHECK(seriesSaid({.rule = "FREQ=DAILY", .first = {.day = 8, .hour = 9}, .lang = "en", .listed = false}) ==
+        " I saved it, but I could not add it to your reminders, so it will not repeat.");
+}
+
+TEST_CASE("the repetition a reply must carry names the days, the interval and the clock")
+{
+  CHECK(seriesMoment({.rule = "FREQ=WEEKLY;BYDAY=MO,WE", .first = {.day = 12, .hour = 7}, .lang = "es"}) ==
+        "los lunes y miércoles a las 7 de la mañana");
+  CHECK(seriesMoment({.rule = "FREQ=WEEKLY;BYDAY=MO,WE", .first = {.day = 12, .hour = 7}, .lang = "en"}) ==
+        "every Monday and Wednesday at 7 AM");
+  CHECK(seriesMoment({.rule = "FREQ=WEEKLY;BYDAY=TU,TH,SA", .first = {.day = 8, .hour = 18}, .lang = "es"}) ==
+        "los martes, jueves y sábados a las 6 de la tarde");
+  CHECK(seriesMoment({.rule = "FREQ=WEEKLY;BYDAY=TU,TH,SA", .first = {.day = 8, .hour = 18}, .lang = "en"}) ==
+        "every Tuesday, Thursday and Saturday at 6 PM");
+  CHECK(seriesMoment({.rule = "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", .first = {.day = 8, .hour = 7}, .lang = "es"}) ==
+        "de lunes a viernes a las 7 de la mañana");
+  CHECK(seriesMoment({.rule = "FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR", .first = {.day = 8, .hour = 7}, .lang = "en"}) ==
+        "every weekday at 7 AM");
+  CHECK(seriesMoment({.rule = "FREQ=WEEKLY;BYDAY=SU,SA", .first = {.day = 10, .hour = 10}, .lang = "es"}) ==
+        "los fines de semana a las 10 de la mañana");
+  CHECK(seriesMoment({.rule = "FREQ=WEEKLY;BYDAY=SU,SA", .first = {.day = 10, .hour = 10}, .lang = "en"}) ==
+        "every weekend at 10 AM");
+  CHECK(seriesMoment({.rule = "FREQ=WEEKLY;INTERVAL=2;BYDAY=FR", .first = {.day = 9, .hour = 18}, .lang = "es"}) ==
+        "cada 2 semanas, los viernes a las 6 de la tarde");
+  CHECK(seriesMoment({.rule = "FREQ=WEEKLY;INTERVAL=2;BYDAY=FR", .first = {.day = 9, .hour = 18}, .lang = "en"}) ==
+        "every 2 weeks on Friday at 6 PM");
+  CHECK(seriesMoment({.rule = "FREQ=WEEKLY", .first = {.day = 7, .hour = 16}, .lang = "es"}) == "cada miércoles a las 4 de la tarde");
+  CHECK(seriesMoment({.rule = "FREQ=WEEKLY", .first = {.day = 7, .hour = 16}, .lang = "en"}) == "every Wednesday at 4 PM");
+  CHECK(seriesMoment({.rule = "FREQ=DAILY;INTERVAL=2", .first = {.day = 8, .hour = 8}, .lang = "es"}) == "cada 2 días a las 8 de la mañana");
+  CHECK(seriesMoment({.rule = "FREQ=DAILY;INTERVAL=2", .first = {.day = 8, .hour = 8}, .lang = "en"}) == "every 2 days at 8 AM");
+  CHECK(seriesMoment({.rule = "FREQ=DAILY", .first = {.day = 7, .hour = 21}, .lang = "es"}) == "todos los días a las 9 de la noche");
+  CHECK(seriesMoment({.rule = "FREQ=MONTHLY;BYMONTHDAY=5", .first = {.month = 11, .day = 5, .hour = 9}, .lang = "es"}) ==
+        "el día 5 de cada mes a las 9 de la mañana");
+  CHECK(seriesMoment({.rule = "FREQ=MONTHLY;BYMONTHDAY=5", .first = {.month = 11, .day = 5, .hour = 9}, .lang = "en"}) ==
+        "on the 5th of every month at 9 AM");
+  CHECK(seriesMoment({.rule = "FREQ=MONTHLY", .first = {.day = 7, .hour = 16}, .lang = "es"}) == "el día 7 de cada mes a las 4 de la tarde");
+  CHECK(seriesMoment({.rule = "FREQ=YEARLY", .first = {.month = 12, .day = 25, .hour = 9}, .lang = "es"}) ==
+        "cada año, el 25 de diciembre a las 9 de la mañana");
+  CHECK(seriesMoment({.rule = "FREQ=YEARLY", .first = {.month = 12, .day = 25, .hour = 9}, .lang = "en"}) ==
+        "every year on December 25th at 9 AM");
+}
+
+TEST_CASE("a recurrence with no time and one that cannot be read are said plainly, in the user's language")
+{
+  CHECK(reminder_readback::untimedRepeat("es") == " No me dijiste a qué hora, así que todavía no quedó en tus recordatorios.");
+  CHECK(reminder_readback::untimedRepeat("en") == " You did not say at what time, so it is not in your reminders yet.");
+  CHECK(reminder_readback::unreadableRepeat("es") == "No entendí cada cuánto repetirlo, así que no guardé el recordatorio.");
+  CHECK(reminder_readback::unreadableRepeat("en") == "I did not understand how often to repeat it, so I did not save the reminder.");
 }

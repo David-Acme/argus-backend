@@ -111,6 +111,9 @@ private:
   [[nodiscard]] Outcome askDay(const Move& move, const Candidate& candidate, const slots::Dispute& dispute);
   [[nodiscard]] Outcome askFar(const Move& move, const Candidate& candidate, const std::string& field);
   [[nodiscard]] Outcome askPassed(const Move& move, const Candidate& candidate, const slots::Passed& passed);
+  [[nodiscard]] Outcome askRepeatTime(const Move& move, const Candidate& candidate);
+  [[nodiscard]] Outcome unreadableRepeat(const Move& move) const;
+  [[nodiscard]] std::optional<Outcome> followUpClock(const TurnRequest& request, const Deciding& deciding, const Pending& pending);
   [[nodiscard]] Outcome askProjectAgain(const TurnRequest& request, const Pending& pending);
   [[nodiscard]] Outcome offerProject(const TurnRequest& request, const Pending& pending, const std::string& name);
   [[nodiscard]] Outcome confirmed(const TurnRequest& request, const Pending& pending);
