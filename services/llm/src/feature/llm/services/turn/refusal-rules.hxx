@@ -13,6 +13,7 @@ namespace turn::refusal
 
 inline constexpr std::string_view kPrivatePerson = speech::refusal_reason::kPrivatePerson;
 inline constexpr std::string_view kNoRelay = speech::refusal_reason::kNoRelay;
+inline constexpr std::string_view kImpersonation = speech::refusal_reason::kImpersonation;
 inline constexpr std::string_view kModuleOff = speech::refusal_reason::kModuleOff;
 inline constexpr std::string_view kNoAction = speech::refusal_reason::kNoAction;
 
@@ -21,6 +22,7 @@ struct Ask
   std::string_view utterance;
   const ToolAudience& audience;
   std::string_view lang;
+  bool relayOffered{false};
 };
 
 struct Refusal

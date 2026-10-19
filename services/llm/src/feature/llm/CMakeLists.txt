@@ -96,6 +96,7 @@ argus_module(NAME llm
         argus::clients::llm
         argus::memory
         argus::conversation
+        argus::messenger
         Drogon::Drogon
         nlohmann_json::nlohmann_json
         argus::contracts::auth

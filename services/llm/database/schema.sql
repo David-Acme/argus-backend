@@ -192,3 +192,30 @@ CREATE TABLE IF NOT EXISTS conversation_turn (
 
 CREATE INDEX IF NOT EXISTS idx_conversation_turn_user ON conversation_turn (user_id, id);
 CREATE INDEX IF NOT EXISTS idx_conversation_turn_created ON conversation_turn (created_at);
+
+CREATE TABLE IF NOT EXISTS relay_thread (
+  id           INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+  from_user_id INTEGER NOT NULL,
+  to_user_id   INTEGER NOT NULL,
+  message_id   TEXT    NOT NULL,
+  channel      TEXT    NOT NULL  CHECK (channel IN ('conversation', 'notification', 'camera')),
+  state        TEXT    NOT NULL  CHECK (state IN ('open', 'answered', 'expired')),
+  reply_until  INTEGER NOT NULL,
+  created_at   INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_relay_thread_open
+  ON relay_thread (to_user_id, state, reply_until);
+
+CREATE TABLE IF NOT EXISTS visitor_notice (
+  id           INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+  camera       TEXT    NOT NULL,
+  to_user_id   INTEGER NOT NULL,
+  created_at   INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_visitor_notice_window
+  ON visitor_notice (camera, to_user_id, created_at);
+
+CREATE INDEX IF NOT EXISTS idx_visitor_notice_time
+  ON visitor_notice (created_at);

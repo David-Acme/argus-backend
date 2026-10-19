@@ -16,11 +16,17 @@ struct DailyClock
 
 [[nodiscard]] double secondsUntilDaily(std::time_t now, DailyClock at);
 
+struct ConversationPurgeInput
+{
+  std::shared_ptr<ConversationService> service;
+  std::function<int64_t()> retentionDays;
+  DailyClock at;
+};
+
 class ConversationPurgeTask
 {
 public:
-  ConversationPurgeTask(std::shared_ptr<ConversationService> service, std::function<int64_t()> retentionDays,
-                        DailyClock at);
+  explicit ConversationPurgeTask(ConversationPurgeInput input);
 
   void start();
 

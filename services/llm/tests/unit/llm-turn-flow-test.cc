@@ -2393,3 +2393,102 @@ TEST_CASE("a turn that only opened a screen may say it opened it, and a state ch
   guard.script.replies = {"Activé el modo noche."};
   CHECK(guard.sync("Pon la vigilancia en modo noche.").reply == "Activé el modo noche.");
 }
+
+namespace
+{
+
+tools::ToolDescriptor relayStub(World& world, std::vector<std::string> candidates)
+{
+  return tool_stubs::stub({.name = "message.relay",
+                           .capability = "messages.relay",
+                           .handler = [&world, candidates](const tools::ToolCall& call) {
+                             world.ran.push_back(call);
+                             if (call.arguments.get("recipient", "").asString().empty()) {
+                               tools::ToolResult asked;
+                               asked.output = "¿A quién se lo digo?";
+                               asked.code = "ask_recipient";
+                               Json::Value list(Json::arrayValue);
+                               for (const auto& name : candidates)
+                                 list.append(name);
+                               asked.data["candidates"] = list;
+                               return asked;
+                             }
+                             return tool_stubs::okResult("Mensaje entregado a " + call.arguments["recipient"].asString() + ".");
+                           },
+                           .module = "core",
+                           .schema = schema::object({{.name = "recipient", .schema = schema::text(), .required = false},
+                                                     {.name = "message", .schema = schema::text(), .required = false},
+                                                     {.name = "reply", .schema = schema::boolean(), .required = false},
+                                                     {.name = "afterQuestion", .schema = schema::boolean(), .required = false}})});
+}
+
+}
+
+TEST_CASE("a reply with no open thread asks who, and the name given is the recipient of the same message")
+{
+  World world;
+  world.add(relayStub(world, {}));
+  world.refresh();
+  const auto asked = world.say("dile que ya voy");
+  const auto* question = actAs<turn::speech::AskSlot>(asked);
+  REQUIRE(question != nullptr);
+  CHECK(question->slot == "recipient");
+  CHECK(question->tool == "message.relay");
+  CHECK(question->reason == turn::speech::AskReason::RecipientName);
+  CHECK(question->options.empty());
+  REQUIRE(world.ran.size() == 1);
+  CHECK(world.ran.front().name == "message.relay");
+  CHECK(world.ran.front().arguments["message"].asString() == "ya voy");
+  CHECK(world.ran.front().arguments["reply"].asBool());
+
+  static_cast<void>(world.say("Lucia"));
+  REQUIRE(world.ran.size() == 2);
+  CHECK(world.ran.back().arguments["recipient"].asString() == "Lucia");
+  CHECK(world.ran.back().arguments["afterQuestion"].asBool());
+  CHECK(world.ran.back().arguments["message"].asString() == "ya voy");
+}
+
+TEST_CASE("a reply with two open threads asks which sender, and the answer picks that sender")
+{
+  World world;
+  world.add(relayStub(world, {"David Acme", "Lucia"}));
+  world.refresh();
+  const auto asked = world.say("dile que ya voy");
+  const auto* question = actAs<turn::speech::AskSlot>(asked);
+  REQUIRE(question != nullptr);
+  CHECK(question->reason == turn::speech::AskReason::RecipientChoice);
+  CHECK(question->options == std::vector<std::string>{"David Acme", "Lucia"});
+  CHECK(world.ran.size() == 1);
+
+  static_cast<void>(world.say("David"));
+  REQUIRE(world.ran.size() == 2);
+  CHECK(world.ran.back().arguments["recipient"].asString() == "David Acme");
+  CHECK(world.ran.back().arguments["reply"].asBool());
+  CHECK(world.ran.back().arguments["afterQuestion"].asBool());
+}
+
+TEST_CASE("an answer that picks no sender is asked again once, and then given up on")
+{
+  World world;
+  world.add(relayStub(world, {"David Acme", "Lucia"}));
+  world.refresh();
+  static_cast<void>(world.say("dile que ya voy"));
+  const auto again = world.say("quizá la otra");
+  CHECK(actAs<turn::speech::AskSlot>(again) != nullptr);
+  CHECK(world.ran.size() == 1);
+  const auto given = world.say("tal vez");
+  CHECK(actAs<turn::speech::Misunderstood>(given) != nullptr);
+  CHECK(world.ran.size() == 1);
+}
+
+TEST_CASE("a new relay command while the question is open replaces the question and is decided on its own")
+{
+  World world;
+  world.add(relayStub(world, {}));
+  world.refresh();
+  static_cast<void>(world.say("dile que ya voy"));
+  static_cast<void>(world.say("llama a Ana Lopez y dile que venga a comer"));
+  REQUIRE(world.ran.size() == 2);
+  CHECK(world.ran.back().arguments["recipient"].asString() == "ana lopez");
+  CHECK(world.ran.back().arguments["message"].asString() == "venga a comer");
+}

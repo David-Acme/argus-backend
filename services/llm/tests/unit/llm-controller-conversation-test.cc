@@ -2,6 +2,7 @@
 
 #include <errors/response-exception.hxx>
 #include <feature/conversation/services/conversation-store.hxx>
+#include <feature/conversation/services/conversation-transcript.hxx>
 #include <feature/llm/controllers/llm-controller.hxx>
 #include <llm/llm-speech.hxx>
 #include <shared/vocabulary/utterance-screen.hxx>
@@ -38,6 +39,14 @@ public:
   mutable std::vector<TurnRecord> records;
   mutable std::vector<TakeoverRequest> takeovers;
   mutable int tails{0};
+};
+
+class FakeTranscript final : public ConversationTranscript
+{
+public:
+  void record(const TranscriptExchange& exchange) const override { exchanges.push_back(exchange); }
+
+  mutable std::vector<TranscriptExchange> exchanges;
 };
 
 class WithholdingScreen final : public turn::UtteranceScreen
@@ -178,4 +187,37 @@ TEST_CASE("use_conversation without a store is refused, never quietly off")
   LlmController controller;
   controller.setTurnEngine(answer);
   CHECK_THROWS_AS(controller.chatSync(chatFrom(true)), ResponseException);
+}
+
+TEST_CASE("an identified turn is mirrored to the inbox with the screened words and the reply")
+{
+  LlmController controller;
+  const auto transcript = std::make_shared<FakeTranscript>();
+  controller.setTranscript(transcript);
+  controller.setTurnEngine(answer);
+
+  static_cast<void>(controller.chatSync(chatFrom(false)));
+  REQUIRE(transcript->exchanges.size() == 1);
+  CHECK(transcript->exchanges.front().userId == 7);
+  CHECK(transcript->exchanges.front().userText == "hola");
+  CHECK(transcript->exchanges.front().reply == "buenas");
+  CHECK(transcript->exchanges.front().leg == ConversationLegKind::Phone);
+}
+
+TEST_CASE("a withheld turn or an anonymous one is never mirrored")
+{
+  LlmController controller;
+  const auto transcript = std::make_shared<FakeTranscript>();
+  controller.setTranscript(transcript);
+  controller.setTurnEngine(answer);
+
+  ChatRequest anonymous = chatFrom(false);
+  anonymous.userId = 0;
+  static_cast<void>(controller.chatSync(anonymous));
+  CHECK(transcript->exchanges.empty());
+
+  const WithholdingScreen screen;
+  controller.useScreen(screen);
+  static_cast<void>(controller.chatSync(chatFrom(false)));
+  CHECK(transcript->exchanges.empty());
 }

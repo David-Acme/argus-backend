@@ -63,6 +63,10 @@ std::string_view reasonName(AskReason reason)
       return "project_name";
     case AskReason::ProjectNoneYet:
       return "project_none_yet";
+    case AskReason::RecipientChoice:
+      return "recipient_choice";
+    case AskReason::RecipientName:
+      return "recipient_name";
   }
   return "missing";
 }

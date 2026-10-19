@@ -22,9 +22,8 @@ double secondsUntilDaily(std::time_t now, DailyClock at)
   return static_cast<double>(delta);
 }
 
-ConversationPurgeTask::ConversationPurgeTask(std::shared_ptr<ConversationService> service,
-                                             std::function<int64_t()> retentionDays, DailyClock at)
-    : service_(std::move(service)), retentionDays_(std::move(retentionDays)), at_(at)
+ConversationPurgeTask::ConversationPurgeTask(ConversationPurgeInput input)
+    : service_(std::move(input.service)), retentionDays_(std::move(input.retentionDays)), at_(input.at)
 {
 }
 

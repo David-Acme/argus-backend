@@ -143,5 +143,12 @@ credential = ""
 target = "tls:127.0.0.1:7238"
 credential = ""
 
+[messenger]
+enabled = true
+reply_window_s = 300
+max_relays_per_hour = 20
+max_message_chars = 500
+max_visitor_notices_per_hour_per_camera = 6
+
 [identity]
 credential = ""

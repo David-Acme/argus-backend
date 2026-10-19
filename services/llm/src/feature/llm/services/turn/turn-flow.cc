@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstddef>
 #include <utility>
 
 namespace turn
@@ -26,6 +27,9 @@ constexpr std::string_view kEnableTool = "modules.enable";
 constexpr std::string_view kRequestTool = "modules.request";
 constexpr std::string_view kInactive = "module_inactive";
 constexpr std::string_view kProjectNeeded = "project_needed";
+constexpr std::string_view kAskRecipient = "ask_recipient";
+constexpr std::string_view kRelayTool = "message.relay";
+constexpr std::size_t kLongestRecipient = 60;
 constexpr std::string_view kProjectAmbiguous = "ambiguous_project";
 constexpr std::string_view kProjectUnknown = "unknown_project";
 constexpr std::string_view kNoProjects = "no_projects";
@@ -329,7 +333,7 @@ Outcome TurnFlow::proceed(const Move& move)
 
   call.arguments = std::move(next.arguments);
   execute(request, std::move(call), outcome);
-  return projectRefusal(request, move.candidate, std::move(outcome));
+  return recipientRefusal(request, move.candidate, projectRefusal(request, move.candidate, std::move(outcome)));
 }
 
 Outcome TurnFlow::projectRefusal(const TurnRequest& request, const Candidate& candidate, Outcome outcome)
@@ -533,6 +537,90 @@ std::optional<Outcome> TurnFlow::followUpDay(const TurnRequest& request, const D
                   .answering = false,
                   .utterance = pending.utterance,
                   .heardAt = heard});
+}
+
+Outcome TurnFlow::recipientRefusal(const TurnRequest& request, const Candidate& candidate, Outcome outcome)
+{
+  if (outcome.steps.empty())
+    return outcome;
+  const tools::ToolResult& result = outcome.steps.back().result;
+  if (result.code != kAskRecipient)
+    return outcome;
+  Candidate held = candidate;
+  held.arguments = outcome.steps.back().call.arguments;
+  std::vector<std::string> options;
+  for (const Json::Value& name : result.data["candidates"])
+    if (name.isString())
+      options.push_back(name.asString());
+  if (!outcome.acts.empty())
+    outcome.acts.pop_back();
+  if (request.context.userId > 0)
+    pendings_.put(request.context.userId,
+                  {.awaiting = Awaiting::Recipient,
+                   .candidate = held,
+                   .alternative = std::nullopt,
+                   .slot = "recipient",
+                   .utterance = std::string(request.utterance),
+                   .attempts = 1,
+                   .at = {},
+                   .options = options,
+                   .held = std::nullopt});
+  outcome.acts.emplace_back(speech::AskSlot{.slot = "recipient",
+                                         .tool = candidate.tool,
+                                         .knownArgs = knownArgsOf(held.arguments),
+                                         .reason = options.empty() ? speech::AskReason::RecipientName
+                                                                   : speech::AskReason::RecipientChoice,
+                                         .dates = {},
+                                         .options = options});
+  return outcome;
+}
+
+std::optional<Outcome> TurnFlow::followUpRecipient(const TurnRequest& request, const Deciding& deciding, const Pending& pending)
+{
+  const int64_t userId = request.context.userId;
+  pendings_.forget(userId);
+  if (supersedes(deciding))
+    return std::nullopt;
+  if (declining(request.utterance))
+    return declined();
+  std::string name;
+  if (pending.options.empty()) {
+    const std::string heard(request.utterance);
+    if (heard.empty() || heard.size() > kLongestRecipient)
+      return askRecipientAgain(request, pending);
+    name = heard;
+  }
+  else {
+    const slots::Choice choice = slots::choose(request.utterance, pending.options);
+    if (choice.kind != slots::ChoiceKind::Chosen)
+      return askRecipientAgain(request, pending);
+    name = choice.name;
+  }
+  Candidate task = pending.candidate;
+  task.arguments["recipient"] = name;
+  task.arguments["afterQuestion"] = true;
+  return proceed({.request = request, .candidate = std::move(task), .slot = {}, .attempts = 0, .answering = false, .utterance = pending.utterance});
+}
+
+Outcome TurnFlow::askRecipientAgain(const TurnRequest& request, const Pending& pending)
+{
+  Outcome outcome;
+  outcome.source = pending.candidate.source;
+  if (pending.attempts + 1 > kMaxAttempts) {
+    outcome.acts.emplace_back(speech::Misunderstood{});
+    return outcome;
+  }
+  Pending next = pending;
+  next.attempts = pending.attempts + 1;
+  pendings_.put(request.context.userId, next);
+  outcome.acts.emplace_back(speech::AskSlot{.slot = "recipient",
+                                         .tool = pending.candidate.tool,
+                                         .knownArgs = knownArgsOf(pending.candidate.arguments),
+                                         .reason = pending.options.empty() ? speech::AskReason::RecipientName
+                                                                           : speech::AskReason::RecipientChoice,
+                                         .dates = {},
+                                         .options = pending.options});
+  return outcome;
 }
 
 Outcome TurnFlow::askProjectAgain(const TurnRequest& request, const Pending& pending)
@@ -810,6 +898,8 @@ std::optional<Outcome> TurnFlow::followUpOwn(const TurnRequest& request, const D
     return followUpProject(request, deciding, pending);
   if (pending.awaiting == Awaiting::Day)
     return followUpDay(request, deciding, pending);
+  if (pending.awaiting == Awaiting::Recipient)
+    return followUpRecipient(request, deciding, pending);
   if (pending.awaiting == Awaiting::Choice) {
     pendings_.forget(userId);
     if (pending.alternative && slots::namesOther(request.utterance))
@@ -963,7 +1053,8 @@ Outcome TurnFlow::run(const TurnRequest& request)
     return capability(request);
   const refusal::Ask asking{.utterance = request.utterance,
                            .audience = request.audience,
-                           .lang = request.context.lang};
+                           .lang = request.context.lang,
+                           .relayOffered = handleOf(request.offered, kRelayTool) != nullptr};
   if (const auto refusal = refusal::refusalFor(asking))
     return refused(request, *refusal);
   if (const auto polarity = refusal::polarityAskFor(asking))

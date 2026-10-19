@@ -315,6 +315,22 @@ void LlmController::setConversation(std::shared_ptr<ConversationStore> conversat
   conversation_ = std::move(conversation);
 }
 
+void LlmController::setTranscript(std::shared_ptr<const ConversationTranscript> transcript)
+{
+  transcript_ = std::move(transcript);
+}
+
+void LlmController::mirrorTurn(const ChatRequest& request, const std::string& reply) const
+{
+  if (!transcript_ || request.userId <= 0 || request.messages.empty() || request.messages.back().role != "user")
+    return;
+  transcript_->record({.userId = request.userId,
+                       .leg = request.conversationLeg,
+                       .userText = request.messages.back().content,
+                       .reply = reply,
+                       .at = static_cast<int64_t>(std::time(nullptr))});
+}
+
 void LlmController::setTurnEngine(std::function<LlmChatOutcome(const ChatRequest&)> engine)
 {
   turnEngine_ = std::move(engine);
@@ -378,6 +394,7 @@ LlmChatOutcome LlmController::chatSync(const ChatRequest& unscreened)
   const ConversationTurnPlan plan = openConversationTurn(screened.request);
   LlmChatOutcome outcome = turnEngine_ ? turnEngine_(plan.request) : chatScreenedSync(plan.request);
   closeConversationTurn(plan, outcome.text);
+  mirrorTurn(screened.request, outcome.text);
   return outcome;
 }
 
@@ -442,6 +459,7 @@ void LlmController::chatStreamSync(const LlmStreamInput& unscreened)
   if (tools.empty()) {
     adapter_.chatPlainStream({.request = input.request, .onToken = emit});
     closeConversationTurn(plan, *reply);
+    mirrorTurn(screened.request, *reply);
     return;
   }
   const ToolChatInput loop = toolLoopInput({.tools = tools,
@@ -453,6 +471,7 @@ void LlmController::chatStreamSync(const LlmStreamInput& unscreened)
   const ToolChatOutput output = adapter_.chatWithToolsStream(
       {.input = loop, .history = history, .onToken = emit});
   closeConversationTurn(plan, *reply);
+  mirrorTurn(screened.request, *reply);
   if (input.speech != nullptr)
     *input.speech = output.speech;
   if (input.act != nullptr)

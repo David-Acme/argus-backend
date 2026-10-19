@@ -40,6 +40,23 @@ LlmIdentityConfig LlmConfig::resolveIdentity()
           .rpcSecret = ConfigService::getString("identity.rpc_secret")};
 }
 
+MessengerSettings LlmConfig::resolveMessenger()
+{
+  MessengerSettings settings;
+  if (ConfigService::hasKey("messenger.enabled"))
+    settings.enabled = ConfigService::getBool("messenger.enabled");
+  if (ConfigService::hasKey("messenger.reply_window_s"))
+    settings.replyWindowSeconds = ConfigService::getInt("messenger.reply_window_s");
+  if (ConfigService::hasKey("messenger.max_relays_per_hour"))
+    settings.maxRelaysPerHour = ConfigService::getInt("messenger.max_relays_per_hour");
+  if (ConfigService::hasKey("messenger.max_message_chars"))
+    settings.maxMessageChars = ConfigService::getInt("messenger.max_message_chars");
+  if (ConfigService::hasKey("messenger.max_visitor_notices_per_hour_per_camera"))
+    settings.maxVisitorNoticesPerHourPerCamera = ConfigService::getInt("messenger.max_visitor_notices_per_hour_per_camera");
+  settings.retentionDays = resolveConversation().retentionDays;
+  return settings;
+}
+
 std::string LlmConfig::resolveCameraTarget()
 {
   return ConfigService::getString("camera.grpc_target");

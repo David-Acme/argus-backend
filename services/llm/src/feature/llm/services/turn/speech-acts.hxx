@@ -37,7 +37,9 @@ enum class AskReason : unsigned char
   BeyondRange,
   ProjectChoice,
   ProjectName,
-  ProjectNoneYet
+  ProjectNoneYet,
+  RecipientChoice,
+  RecipientName
 };
 
 struct AskSlot
@@ -107,6 +109,7 @@ namespace refusal_reason
 
 inline constexpr std::string_view kPrivatePerson = "private_person";
 inline constexpr std::string_view kNoRelay = "no_relay";
+inline constexpr std::string_view kImpersonation = "impersonation";
 inline constexpr std::string_view kModuleOff = "module_off";
 inline constexpr std::string_view kNoAction = "no_action";
 

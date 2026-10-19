@@ -5,6 +5,7 @@
 #include <feature/memory/services/extract/temporal-resolver.hxx>
 #include <phrase/rule-parser.hxx>
 #include <text/text-norm.hxx>
+#include <feature/messenger/services/relay-command.hxx>
 
 #include <algorithm>
 #include <array>
@@ -51,6 +52,15 @@ std::optional<Candidate> RuleDecider::decide(const DecideInput& input) const
                      .fill = family->fill,
                      .confidence = kRuleConfidence,
                      .source = "module command",
+                     .decider = std::string(id()),
+                     .exact = true,
+                     .runnerUp = std::nullopt};
+  if (auto relay = relay_command::commandFor(input.utterance); relay && isOffered(input, relay->tool))
+    return Candidate{.tool = relay->tool,
+                     .arguments = relay->arguments,
+                     .fill = relay->fill,
+                     .confidence = kRuleConfidence,
+                     .source = "relay command",
                      .decider = std::string(id()),
                      .exact = true,
                      .runnerUp = std::nullopt};

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <feature/messenger/vocabulary/messenger-settings.hxx>
 #include <grpc/grpc-server-identity.hxx>
 #include <http/listener-config.hxx>
 
@@ -82,6 +83,7 @@ public:
   [[nodiscard]] static std::filesystem::path resolveComponentsRoot();
 
   [[nodiscard]] static LlmIdentityConfig resolveIdentity();
+  [[nodiscard]] static MessengerSettings resolveMessenger();
 
   [[nodiscard]] static std::string resolveCameraTarget();
   [[nodiscard]] static std::string resolveCameraCredential();

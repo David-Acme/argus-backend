@@ -5,10 +5,14 @@ argus_module(NAME conversation
         services/conversation-service.cc
         services/conversation-context.cc
         services/conversation-purge.cc
+        services/conversation-transcript.cc
+        infra/notification-conversation-transcript.cc
     INCLUDES
         ../..
     DEPENDS
         argus::contracts::llm
+        argus::clients::notification
+        argus::lib::runtime
         argus::lib::sqlite
         Drogon::Drogon)
 

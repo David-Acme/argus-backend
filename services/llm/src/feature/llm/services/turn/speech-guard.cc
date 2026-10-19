@@ -467,7 +467,7 @@ bool relayTurn(const Speech& speech)
 {
   return std::ranges::any_of(speech.acts, [](const Act& act) {
     const auto* refused = std::get_if<Refused>(&act);
-    return refused != nullptr && refused->reason == refusal_reason::kNoRelay;
+    return refused != nullptr && (refused->reason == refusal_reason::kNoRelay || refused->reason == refusal_reason::kImpersonation);
   });
 }
 
