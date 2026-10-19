@@ -13,6 +13,8 @@ ReminderSchema::ReminderSchema(const drogon::orm::Row& row)
     recurrenceRule = row["recurrence_rule"].as<std::string>();
   if (!row["recurrence_anchor"].isNull())
     recurrenceAnchor = static_cast<int64_t>(row["recurrence_anchor"].as<long long>());
+  if (!row["recurrence_exceptions"].isNull())
+    recurrenceExceptions = row["recurrence_exceptions"].as<std::string>();
   isCompleted = row["is_completed"].as<int>() != 0;
   if (!row["completed_at"].isNull())
     completedAt = static_cast<int64_t>(row["completed_at"].as<long long>());
@@ -34,6 +36,7 @@ Json::Value ReminderSchema::toJson() const
   json["scheduledAt"] = Json::Int64(scheduledAt);
   json["recurrenceRule"] =
       recurrenceRule ? Json::Value(*recurrenceRule) : Json::nullValue;
+  json["recurrenceExceptions"] = recurrenceExceptions;
   json["isCompleted"] = isCompleted;
   json["completedAt"] =
       completedAt ? Json::Value(Json::Int64(*completedAt)) : Json::Value();

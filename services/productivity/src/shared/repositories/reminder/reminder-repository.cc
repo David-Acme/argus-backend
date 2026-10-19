@@ -50,6 +50,8 @@ bool ReminderRepository::migrateSchema() const
     auto client = DbService::productivityClient();
     if (!hasReminderColumn(*client, "recurrence_anchor"))
       client->execSqlSync(std::string(ADD_RECURRENCE_ANCHOR_COLUMN));
+    if (!hasReminderColumn(*client, "recurrence_exceptions"))
+      client->execSqlSync(std::string(ADD_RECURRENCE_EXCEPTIONS_COLUMN));
     client->execSqlSync(std::string(BACKFILL_RECURRENCE_ANCHOR));
     return true;
   }
@@ -163,6 +165,8 @@ ReminderRepository::update(const ReminderUpdateInput& input) const
     if (input.recurrenceAnchor)
       addColumn(UPDATE_COL_RECURRENCE_ANCHOR, std::to_string(*input.recurrenceAnchor));
   }
+  if (input.recurrenceExceptions)
+    addColumn(UPDATE_COL_RECURRENCE_EXCEPTIONS, *input.recurrenceExceptions);
 
   if (!changed) {
     auto existing =

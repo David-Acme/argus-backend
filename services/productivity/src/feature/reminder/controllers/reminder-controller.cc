@@ -9,6 +9,7 @@
 #include <http/api-response.hxx>
 #include <productivity/productivity-errors.hxx>
 #include <shared/dtos/idempotency-key/idempotency-key-dto.hxx>
+#include <shared/dtos/occurrence-change/occurrence-change-dto.hxx>
 
 drogon::Task<drogon::HttpResponsePtr>
 ReminderController::create(drogon::HttpRequestPtr req)
@@ -43,6 +44,19 @@ ReminderController::snooze(drogon::HttpRequestPtr req, int64_t id)
 
   const auto row =
       co_await service_.snooze({.id = id, .body = body, .userId = ctx.sub});
+  if (!row)
+    throw ResponseException(ProductivityErrors::ReminderNotFound);
+  co_return ApiResponse::ok(row->toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+ReminderController::changeOccurrence(drogon::HttpRequestPtr req, int64_t id)
+{
+  const auto body = OccurrenceChangeDto::fromJson(*req->getJsonObject());
+  const auto& ctx = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+
+  const auto row = co_await service_.changeOccurrence(
+      {.id = id, .body = body, .userId = ctx.sub});
   if (!row)
     throw ResponseException(ProductivityErrors::ReminderNotFound);
   co_return ApiResponse::ok(row->toJson());

@@ -38,4 +38,5 @@ inline constexpr std::string_view kRecurrenceRuleProblem =
 [[nodiscard]] std::optional<RecurrenceRule> parseRecurrenceRule(std::string_view text);
 [[nodiscard]] std::optional<int64_t> occurrenceAt(const OccurrenceInput& input);
 [[nodiscard]] std::optional<int64_t> firstOccurrenceAfter(const FirstOccurrenceInput& input);
+[[nodiscard]] std::optional<int64_t> occurrenceIndex(const FirstOccurrenceInput& input);
 [[nodiscard]] std::optional<int64_t> sameTimeTomorrow(int64_t moment);

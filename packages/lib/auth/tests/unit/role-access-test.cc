@@ -900,3 +900,25 @@ TEST_CASE("clip access follows the table exactly as the access rows")
              .modules = modules}) == role_access::RouteVerdict::ModuleDisabled);
   CHECK(role_access::moduleOfPath("/clip/abc/content") == role_access::kSurveillanceModule);
 }
+
+TEST_CASE("editing one occurrence answers each role exactly as editing the whole series")
+{
+  for (const auto role : {UserRole::Owner, UserRole::Resident, UserRole::Guard,
+                          UserRole::Guest, UserRole::Unknown}) {
+    for (const auto* series : {"/reminder/7", "/calendar-event/7"}) {
+      const std::string occurrence = std::string(series) + "/occurrence";
+      CHECK(role_access::hasHttpAccess({.role = role,
+                                        .path = occurrence,
+                                        .method = drogon::Patch,
+                                        .roleActive = true}) ==
+            role_access::hasHttpAccess({.role = role,
+                                        .path = series,
+                                        .method = drogon::Patch,
+                                        .roleActive = true}));
+    }
+  }
+  CHECK(role_access::hasHttpAccess(
+      {.role = UserRole::Guest, .path = "/reminder/7/occurrence", .method = drogon::Patch, .roleActive = true}));
+  CHECK_FALSE(role_access::hasHttpAccess(
+      {.role = UserRole::Guest, .path = "/calendar-event/7/occurrence", .method = drogon::Patch, .roleActive = true}));
+}

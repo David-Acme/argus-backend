@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS reminder (
     scheduled_at    INTEGER NOT NULL,
     recurrence_rule TEXT,
     recurrence_anchor INTEGER,
+    recurrence_exceptions TEXT NOT NULL DEFAULT '[]',
     is_completed    INTEGER NOT NULL  DEFAULT 0  CHECK (is_completed IN (0, 1)),
     completed_at    INTEGER,
     created_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
@@ -78,6 +79,7 @@ CREATE TABLE IF NOT EXISTS calendar_event (
     ends_at         INTEGER,
     is_all_day      INTEGER NOT NULL  DEFAULT 0  CHECK (is_all_day IN (0, 1)),
     recurrence_rule TEXT,
+    recurrence_exceptions TEXT NOT NULL DEFAULT '[]',
     created_at      INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
     updated_at      INTEGER,
     deleted_at      INTEGER

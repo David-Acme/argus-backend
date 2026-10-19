@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 
+#include <shared/services/recurrence/occurrence-exceptions.hxx>
 #include <shared/services/recurrence/recurrence.hxx>
 
 #include <json/json.h>
@@ -127,4 +128,130 @@ TEST_CASE("tomorrow keeps the wall time across a change of day length")
   const auto tomorrow = sameTimeTomorrow(epochOfWall("2026-03-07T08:00:00"));
   REQUIRE(tomorrow.has_value());
   CHECK(wallOfEpoch(tomorrow.value_or(0)) == "2026-03-08T08:00:00");
+}
+
+TEST_CASE("occurrence exceptions survive a round trip and drop what cannot be read")
+{
+  const auto parsed = parseOccurrenceExceptions(
+      R"([{"occurrence":200,"cancelled":true,"title":"ignored"},)"
+      R"({"occurrence":100,"startsAt":150,"endsAt":160,"title":"Later","location":"Porch"},)"
+      R"({"occurrence":300},{"occurrence":"x"},7,{"occurrence":100,"cancelled":true}])");
+  REQUIRE(parsed.size() == 2);
+  CHECK(parsed[0].occurrence == 100);
+  CHECK(parsed[0].cancelled);
+  CHECK_FALSE(parsed[0].startsAt.has_value());
+  CHECK(parsed[1].occurrence == 200);
+  CHECK(parsed[1].cancelled);
+  CHECK_FALSE(parsed[1].title.has_value());
+
+  const OccurrenceExceptions moved{{.occurrence = 100,
+                                    .cancelled = false,
+                                    .startsAt = 150,
+                                    .endsAt = 160,
+                                    .title = "Later",
+                                    .location = "Porch"}};
+  const auto again = parseOccurrenceExceptions(serializeOccurrenceExceptions(moved));
+  REQUIRE(again.size() == 1);
+  CHECK(again[0].startsAt.value_or(0) == 150);
+  CHECK(again[0].endsAt.value_or(0) == 160);
+  CHECK(again[0].title.value_or("") == "Later");
+  CHECK(again[0].location.value_or("") == "Porch");
+
+  CHECK(parseOccurrenceExceptions("not json").empty());
+  CHECK(parseOccurrenceExceptions("{}").empty());
+  CHECK(serializeOccurrenceExceptions({}) == "[]");
+}
+
+TEST_CASE("an exception replaces the one of its occurrence and a plain one restores it")
+{
+  OccurrenceExceptions exceptions;
+  exceptions = withException(exceptions, {.occurrence = 300,
+                                          .cancelled = true,
+                                          .startsAt = std::nullopt,
+                                          .endsAt = std::nullopt,
+                                          .title = std::nullopt,
+                                          .location = std::nullopt});
+  exceptions = withException(exceptions, {.occurrence = 100,
+                                          .cancelled = false,
+                                          .startsAt = 120,
+                                          .endsAt = std::nullopt,
+                                          .title = std::nullopt,
+                                          .location = std::nullopt});
+  REQUIRE(exceptions.size() == 2);
+  CHECK(exceptions.front().occurrence == 100);
+  CHECK(scheduledOccurrence(exceptions, 120) == 100);
+  CHECK(scheduledOccurrence(exceptions, 300) == 300);
+
+  exceptions = withException(exceptions, {.occurrence = 100,
+                                          .cancelled = false,
+                                          .startsAt = std::nullopt,
+                                          .endsAt = std::nullopt,
+                                          .title = std::nullopt,
+                                          .location = std::nullopt});
+  REQUIRE(exceptions.size() == 1);
+  CHECK(exceptions.front().occurrence == 300);
+  CHECK(exceptionsFrom(exceptions, 301).empty());
+  CHECK(exceptionsFrom(exceptions, 300).size() == 1);
+}
+
+TEST_CASE("an occurrence is found by its index and knows its neighbours")
+{
+  useZone("America/Lima");
+  const auto rule = parseRecurrenceRule("FREQ=WEEKLY").value_or(RecurrenceRule{});
+  const int64_t anchor = epochOfWall("2026-10-05T08:00:00");
+  const int64_t second = epochOfWall("2026-10-12T08:00:00");
+  const auto slot = occurrenceSlot({.rule = rule, .anchor = anchor, .moment = second});
+  REQUIRE(slot.has_value());
+  CHECK(slot.value_or(OccurrenceSlot{}).index == 1);
+  CHECK(slot.value_or(OccurrenceSlot{}).previous.value_or(0) == anchor);
+  CHECK(wallOfEpoch(slot.value_or(OccurrenceSlot{}).next.value_or(0)) == "2026-10-19T08:00:00");
+  CHECK(occurrenceIndex({.rule = rule, .anchor = anchor, .moment = anchor}).value_or(-1) == 0);
+  CHECK_FALSE(occurrenceIndex({.rule = rule, .anchor = anchor, .moment = second + 60}).has_value());
+  CHECK_FALSE(occurrenceIndex({.rule = rule, .anchor = anchor, .moment = anchor - 604800}).has_value());
+  CHECK_FALSE(occurrenceSlot({.rule = rule, .anchor = anchor, .moment = anchor})
+                  .value_or(OccurrenceSlot{})
+                  .previous.has_value());
+}
+
+TEST_CASE("the next firing skips cancelled occurrences and fires moved ones at their new time")
+{
+  useZone("America/Lima");
+  const auto rule = parseRecurrenceRule("FREQ=DAILY").value_or(RecurrenceRule{});
+  const int64_t anchor = epochOfWall("2026-10-05T08:00:00");
+  const int64_t day1 = epochOfWall("2026-10-06T08:00:00");
+  const int64_t day2 = epochOfWall("2026-10-07T08:00:00");
+  const int64_t day3 = epochOfWall("2026-10-08T08:00:00");
+  const OccurrenceExceptions exceptions{
+      {.occurrence = day1,
+       .cancelled = true,
+       .startsAt = std::nullopt,
+       .endsAt = std::nullopt,
+       .title = std::nullopt,
+       .location = std::nullopt},
+      {.occurrence = day2,
+       .cancelled = false,
+       .startsAt = day2 + 7200,
+       .endsAt = std::nullopt,
+       .title = std::nullopt,
+       .location = std::nullopt}};
+
+  const auto skipped = nextFiring(
+      {.rule = rule, .anchor = anchor, .after = anchor, .moment = anchor, .exceptions = exceptions});
+  CHECK(skipped.value_or(NextFiring{}).occurrence == day2);
+  CHECK(skipped.value_or(NextFiring{}).at == day2 + 7200);
+
+  const auto behind = nextFiring(
+      {.rule = rule, .anchor = anchor, .after = day1, .moment = day2 + 60, .exceptions = exceptions});
+  CHECK(behind.value_or(NextFiring{}).occurrence == day2);
+  CHECK(behind.value_or(NextFiring{}).at == day2 + 7200);
+
+  const auto afterMoved = nextFiring(
+      {.rule = rule, .anchor = anchor, .after = day2, .moment = day2 + 7200, .exceptions = exceptions});
+  CHECK(afterMoved.value_or(NextFiring{}).occurrence == day3);
+  CHECK(afterMoved.value_or(NextFiring{}).at == day3);
+
+  const OccurrenceExceptions none;
+  const auto plain = nextFiring(
+      {.rule = rule, .anchor = anchor, .after = anchor, .moment = anchor, .exceptions = none});
+  CHECK(plain.value_or(NextFiring{}).at == day1);
 }

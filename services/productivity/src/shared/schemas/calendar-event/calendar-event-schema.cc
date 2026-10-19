@@ -18,6 +18,8 @@ CalendarEventSchema::CalendarEventSchema(const drogon::orm::Row& row)
   isAllDay = row["is_all_day"].as<int>() != 0;
   if (!row["recurrence_rule"].isNull())
     recurrenceRule = row["recurrence_rule"].as<std::string>();
+  if (!row["recurrence_exceptions"].isNull())
+    recurrenceExceptions = row["recurrence_exceptions"].as<std::string>();
   createdAt = static_cast<int64_t>(row["created_at"].as<long long>());
   if (!row["updated_at"].isNull())
     updatedAt = static_cast<int64_t>(row["updated_at"].as<long long>());
@@ -41,6 +43,7 @@ Json::Value CalendarEventSchema::toJson() const
   json["isAllDay"] = isAllDay;
   json["recurrenceRule"] =
       recurrenceRule ? Json::Value(*recurrenceRule) : Json::nullValue;
+  json["recurrenceExceptions"] = recurrenceExceptions;
   json["createdAt"] = Json::Int64(createdAt);
   json["updatedAt"] = updatedAt ? Json::Value(Json::Int64(*updatedAt)) : Json::Value();
   json["deletedAt"] = deletedAt ? Json::Value(Json::Int64(*deletedAt)) : Json::Value();

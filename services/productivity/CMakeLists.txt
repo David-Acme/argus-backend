@@ -390,6 +390,7 @@ target_compile_definitions(productivity-reminder-test PRIVATE
     ARGUS_PRODUCTIVITY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
 target_link_libraries(productivity-reminder-test PRIVATE
     argus::productivity-reminder
+    argus::productivity-reminder-series
     argus::productivity-repositories
     argus::clients::productivity
     argus::lib::auth

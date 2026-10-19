@@ -21,6 +21,7 @@ struct CalendarEventSchema
   std::optional<int64_t> endsAt;
   bool isAllDay{false};
   std::optional<std::string> recurrenceRule;
+  std::string recurrenceExceptions{"[]"};
   int64_t createdAt{0};
   std::optional<int64_t> updatedAt;
   std::optional<int64_t> deletedAt;

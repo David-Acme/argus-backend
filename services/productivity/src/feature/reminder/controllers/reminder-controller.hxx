@@ -17,6 +17,9 @@ public:
                 "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(ReminderController::snooze, "/reminder/{1}/snooze", drogon::Post,
                 "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(ReminderController::changeOccurrence, "/reminder/{1}/occurrence",
+                drogon::Patch, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
+                "RoleFilter");
   ADD_METHOD_TO(ReminderController::remove, "/reminder/{1}", drogon::Delete,
                 "DeviceFilter", "JwtFilter", "RoleFilter");
   METHOD_LIST_END
@@ -26,6 +29,8 @@ public:
                                                int64_t id);
   drogon::Task<drogon::HttpResponsePtr> snooze(drogon::HttpRequestPtr req,
                                                int64_t id);
+  drogon::Task<drogon::HttpResponsePtr>
+  changeOccurrence(drogon::HttpRequestPtr req, int64_t id);
   drogon::Task<drogon::HttpResponsePtr> remove(drogon::HttpRequestPtr req,
                                                int64_t id);
 

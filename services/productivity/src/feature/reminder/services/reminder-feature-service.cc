@@ -4,6 +4,7 @@
 #include <ctime>
 #include <errors/response-exception.hxx>
 #include <productivity/productivity-errors.hxx>
+#include <shared/services/recurrence/occurrence-exceptions.hxx>
 #include <shared/services/recurrence/recurrence.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
@@ -40,6 +41,30 @@ drogon::Task<void> ReminderFeatureService::emit(const EmitInput& input) const
                             .body = std::move(body),
                             .client = input.client});
   co_return;
+}
+
+drogon::Task<void> ReminderFeatureService::audit(AuditInput input) const
+{
+  const Json::Value after = input.row.toJson();
+  if (after == input.before)
+    co_return;
+  const auto* sink = user_change::getProductivitySink();
+  if (!sink)
+    LOG_WARN << "user change sink not installed; drop reminder audit";
+  else
+    co_await sink->publishAudit({.recordId = input.row.id,
+                                 .tableName = TableName::Reminder,
+                                 .before = std::move(input.before),
+                                 .after = after,
+                                 .userIds = {input.row.targetUserId},
+                                 .client = input.client});
+  co_await journal_.record({.actorId = input.actorId,
+                            .table = TableName::Reminder,
+                            .recordId = input.row.id,
+                            .action = UserAction::Update,
+                            .title = "",
+                            .sharingParentId = 0,
+                            .client = input.client});
 }
 
 drogon::Task<ReminderSchema>
@@ -124,11 +149,15 @@ ReminderFeatureService::update(const ReminderUpdateCommand& command) const
 
     const auto now = static_cast<int64_t>(std::time(nullptr));
     const bool stopping = body.recurrenceRule && body.recurrenceRule->empty();
-    const bool ruleSet = body.recurrenceRule && !body.recurrenceRule->empty();
+    const bool ruleSet = body.recurrenceRule && !body.recurrenceRule->empty() &&
+                         *body.recurrenceRule != existing->recurrenceRule.value_or("");
     const std::optional<std::string> effectiveRule =
         stopping ? std::nullopt : (ruleSet ? body.recurrenceRule : existing->recurrenceRule);
     const int64_t effectiveScheduled = body.scheduledAt.value_or(existing->scheduledAt);
     const bool scheduleChanged = body.scheduledAt && *body.scheduledAt != existing->scheduledAt;
+    const bool reanchors = stopping || ruleSet || (effectiveRule && scheduleChanged);
+    const OccurrenceExceptions exceptions =
+        reanchors ? OccurrenceExceptions{} : parseOccurrenceExceptions(existing->recurrenceExceptions);
 
     ReminderUpdateInput input{.id = command.id,
                               .targetUserId = command.userId,
@@ -141,7 +170,10 @@ ReminderFeatureService::update(const ReminderUpdateCommand& command) const
                               .recurrenceRule = std::nullopt,
                               .recurrenceAnchor = std::nullopt,
                               .clearRecurrence = stopping,
+                              .recurrenceExceptions = std::nullopt,
                               .client = transaction.get()};
+    if (reanchors && existing->recurrenceExceptions != kNoOccurrenceExceptions)
+      input.recurrenceExceptions = std::string(kNoOccurrenceExceptions);
     if (ruleSet) {
       input.recurrenceRule = body.recurrenceRule;
       input.recurrenceAnchor = effectiveScheduled;
@@ -155,12 +187,18 @@ ReminderFeatureService::update(const ReminderUpdateCommand& command) const
     if (body.isCompleted.value_or(false) && rule) {
       const int64_t anchor = input.recurrenceAnchor.value_or(
           existing->recurrenceAnchor.value_or(effectiveScheduled));
-      const auto next = firstOccurrenceAfter(
-          {.rule = *rule, .anchor = anchor, .moment = std::max(effectiveScheduled, now)});
-      if (next) {
-        input.scheduledAt = next;
+      const auto fire = nextFiring({.rule = *rule,
+                                    .anchor = anchor,
+                                    .after = scheduledOccurrence(exceptions, effectiveScheduled),
+                                    .moment = std::max(effectiveScheduled, now),
+                                    .exceptions = exceptions});
+      if (fire) {
+        input.scheduledAt = fire->at;
         input.isCompleted = false;
         input.clearCompletedAt = existing->isCompleted;
+        const auto kept = exceptionsFrom(exceptions, fire->occurrence);
+        if (kept.size() != exceptions.size())
+          input.recurrenceExceptions = serializeOccurrenceExceptions(kept);
         rolled = true;
       }
     }
@@ -252,6 +290,7 @@ ReminderFeatureService::snooze(const ReminderSnoozeCommand& command) const
                                        .recurrenceRule = std::nullopt,
                                        .recurrenceAnchor = std::nullopt,
                                        .clearRecurrence = false,
+                                       .recurrenceExceptions = std::nullopt,
                                        .client = transaction.get()});
     if (row.id == 0) {
       db_transaction::rollback(transaction);
@@ -278,6 +317,99 @@ ReminderFeatureService::snooze(const ReminderSnoozeCommand& command) const
                                 .sharingParentId = 0,
                                 .client = transaction.get()});
     }
+
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(ProductivityErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_return row;
+}
+
+drogon::Task<std::optional<ReminderSchema>>
+ReminderFeatureService::changeOccurrence(const ReminderOccurrenceCommand& command) const
+{
+  const OccurrenceChangeDto& body = command.body;
+  auto transaction =
+      co_await db_transaction::begin(DbService::productivityClient());
+  ReminderSchema row;
+  try {
+    const auto existing = co_await repository_.findOwned(
+        {.id = command.id,
+         .targetUserId = command.userId,
+         .client = transaction.get()});
+    if (!existing) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+    const auto rule = existing->recurrenceRule ? parseRecurrenceRule(*existing->recurrenceRule)
+                                               : std::nullopt;
+    if (!rule)
+      throw ResponseException(ProductivityErrors::NotASeries);
+    if (body.changesMoreThanTheTime())
+      throw ResponseException(ProductivityErrors::ReminderOccurrenceOnlyMoves);
+
+    const int64_t anchor = existing->recurrenceAnchor.value_or(existing->scheduledAt);
+    const auto slot = occurrenceSlot({.rule = *rule, .anchor = anchor, .moment = body.occurrence});
+    if (!slot)
+      throw ResponseException(ProductivityErrors::NotAnOccurrence);
+    const auto exceptions = parseOccurrenceExceptions(existing->recurrenceExceptions);
+    const int64_t current = scheduledOccurrence(exceptions, existing->scheduledAt);
+    if (body.occurrence < current)
+      throw ResponseException(ProductivityErrors::OccurrenceAlreadyPassed);
+
+    std::optional<int64_t> movedTo = body.startsAt;
+    if (movedTo == body.occurrence)
+      movedTo.reset();
+    if (movedTo && ((slot->previous && *movedTo <= *slot->previous) ||
+                    (slot->next && *movedTo >= *slot->next)))
+      throw ResponseException(ProductivityErrors::OccurrenceOutsideItsSlot);
+
+    const auto updated = withException(exceptions,
+                                       {.occurrence = body.occurrence,
+                                        .cancelled = body.cancelled,
+                                        .startsAt = movedTo,
+                                        .endsAt = std::nullopt,
+                                        .title = std::nullopt,
+                                        .location = std::nullopt});
+    if (updated.size() > kMaxOccurrenceExceptions)
+      throw ResponseException(ProductivityErrors::TooManyOccurrenceExceptions);
+
+    std::optional<int64_t> scheduledAt;
+    if (body.occurrence == current) {
+      const auto fire = nextFiring({.rule = *rule,
+                                    .anchor = anchor,
+                                    .after = body.occurrence - 1,
+                                    .moment = slot->previous.value_or(0),
+                                    .exceptions = updated});
+      if (fire && fire->at != existing->scheduledAt)
+        scheduledAt = fire->at;
+    }
+
+    const Json::Value before = existing->toJson();
+    row = co_await repository_.update({.id = command.id,
+                                       .targetUserId = command.userId,
+                                       .title = std::nullopt,
+                                       .description = std::nullopt,
+                                       .scheduledAt = scheduledAt,
+                                       .isCompleted = std::nullopt,
+                                       .completedAt = std::nullopt,
+                                       .clearCompletedAt = false,
+                                       .recurrenceRule = std::nullopt,
+                                       .recurrenceAnchor = std::nullopt,
+                                       .clearRecurrence = false,
+                                       .recurrenceExceptions = serializeOccurrenceExceptions(updated),
+                                       .client = transaction.get()});
+    if (row.id == 0) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+    co_await audit({.before = before,
+                    .row = row,
+                    .actorId = command.userId,
+                    .client = transaction.get()});
 
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);

@@ -35,6 +35,7 @@ public:
   update(int64_t id, const CalendarEventUpdateInput& input) const;
   drogon::Task<bool> remove(int64_t id,
                             drogon::orm::DbClient* client = nullptr) const;
+  [[nodiscard]] bool migrateSchema() const;
 
   [[nodiscard]] drogon::Task<std::vector<Json::Value>>
   find(const SyncFilter& filter) const override;

@@ -236,8 +236,11 @@ user shares the user room. Nothing here is to be changed except where a gap belo
   - Follow-ups ruled 2026-10-13, not in the recurrence unit:
     - F6a The assistant creates a recurring reminder ("recuérdame cada lunes..."): slot parsing in
       services/llm. That service is frozen behind the parked Laya branch, so this lands after the cutover merge.
-    - F6b Editing one occurrence of a series (the RFC 5545 exception). Out of scope until the series
-      model is settled; the occurrence entry id `${eventId}@${occurrenceStartIso}` is already in place for it.
+    - F6b Editing one occurrence of a series (the RFC 5545 exception). Landed 2026-10-19: the exceptions
+      live on the series row (`recurrence_exceptions`), `PATCH /reminder/{id}/occurrence` and
+      `PATCH /calendar-event/{id}/occurrence` change or skip one occurrence, the reminder roll honours them and
+      the app's expansion applies them, still addressing each occurrence as `${eventId}@${occurrenceStartIso}`
+      (`services/productivity/CONTEXT.md`, "One occurrence of a series").
     - F6c Agenda paging. The agenda's window is cumulative, so each "load more" recomputes every occurrence
       from the first day. Measured on 2026-10-13: a two-year window with 20 daily series costs 49.7 ms in a
       second household zone, over the 16 ms bar; 8.8 ms in the device's own zone. The fix comes first as a

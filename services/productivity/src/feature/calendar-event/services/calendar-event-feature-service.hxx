@@ -8,6 +8,7 @@
 #include <feature/calendar-event/dtos/update-calendar-event-dto.hxx>
 #include <optional>
 #include <string>
+#include <shared/dtos/occurrence-change/occurrence-change-dto.hxx>
 #include <shared/repositories/calendar-event-share/calendar-event-share-repository.hxx>
 #include <shared/repositories/idempotency-key/idempotency-key-repository.hxx>
 #include <shared/repositories/calendar-event/calendar-event-repository.hxx>
@@ -34,8 +35,17 @@ public:
 
   drogon::Task<CalendarEventSchema> create(const CreateCalendarEventDto& body,
                                            const CalendarEventOwnerInput& who) const;
+  struct OccurrenceInput
+  {
+    int64_t id{0};
+    const OccurrenceChangeDto& body;
+    int64_t actorId{0};
+  };
+
   drogon::Task<std::optional<CalendarEventSchema>>
   update(const UpdateInput& input) const;
+  drogon::Task<std::optional<CalendarEventSchema>>
+  changeOccurrence(const OccurrenceInput& input) const;
   drogon::Task<bool> remove(int64_t id, int64_t actorId) const;
 
 private:

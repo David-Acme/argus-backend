@@ -57,6 +57,11 @@ TablePull* mutablePull(PullTableRequest& request, ProductivitySyncTable table)
   return nullptr;
 }
 
+Json::Value exceptionsOf(const std::string& text)
+{
+  return text.empty() ? Json::Value("[]") : Json::Value(text);
+}
+
 Json::Value reminderRowToJson(const argus::productivity::v1::ReminderRow& row)
 {
   Json::Value json(Json::objectValue);
@@ -71,6 +76,7 @@ Json::Value reminderRowToJson(const argus::productivity::v1::ReminderRow& row)
   json["recurrenceRule"] = row.has_recurrence_rule()
                                ? Json::Value(row.recurrence_rule())
                                : Json::Value();
+  json["recurrenceExceptions"] = exceptionsOf(row.recurrence_exceptions());
   json["isCompleted"] = row.is_completed();
   json["completedAt"] = row.has_completed_at()
                             ? Json::Value(Json::Int64(row.completed_at()))
@@ -131,6 +137,7 @@ calendarEventRowToJson(const argus::productivity::v1::CalendarEventRow& row)
   json["recurrenceRule"] = row.has_recurrence_rule()
                                ? Json::Value(row.recurrence_rule())
                                : Json::Value();
+  json["recurrenceExceptions"] = exceptionsOf(row.recurrence_exceptions());
   json["createdAt"] = Json::Int64(row.created_at());
   json["updatedAt"] = row.has_updated_at()
                           ? Json::Value(Json::Int64(row.updated_at()))

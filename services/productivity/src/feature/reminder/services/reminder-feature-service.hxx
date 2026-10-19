@@ -7,7 +7,9 @@
 #include <feature/reminder/dtos/create-reminder-dto.hxx>
 #include <feature/reminder/dtos/snooze-reminder-dto.hxx>
 #include <feature/reminder/dtos/update-reminder-dto.hxx>
+#include <json/value.h>
 #include <optional>
+#include <shared/dtos/occurrence-change/occurrence-change-dto.hxx>
 #include <shared/repositories/idempotency-key/idempotency-key-repository.hxx>
 #include <shared/repositories/reminder/reminder-repository.hxx>
 #include <shared/schemas/reminder/reminder-schema.hxx>
@@ -36,6 +38,13 @@ struct ReminderSnoozeCommand
   int64_t userId{0};
 };
 
+struct ReminderOccurrenceCommand
+{
+  int64_t id{0};
+  const OccurrenceChangeDto& body;
+  int64_t userId{0};
+};
+
 struct ReminderRef
 {
   int64_t id{0};
@@ -57,6 +66,8 @@ public:
   update(const ReminderUpdateCommand& command) const;
   drogon::Task<std::optional<ReminderSchema>>
   snooze(const ReminderSnoozeCommand& command) const;
+  drogon::Task<std::optional<ReminderSchema>>
+  changeOccurrence(const ReminderOccurrenceCommand& command) const;
   drogon::Task<bool> remove(const ReminderRef& ref) const;
   drogon::Task<std::optional<ReminderSchema>> get(const ReminderRef& ref) const;
   drogon::Task<std::vector<ReminderSchema>>
@@ -70,7 +81,16 @@ private:
     drogon::orm::DbClient* client{nullptr};
   };
 
+  struct AuditInput
+  {
+    Json::Value before;
+    const ReminderSchema& row;
+    int64_t actorId{0};
+    drogon::orm::DbClient* client{nullptr};
+  };
+
   drogon::Task<void> emit(const EmitInput& input) const;
+  drogon::Task<void> audit(AuditInput input) const;
 
   ActionJournal journal_;
   ReminderRepository repository_;

@@ -23,6 +23,7 @@ message ReminderRow {
   int64 created_at = 10;
   optional int64 updated_at = 11;
   optional int64 deleted_at = 12;
+  string recurrence_exceptions = 13;
 }
 
 message ReminderDetailRow {
@@ -53,6 +54,7 @@ message CalendarEventRow {
   int64 created_at = 13;
   optional int64 updated_at = 14;
   optional int64 deleted_at = 15;
+  string recurrence_exceptions = 16;
 }
 
 message CalendarEventShareRow {

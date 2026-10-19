@@ -184,7 +184,9 @@ std::optional<int64_t> occurrenceAt(const OccurrenceInput& input)
   return epochOf(WallClock{.date = date, .hour = start->hour, .minute = start->minute, .second = start->second});
 }
 
-std::optional<int64_t> firstOccurrenceAfter(const FirstOccurrenceInput& input)
+namespace
+{
+std::optional<int64_t> searchStart(const FirstOccurrenceInput& input)
 {
   const auto start = wallOf(input.anchor);
   const auto now = wallOf(input.moment);
@@ -209,13 +211,40 @@ std::optional<int64_t> firstOccurrenceAfter(const FirstOccurrenceInput& input)
       estimate = yearsApart / interval;
       break;
   }
-  int64_t index = std::max<int64_t>(estimate - 1, 0);
+  return std::max<int64_t>(estimate - 1, 0);
+}
+}
+
+std::optional<int64_t> firstOccurrenceAfter(const FirstOccurrenceInput& input)
+{
+  const auto first = searchStart(input);
+  if (!first)
+    return std::nullopt;
+  int64_t index = *first;
   for (int64_t searched = 0; searched < kMaxSearch; ++searched, ++index) {
     const auto candidate = occurrenceAt({.rule = input.rule, .anchor = input.anchor, .index = index});
     if (!candidate)
       return std::nullopt;
     if (*candidate > input.moment)
       return candidate;
+  }
+  return std::nullopt;
+}
+
+std::optional<int64_t> occurrenceIndex(const FirstOccurrenceInput& input)
+{
+  if (input.moment < input.anchor)
+    return std::nullopt;
+  const auto first = searchStart(input);
+  if (!first)
+    return std::nullopt;
+  int64_t index = *first;
+  for (int64_t searched = 0; searched < kMaxSearch; ++searched, ++index) {
+    const auto candidate = occurrenceAt({.rule = input.rule, .anchor = input.anchor, .index = index});
+    if (!candidate || *candidate > input.moment)
+      return std::nullopt;
+    if (*candidate == input.moment)
+      return index;
   }
   return std::nullopt;
 }

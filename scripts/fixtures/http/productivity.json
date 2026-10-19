@@ -966,6 +966,203 @@
       "unit": "productivity"
     },
     {
+      "method": "PATCH",
+      "path": "/calendar-event/1/occurrence",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event/{1}/occurrence",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event/1/occurrence",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/calendar-event/{1}/occurrence",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event/1/occurrence",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/calendar-event/{1}/occurrence",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event/1/occurrence",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "occurrence": [
+                "occurrence must be a positive timestamp"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/calendar-event/{1}/occurrence",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event/1/occurrence",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/calendar-event/{1}/occurrence",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event/1/occurrence",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "occurrence": [
+                "occurrence must be a positive timestamp"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/calendar-event/{1}/occurrence",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/calendar-event/999999/occurrence",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "occurrence": [
+                "occurrence must be a positive timestamp"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/calendar-event/{1}/occurrence",
+      "unit": "productivity"
+    },
+    {
       "method": "POST",
       "path": "/project",
       "probe": "no-token",
@@ -3089,6 +3286,177 @@
         "status": 404
       },
       "route": "/reminder/{1}",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/reminder/999999/occurrence",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/reminder/{1}/occurrence",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/reminder/999999/occurrence",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/reminder/{1}/occurrence",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/reminder/999999/occurrence",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/reminder/{1}/occurrence",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/reminder/999999/occurrence",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "occurrence": [
+                "occurrence must be a positive timestamp"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/reminder/{1}/occurrence",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/reminder/999999/occurrence",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "occurrence": [
+                "occurrence must be a positive timestamp"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/reminder/{1}/occurrence",
+      "unit": "productivity"
+    },
+    {
+      "method": "PATCH",
+      "path": "/reminder/999999/occurrence",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "occurrence": [
+                "occurrence must be a positive timestamp"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/reminder/{1}/occurrence",
       "unit": "productivity"
     },
     {

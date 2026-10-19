@@ -25,6 +25,30 @@ inline constexpr ErrorDefinition ReminderAlreadyDone{
     .code = ErrorCode::Conflict,
     .status = 409,
     .message = "The reminder is already done; it cannot be snoozed"};
+inline constexpr ErrorDefinition NotASeries{
+    .code = ErrorCode::Conflict,
+    .status = 409,
+    .message = "It does not repeat; edit it instead of one of its occurrences"};
+inline constexpr ErrorDefinition NotAnOccurrence{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "occurrence is not an occurrence of this series"};
+inline constexpr ErrorDefinition OccurrenceAlreadyPassed{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "That occurrence has already been delivered"};
+inline constexpr ErrorDefinition OccurrenceOutsideItsSlot{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "A reminder's occurrence moves only between the series' previous and next occurrences"};
+inline constexpr ErrorDefinition ReminderOccurrenceOnlyMoves{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "A reminder's occurrence can only be skipped or moved"};
+inline constexpr ErrorDefinition TooManyOccurrenceExceptions{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "The series already has too many changed occurrences"};
 inline constexpr ErrorDefinition ShareNotFound{
     .code = ErrorCode::NotFound,
     .status = 404,

@@ -3,6 +3,8 @@
 #include <ctime>
 #include <errors/response-exception.hxx>
 #include <productivity/productivity-errors.hxx>
+#include <shared/services/recurrence/occurrence-exceptions.hxx>
+#include <shared/services/recurrence/recurrence.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
 #include <trantor/utils/Logger.h>
@@ -172,6 +174,12 @@ CalendarEventFeatureService::update(const UpdateInput& input) const
     }
     before = existing->toJson();
     co_await requireProject(input.body.projectId, transaction.get());
+    const bool reanchors =
+        (input.body.startsAt && *input.body.startsAt != existing->startsAt) ||
+        (input.body.recurrenceRule &&
+         *input.body.recurrenceRule != existing->recurrenceRule.value_or(""));
+    const bool dropsExceptions =
+        reanchors && existing->recurrenceExceptions != kNoOccurrenceExceptions;
 
     row = co_await repository_.update(input.id, {
         .title = input.body.title,
@@ -184,6 +192,9 @@ CalendarEventFeatureService::update(const UpdateInput& input) const
         .isAllDay = input.body.isAllDay,
         .recurrenceRule = input.body.recurrenceRule,
         .projectId = input.body.projectId,
+        .recurrenceExceptions = dropsExceptions
+                                    ? std::optional<std::string>(kNoOccurrenceExceptions)
+                                    : std::nullopt,
         .client = transaction.get(),
     });
     if (row.id == 0) {
@@ -211,6 +222,97 @@ CalendarEventFeatureService::update(const UpdateInput& input) const
                               .title = row.title,
                               .sharingParentId = row.id,
                               .client = transaction.get()});
+
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(ProductivityErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_return row;
+}
+
+drogon::Task<std::optional<CalendarEventSchema>>
+CalendarEventFeatureService::changeOccurrence(const OccurrenceInput& input) const
+{
+  const OccurrenceChangeDto& body = input.body;
+  auto transaction =
+      co_await db_transaction::begin(DbService::productivityClient());
+  CalendarEventSchema row;
+  try {
+    const auto existing =
+        co_await repository_.findById(input.id, transaction.get());
+    if (!existing ||
+        !co_await canEdit({.row = *existing,
+                           .actorId = input.actorId,
+                           .client = transaction.get()})) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+    const auto rule = existing->recurrenceRule ? parseRecurrenceRule(*existing->recurrenceRule)
+                                               : std::nullopt;
+    if (!rule)
+      throw ResponseException(ProductivityErrors::NotASeries);
+    if (!occurrenceIndex({.rule = *rule, .anchor = existing->startsAt, .moment = body.occurrence}))
+      throw ResponseException(ProductivityErrors::NotAnOccurrence);
+
+    std::optional<int64_t> movedTo = body.startsAt;
+    if (movedTo == body.occurrence)
+      movedTo.reset();
+    const auto updated = withException(parseOccurrenceExceptions(existing->recurrenceExceptions),
+                                       {.occurrence = body.occurrence,
+                                        .cancelled = body.cancelled,
+                                        .startsAt = movedTo,
+                                        .endsAt = body.endsAt,
+                                        .title = body.title,
+                                        .location = body.location});
+    if (updated.size() > kMaxOccurrenceExceptions)
+      throw ResponseException(ProductivityErrors::TooManyOccurrenceExceptions);
+
+    Json::Value before = existing->toJson();
+    row = co_await repository_.update(input.id, {
+        .title = std::nullopt,
+        .description = std::nullopt,
+        .location = std::nullopt,
+        .color = std::nullopt,
+        .startsAt = std::nullopt,
+        .endsAt = std::nullopt,
+        .clearEndsAt = false,
+        .isAllDay = std::nullopt,
+        .recurrenceRule = std::nullopt,
+        .projectId = std::nullopt,
+        .recurrenceExceptions = serializeOccurrenceExceptions(updated),
+        .client = transaction.get(),
+    });
+    if (row.id == 0) {
+      db_transaction::rollback(transaction);
+      co_return std::nullopt;
+    }
+
+    Json::Value after = row.toJson();
+    if (after != before) {
+      auto recipients =
+          co_await shareRepository_.memberIds(row.id, transaction.get());
+      recipients.push_back(row.ownerId);
+      const auto* sink = user_change::getProductivitySink();
+      if (!sink)
+        LOG_WARN << "user change sink not installed; drop calendar event audit";
+      else
+        co_await sink->publishAudit({.recordId = row.id,
+                                     .tableName = TableName::CalendarEvent,
+                                     .before = std::move(before),
+                                     .after = std::move(after),
+                                     .userIds = std::move(recipients),
+                                     .client = transaction.get()});
+      co_await journal_.record({.actorId = input.actorId,
+                                .table = TableName::CalendarEvent,
+                                .recordId = row.id,
+                                .action = UserAction::Update,
+                                .title = row.title,
+                                .sharingParentId = row.id,
+                                .client = transaction.get()});
+    }
 
     if (!co_await db_transaction::Commit(std::move(transaction)))
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);

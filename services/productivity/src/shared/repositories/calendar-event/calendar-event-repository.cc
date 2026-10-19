@@ -1,13 +1,33 @@
 #include "calendar-event-repository.hxx"
 
 #include <ctime>
+#include <exception>
 #include <sqlite/db-service.hxx>
 #include <string>
 #include <string_view>
+#include <trantor/utils/Logger.h>
 #include <utility>
 #include <vector>
 
 using namespace calendar_event_query;
+
+bool CalendarEventRepository::migrateSchema() const
+{
+  try {
+    auto client = DbService::productivityClient();
+    const auto columns = client->execSqlSync(std::string(TABLE_INFO));
+    for (const auto& row : columns) {
+      if (row["name"].as<std::string>() == "recurrence_exceptions")
+        return true;
+    }
+    client->execSqlSync(std::string(ADD_RECURRENCE_EXCEPTIONS_COLUMN));
+    return true;
+  }
+  catch (const std::exception& error) {
+    LOG_ERROR << "calendar event migration failed: " << error.what();
+    return false;
+  }
+}
 
 drogon::Task<std::optional<CalendarEventSchema>>
 CalendarEventRepository::findById(int64_t id,
@@ -127,6 +147,7 @@ CalendarEventRepository::update(int64_t id,
     addColumn(UPDATE_COL_IS_ALL_DAY, *input.isAllDay ? "1" : "0");
   addString(UPDATE_COL_RECURRENCE_RULE, input.recurrenceRule);
   addInt(UPDATE_COL_PROJECT_ID, input.projectId);
+  addString(UPDATE_COL_RECURRENCE_EXCEPTIONS, input.recurrenceExceptions);
 
   if (!changed) {
     auto existing = co_await findById(id, client);
