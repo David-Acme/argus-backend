@@ -11,6 +11,7 @@
 #include <feature/memory/services/extract/repeat-rule.hxx>
 
 #include <text/iso-time.hxx>
+#include <text/name-match.hxx>
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
@@ -682,9 +683,13 @@ std::optional<Outcome> TurnFlow::followUpRecipient(const TurnRequest& request, c
   }
   else {
     const slots::Choice choice = slots::choose(request.utterance, pending.options);
-    if (choice.kind != slots::ChoiceKind::Chosen)
+    const text_norm::NameMatch spoken = text_norm::matchName(pending.options, std::string(request.utterance));
+    if (choice.kind == slots::ChoiceKind::Chosen)
+      name = choice.name;
+    else if (spoken.kind == text_norm::NameMatchKind::Exact)
+      name = pending.options[spoken.hits.front()];
+    else
       return askRecipientAgain(request, pending);
-    name = choice.name;
   }
   Candidate task = pending.candidate;
   task.arguments["recipient"] = name;

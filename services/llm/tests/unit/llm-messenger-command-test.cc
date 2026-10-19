@@ -101,8 +101,7 @@ TEST_CASE("'dile que ...' without a name is an answer that may travel back on an
   CHECK(command->reply);
   CHECK(recipientOf(*command).empty());
   CHECK(messageOf(*command) == "ya voy");
-  REQUIRE(command->fill.size() == 1);
-  CHECK(command->fill.front() == "recipient");
+  CHECK(command->fill.empty());
 }
 
 TEST_CASE("a negated or unrelated utterance is not a relay")

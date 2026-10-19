@@ -135,7 +135,7 @@ std::optional<Command> matchFamily(const Family& family, const std::vector<Word>
   command.arguments["message"] = message;
   command.arguments["reply"] = family.reply;
   command.reply = family.reply;
-  if (recipient.empty())
+  if (recipient.empty() && !family.reply)
     command.fill.emplace_back("recipient");
   if (message.empty())
     command.fill.emplace_back("message");

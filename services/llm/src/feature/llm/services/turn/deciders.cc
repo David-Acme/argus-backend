@@ -29,12 +29,37 @@ constexpr std::array<std::string_view, 21> kReminderAsks{
     "despiertame", "alarma", "temporizador", "remind me", "remind us",
     "let me know", "wake me", "alarm", "timer", "ping me", "tell me when"};
 
+std::string foldAsk(std::string_view utterance)
+{
+  return text_norm::whitespace(text_norm::stripAccents(text_norm::intent(std::string(utterance))), true);
+}
+
 bool asksToBeReminded(std::string_view utterance)
 {
-  const std::string folded =
-      text_norm::whitespace(text_norm::stripAccents(text_norm::intent(std::string(utterance))), true);
+  const std::string folded = foldAsk(utterance);
   return std::ranges::any_of(kReminderAsks,
                              [&folded](std::string_view ask) { return folded.find(ask) != std::string::npos; });
+}
+
+struct QuestionHeard
+{
+  const RuleParser& parser;
+  const RuleParseInput& input;
+};
+
+bool asksAQuestion(const QuestionHeard& heard)
+{
+  if (!heard.parser.isQuestion(heard.input))
+    return false;
+  if (heard.input.text.find('?') != std::string::npos || heard.input.text.find("\xc2\xbf") != std::string::npos)
+    return true;
+  std::string folded = foldAsk(heard.input.text);
+  const auto ask = std::ranges::find_if(
+      kReminderAsks, [&folded](std::string_view candidate) { return folded.find(candidate) != std::string::npos; });
+  if (ask == kReminderAsks.end())
+    return true;
+  folded.erase(folded.find(*ask), ask->size());
+  return heard.parser.isQuestion({.text = folded, .lang = heard.input.lang});
 }
 
 bool namesOneInstant(std::string_view utterance, std::string_view lang)
@@ -118,7 +143,7 @@ std::optional<Candidate> TriggerDecider::decide(const DecideInput& input) const
   const RuleParser parser(catalog_);
   const RuleParseInput parseInput{.text = utterance, .lang = lang};
   const bool parsed = parser.parse(parseInput).has_value();
-  const bool repeating = asksToBeReminded(utterance) && !parser.isQuestion(parseInput) &&
+  const bool repeating = asksToBeReminded(utterance) && !asksAQuestion({.parser = parser, .input = parseInput}) &&
                          asksToRepeat({.utterance = utterance, .lang = lang, .parsed = parsed});
   if (!parsed && !repeating)
     return std::nullopt;
