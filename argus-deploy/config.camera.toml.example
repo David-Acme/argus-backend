@@ -98,22 +98,19 @@ credential = "CHANGE_ME_CAMERA_AUTH"
 [identity]
 target = "tls:argus-identity:7240"
 credential = "CHANGE_ME_CAMERA_IDENTITY"
+identify = false
+min_face_box_px = 48
+identify_interval_ms = 2000
+best_shot_ms = 10000
+improve_margin = 0.15
 
 [notifications]
 target = "tls:argus-notification:7238"
 credential = "CHANGE_ME_CAMERA_NOTIFICATION"
-identify = false
 
 [guard]
 duty_target = "tls:argus-guard:7339"
 duty_credential = "CHANGE_ME_CAMERA_GUARD_DUTY"
-auto_enroll = false
-capture_clear_faces = true
-min_face_box_px = 48
-identify_interval_ms = 2000
-enroll_cooldown_ms = 600000
-best_shot_ms = 10000
-improve_margin = 0.15
 
 [grpc]
 caller_guard = "CHANGE_ME_GUARD_CAMERA"
