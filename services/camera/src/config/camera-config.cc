@@ -41,9 +41,33 @@ PrivacyNoticeConfig CameraConfig::resolvePrivacyNotice()
   return config;
 }
 
+GuardDutyConfig CameraConfig::resolveGuardDuty()
+{
+  return {.target = ConfigService::getString("guard.duty_target"),
+          .credential = ConfigService::getString("guard.duty_credential")};
+}
+
 ListenerConfig CameraConfig::resolveListener()
 {
   return ListenerConfig::resolveServiceTls("camera", 7026);
+}
+
+CameraPtzConfig CameraConfig::resolvePtz()
+{
+  CameraPtzConfig config;
+  const auto seconds = [](const std::string& key, int64_t fallbackMs) {
+    const int64_t value = ConfigService::getInt(key);
+    return value > 0 ? value * 1000 : fallbackMs;
+  };
+  config.parkMs = seconds("ptz.park_seconds", config.parkMs);
+  config.idleReleaseMs = seconds("ptz.idle_release_seconds", config.idleReleaseMs);
+  const int64_t settle = ConfigService::getInt("ptz.settle_ms");
+  if (settle > 0)
+    config.settleMs = settle;
+  config.returnAfterLookMs = seconds("ptz.return_after_look_seconds", config.returnAfterLookMs);
+  config.returnAfterFollowMs = seconds("ptz.return_after_follow_seconds", config.returnAfterFollowMs);
+  config.calibrateEveryMs = seconds("ptz.calibrate_every_seconds", config.calibrateEveryMs);
+  return config;
 }
 
 CameraHealthConfig CameraConfig::resolveHealth()

@@ -1,6 +1,8 @@
 #pragma once
 
+#include <auth/user-role.hxx>
 #include <camera/camera-privacy-state.hxx>
+#include <config/camera-config.hxx>
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
 #include <feature/camera-control/dtos/camera-preset-dto.hxx>
@@ -9,9 +11,11 @@
 #include <feature/camera-control/dtos/camera-settings-dto.hxx>
 #include <feature/camera-control/dtos/camera-snapshot-dto.hxx>
 #include <feature/camera-control/dtos/camera-talk-dto.hxx>
+#include <feature/camera-control/services/ptz-lease.hxx>
 #include <feature/camera-control/services/still-flights.hxx>
 #include <json/value.h>
 #include <optional>
+#include <string>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/repositories/zone/zone-repository.hxx>
 #include <shared/services/camera-driver/camera-driver.hxx>
@@ -29,15 +33,38 @@ struct CameraSettingsInput
   std::string actorIp{};
 };
 
+struct CameraMoveInput
+{
+  int64_t cameraId{0};
+  CameraPtzDto body{};
+  int64_t actorUserId{0};
+  UserRole actorRole{UserRole::Unknown};
+};
+
+struct CameraPresetInput
+{
+  int64_t cameraId{0};
+  CameraPresetDto body{};
+  int64_t actorUserId{0};
+  UserRole actorRole{UserRole::Unknown};
+};
+
+struct CameraReturnHomeInput
+{
+  int64_t cameraId{0};
+  std::string reason;
+};
+
 class CameraControlFeatureService
 {
 public:
   drogon::Task<CameraControlResult> status(int64_t cameraId) const;
   drogon::Task<CameraControlResult> presets(int64_t cameraId) const;
-  drogon::Task<CameraControlResult> move(int64_t cameraId,
-                                         const CameraPtzDto& body) const;
-  drogon::Task<CameraControlResult> preset(int64_t cameraId,
-                                          const CameraPresetDto& body) const;
+  drogon::Task<CameraControlResult> move(const CameraMoveInput& input) const;
+  drogon::Task<CameraControlResult> preset(const CameraPresetInput& input) const;
+  drogon::Task<CameraControlResult> returnHome(const CameraReturnHomeInput& input) const;
+  drogon::Task<CameraControlResult> calibrate(int64_t cameraId) const;
+  static void configurePtz(const CameraPtzConfig& config);
   drogon::Task<CameraControlResult> settings(const CameraSettingsInput& input) const;
   drogon::Task<CameraControlResult> speak(int64_t cameraId,
                                           const CameraTalkDto& body) const;
@@ -52,6 +79,27 @@ private:
            const std::function<DriverResult(ICameraDriver&)>& work) const;
 
   drogon::Task<void> announceStatus(int64_t cameraId) const;
+
+  drogon::Task<CameraControlResult> setHome(const CameraPresetInput& input) const;
+
+  struct ActorCheck
+  {
+    int64_t userId{0};
+    UserRole role{UserRole::Unknown};
+    bool changesPresets{false};
+  };
+
+  static drogon::Task<void> admitActor(const ActorCheck& actor);
+
+  struct AutomaticMove
+  {
+    int64_t cameraId{0};
+    std::string reason;
+    std::string target;
+    int64_t durationMs{0};
+  };
+
+  drogon::Task<void> recordAutomaticMove(const AutomaticMove& move) const;
 
   drogon::Task<void> announcePrivacy(int64_t cameraId) const;
 

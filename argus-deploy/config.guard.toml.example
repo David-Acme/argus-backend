@@ -28,6 +28,7 @@ settings = "CHANGE_ME_SETTINGS_GUARD"
 sync = "CHANGE_ME_PRESENCE_SYNC"
 notification = "CHANGE_ME_PRESENCE_NOTIFICATION"
 llm = "CHANGE_ME_LLM_GUARD"
+camera = "CHANGE_ME_GUARD_DUTY_CAMERA"
 
 [presence]
 enabled = true

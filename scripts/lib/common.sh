@@ -529,6 +529,8 @@ rpc.callers productivity
 llm grpc_credential
 guard presence_target
 guard presence_credential
+guard duty_target
+guard duty_credential
 modules target
 modules credential
 nats url
@@ -927,6 +929,8 @@ SECRETS
     "$deploy_dir/config.guard.toml" rpc.callers sync 32
   fill_config_pair "$deploy_dir/config.notification.toml" guard presence_credential \
     "$deploy_dir/config.guard.toml" rpc.callers notification 32
+  fill_config_pair "$deploy_dir/config.camera.toml" guard duty_credential \
+    "$deploy_dir/config.guard.toml" rpc.callers camera 32
   ensure_fleet_callers deploy "$deploy_dir"
   ensure_settings_owners "$deploy_dir/config.settings.toml" deploy "$deploy_dir"
   ensure_livekit_key_pair "$deploy_dir/config.sync.toml"

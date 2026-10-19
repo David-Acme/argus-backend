@@ -138,8 +138,7 @@ X509Ptr loadX509(const std::string& path)
   BioPtr bio(BIO_new_file(path.c_str(), "r"), BIO_free);
   if (!bio)
     return {nullptr, X509_free};
-  return X509Ptr(PEM_read_bio_X509(bio.get(), nullptr, nullptr, nullptr),
-                 X509_free);
+  return {PEM_read_bio_X509(bio.get(), nullptr, nullptr, nullptr), X509_free};
 }
 
 PKeyPtr loadKey(const std::string& path)
@@ -147,8 +146,7 @@ PKeyPtr loadKey(const std::string& path)
   BioPtr bio(BIO_new_file(path.c_str(), "r"), BIO_free);
   if (!bio)
     return {nullptr, EVP_PKEY_free};
-  return PKeyPtr(PEM_read_bio_PrivateKey(bio.get(), nullptr, nullptr, nullptr),
-                 EVP_PKEY_free);
+  return {PEM_read_bio_PrivateKey(bio.get(), nullptr, nullptr, nullptr), EVP_PKEY_free};
 }
 
 std::string sha256Hex(X509* cert)

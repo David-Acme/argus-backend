@@ -1,5 +1,8 @@
 #include "device-filter.hxx"
 
+#include <array>
+#include <string_view>
+
 #include <auth/admitted-call.hxx>
 #include <auth/auth-client.hxx>
 #include <auth/auth-access.hxx>
@@ -83,13 +86,13 @@ std::string DeviceFilter::deviceKey(const drogon::HttpRequestPtr& req)
 
 std::string DeviceFilter::sha256Hex(const std::string& data)
 {
-  unsigned char digest[SHA256_DIGEST_LENGTH]{};
+  std::array<unsigned char, SHA256_DIGEST_LENGTH> digest{};
   SHA256(reinterpret_cast<const unsigned char*>(data.data()), data.size(),
-         digest);
+         digest.data());
 
-  static constexpr char hex[] = "0123456789abcdef";
+  static constexpr std::string_view hex = "0123456789abcdef";
   std::string result;
-  result.reserve(sizeof(digest) * 2);
+  result.reserve(digest.size() * 2);
   for (unsigned char byte : digest) {
     result.push_back(hex[byte >> 4]);
     result.push_back(hex[byte & 0x0f]);
@@ -133,7 +136,7 @@ std::string DeviceFilter::hashFingerprint(const std::string& ua,
 
 std::string DeviceFilter::resolveIp(const drogon::HttpRequestPtr& req)
 {
-  const auto peer = req->getPeerAddr().toIp();
+  auto peer = req->getPeerAddr().toIp();
   if (ConfigService::getBool("device.trust_forwarded_for") &&
       trustedProxy(peer)) {
     const auto forwarded = req->getHeader("X-Forwarded-For");

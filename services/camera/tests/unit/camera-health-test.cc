@@ -1,5 +1,7 @@
 #include <doctest/doctest.h>
 
+#include <algorithm>
+
 #include <feature/monitor/health-event.hxx>
 #include <feature/monitor/camera-health-monitor.hxx>
 #include <shared/services/stream/frame-source.hxx>
@@ -356,11 +358,16 @@ struct SceneRun
 {
   SyntheticHealthSource source;
   RecordingHealthSink sink;
+  std::vector<int64_t> drifted;
   CameraHealthMonitor monitor;
   int64_t cameraId;
 
   explicit SceneRun(const SceneSetup& setup)
-      : monitor({.source = &source, .sink = &sink},
+      : monitor({.source = &source,
+                 .sink = &sink,
+                 .presence = nullptr,
+                 .active = {},
+                 .homeDrift = [this](int64_t id) { drifted.push_back(id); }},
                 {.enabled = true,
                  .intervalMs = 1000,
                  .thresholds = thresholds(),
@@ -409,7 +416,7 @@ TEST_CASE("a view Argus aimed is the reference at once")
 {
   SceneRun run({.cameraId = 103, .rebaselineAfterMs = 900000});
   CHECK(run.show(texturedJpeg({.seed = 21, .gain = 1.0, .offset = 0.0}), 1000) == CameraHealthState::Ok);
-  CameraSceneLog::instance().noteAimed(103, 1500);
+  CameraSceneLog::instance().noteAimed({.cameraId = 103, .atMs = 1500});
   CHECK(run.show(texturedJpeg({.seed = 22, .gain = 1.0, .offset = 0.0}), 2000) == CameraHealthState::Ok);
   CHECK(run.show(texturedJpeg({.seed = 21, .gain = 1.0, .offset = 0.0}), 4000) == CameraHealthState::Moved);
   CameraSceneLog::instance().forget(103);
@@ -436,7 +443,7 @@ TEST_CASE("a preset that settles between samples is not moved")
   const auto settled = texturedJpeg({.seed = 43, .gain = 1.0, .offset = 0.0});
   SceneRun run({.cameraId = 105, .rebaselineAfterMs = 900000});
   CHECK(run.show(before, 1000) == CameraHealthState::Ok);
-  CameraSceneLog::instance().noteAimed(105, 1400);
+  CameraSceneLog::instance().noteAimed({.cameraId = 105, .atMs = 1400});
 
   run.source.frame.jpeg = moving;
   run.source.frame.capturedAtMs = 1500;
@@ -463,4 +470,60 @@ TEST_CASE("a view nothing aimed still reads moved at the same samples")
   CHECK(run.show(moved, 2500) == CameraHealthState::Moved);
   CHECK(run.show(texturedJpeg({.seed = 53, .gain = 1.0, .offset = 0.0}), 3500) ==
         CameraHealthState::Moved);
+}
+
+TEST_CASE("a move in flight pauses the check, and a return home keeps the reference")
+{
+  const auto home = texturedJpeg({.seed = 61, .gain = 1.0, .offset = 0.0});
+  const auto away = texturedJpeg({.seed = 62, .gain = 1.0, .offset = 0.0});
+  SceneRun run({.cameraId = 107, .rebaselineAfterMs = 900000});
+  CHECK(run.show(home, 1000) == CameraHealthState::Ok);
+
+  CameraSceneLog::instance().beginMove({.cameraId = 107, .startMs = 1200, .expectedEndMs = 4000, .returnsHome = true});
+  CHECK(CameraSceneLog::instance().moving({.cameraId = 107, .atMs = 1500}));
+  const std::size_t published = run.sink.events.size();
+  CHECK(run.show(away, 1500) == CameraHealthState::Ok);
+  CHECK(run.show(away, 2500) == CameraHealthState::Ok);
+  CHECK(std::ranges::none_of(run.sink.events.begin() + static_cast<std::ptrdiff_t>(published), run.sink.events.end(),
+                             [](const auto& event) { return event.status == CameraHealthState::Moved; }));
+
+  CameraSceneLog::instance().endMove({.cameraId = 107, .atMs = 3000});
+  CHECK_FALSE(CameraSceneLog::instance().moving({.cameraId = 107, .atMs = 3100}));
+  CHECK(CameraSceneLog::instance().sceneOf(107).aimedAtMs == 0);
+  CHECK(run.show(home, 3500) == CameraHealthState::Ok);
+  CHECK(run.show(home, 5500) == CameraHealthState::Ok);
+  CHECK(run.sink.events.back().metrics.sceneDiff < 0.1);
+  CHECK(run.drifted.empty());
+  CHECK(run.show(away, 6500) == CameraHealthState::Moved);
+  CameraSceneLog::instance().forget(107);
+}
+
+TEST_CASE("a return home to a different view reports the drift once")
+{
+  const auto home = texturedJpeg({.seed = 71, .gain = 1.0, .offset = 0.0});
+  const auto drifted = texturedJpeg({.seed = 72, .gain = 1.0, .offset = 0.0});
+  SceneRun run({.cameraId = 108, .rebaselineAfterMs = 900000});
+  CHECK(run.show(home, 1000) == CameraHealthState::Ok);
+  CameraSceneLog::instance().beginMove({.cameraId = 108, .startMs = 1200, .expectedEndMs = 2000, .returnsHome = true});
+  CameraSceneLog::instance().endMove({.cameraId = 108, .atMs = 2000});
+  CHECK(run.show(drifted, 4500) == CameraHealthState::Moved);
+  CHECK(run.show(drifted, 5500) == CameraHealthState::Moved);
+  REQUIRE(run.drifted.size() == 1);
+  CHECK(run.drifted.front() == 108);
+  CameraSceneLog::instance().forget(108);
+}
+
+TEST_CASE("a move that does not return home takes its new view as the reference")
+{
+  const auto before = texturedJpeg({.seed = 81, .gain = 1.0, .offset = 0.0});
+  const auto after = texturedJpeg({.seed = 82, .gain = 1.0, .offset = 0.0});
+  SceneRun run({.cameraId = 109, .rebaselineAfterMs = 900000});
+  CHECK(run.show(before, 1000) == CameraHealthState::Ok);
+  CameraSceneLog::instance().beginMove({.cameraId = 109, .startMs = 1200, .expectedEndMs = 2000, .returnsHome = false});
+  CameraSceneLog::instance().endMove({.cameraId = 109, .atMs = 2000});
+  CHECK(CameraSceneLog::instance().sceneOf(109).aimedAtMs == 2000);
+  CHECK(run.show(after, 4500) == CameraHealthState::Ok);
+  CHECK(run.show(after, 5500) == CameraHealthState::Ok);
+  CHECK(run.drifted.empty());
+  CameraSceneLog::instance().forget(109);
 }

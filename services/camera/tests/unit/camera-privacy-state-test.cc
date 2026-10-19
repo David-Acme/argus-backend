@@ -326,7 +326,7 @@ TEST_CASE("a confirmed mask is kept when a reply cannot tell, and the owner is t
   auto& service = PrivacyStateService::instance();
   service.forget(45);
   service.seed({cameraOf(45, CameraPrivacyState::On, "[]")});
-  CameraSceneLog::instance().noteAimed(45, 1);
+  CameraSceneLog::instance().noteAimed({.cameraId = 45, .atMs = 1});
 
   const auto doubtful = read(45, statusWithout(), CameraPrivacyState::On);
   CHECK(doubtful.changed);

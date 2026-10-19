@@ -688,7 +688,7 @@ TEST_CASE("the observation saga is idempotent across redeliveries")
     REQUIRE(drogon::sync_wait(repository.claimObservation(seed)).kind ==
             ObservationClaimKind::New);
     const std::string durable =
-        "{\"eventId\":\"retry-payload:1\",\"cameraId\":1}";
+        R"({"eventId":"retry-payload:1","cameraId":1})";
     const ObservationClaim recovered = drogon::sync_wait(
         repository.claimObservation({.eventId = "retry-payload:1",
                                      .cameraId = 1,

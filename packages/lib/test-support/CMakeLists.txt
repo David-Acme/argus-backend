@@ -18,6 +18,7 @@ endif()
 argus_lib(NAME doctest-main
     SOURCES
         src/test-support/doctest-main.cc
+        src/test-support/value-of.hxx
     INCLUDES src
     DEPENDS doctest::doctest)
 

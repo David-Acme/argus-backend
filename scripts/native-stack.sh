@@ -274,6 +274,8 @@ prepare() {
     "$STACK_DIR/guard/config.toml" rpc.callers sync 32
   fill_config_pair "$STACK_DIR/notification/config.toml" guard presence_credential \
     "$STACK_DIR/guard/config.toml" rpc.callers notification 32
+  fill_config_pair "$STACK_DIR/camera/config.toml" guard duty_credential \
+    "$STACK_DIR/guard/config.toml" rpc.callers camera 32
   ensure_fleet_callers stack "$STACK_DIR"
   wire_settings_owners
   log "sandbox configs ready in $STACK_DIR"

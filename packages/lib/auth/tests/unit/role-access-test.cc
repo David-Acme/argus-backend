@@ -531,7 +531,7 @@ TEST_CASE("talking through a camera is open to the owner, residents and guards, 
   }
   CHECK_FALSE(role_access::hasCameraAction(UserRole::Guest, role_access::CameraAction::Talk));
   CHECK_FALSE(allows(UserRole::Guest, "/camera/12/talk", drogon::Post));
-  CHECK_FALSE(allows(UserRole::Guard, "/camera/12/ptz", drogon::Patch));
+  CHECK_FALSE(allows(UserRole::Guard, "/camera/12/snapshot", drogon::Patch));
   CHECK_FALSE(allows(UserRole::Guard, "/camera/x/talk", drogon::Post));
   CHECK_FALSE(allows(UserRole::Guard, "/camera//talk", drogon::Post));
   CHECK_FALSE(allows(UserRole::Guard, "/camera/12/talk/more", drogon::Post));
@@ -705,6 +705,30 @@ TEST_CASE("every role presses panic and reads the safety state; only disarmers k
   CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guard, .path = "/guard/safety/pin", .method = drogon::Put}));
   CHECK_FALSE(role_access::hasHttpAccess({.role = UserRole::Guest, .path = "/guard/safety/pin", .method = drogon::Put}));
   CHECK(role_access::hasHttpAccess({.role = UserRole::Owner, .path = "/guard/safety", .method = drogon::Patch}));
+}
+
+TEST_CASE("a resident and a guard may aim a camera, a guest may not")
+{
+  using role_access::CameraAction;
+  using role_access::hasCameraAction;
+  using role_access::hasHttpAccess;
+
+  for (const UserRole role : {UserRole::Owner, UserRole::Resident, UserRole::Guard}) {
+    CAPTURE(userRoleToString(role));
+    CHECK(hasCameraAction(role, CameraAction::Move));
+    CHECK(hasCameraAction(role, CameraAction::Preset));
+    CHECK(hasHttpAccess({.role = role, .path = "/camera/3/ptz", .method = drogon::Patch}));
+    CHECK(hasHttpAccess({.role = role, .path = "/camera/3/preset", .method = drogon::Patch}));
+  }
+  for (const UserRole role : {UserRole::Guest, UserRole::Unknown}) {
+    CAPTURE(userRoleToString(role));
+    CHECK_FALSE(hasCameraAction(role, CameraAction::Move));
+    CHECK_FALSE(hasCameraAction(role, CameraAction::Preset));
+    CHECK_FALSE(hasHttpAccess({.role = role, .path = "/camera/3/ptz", .method = drogon::Patch}));
+    CHECK_FALSE(hasHttpAccess({.role = role, .path = "/camera/3/preset", .method = drogon::Patch}));
+  }
+  CHECK_FALSE(hasHttpAccess({.role = UserRole::Guard, .path = "/camera/3", .method = drogon::Patch}));
+  CHECK_FALSE(hasHttpAccess({.role = UserRole::Guard, .path = "/camera/3/ptz", .method = drogon::Post}));
 }
 
 TEST_CASE("only the roles the camera action table names may sound a camera siren")

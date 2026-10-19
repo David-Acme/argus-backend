@@ -5,12 +5,15 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 
 struct HealthMetrics
 {
   double brightness{0.0};
   double blur{0.0};
   double sceneDiff{0.0};
+  bool paused{false};
+  bool homeDrift{false};
 };
 
 enum class CameraHealthState
@@ -46,7 +49,7 @@ namespace health_monitor
 {
 CameraHealthState classify(const HealthMetrics& metrics,
                       const HealthThresholds& thresholds);
-std::string statusName(CameraHealthState status);
+std::string_view statusName(CameraHealthState status);
 }
 
 class IHealthEventSink

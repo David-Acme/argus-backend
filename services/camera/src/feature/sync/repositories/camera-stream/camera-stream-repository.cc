@@ -28,7 +28,7 @@ CameraStreamRepository::findByCamera(int64_t cameraId) const
 
   std::vector<CameraStreamSchema> data;
   for (const auto& row : result)
-    data.push_back(CameraStreamSchema(row));
+    data.emplace_back(row);
   co_return data;
 }
 
@@ -88,13 +88,13 @@ CameraStreamRepository::update(int64_t id,
     if (!args.empty())
       sql += ", ";
     sql += UPDATE_COL_IS_PRIMARY;
-    args.push_back(*input.isPrimary ? "1" : "0");
+    args.emplace_back(*input.isPrimary ? "1" : "0");
   }
   if (input.isEnabled) {
     if (!args.empty())
       sql += ", ";
     sql += UPDATE_COL_IS_ENABLED;
-    args.push_back(*input.isEnabled ? "1" : "0");
+    args.emplace_back(*input.isEnabled ? "1" : "0");
   }
 
   if (args.empty()) {

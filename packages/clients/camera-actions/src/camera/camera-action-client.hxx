@@ -73,7 +73,7 @@ struct CameraCommandResult
   bool endpointed{false};
   std::string text;
 
-  bool transportOk() const { return status.ok(); }
+  [[nodiscard]] bool transportOk() const { return status.ok(); }
 
   bool succeeded() const
   {

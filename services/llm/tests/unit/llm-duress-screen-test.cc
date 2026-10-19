@@ -130,11 +130,11 @@ bool disarmer(UserRole role)
   return role == UserRole::Owner || role == UserRole::Resident;
 }
 
-DuressScreenTiming quick()
+DuressScreenTiming quick(std::chrono::milliseconds retryBase = std::chrono::milliseconds(10))
 {
   return {.refresh = std::chrono::minutes(1),
-          .retryBase = std::chrono::milliseconds(10),
-          .retryMax = std::chrono::milliseconds(40),
+          .retryBase = retryBase,
+          .retryMax = retryBase * 4,
           .memo = std::chrono::minutes(2),
           .queueLimit = 8};
 }
@@ -151,9 +151,10 @@ bool eventually(const std::function<bool()>& condition)
 
 struct ScreenRig
 {
-  explicit ScreenRig(std::optional<std::string> key)
+  explicit ScreenRig(std::optional<std::string> key,
+                     std::chrono::milliseconds retryBase = std::chrono::milliseconds(10))
       : link(std::make_shared<ScriptedLink>(std::move(key))),
-        screen({.link = link, .eligible = disarmer}, quick())
+        screen({.link = link, .eligible = disarmer}, quick(retryBase))
   {
     screen.start();
     REQUIRE(eventually([this] { return link->asked() > 0 && screen.idle(); }));
@@ -389,7 +390,7 @@ TEST_CASE("nobody else is withheld: other words, a guest, an anonymous caller, a
 
 TEST_CASE("a raise guard did not take is retried until it is, and only once per speaker")
 {
-  ScreenRig rig(sealed(kPhrase));
+  ScreenRig rig(sealed(kPhrase), std::chrono::milliseconds(200));
   rig.link->reply({DuressDelivery::Retry, DuressDelivery::Retry});
   CHECK(rig.say(2, UserRole::Owner, "el gato está en el tejado").withheld);
   CHECK(rig.say(2, UserRole::Owner, "repito: el gato está en el tejado").withheld);

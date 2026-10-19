@@ -29,6 +29,8 @@ public:
   [[nodiscard]] virtual std::optional<argus::guard::v1::ListPresenceResponse>
   listPresence(const std::vector<int64_t>& userIds) const;
 
+  [[nodiscard]] virtual std::optional<bool> onDuty(int64_t userId) const;
+
 private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::guard::v1::PresenceService::StubInterface> stub_;

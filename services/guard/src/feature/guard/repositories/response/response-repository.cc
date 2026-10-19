@@ -147,3 +147,15 @@ ResponseRepository::setDuty(const ResponseDutyInput& input) const
   co_await client->execSqlCoro(std::string(UPSERT_DUTY), input.environmentId,
                                input.userId, input.onDuty ? 1 : 0, input.at);
 }
+
+drogon::Task<std::vector<int64_t>>
+ResponseRepository::dutyEnvironments(int64_t userId) const
+{
+  const auto client = DbService::client();
+  const auto rows = co_await client->execSqlCoro(std::string(LIST_DUTY_ENVIRONMENTS), userId);
+  std::vector<int64_t> environments;
+  environments.reserve(rows.size());
+  for (const auto& row : rows)
+    environments.push_back(row["environment_id"].as<int64_t>());
+  co_return environments;
+}

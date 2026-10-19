@@ -215,13 +215,20 @@ std::string argValue(const Json::Value& value, std::string_view lang, int64_t no
   return {};
 }
 
-std::string joinNamed(const std::vector<std::string>& keys, std::string_view lang, std::string_view sep)
+struct JoinNamedInput
+{
+  const std::vector<std::string>& keys;
+  std::string_view lang;
+  std::string_view sep;
+};
+
+std::string joinNamed(const JoinNamedInput& input)
 {
   std::string out;
-  for (const std::string& key : keys) {
+  for (const std::string& key : input.keys) {
     if (!out.empty())
-      out += sep;
-    out += optionNameOf(key, lang);
+      out += input.sep;
+    out += optionNameOf(key, input.lang);
   }
   return out;
 }
@@ -238,7 +245,7 @@ std::string askSituation(const AskSlot& ask, std::string_view lang, int64_t now)
   const std::string label = slotLabelOf(ask.slot, lang);
   line += label;
   if (!ask.options.empty())
-    line += (english ? " (one of: " : " (uno de: ") + joinNamed(ask.options, lang, ", ") + ")";
+    line += (english ? " (one of: " : " (uno de: ") + joinNamed({.keys = ask.options, .lang = lang, .sep = ", "}) + ")";
   else if (ask.reason != AskReason::Missing)
     line += " (" + std::string(reasonText(ask.reason, lang)) + ")";
   line += ". ";
@@ -248,7 +255,7 @@ std::string askSituation(const AskSlot& ask, std::string_view lang, int64_t now)
                     "de interrogación, sin saludo, sin preámbulo y nunca con las palabras \"listo\" ni \"hecho\". ";
   if (!ask.options.empty()) {
     line += english ? "In the question, ask which one: " : "En la pregunta, pregunta cuál: ";
-    line += joinNamed(ask.options, lang, english ? " or " : " o ");
+    line += joinNamed({.keys = ask.options, .lang = lang, .sep = english ? " or " : " o "});
     line += '.';
     return line;
   }
@@ -316,7 +323,7 @@ std::string chooseSituation(const Choose& choose, std::string_view lang)
                            "that ends with a question mark, with no greeting, asking which one: "
                          : "Falta que el usuario elija y no se hizo nada. Escribe solo una pregunta corta que "
                            "termine en signo de interrogación, sin saludo, preguntando cuál: ";
-  line += joinNamed(choose.options, lang, english ? " or " : " o ");
+  line += joinNamed({.keys = choose.options, .lang = lang, .sep = english ? " or " : " o "});
   line += '.';
   return line;
 }
@@ -470,7 +477,7 @@ std::string actTail(const RenderInput& input)
   }
   if (input.examples)
     for (const ExampleLine& line : exampleLines(input.speech.acts.back(), input.speech.lang)) {
-      tail += "\n";
+      tail += '\n';
       tail += line.first;
       tail += " -> ";
       tail += line.second;
@@ -585,7 +592,7 @@ std::optional<std::string> confirmQuestion(const ConfirmQuestion& input)
     line += ", " + spoken_time::day(when) + (english ? " at " : " a las ") + spoken_time::clock(when);
     break;
   }
-  line += "?";
+  line += '?';
   return line;
 }
 

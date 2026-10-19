@@ -28,3 +28,18 @@ GuardPresenceClient::listPresence(const std::vector<int64_t>& userIds) const
     return std::nullopt;
   return response;
 }
+
+std::optional<bool> GuardPresenceClient::onDuty(int64_t userId) const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+
+  argus::guard::v1::DutyRequest request;
+  request.set_user_id(userId);
+
+  argus::guard::v1::DutyResponse response;
+  if (const grpc::Status status = stub_->GetDuty(&context, request, &response); !status.ok())
+    return std::nullopt;
+  return response.on_duty();
+}

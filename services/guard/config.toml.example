@@ -24,6 +24,7 @@ settings = ""
 sync = ""
 notification = ""
 llm = ""
+camera = ""
 
 [presence]
 enabled = true

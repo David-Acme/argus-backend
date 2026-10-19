@@ -103,6 +103,10 @@ credential = "CHANGE_ME_CAMERA_IDENTITY"
 target = "tls:argus-notification:7238"
 credential = "CHANGE_ME_CAMERA_NOTIFICATION"
 identify = false
+
+[guard]
+duty_target = "tls:argus-guard:7339"
+duty_credential = "CHANGE_ME_CAMERA_GUARD_DUTY"
 auto_enroll = false
 capture_clear_faces = true
 min_face_box_px = 48

@@ -52,14 +52,18 @@ drogon::Task<drogon::HttpResponsePtr>
 CameraControlController::move(drogon::HttpRequestPtr req, int64_t id)
 {
   const auto body = CameraPtzDto::fromJson(*req->getJsonObject());
-  co_return respond(co_await service_.move(id, body));
+  const auto& jwt = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  co_return respond(co_await service_.move(
+      {.cameraId = id, .body = body, .actorUserId = jwt.sub, .actorRole = jwt.role}));
 }
 
 drogon::Task<drogon::HttpResponsePtr>
 CameraControlController::preset(drogon::HttpRequestPtr req, int64_t id)
 {
   const auto body = CameraPresetDto::fromJson(*req->getJsonObject());
-  co_return respond(co_await service_.preset(id, body));
+  const auto& jwt = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  co_return respond(co_await service_.preset(
+      {.cameraId = id, .body = body, .actorUserId = jwt.sub, .actorRole = jwt.role}));
 }
 
 drogon::Task<drogon::HttpResponsePtr>
@@ -70,7 +74,7 @@ CameraControlController::settings(drogon::HttpRequestPtr req, int64_t id)
   const auto& device =
       req->getAttributes()->get<DeviceContext>(AuthContext::kDeviceKey);
   co_return respond(co_await service_.settings(
-      {.cameraId = id, .body = std::move(body), .actorUserId = jwt.sub,
+      {.cameraId = id, .body = body, .actorUserId = jwt.sub,
        .actorIp = device.ip}));
 }
 

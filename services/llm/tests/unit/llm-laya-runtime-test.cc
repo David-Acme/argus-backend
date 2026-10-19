@@ -26,6 +26,7 @@
 #include <stdexcept>
 
 #include "support/require-value.hxx"
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -150,12 +151,11 @@ TEST_CASE("the real Laya bundle decides, and the turn runs the tool it chose" *
     MESSAGE("no Laya bundle installed (or at ARGUS_LAYA_BUNDLE); the Laya runtime did not run");
     return;
   }
-  const std::optional<Json::Value> golden = bundleGolden(pilot->dir);
-  REQUIRE(golden.has_value());
-  const Json::Value& probes = (*golden)["probes"];
+  const Json::Value golden = valueOf(bundleGolden(pilot->dir));
+  const Json::Value& probes = golden["probes"];
   const turn::BundleLoader bundle({.dir = pilot->dir});
   REQUIRE(bundle.valid());
-  CHECK((*golden)["modelSha256"].asString() == bundle.modelSha256());
+  CHECK(golden["modelSha256"].asString() == bundle.modelSha256());
   World world;
   turn::LayaDecider laya({.model =
                               turn::openLayaModel({.bundle = bundle, .options = optionsOf(), .decode = bundle.decode()}),
@@ -167,8 +167,7 @@ TEST_CASE("the real Laya bundle decides, and the turn runs the tool it chose" *
   std::size_t decided = 0;
   std::size_t engaged = 0;
   std::size_t acted = 0;
-  for (Json::ArrayIndex index = 0; index < probes.size(); ++index) {
-    const Json::Value& probe = probes[index];
+  for (const Json::Value& probe : probes) {
     const std::string text = probe["text"].asString();
     const std::optional<std::string> expected = toolOfLabel(topLabel(probe["tool"]));
     REQUIRE(expected.has_value());
@@ -219,14 +218,13 @@ TEST_CASE("the Laya scores the bundle produces match its own golden vectors" *
     MESSAGE("no Laya bundle installed (or at ARGUS_LAYA_BUNDLE); the Laya parity did not run");
     return;
   }
-  const std::optional<Json::Value> golden = bundleGolden(pilot->dir);
-  REQUIRE(golden.has_value());
-  const Json::Value& probes = (*golden)["probes"];
-  CHECK((*golden)["modelSha256"].isString());
-  CHECK((*golden)["reference"].isString());
+  const Json::Value golden = valueOf(bundleGolden(pilot->dir));
+  const Json::Value& probes = golden["probes"];
+  CHECK(golden["modelSha256"].isString());
+  CHECK(golden["reference"].isString());
   const turn::BundleLoader bundle({.dir = pilot->dir});
   REQUIRE(bundle.valid());
-  CHECK((*golden)["modelSha256"].asString() == bundle.modelSha256());
+  CHECK(golden["modelSha256"].asString() == bundle.modelSha256());
   turn::LayaDecider laya({.model = turn::openLayaModel({.bundle = bundle, .options = {}, .decode = bundle.decode()}),
                           .fallback = nullptr,
                           .policy = bundle.policy(),
@@ -237,8 +235,7 @@ TEST_CASE("the Laya scores the bundle produces match its own golden vectors" *
   double worstNow = 0.0;
   std::size_t rows = 0;
   std::size_t decisionMismatches = 0;
-  for (Json::ArrayIndex index = 0; index < probes.size(); ++index) {
-    const Json::Value& probe = probes[index];
+  for (const Json::Value& probe : probes) {
     const std::optional<turn::LayaReading> reading = laya.read(probe["text"].asString(), probe["lang"].asString());
     REQUIRE(reading.has_value());
     const Json::Value& expected = probe["tool"];
@@ -259,8 +256,8 @@ TEST_CASE("the Laya scores the bundle produces match its own golden vectors" *
     worstNow = std::max(worstNow, std::abs(requireValue(reading).now - probe["now"].asDouble()));
     ++rows;
   }
-  MESSAGE("laya parity vs " << (*golden)["reference"].asString()
-                            << " over " << (*golden)["modelSha256"].asString().substr(0, 12) << ": " << rows
+  MESSAGE("laya parity vs " << golden["reference"].asString()
+                            << " over " << golden["modelSha256"].asString().substr(0, 12) << ": " << rows
                             << " rows, worst probability gap " << worstProbability << ", worst now gap " << worstNow << ", "
                             << decisionMismatches << " decisions differing");
   CHECK(rows == static_cast<std::size_t>(probes.size()));

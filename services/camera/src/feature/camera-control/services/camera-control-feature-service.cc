@@ -1,6 +1,9 @@
 #include "camera-control-feature-service.hxx"
 
+#include <camera/camera-errors.hxx>
 #include <drogon/utils/Utilities.h>
+#include <errors/response-exception.hxx>
+#include <feature/camera-control/services/duty-gate.hxx>
 #include <runtime/blocking-task.hxx>
 #include <shared/repositories/camera/camera-repository.hxx>
 #include <shared/services/camera-driver/camera-scene-log.hxx>
@@ -13,12 +16,31 @@
 #include <text/json-util.hxx>
 
 #include <algorithm>
+#include <tuple>
+#include <string_view>
+#include <drogon/HttpAppFramework.h>
 #include <chrono>
 #include <utility>
 
 namespace
 {
 constexpr int64_t kFreshSnapshotMs = 10000;
+constexpr std::string_view kHomePresetKey = "homePreset";
+
+CameraPtzConfig& ptzConfig()
+{
+  static CameraPtzConfig config;
+  return config;
+}
+
+std::string homePresetOf(const std::string& config)
+{
+  const Json::Value parsed = json_util::fromString(config);
+  if (!parsed.isObject())
+    return {};
+  const Json::Value& home = parsed[std::string(kHomePresetKey)];
+  return home.isString() ? home.asString() : std::string();
+}
 
 int64_t nowMs()
 {
@@ -65,7 +87,7 @@ CameraControlFeatureService::status(int64_t cameraId) const
 {
   auto result = co_await onDevice(
       cameraId, [](ICameraDriver& driver) { return driver.status(); });
-  if (succeeded(result))
+  if (result && result->ok)
   {
     CameraRepository repository;
     const auto camera = co_await repository.findById(cameraId);
@@ -91,20 +113,31 @@ CameraControlFeatureService::presets(int64_t cameraId) const
                               [](ICameraDriver& driver) { return driver.presets(); });
 }
 
-drogon::Task<CameraControlResult>
-CameraControlFeatureService::move(int64_t cameraId, const CameraPtzDto& body) const
+void CameraControlFeatureService::configurePtz(const CameraPtzConfig& config)
 {
+  ptzConfig() = config;
+  PtzLease::instance().configure({.parkMs = config.parkMs, .idleReleaseMs = config.idleReleaseMs});
+}
+
+drogon::Task<CameraControlResult>
+CameraControlFeatureService::move(const CameraMoveInput& input) const
+{
+  const int64_t cameraId = input.cameraId;
+  const CameraPtzDto& body = input.body;
+  co_await admitActor({.userId = input.actorUserId, .role = input.actorRole, .changesPresets = false});
   if (PrivacyStateService::instance().masked(cameraId))
     co_return DriverResult{.ok = false,
                             .error = "This camera is in privacy mode",
                             .data = Json::Value(),
                             .attempted = true,
                             .failure = "privacy_on"};
+  std::ignore = PtzLease::instance().claim(
+      {.cameraId = cameraId, .holder = PtzHolder::Person, .userId = input.actorUserId, .atMs = nowMs()});
   auto result = co_await onDevice(cameraId, [body](ICameraDriver& driver) {
     return driver.move({.x = body.x, .y = body.y, .angle = body.angle, .stop = body.stop});
   });
   if (succeeded(result))
-    CameraSceneLog::instance().noteAimed(cameraId, nowMs());
+    CameraSceneLog::instance().noteAimed({.cameraId = cameraId, .atMs = nowMs()});
   co_return result;
 }
 
@@ -147,7 +180,7 @@ drogon::Task<void> CameraControlFeatureService::recordPrivacyAction(
   oldData["privacyState"] = cameraPrivacyStateToString(before);
   Json::Value newData(Json::objectValue);
   newData["privacyState"] = cameraPrivacyStateToString(after);
-  newData["requested"] = *input.body.privacy;
+  newData["requested"] = input.body.privacy.value_or(false);
   co_await sink->publishAction(
       {.event = {.userId = input.actorUserId,
                  .recordId = input.cameraId,
@@ -160,22 +193,173 @@ drogon::Task<void> CameraControlFeatureService::recordPrivacyAction(
 }
 
 drogon::Task<CameraControlResult>
-CameraControlFeatureService::preset(int64_t cameraId, const CameraPresetDto& body) const
+CameraControlFeatureService::preset(const CameraPresetInput& input) const
 {
+  const int64_t cameraId = input.cameraId;
+  const CameraPresetDto& body = input.body;
+  co_await admitActor({.userId = input.actorUserId,
+                       .role = input.actorRole,
+                       .changesPresets = body.action == "save" || body.action == "delete" ||
+                                         body.action == "set_home"});
+  if (body.action == "set_home")
+    co_return co_await setHome(input);
+  if (body.action == "go_home")
+    co_return co_await returnHome({.cameraId = cameraId, .reason = "person"});
   if (PrivacyStateService::instance().masked(cameraId))
     co_return DriverResult{.ok = false,
                             .error = "This camera is in privacy mode",
                             .data = Json::Value(),
                             .attempted = true,
                             .failure = "privacy_on"};
+  if (body.action == "goto")
+    std::ignore = PtzLease::instance().claim(
+        {.cameraId = cameraId, .holder = PtzHolder::Person, .userId = input.actorUserId, .atMs = nowMs()});
   auto result = co_await onDevice(cameraId, [body](ICameraDriver& driver) {
     return driver.preset({.action = body.action, .id = body.id, .name = body.name});
   });
   if (succeeded(result) && body.action != "save" && body.action != "delete")
-    CameraSceneLog::instance().noteAimed(cameraId, nowMs());
+    CameraSceneLog::instance().noteAimed({.cameraId = cameraId, .atMs = nowMs()});
   if (succeeded(result) && (body.action == "save" || body.action == "delete"))
     co_await announceStatus(cameraId);
   co_return result;
+}
+
+drogon::Task<void> CameraControlFeatureService::admitActor(const ActorCheck& actor)
+{
+  if (actor.role != UserRole::Guard)
+    co_return;
+  if (actor.changesPresets)
+    throw ResponseException(CameraErrors::PresetsNotYours);
+  if (!co_await DutyGate::instance().onDuty(actor.userId))
+    throw ResponseException(CameraErrors::GuardOffDuty);
+}
+
+drogon::Task<CameraControlResult>
+CameraControlFeatureService::setHome(const CameraPresetInput& input) const
+{
+  const auto camera = co_await cameraRepository_.findById(input.cameraId);
+  if (!camera)
+    co_return std::nullopt;
+  Json::Value config = json_util::fromString(camera->config);
+  if (!config.isObject())
+    config = Json::Value(Json::objectValue);
+  config[std::string(kHomePresetKey)] = input.body.id;
+  const Json::Value before = camera->toJson();
+  CameraUpdateInput change;
+  change.config = json_util::toString(config);
+  const auto after = co_await cameraRepository_.update(input.cameraId, change);
+  if (const CameraChangeSink* sink = camera_change::getSink())
+    co_await sink->publishAudit({.recordId = input.cameraId,
+                                 .tableName = TableName::Camera,
+                                 .before = before,
+                                 .after = after.toJson(),
+                                 .actorId = input.actorUserId,
+                                 .client = nullptr});
+  Json::Value data(Json::objectValue);
+  data["homePreset"] = input.body.id;
+  co_return DriverResult{.ok = true, .error = {}, .data = data};
+}
+
+drogon::Task<void> CameraControlFeatureService::recordAutomaticMove(const AutomaticMove& move) const
+{
+  const CameraChangeSink* sink = camera_change::getSink();
+  if (sink == nullptr)
+    co_return;
+  Json::Value newData(Json::objectValue);
+  newData["event"] = "ptz_automatic_move";
+  newData["reason"] = move.reason;
+  newData["target"] = move.target;
+  newData["durationMs"] = static_cast<Json::Int64>(move.durationMs);
+  co_await sink->publishAction({.event = {.userId = 0,
+                                          .recordId = move.cameraId,
+                                          .tableName = TableName::Camera,
+                                          .action = UserAction::Update,
+                                          .oldData = Json::Value(),
+                                          .newData = std::move(newData),
+                                          .ipAddress = ""},
+                                .client = nullptr});
+}
+
+drogon::Task<CameraControlResult>
+CameraControlFeatureService::returnHome(const CameraReturnHomeInput& input) const
+{
+  const int64_t cameraId = input.cameraId;
+  const auto camera = co_await cameraRepository_.findById(cameraId);
+  if (!camera)
+    co_return std::nullopt;
+  const std::string home = homePresetOf(camera->config);
+  if (home.empty())
+    co_return DriverResult{.ok = false,
+                           .error = "This camera has no home position",
+                           .data = Json::Value(),
+                           .attempted = false,
+                           .failure = "no_home"};
+  if (PrivacyStateService::instance().masked(cameraId))
+    co_return DriverResult{.ok = false,
+                           .error = "This camera is in privacy mode",
+                           .data = Json::Value(),
+                           .attempted = true,
+                           .failure = "privacy_on"};
+  const bool byArgus = input.reason != "person";
+  const int64_t started = nowMs();
+  if (byArgus) {
+    const PtzClaimResult claim =
+        PtzLease::instance().claim({.cameraId = cameraId, .holder = PtzHolder::Argus, .userId = 0, .atMs = started});
+    if (claim == PtzClaimResult::Refused)
+      co_return DriverResult{.ok = false,
+                             .error = "Someone is moving this camera",
+                             .data = Json::Value(),
+                             .attempted = false,
+                             .failure = "lease_held"};
+  }
+  const int64_t settle = ptzConfig().settleMs;
+  CameraSceneLog::instance().beginMove(
+      {.cameraId = cameraId, .startMs = started, .expectedEndMs = started + settle, .returnsHome = true});
+  const auto result = co_await onDevice(cameraId, [home, byArgus](ICameraDriver& driver) {
+    std::optional<bool> tracked;
+    if (byArgus) {
+      const DriverResult status = driver.status();
+      if (status.ok && status.data["autoTrackEnabled"].isBool())
+        tracked = status.data["autoTrackEnabled"].asBool();
+      if (tracked.value_or(false))
+        std::ignore = driver.settings({.privacy = std::nullopt,
+                                       .led = std::nullopt,
+                                       .dayNight = std::nullopt,
+                                       .motion = std::nullopt,
+                                       .motionSensitivity = std::nullopt,
+                                       .autoTrack = false,
+                                       .alarm = std::nullopt,
+                                       .alarmVolume = std::nullopt,
+                                       .sounding = std::nullopt});
+    }
+    DriverResult moved = driver.preset({.action = "goto", .id = home, .name = {}});
+    if (tracked.value_or(false))
+      std::ignore = driver.settings({.privacy = std::nullopt,
+                                     .led = std::nullopt,
+                                     .dayNight = std::nullopt,
+                                     .motion = std::nullopt,
+                                     .motionSensitivity = std::nullopt,
+                                     .autoTrack = true,
+                                     .alarm = std::nullopt,
+                                     .alarmVolume = std::nullopt,
+                                     .sounding = std::nullopt});
+    return moved;
+  });
+  drogon::app().getLoop()->runAfter(static_cast<double>(settle) / 1000.0, [cameraId, byArgus] {
+    const int64_t ended = nowMs();
+    CameraSceneLog::instance().endMove({.cameraId = cameraId, .atMs = ended});
+    if (byArgus)
+      PtzLease::instance().release({.cameraId = cameraId, .holder = PtzHolder::Argus, .userId = 0, .atMs = ended});
+  });
+  if (byArgus && succeeded(result))
+    co_await recordAutomaticMove(
+        {.cameraId = cameraId, .reason = input.reason, .target = "home", .durationMs = nowMs() - started});
+  co_return result;
+}
+
+drogon::Task<CameraControlResult> CameraControlFeatureService::calibrate(int64_t cameraId) const
+{
+  co_return co_await onDevice(cameraId, [](ICameraDriver& driver) { return driver.calibrate(); });
 }
 
 namespace
@@ -209,7 +393,7 @@ CameraControlFeatureService::settings(const CameraSettingsInput& input) const
       const auto probe = co_await onDevice(
           cameraId, [](ICameraDriver& driver) { return driver.status(); });
       const bool claims =
-          succeeded(probe) && probe->data["privacyEnabled"].isBool();
+          probe && probe->ok && probe->data["privacyEnabled"].isBool();
       if (!claims)
         co_return DriverResult{.ok = false,
                                 .error = "This camera model does not support "
@@ -236,7 +420,7 @@ CameraControlFeatureService::settings(const CameraSettingsInput& input) const
   {
     const auto readBack = co_await onDevice(
         cameraId, [](ICameraDriver& driver) { return driver.status(); });
-    if (succeeded(readBack))
+    if (readBack && readBack->ok)
     {
       CameraRepository repository;
       const auto camera = co_await repository.findById(cameraId);
@@ -249,7 +433,7 @@ CameraControlFeatureService::settings(const CameraSettingsInput& input) const
   }
   auto& scenes = CameraSceneLog::instance();
   if ((body.privacy && !*body.privacy) || body.dayNight)
-    scenes.noteAimed(cameraId, nowMs());
+    scenes.noteAimed({.cameraId = cameraId, .atMs = nowMs()});
   if (body.privacy)
     co_await announcePrivacy(cameraId);
   else

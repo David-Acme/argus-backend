@@ -23,6 +23,22 @@ struct CameraHealthConfig
   int64_t rebaselineAfterMs{900000};
 };
 
+struct CameraPtzConfig
+{
+  int64_t parkMs{60000};
+  int64_t idleReleaseMs{60000};
+  int64_t settleMs{4000};
+  int64_t returnAfterLookMs{10000};
+  int64_t returnAfterFollowMs{30000};
+  int64_t calibrateEveryMs{86400000};
+};
+
+struct GuardDutyConfig
+{
+  std::string target;
+  std::string credential;
+};
+
 struct CameraOnvifConfig
 {
   bool events{true};
@@ -44,7 +60,9 @@ public:
   static ListenerConfig resolveListener();
   static CameraHealthConfig resolveHealth();
   static CameraOnvifConfig resolveOnvif();
+  static CameraPtzConfig resolvePtz();
   static PrivacyNoticeConfig resolvePrivacyNotice();
+  static GuardDutyConfig resolveGuardDuty();
   static std::string resolveGuardCallerSecret();
   static std::string resolveSyncCallerSecret();
   static std::string resolveLlmCallerSecret();

@@ -102,3 +102,37 @@ grpc::ServerUnaryReactor* PresenceRpcService::ListPresence(
       });
   return reactor;
 }
+
+grpc::ServerUnaryReactor* PresenceRpcService::GetDuty(
+    grpc::CallbackServerContext* context,
+    const v1::DutyRequest* request, v1::DutyResponse* response)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!argus::client::authorizeCaller(context, input_.credentials)) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Caller credential missing or invalid"));
+    return reactor;
+  }
+  if (!input_.duty) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAVAILABLE, "Duty is not wired"));
+    return reactor;
+  }
+  const int64_t userId = request->user_id();
+  DutyLookup duty = input_.duty;
+  drogon::app().getLoop()->queueInLoop([duty = std::move(duty), reactor, response, userId]() {
+    drogon::async_run([duty, reactor, response, userId]() -> drogon::Task<void> {
+      try {
+        const std::vector<int64_t> environments = co_await duty(userId);
+        response->set_on_duty(!environments.empty());
+        for (const int64_t environment : environments)
+          response->add_environment_ids(environment);
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Presence RPC: GetDuty failed: " << error.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, "Duty failed"));
+      }
+    });
+  });
+  return reactor;
+}

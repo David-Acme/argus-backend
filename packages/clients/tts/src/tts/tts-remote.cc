@@ -201,7 +201,7 @@ void forEachHttpChunk(const ForEachHttpChunkInput& input)
                  : sizeLine.substr(0, semicolon));
     if (sizeHex.empty())
       throw std::runtime_error("argus-tts malformed chunk size");
-    const size_t size =
+    const auto size =
         static_cast<size_t>(std::stoul(sizeHex, nullptr, 16));
     if (size == 0)
       return;
@@ -333,7 +333,7 @@ void TtsHttpClient::stream(
                  : sizeLine.substr(0, semicolon));
     if (sizeHex.empty())
       throw std::runtime_error("argus-tts malformed chunk size");
-    const size_t size =
+    const auto size =
         static_cast<size_t>(std::stoul(sizeHex, nullptr, 16));
     if (size == 0)
       return;
