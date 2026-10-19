@@ -119,6 +119,18 @@ builder_memory_bytes() {
   docker inspect --format '{{.HostConfig.Memory}}' "buildx_buildkit_${BUILDER}0" 2>/dev/null
 }
 
+model_context() {
+  local resolved
+  resolved="$(readlink -f "$ROOT/models/$1" 2>/dev/null || true)"
+  if [ -n "$resolved" ] && [ -d "$resolved" ]; then
+    printf '%s\n' "$resolved"
+    return
+  fi
+  mkdir -p "$OUT/no-models/$1"
+  printf 'build-images: models/%s is missing; its model tests will fail\n' "$1" >&2
+  printf '%s\n' "$OUT/no-models/$1"
+}
+
 image_of() {
   docker compose -f "$COMPOSE" --profile tunnel config --format json 2>/dev/null \
     | python3 -c 'import json, sys; print(json.load(sys.stdin)["services"][sys.argv[1]]["image"])' "$1"
@@ -215,10 +227,16 @@ main() {
       continue
     fi
 
+    MODEL_ARGS=()
+    case "$project" in
+      stt) MODEL_ARGS=(--build-context "stt-models=$(model_context stt)") ;;
+      llm) MODEL_ARGS=(--build-context "memory-models=$(model_context memory)") ;;
+    esac
+
     test_start="$(date +%s)"
     set +e
     docker buildx build --builder "$BUILDER" --file "$dockerfile" --target test \
-      --output type=cacheonly "${EXTRA_ARGS[@]}" "$ROOT" > "$log" 2>&1
+      --output type=cacheonly "${EXTRA_ARGS[@]}" "${MODEL_ARGS[@]}" "$ROOT" > "$log" 2>&1
     test_rc=$?
     set -e
     test_seconds=$(( $(date +%s) - test_start ))

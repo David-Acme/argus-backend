@@ -39,6 +39,7 @@ RUN --mount=type=cache,target=/root/.conan2/p \
     --mount=type=cache,target=/root/.conan2/b \
     --mount=type=cache,target=/root/.cache/ccache \
     --mount=type=cache,target=/root/.cache/argus/vendored \
+    --mount=type=bind,from=stt-models,target=/opt/argus/models/stt \
     ./scripts/build-all.sh prod --only stt
 
 FROM debian:trixie-slim AS runtime
