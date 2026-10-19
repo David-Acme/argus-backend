@@ -14,9 +14,12 @@ struct KindModule
   std::string_view module;
 };
 
-inline constexpr std::array<KindModule, 8> kModuleKinds = {{
+inline constexpr std::array<KindModule, 11> kModuleKinds = {{
     {.kind = "guard_episode", .module = kSurveillance},
     {.kind = "guard_tamper", .module = kSurveillance},
+    {.kind = "guard_tamper_ask", .module = kSurveillance},
+    {.kind = "maintenance_view_check", .module = kSurveillance},
+    {.kind = "camera_maintenance_notice", .module = kSurveillance},
     {.kind = "guard_digest", .module = kSurveillance},
     {.kind = "guard_arrival", .module = kSurveillance},
     {.kind = "camera_fallback", .module = kSurveillance},
