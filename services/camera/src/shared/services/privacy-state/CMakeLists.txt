@@ -4,6 +4,7 @@ argus_module(NAME camera-privacy-state
     INCLUDES
         ../../..
     DEPENDS
+        argus::camera-driver
         argus::camera-privacy-notice
         argus::camera-repositories
         argus::camera-stream
