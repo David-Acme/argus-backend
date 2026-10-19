@@ -26,6 +26,8 @@ FAMILIES = {
     "memory": ("memory.remember", "memory.recall", "memory.remind", "memory.forget"),
     "app": ("app.open", "app.set_guard_mode"),
     "camera": ("app.show_camera",),
+    "sight": ("camera.look", "camera.goto_preset"),
+    "maintenance": ("guard.maintenance_start", "guard.maintenance_end", "guard.maintenance_status"),
 }
 FAMILY_OF = {tool: family for family, tools in FAMILIES.items() for tool in tools}
 MODULE_FAMILIES = ("calendar", "task", "project", "modules", "reminders")

@@ -3,6 +3,11 @@
     "guard": [
       "app.open",
       "app.show_camera",
+      "camera.goto_preset",
+      "camera.look",
+      "guard.maintenance_end",
+      "guard.maintenance_start",
+      "guard.maintenance_status",
       "memory.remind",
       "modules.explain",
       "modules.list",
@@ -25,6 +30,11 @@
       "calendar.cancel_event",
       "calendar.create_event",
       "calendar.list_events",
+      "camera.goto_preset",
+      "camera.look",
+      "guard.maintenance_end",
+      "guard.maintenance_start",
+      "guard.maintenance_status",
       "memory.forget",
       "memory.recall",
       "memory.remember",
@@ -48,6 +58,11 @@
       "calendar.cancel_event",
       "calendar.create_event",
       "calendar.list_events",
+      "camera.goto_preset",
+      "camera.look",
+      "guard.maintenance_end",
+      "guard.maintenance_start",
+      "guard.maintenance_status",
       "memory.forget",
       "memory.recall",
       "memory.remember",
@@ -87,6 +102,26 @@
     "calendar.list_events": {
       "capability": "agenda.read",
       "module": "productivity"
+    },
+    "camera.goto_preset": {
+      "capability": "camera.aim",
+      "module": "surveillance"
+    },
+    "camera.look": {
+      "capability": "camera.aim",
+      "module": "surveillance"
+    },
+    "guard.maintenance_end": {
+      "capability": "guard.maintenance",
+      "module": "surveillance"
+    },
+    "guard.maintenance_start": {
+      "capability": "guard.maintenance",
+      "module": "surveillance"
+    },
+    "guard.maintenance_status": {
+      "capability": "guard.maintenance",
+      "module": "surveillance"
     },
     "memory.forget": {
       "capability": "memory.manage",
