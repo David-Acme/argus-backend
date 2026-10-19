@@ -32,10 +32,12 @@ bool clip_recording::triggerAllowed(CameraRecordMode mode,
     case CameraRecordMode::Continuous:
       return true;
     case CameraRecordMode::Motion:
-      return trigger == CameraClipTrigger::Motion;
+      return trigger == CameraClipTrigger::Motion ||
+             trigger == CameraClipTrigger::Tamper;
     case CameraRecordMode::Events:
       return trigger == CameraClipTrigger::Event ||
-             trigger == CameraClipTrigger::Motion;
+             trigger == CameraClipTrigger::Motion ||
+             trigger == CameraClipTrigger::Tamper;
   }
   return false;
 }

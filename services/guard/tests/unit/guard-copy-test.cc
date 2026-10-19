@@ -109,9 +109,9 @@ TEST_CASE("tamper notices ask to check the camera")
   notice.tamperStatus = "covered";
   notice.dwellS = 360;
   const NoticeText text = guard_copy::render(notice, "es");
-  CHECK(text.title == "Revisa la cámara Puerta");
+  CHECK(text.title == "Perdí la visión de la cámara Puerta");
   CHECK(text.body ==
-        "La imagen está tapada desde hace 6 min. Argus no ve esa zona.");
+        "Está tapada desde hace 6 min. Argus no ve esa zona.");
 }
 
 TEST_CASE("an offline camera says the area is not watched, and critical adds the call to act")
@@ -122,7 +122,7 @@ TEST_CASE("an offline camera says the area is not watched, and critical adds the
   notice.dwellS = 240;
   notice.danger = GuardDanger::High;
   const NoticeText text = guard_copy::render(notice, "es");
-  CHECK(text.title == "Revisa la cámara Puerta");
+  CHECK(text.title == "Perdí la visión de la cámara Puerta");
   CHECK(text.body == "Argus no recibe imagen desde hace 4 min: puede estar desenchufada, "
                      "sin red o apagada. Esa zona no está vigilada.");
   CHECK(guard_copy::urgency(notice) == "active");
@@ -231,7 +231,7 @@ TEST_CASE("with several environments the notice names the place")
   notice.kind = NoticeKind::Tamper;
   notice.tamperStatus = "covered";
   CHECK(guard_copy::render(notice, "es").title ==
-        "Revisa la cámara Puerta (Trattoria)");
+        "Perdí la visión de la cámara Puerta (Trattoria)");
   notice.kind = NoticeKind::Digest;
   notice.routine = {{.cameraId = 1, .cameraName = "Cocina", .count = 4}};
   CHECK(guard_copy::render(notice, "es").title ==

@@ -11,6 +11,8 @@
 #include <feature/guard/controllers/guard-controller.hxx>
 #include <feature/guard/controllers/response-controller.hxx>
 #include <feature/guard/infra/identity-response-directory.hxx>
+#include <feature/guard/controllers/maintenance-controller.hxx>
+#include <feature/guard/services/maintenance-service.hxx>
 #include <feature/guard/infra/resource-change-outbox.hxx>
 #include <feature/guard/services/guard-module-impact.hxx>
 #include <feature/guard/services/guard-module-wind-down.hxx>
@@ -366,6 +368,17 @@ int main()
        .active = [] { return moduleGate().enabled(role_access::kSurveillanceModule); },
        .episodeChanges = &episodeChanges},
       guardConfig);
+  const MaintenanceDependencies maintenanceDependencies{
+      .directory = responseDirectory,
+      .notifications = notifications.get(),
+      .actions = actions.get(),
+      .changes = &resourceChanges,
+      .healthOf = [&guardService](int64_t cameraId) { return guardService.healthStatusOf(cameraId); },
+      .cameraName = [&guardService](int64_t cameraId) { return guardService.nameOf(cameraId); },
+      .config = [&guardService] { return guardService.currentConfig()->maintenance; },
+      .clock = {}};
+  const MaintenanceService maintenance(maintenanceDependencies);
+  guardService.attachMaintenance(&maintenance);
   const auto modules = module_gate::install({.service = "guard", .bus = natsBus});
   const GuardModuleWindDown surveillanceWindDown;
   const auto windDown = [&surveillanceWindDown] {
@@ -488,6 +501,7 @@ int main()
   drogon::app().registerController(std::make_shared<SirenController>(siren));
   drogon::app().registerController(
       std::make_shared<PresenceController>(&presence));
+  drogon::app().registerController(std::make_shared<MaintenanceController>(maintenanceDependencies));
   drogon::app().registerController(std::make_shared<ResponseController>(
       ResponseFeatureDependencies{.directory = responseDirectory,
                                   .clock = {},

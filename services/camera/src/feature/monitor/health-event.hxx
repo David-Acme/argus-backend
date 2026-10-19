@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <string>
 #include <string_view>
+#include <vector>
 
 struct HealthMetrics
 {
@@ -14,6 +15,16 @@ struct HealthMetrics
   double sceneDiff{0.0};
   bool paused{false};
   bool homeDrift{false};
+  double saturated{0.0};
+  double edgeRatio{1.0};
+  double sharpness{1.0};
+  double blocksLost{0.0};
+  double shiftPx{0.0};
+  double entropy{8.0};
+  double chroma{0.0};
+  bool infrared{false};
+  bool sudden{false};
+  bool held{false};
 };
 
 enum class CameraHealthState
@@ -25,6 +36,10 @@ enum class CameraHealthState
   Moved,
   Unreachable,
   Covered,
+  Whiteout,
+  Blinded,
+  PartialCover,
+  DarkSudden,
 };
 
 struct CameraHealthEvent
@@ -34,6 +49,18 @@ struct CameraHealthEvent
   CameraHealthState status{CameraHealthState::Ok};
   HealthMetrics metrics;
   int64_t detectedAtMs{0};
+  std::string link{"wifi"};
+  int64_t onsetAtMs{0};
+};
+
+struct TamperOnset
+{
+  int64_t cameraId{0};
+  std::string cameraName;
+  CameraHealthState status{CameraHealthState::Ok};
+  int64_t atMs{0};
+  std::vector<uint8_t> lastGoodJpeg;
+  int64_t lastGoodAtMs{0};
 };
 
 struct CameraPrivacyEvent
@@ -50,6 +77,7 @@ namespace health_monitor
 CameraHealthState classify(const HealthMetrics& metrics,
                       const HealthThresholds& thresholds);
 std::string_view statusName(CameraHealthState status);
+bool tampering(CameraHealthState status, bool sudden);
 }
 
 class IHealthEventSink

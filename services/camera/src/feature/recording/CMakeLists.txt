@@ -13,6 +13,7 @@ argus_module(NAME camera-recording
         infra/disk-space.cc
         services/clip-builder.cc
         services/clip-recorder.cc
+        services/clip-trigger-migration.cc
         services/clip-service.cc
         services/opaque-token.cc
         services/record-watchdog.cc

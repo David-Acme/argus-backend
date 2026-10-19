@@ -90,6 +90,29 @@ digest_hour = 21
 regroup_window_s = 600
 notify_lang = "es"
 
+[guard.tamper]
+cover_s = 15
+whiteout_s = 15
+blind_s = 10
+blind_home_s = 120
+partial_s = 45
+defocus_s = 60
+reaim_s = 20
+dark_s = 45
+signal_wired_s = 15
+signal_wifi_s = 30
+group_window_s = 30
+lens_notice_s = 600
+seen_window_s = 30
+near_share = 0.12
+ask_answer_s = 60
+sweep_s = 5
+
+[guard.maintenance]
+default_minutes = 15
+max_minutes = 120
+duress_window_s = 900
+
 [guard.schedule]
 enabled = false
 asleep = "23:00-07:00"

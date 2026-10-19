@@ -440,6 +440,44 @@ CREATE TABLE IF NOT EXISTS guard_safety_alert (
 CREATE INDEX IF NOT EXISTS idx_guard_safety_alert_user_kind
     ON guard_safety_alert(user_id, kind, created_at);
 
+CREATE TABLE IF NOT EXISTS guard_maintenance (
+    id             INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    environment_id INTEGER NOT NULL DEFAULT 0,
+    camera_ids     TEXT    NOT NULL DEFAULT '[]',
+    declared_by    INTEGER NOT NULL DEFAULT 0,
+    declared_role  TEXT    NOT NULL DEFAULT '',
+    declared_name  TEXT    NOT NULL DEFAULT '',
+    source         TEXT    NOT NULL DEFAULT 'app'
+                     CHECK (source IN ('app', 'assistant', 'reply', 'alert')),
+    duress         INTEGER NOT NULL DEFAULT 0 CHECK (duress IN (0, 1)),
+    started_at     INTEGER NOT NULL,
+    ends_at        INTEGER NOT NULL,
+    ended_at       INTEGER NOT NULL DEFAULT 0,
+    end_reason     TEXT    NOT NULL DEFAULT ''
+                     CHECK (end_reason IN ('', 'done', 'expired', 'unknown_person', 'replaced')),
+    view_checks    TEXT    NOT NULL DEFAULT '[]',
+    created_at     INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_guard_maintenance_open
+    ON guard_maintenance (ended_at, ends_at);
+
+CREATE TABLE IF NOT EXISTS guard_tamper_ask (
+    id             INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+    camera_id      INTEGER NOT NULL,
+    environment_id INTEGER NOT NULL DEFAULT 0,
+    onset_at       INTEGER NOT NULL,
+    asked_at       INTEGER NOT NULL,
+    asked_users    TEXT    NOT NULL DEFAULT '[]',
+    answer         TEXT    NOT NULL DEFAULT ''
+                     CHECK (answer IN ('', 'me', 'no', 'timeout')),
+    answered_by    INTEGER NOT NULL DEFAULT 0,
+    answered_at    INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_guard_tamper_ask_pending
+    ON guard_tamper_ask (answer, camera_id);
+
 CREATE TABLE IF NOT EXISTS change_outbox (
     event_id    TEXT    NOT NULL  PRIMARY KEY,
     fingerprint TEXT    NOT NULL  DEFAULT '',

@@ -89,6 +89,20 @@ CameraHealthConfig CameraConfig::resolveHealth()
   if (const int seconds = ConfigService::getInt("health.rebaseline_after_s");
       seconds > 0)
     config.rebaselineAfterMs = static_cast<int64_t>(seconds) * 1000;
+  const HealthThresholds defaults;
+  config.thresholds.saturatedShare = threshold("tamper.saturated_share", defaults.saturatedShare);
+  config.thresholds.whiteoutEdgeRatio = threshold("tamper.whiteout_edge_ratio", defaults.whiteoutEdgeRatio);
+  config.thresholds.blindEdgeRatio = threshold("tamper.blind_edge_ratio", defaults.blindEdgeRatio);
+  config.thresholds.coverEntropy = threshold("tamper.cover_entropy", defaults.coverEntropy);
+  config.thresholds.coverEdgeRatio = threshold("tamper.cover_edge_ratio", defaults.coverEdgeRatio);
+  config.thresholds.partialBlockShare = threshold("tamper.partial_block_share", defaults.partialBlockShare);
+  config.thresholds.defocusSharpness = threshold("tamper.defocus_sharpness", defaults.defocusSharpness);
+  config.thresholds.reaimShiftPx = threshold("tamper.reaim_shift_px", defaults.reaimShiftPx);
+  config.thresholds.infraredChroma = threshold("tamper.infrared_chroma", defaults.infraredChroma);
+  if (const int64_t interval = ConfigService::getInt("tamper.protect_interval_ms"); interval > 0)
+    config.protectIntervalMs = interval;
+  if (const int64_t hold = ConfigService::getInt("tamper.day_night_hold_s"); hold > 0)
+    config.dayNightHoldMs = hold * 1000;
   return config;
 }
 

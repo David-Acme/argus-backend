@@ -97,6 +97,14 @@ The shipped bundles `decide/bundle-laya-mvp` and `extract/bundle-gliner-pilot` w
 
 Track T2, camera sight (`docs/history/plans/camera-sight-plan.md`). By the owner's order nothing in this track was compiled, built or tested: the unit tests are written and run with the full build after every track merges. The static gates (`check-comments.sh`, `check-deps.sh`, `check-routes.sh`) were run.
 
+### 7. TP: loss of sight, the maintenance context (A5) and its tests (A6)
+
+- **Camera.** The health monitor measures saturation, entropy, edges and sharpness against the reference, the 4×4 block loss, the view shift and the chroma, and classifies `whiteout`, `blinded`, `partial_cover`, `dark_sudden` beside `covered`, `blurred` and `moved`. The day/night switch holds the checks for 30 s and each light keeps its own reference. In protection the cadence is 5 s. On onset a `tamper` clip is requested and the last good frame is stored as a still clip row, read through the clip capability. `camera_clip.trigger` widens to `tamper` and `look` with a boot rebuild. `CameraActionService.Relearn` is new.
+- **Guard.** A 5 s tamper sweep with the plan's windows per type and mode (`guard.tamper.*`), the several-cameras rule once per group, the slow-blur lens notice, the new copy. Declared maintenance (`guard_maintenance`, six routes, Owner/Resident anywhere, Guard on duty in its environment, Guest and Unknown refused), seen maintenance from the known-face sightings, the home question (`guard_tamper_ask`), duress flagging, the unknown-person end and the view check with relearn.
+- **Contracts.** Wire codes `GUARD_OFF_DUTY`, `PRESETS_NOT_YOURS`, `MAINTENANCE_OUT_OF_SCOPE`, `NOT_A_TAMPER` (the two camera refusals of AL-B1 now carry their own codes instead of `FORBIDDEN`); resource scopes `(camera, aim)` and `(guard, maintenance)`; capabilities `camera.aim` and `guard.maintenance`; the `ptz/lease` camera action row.
+- **Recommended options taken.** Duress is read from a duress alert of the declarer within 15 min (the phrase or the PIN already raise one), not from a PIN in the maintenance body. "Seen" uses the known-face sightings of the object feed; the voiceprint is not consulted. Tamper incidents keep `rule = camera_tamper`; a group incident stores `status: group` and the camera ids. A slow blur sends a passive notice in every mode.
+- **Not measured.** Cover-to-alert time per type and the false-alarm rate over a recorded day (A6) need the sandbox run at the end; the golden HTTP fixtures for the new guard routes are recorded with the live fleet then.
+
 ### 9. YG: the YOLO detector can see the GPU
 
 - **The defect.** `camera-objects` linked both `argus::hardware-profile` (built with `ARGUS_NO_NCNN_GPU`) and `argus::hardware-profile-gpu`; both define `HardwareProbe::get()`, the linker took the first, and the detector always read `vulkan=no`.

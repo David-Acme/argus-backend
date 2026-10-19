@@ -1004,7 +1004,7 @@ TEST_CASE("a blurred camera respects the staging hold")
   CHECK(journalField("blh:1", "did_notify") == "0");
 }
 
-TEST_CASE("a week-long blur pages exactly once")
+TEST_CASE("a week-long cover pages exactly once")
 {
   SharedBoot& boot = sharedBoot();
   (void)boot;
@@ -1015,7 +1015,7 @@ TEST_CASE("a week-long blur pages exactly once")
   const int64_t weekStart = testNowMs() / 1000;
   for (int64_t hour = 0; hour <= 7 * 24; ++hour) {
     const int64_t at = (weekStart + hour * 3600) * 1000;
-    service->ingestHealth({.cameraId = 150, .status = "blurred", .atMs = at});
+    service->ingestHealth({.cameraId = 150, .status = "covered", .atMs = at});
     drogon::sync_wait(service->checkTamperSweep(weekStart + hour * 3600));
   }
   CHECK(harness.notifications.calls == 1);
@@ -1033,7 +1033,7 @@ TEST_CASE("the alert re-arms after recovery and a new degradation")
   auto service = harness.makeService();
   const int64_t start = testNowMs() / 1000;
   for (int64_t step = 0; step <= 300; step += 60) {
-    service->ingestHealth({.cameraId = 151, .status = "blurred", .atMs = (start + step) * 1000});
+    service->ingestHealth({.cameraId = 151, .status = "covered", .atMs = (start + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(start + step));
   }
   CHECK(harness.notifications.calls == 1);
@@ -1047,12 +1047,30 @@ TEST_CASE("the alert re-arms after recovery and a new degradation")
                "'tamper_%_151'") == "0");
 
   for (int64_t step = 960; step <= 1260; step += 60) {
-    service->ingestHealth({.cameraId = 151, .status = "blurred", .atMs = (start + step) * 1000});
+    service->ingestHealth({.cameraId = 151, .status = "covered", .atMs = (start + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(start + step));
   }
   CHECK(harness.notifications.calls == 2);
   CHECK(scalar("SELECT COUNT(*) FROM guard_decision_journal WHERE event_id "
                "LIKE 'tamper:151:%' AND did_notify = 1") == "2");
+}
+
+TEST_CASE("a slow blur is a lens notice, never a tamper alarm")
+{
+  SharedBoot& boot = sharedBoot();
+  (void)boot;
+  ThreadHarness harness;
+  auto service = harness.makeService();
+  const int64_t start = testNowMs() / 1000;
+  for (int64_t step = 0; step <= 720; step += 60) {
+    service->ingestHealth({.cameraId = 155, .status = "blurred", .atMs = (start + step) * 1000, .sudden = false,
+                           .link = "wifi"});
+    drogon::sync_wait(service->checkTamperSweep(start + step));
+  }
+  CHECK(harness.notifications.calls == 1);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_decision_journal WHERE event_id "
+               "LIKE 'tamper:155:%'") == "0");
+  CHECK(scalar("SELECT COUNT(*) FROM guard_incident WHERE camera_id = 155") == "0");
 }
 
 TEST_CASE("a restart mid-window still fires once the window completes")
@@ -1514,7 +1532,7 @@ TEST_CASE("the history purge removes only settled rows past the window")
                "AND state = 'closed'") == "0");
 }
 
-TEST_CASE("a camera offline past the offline window is one critical tamper notice while away")
+TEST_CASE("a camera offline past the signal window is one critical tamper notice while away")
 {
   SharedBoot& boot = sharedBoot();
   (void)boot;
@@ -1523,7 +1541,7 @@ TEST_CASE("a camera offline past the offline window is one critical tamper notic
   auto service = harness.makeService();
 
   const int64_t base = testNowMs() / 1000;
-  for (int64_t step = 0; step < 240; step += 60) {
+  for (int64_t step = 0; step < 30; step += 60) {
     service->ingestHealth({.cameraId = 171, .status = "unreachable", .atMs = (base + step) * 1000});
     drogon::sync_wait(service->checkTamperSweep(base + step));
   }

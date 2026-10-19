@@ -94,6 +94,8 @@ settings/values -> owner
 identity/voiceprints -> owner
 guard/presence -> owner
 activity/entries -> owner
+camera/aim -> owner,resident,guard,guest
+guard/maintenance -> owner,resident,guard
 )");
 }
 
@@ -122,6 +124,8 @@ settings/values -> owner
 identity/voiceprints -> owner
 guard/presence ->
 activity/entries -> owner
+camera/aim ->
+guard/maintenance ->
 )");
 }
 

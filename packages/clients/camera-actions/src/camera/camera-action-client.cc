@@ -211,3 +211,17 @@ CameraActionClient::listen(const CameraListenInput& input) const
   const grpc::Status status = stub_->Listen(&context, request, &response);
   return fromListen(status, response);
 }
+
+bool CameraActionClient::relearn(int64_t cameraId) const
+{
+  if (cameraId <= 0)
+    return false;
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+  argus::camera::v1::RelearnRequest request;
+  request.set_camera_id(cameraId);
+  argus::camera::v1::RelearnResponse response;
+  const grpc::Status status = stub_->Relearn(&context, request, &response);
+  return status.ok() && response.accepted();
+}

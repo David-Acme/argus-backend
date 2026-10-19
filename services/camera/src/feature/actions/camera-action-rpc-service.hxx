@@ -52,6 +52,11 @@ public:
          const argus::camera::v1::ListenRequest* request,
          argus::camera::v1::ListenResponse* response) override;
 
+  grpc::ServerUnaryReactor*
+  Relearn(grpc::CallbackServerContext* context,
+          const argus::camera::v1::RelearnRequest* request,
+          argus::camera::v1::RelearnResponse* response) override;
+
   bool migrateActionSchema();
 
   void startLeaseSweeper();

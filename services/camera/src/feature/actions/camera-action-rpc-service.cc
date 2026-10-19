@@ -14,6 +14,8 @@
 #include <feature/camera-control/services/camera-control-feature-service.hxx>
 #include <optional>
 #include <shared/services/camera-driver/camera-driver.hxx>
+#include <shared/services/camera-driver/camera-scene-log.hxx>
+#include <chrono>
 #include <config/config-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
 #include <shared/services/stream/snapshot-store.hxx>
@@ -1094,4 +1096,31 @@ drogon::Task<void> CameraActionRpcService::sweepLeases()
   catch (...) {
     LOG_WARN << "Camera action: lease sweep failed with unknown error";
   }
+}
+
+grpc::ServerUnaryReactor*
+CameraActionRpcService::Relearn(grpc::CallbackServerContext* context,
+                                const argus::camera::v1::RelearnRequest* request,
+                                argus::camera::v1::RelearnResponse* response)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!authorized(context)) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "caller capability credential invalid"));
+    return reactor;
+  }
+  if (request->camera_id() <= 0) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::INVALID_ARGUMENT,
+                                 "camera_id is required"));
+    return reactor;
+  }
+  const int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::system_clock::now().time_since_epoch())
+                          .count();
+  CameraSceneLog::instance().noteAimed({.cameraId = request->camera_id(), .atMs = now});
+  LOG_INFO << "Camera action: camera " << request->camera_id()
+           << " takes its current view as the reference, as its owner confirmed";
+  response->set_accepted(true);
+  reactor->Finish(grpc::Status::OK);
+  return reactor;
 }

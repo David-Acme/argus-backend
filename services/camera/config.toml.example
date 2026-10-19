@@ -161,7 +161,7 @@ dark_threshold = 25.0
 bright_threshold = 235.0
 blur_threshold = 18.0
 scene_diff = 0.35
-rebaseline_after_s = 900
+rebaseline_after_s = 600
 
 [ptz]
 park_seconds = 60
@@ -170,6 +170,19 @@ settle_ms = 4000
 return_after_look_seconds = 10
 return_after_follow_seconds = 30
 calibrate_every_seconds = 86400
+
+[tamper]
+saturated_share = 0.6
+whiteout_edge_ratio = 0.15
+blind_edge_ratio = 0.5
+cover_entropy = 3.0
+cover_edge_ratio = 0.2
+partial_block_share = 0.28
+defocus_sharpness = 0.4
+reaim_shift_px = 5.0
+infrared_chroma = 4.0
+protect_interval_ms = 5000
+day_night_hold_s = 30
 
 [stt]
 remote_url = "127.0.0.1:7030"

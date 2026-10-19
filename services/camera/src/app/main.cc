@@ -48,6 +48,7 @@
 #include <feature/operator/services/evidence/evidence-uploader.hxx>
 #include <feature/recording/controllers/clip-controller.hxx>
 #include <feature/recording/services/clip-recorder.hxx>
+#include <feature/recording/services/clip-trigger-migration.hxx>
 #include <feature/objects/ncnn-object-detector.hxx>
 #include <feature/onvif-events/onvif-motion-events.hxx>
 #include <feature/operator/camera-operator-service.hxx>
@@ -173,6 +174,19 @@ drogon::Task<void> startAfterSources(CameraOperatorService* operatorService,
     operatorService->start();
   if (healthMonitor)
     healthMonitor->start();
+}
+
+void tamperEvidence(TamperOnset onset)
+{
+  static_cast<void>(ClipRecorder::instance().requestClip(
+      {.cameraId = onset.cameraId, .trigger = CameraClipTrigger::Tamper, .atEpochMs = onset.atMs}));
+  if (onset.lastGoodJpeg.empty())
+    return;
+  ClipRecorder::instance().storeStill(
+      {.cameraId = onset.cameraId,
+       .trigger = CameraClipTrigger::Tamper,
+       .jpeg = std::string(onset.lastGoodJpeg.begin(), onset.lastGoodJpeg.end()),
+       .atEpochMs = onset.lastGoodAtMs > 0 ? onset.lastGoodAtMs : onset.atMs});
 }
 
 std::function<void(int64_t)> homeDriftHandler(const CameraPtzConfig& config)
@@ -545,7 +559,12 @@ int main()
                                            .sink = healthSink.get(),
                                            .presence = &presenceRecorder,
                                            .active = surveillanceActive,
-                                           .homeDrift = homeDriftHandler(CameraConfig::resolvePtz())},
+                                           .homeDrift = homeDriftHandler(CameraConfig::resolvePtz()),
+                                           .protects =
+                                               [household = &householdPosture] {
+                                                 return household->protects.load(std::memory_order_acquire);
+                                               },
+                                           .tamperOnset = tamperEvidence},
         healthConfig);
   }
 
@@ -574,6 +593,11 @@ int main()
 
     if (!record_mode_migration::applyToFile(cameraDb.dbPath)) {
       LOG_FATAL << "Camera record mode migration failed — aborting startup";
+      _exit(1);
+    }
+
+    if (!clip_trigger_migration::applyToFile(cameraDb.dbPath)) {
+      LOG_FATAL << "Camera clip trigger migration failed — aborting startup";
       _exit(1);
     }
 

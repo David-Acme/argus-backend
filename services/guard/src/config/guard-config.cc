@@ -290,6 +290,31 @@ GuardServiceConfig GuardConfig::resolveService()
       configOr({.key = "guard.notify_lang", .fallback = config.announceLang});
   config.tamperSustainedS = configInt64Or("guard.tamper_sustained_s", 300);
   config.offlineSustainedS = configInt64Or("guard.offline_sustained_s", 240);
+  const TamperWindows tamper;
+  config.tamper.coverS = configInt64Or("guard.tamper.cover_s", tamper.coverS);
+  config.tamper.whiteoutS = configInt64Or("guard.tamper.whiteout_s", tamper.whiteoutS);
+  config.tamper.blindS = configInt64Or("guard.tamper.blind_s", tamper.blindS);
+  config.tamper.blindHomeS = configInt64Or("guard.tamper.blind_home_s", tamper.blindHomeS);
+  config.tamper.partialS = configInt64Or("guard.tamper.partial_s", tamper.partialS);
+  config.tamper.defocusS = configInt64Or("guard.tamper.defocus_s", tamper.defocusS);
+  config.tamper.reaimS = configInt64Or("guard.tamper.reaim_s", tamper.reaimS);
+  config.tamper.darkS = configInt64Or("guard.tamper.dark_s", tamper.darkS);
+  config.tamper.signalWiredS = configInt64Or("guard.tamper.signal_wired_s", tamper.signalWiredS);
+  config.tamper.signalWifiS = configInt64Or("guard.tamper.signal_wifi_s", tamper.signalWifiS);
+  config.tamper.groupWindowS = configInt64Or("guard.tamper.group_window_s", tamper.groupWindowS);
+  config.tamper.lensNoticeS = configInt64Or("guard.tamper.lens_notice_s", tamper.lensNoticeS);
+  config.tamper.seenWindowS = configInt64Or("guard.tamper.seen_window_s", tamper.seenWindowS);
+  config.tamper.nearShare = configDoubleOr("guard.tamper.near_share", tamper.nearShare);
+  config.tamper.askAnswerS = configInt64Or("guard.tamper.ask_answer_s", tamper.askAnswerS);
+  config.tamper.sweepS = configInt64Or("guard.tamper.sweep_s", tamper.sweepS);
+  const MaintenanceConfig maintenance;
+  config.maintenance.defaultMinutes =
+      configInt64Or("guard.maintenance.default_minutes", maintenance.defaultMinutes);
+  config.maintenance.maxMinutes = configInt64Or("guard.maintenance.max_minutes", maintenance.maxMinutes);
+  config.maintenance.duressWindowS =
+      configInt64Or("guard.maintenance.duress_window_s", maintenance.duressWindowS);
+  config.maintenance.defaultMinutes =
+      std::clamp<int64_t>(config.maintenance.defaultMinutes, 1, config.maintenance.maxMinutes);
   return config;
 }
 

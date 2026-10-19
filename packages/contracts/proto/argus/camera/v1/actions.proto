@@ -86,6 +86,16 @@ message ListenResponse
   CommandOutcome outcome = 6;
 }
 
+message RelearnRequest
+{
+  int64 camera_id = 1;
+}
+
+message RelearnResponse
+{
+  bool accepted = 1;
+}
+
 service CameraActionService
 {
   rpc Announce(AnnounceRequest) returns (ActionAck) {}
@@ -93,4 +103,5 @@ service CameraActionService
   rpc SetSiren(SirenRequest) returns (ActionAck) {}
   rpc GetPersonCrop(PersonCropRequest) returns (PersonCropResponse) {}
   rpc Listen(ListenRequest) returns (ListenResponse) {}
+  rpc Relearn(RelearnRequest) returns (RelearnResponse) {}
 }

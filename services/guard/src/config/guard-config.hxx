@@ -68,6 +68,33 @@ struct GuardScheduleConfig
   std::string closedMode{"away"};
 };
 
+struct TamperWindows
+{
+  int64_t coverS{15};
+  int64_t whiteoutS{15};
+  int64_t blindS{10};
+  int64_t blindHomeS{120};
+  int64_t partialS{45};
+  int64_t defocusS{60};
+  int64_t reaimS{20};
+  int64_t darkS{45};
+  int64_t signalWiredS{15};
+  int64_t signalWifiS{30};
+  int64_t groupWindowS{30};
+  int64_t lensNoticeS{600};
+  int64_t seenWindowS{30};
+  double nearShare{0.12};
+  int64_t askAnswerS{60};
+  int64_t sweepS{5};
+};
+
+struct MaintenanceConfig
+{
+  int64_t defaultMinutes{15};
+  int64_t maxMinutes{120};
+  int64_t duressWindowS{900};
+};
+
 struct GuardServiceConfig
 {
   bool enabled{false};
@@ -136,6 +163,8 @@ struct GuardServiceConfig
   int64_t tamperSustainedS{300};
   int64_t offlineSustainedS{240};
   int64_t healthStaleS{300};
+  TamperWindows tamper{};
+  MaintenanceConfig maintenance{};
   std::function<bool(const std::string&)> failPoint;
 };
 

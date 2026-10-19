@@ -35,7 +35,7 @@ inline constexpr std::string_view SUMMARY =
     "(SELECT COUNT(*) * ?1 FROM guard_camera_context) + "
     "(SELECT COALESCE(SUM(?1 + length(name)), 0) FROM guard_environment WHERE is_default = 0) AS bytes";
 
-inline constexpr std::array<std::string_view, 22> PURGE{
+inline constexpr std::array<std::string_view, 24> PURGE{
     "UPDATE guard_evidence SET expires_at = 1 WHERE deleted_at = 0",
     "DELETE FROM guard_evidence WHERE deleted_at > 0",
     "DELETE FROM guard_incident",
@@ -52,6 +52,8 @@ inline constexpr std::array<std::string_view, 22> PURGE{
     "DELETE FROM guard_decision_journal",
     "DELETE FROM guard_expected_guest",
     "DELETE FROM guard_camera_context",
+    "DELETE FROM guard_maintenance",
+    "DELETE FROM guard_tamper_ask",
     R"(DELETE FROM guard_state WHERE key LIKE 'tamper\_onset\_%' ESCAPE '\')",
     "DELETE FROM guard_presence WHERE environment_id NOT IN "
     "(SELECT id FROM guard_environment WHERE is_default = 1)",

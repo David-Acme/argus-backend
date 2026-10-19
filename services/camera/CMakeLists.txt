@@ -204,6 +204,7 @@ set(CAMERA_UNIT_TESTS
     camera-motion-board-test
     onvif-motion-events-test
     camera-health-test
+    camera-tamper-test
     event-intelligence-test
     camera-source-registrar-test
     camera-stream-test
@@ -282,6 +283,9 @@ target_link_libraries(onvif-motion-events-test PRIVATE
     argus::camera-onvif)
 
 target_link_libraries(camera-health-test PRIVATE
+    argus::camera-monitor)
+
+target_link_libraries(camera-tamper-test PRIVATE
     argus::camera-monitor)
 
 target_link_libraries(camera-privacy-test PRIVATE

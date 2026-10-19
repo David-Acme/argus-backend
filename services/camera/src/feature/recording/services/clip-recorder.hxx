@@ -28,6 +28,14 @@ struct ClipRequestInput
   int64_t atEpochMs{0};
 };
 
+struct ClipStillInput
+{
+  int64_t cameraId{0};
+  CameraClipTrigger trigger{CameraClipTrigger::Tamper};
+  std::string jpeg;
+  int64_t atEpochMs{0};
+};
+
 struct ClipSweepReport
 {
   int64_t removed{0};
@@ -61,6 +69,8 @@ public:
   [[nodiscard]] bool drained() const;
 
   bool requestClip(const ClipRequestInput& input);
+  drogon::Task<int64_t> keepStill(ClipStillInput input);
+  void storeStill(ClipStillInput input);
   void notifyMotion(const CameraMotionReport& report);
   [[nodiscard]] ClipRecorderStatus status() const;
   [[nodiscard]] RecordingState state() const;
@@ -102,6 +112,8 @@ private:
     std::string body;
     int64_t startedAtMs{0};
     int64_t durationMs{0};
+    std::string contentType{"video/mp4"};
+    std::string objectKey{};
   };
 
   static int64_t steadyNowMs();
@@ -113,7 +125,7 @@ private:
   void appendChunk(const std::shared_ptr<CameraSlot>& slot, const uint8_t* payload,
                    size_t len, bool keyframe, int64_t atMs);
   void scheduleUpload(ClipUpload upload);
-  drogon::Task<void> uploadClip(ClipUpload upload);
+  drogon::Task<int64_t> uploadClip(ClipUpload upload);
   drogon::Task<int64_t> retentionSecondsFor(int64_t cameraId);
   void attach(const std::shared_ptr<CameraSlot>& slot, std::string& error);
   void detach(const std::shared_ptr<CameraSlot>& slot);
@@ -136,6 +148,7 @@ private:
   std::unordered_map<uint16_t, std::shared_ptr<CameraSlot>> bySub_;
   std::atomic<int64_t> uploaded_{0};
   std::atomic<int64_t> failed_{0};
+  std::atomic<int64_t> stillSequence_{0};
   std::optional<uint64_t> rescanTimer_;
   std::optional<uint64_t> sweepTimer_;
   std::optional<uint64_t> sweepStartTimer_;

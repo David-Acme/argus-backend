@@ -137,7 +137,9 @@ void ClipRecorder::appendChunk(const std::shared_ptr<CameraSlot>& slot,
                   .codec = std::move(ready->codec),
                   .body = std::move(ready->body),
                   .startedAtMs = ready->startedAtMs,
-                  .durationMs = ready->durationMs});
+                  .durationMs = ready->durationMs,
+                  .contentType = "video/mp4",
+                  .objectKey = {}});
 }
 
 bool ClipRecorder::sendBinary(const uint8_t* data, size_t len)
@@ -397,7 +399,7 @@ void ClipRecorder::scheduleUpload(ClipUpload upload)
           return;
         drogon::async_run([this, upload = std::move(upload)]() mutable
                               -> drogon::Task<void> {
-          co_await uploadClip(std::move(upload));
+          static_cast<void>(co_await uploadClip(std::move(upload)));
         });
       });
 }
@@ -421,7 +423,38 @@ drogon::Task<int64_t> ClipRecorder::retentionSecondsFor(int64_t cameraId)
       kDaySeconds;
 }
 
-drogon::Task<void> ClipRecorder::uploadClip(ClipUpload upload)
+drogon::Task<int64_t> ClipRecorder::keepStill(ClipStillInput input)
+{
+  if (stopping_.load(std::memory_order_acquire) || paused_.load(std::memory_order_acquire) ||
+      input.cameraId <= 0 || input.jpeg.empty())
+    co_return 0;
+  const int64_t atMs = input.atEpochMs > 0 ? input.atEpochMs : epochNowMs();
+  const int64_t sequence = ++stillSequence_;
+  const std::string key = "cameras/" + std::to_string(input.cameraId) + "/stills/" +
+                          cameraClipTriggerToString(input.trigger) + "/" + std::to_string(atMs) +
+                          "-" + std::to_string(sequence) + ".jpg";
+  co_return co_await uploadClip({.cameraId = input.cameraId,
+                                 .trigger = input.trigger,
+                                 .codec = {},
+                                 .body = std::move(input.jpeg),
+                                 .startedAtMs = atMs,
+                                 .durationMs = 0,
+                                 .contentType = "image/jpeg",
+                                 .objectKey = key});
+}
+
+void ClipRecorder::storeStill(ClipStillInput input)
+{
+  if (stopping_.load(std::memory_order_acquire) || !drogon::app().isRunning())
+    return;
+  drogon::app().getLoop()->queueInLoop([this, input = std::move(input)]() mutable {
+    drogon::async_run([this, input = std::move(input)]() mutable -> drogon::Task<void> {
+      static_cast<void>(co_await keepStill(std::move(input)));
+    });
+  });
+}
+
+drogon::Task<int64_t> ClipRecorder::uploadClip(ClipUpload upload)
 {
   const in_flight::Guard guard(inFlight_);
   try {
@@ -430,34 +463,37 @@ drogon::Task<void> ClipRecorder::uploadClip(ClipUpload upload)
       LOG_WARN << "Camera recording: object storage is not configured; the clip "
                   "of camera "
                << upload.cameraId << " is dropped";
-      co_return;
+      co_return 0;
     }
     const int64_t keepSeconds = co_await retentionSecondsFor(upload.cameraId);
     if (keepSeconds <= 0) {
       LOG_INFO << "Camera recording: camera " << upload.cameraId
                << " keeps no clips; the recording is dropped";
-      co_return;
+      co_return 0;
     }
     const int64_t startedAtSec = upload.startedAtMs / 1000;
-    const std::string key = "cameras/" + std::to_string(upload.cameraId) +
-                            "/clips/" + std::to_string(startedAtSec) + "-" +
-                            std::to_string(upload.durationMs) + ".mp4";
+    const std::string key = !upload.objectKey.empty()
+                                ? upload.objectKey
+                                : "cameras/" + std::to_string(upload.cameraId) + "/clips/" +
+                                      std::to_string(startedAtSec) + "-" +
+                                      std::to_string(upload.durationMs) + ".mp4";
     co_await storage_.put({.objectKey = key,
                            .body = upload.body,
-                           .contentType = "video/mp4"});
+                           .contentType = upload.contentType});
     const int64_t now = std::time(nullptr);
     const auto row = co_await clipRepository_.create(
         {.cameraId = upload.cameraId,
          .trigger = upload.trigger,
          .objectKey = key,
-         .contentType = "video/mp4",
+         .contentType = upload.contentType,
          .codec = upload.codec,
          .startedAt = startedAtSec,
          .durationMs = upload.durationMs,
          .byteSize = static_cast<int64_t>(upload.body.size()),
-         .expiresAt = now + keepSeconds});
+         .expiresAt = now + keepSeconds,
+         .client = nullptr});
     if (row.id <= 0)
-      co_return;
+      co_return 0;
     ++uploaded_;
     LOG_INFO << "Camera recording: camera " << upload.cameraId << " clip "
              << row.id << " holds " << upload.body.size() << " B for "
@@ -467,6 +503,7 @@ drogon::Task<void> ClipRecorder::uploadClip(ClipUpload upload)
           {.scope = ResourceScope::Clips, .ids = {upload.cameraId}, .user = 0,
            .client = nullptr});
     }
+    co_return row.id;
   }
   catch (const std::exception& error) {
     ++failed_;
@@ -478,7 +515,7 @@ drogon::Task<void> ClipRecorder::uploadClip(ClipUpload upload)
     LOG_WARN << "Camera recording: the clip of camera " << upload.cameraId
              << " could not be stored";
   }
-  co_return;
+  co_return 0;
 }
 
 RecordingState ClipRecorder::state() const

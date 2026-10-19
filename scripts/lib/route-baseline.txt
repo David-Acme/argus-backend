@@ -61,6 +61,11 @@ guard	DELETE	/guard/expected-guests	DeviceFilter,ValidJsonFilter,JwtFilter,RoleF
 guard	GET	/guard/expected-guests	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
 guard	POST	/guard/expected-guests	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
 guard	GET	/guard/incidents	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
+guard	POST	/guard/incidents/{1}/mine	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/maintenance-controller.hxx
+guard	GET	/guard/maintenance	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/maintenance-controller.hxx
+guard	POST	/guard/maintenance	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/maintenance-controller.hxx
+guard	DELETE	/guard/maintenance/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/maintenance-controller.hxx
+guard	POST	/guard/maintenance/{1}/view	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/maintenance-controller.hxx
 guard	POST	/guard/mode	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
 guard	POST	/guard/panic	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/safety/controllers/safety-controller.hxx
 guard	POST	/guard/person/{1}/promote	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/guard-controller.hxx
@@ -70,6 +75,7 @@ guard	PATCH	/guard/safety	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	se
 guard	DELETE	/guard/safety/pin	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/safety/controllers/safety-controller.hxx
 guard	PUT	/guard/safety/pin	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/safety/controllers/safety-controller.hxx
 guard	POST	/guard/siren	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/safety/controllers/siren-controller.hxx
+guard	POST	/guard/tamper/asks/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/guard/src/feature/guard/controllers/maintenance-controller.hxx
 guard	GET	/health	-	-	services/guard/src/app/main.cc
 identity	GET	/invitation	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/invitation/controllers/invitation-controller.hxx
 identity	POST	/invitation	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/invitation/controllers/invitation-controller.hxx

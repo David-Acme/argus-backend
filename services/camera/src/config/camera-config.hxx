@@ -20,7 +20,9 @@ struct CameraHealthConfig
   bool enabled{true};
   int64_t intervalMs{60000};
   HealthThresholds thresholds;
-  int64_t rebaselineAfterMs{900000};
+  int64_t rebaselineAfterMs{600000};
+  int64_t protectIntervalMs{5000};
+  int64_t dayNightHoldMs{30000};
 };
 
 struct CameraPtzConfig

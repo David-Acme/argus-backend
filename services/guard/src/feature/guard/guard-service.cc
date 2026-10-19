@@ -21,6 +21,10 @@
 #include <exception>
 #include <identity/identity-client.hxx>
 #include <notification/notification-client.hxx>
+#include <feature/guard/guard-tamper-policy.hxx>
+#include <feature/guard/repositories/maintenance/maintenance-repository.hxx>
+#include <feature/guard/services/maintenance-service.hxx>
+#include <feature/guard/services/targeted-notice.hxx>
 #include <storage/s3-storage-service.hxx>
 #include <sync/stream-retention.hxx>
 #include <text/json-util.hxx>
@@ -140,12 +144,6 @@ int64_t nowMillis()
   return std::chrono::duration_cast<std::chrono::milliseconds>(
              std::chrono::system_clock::now().time_since_epoch())
       .count();
-}
-
-bool tamperIndicating(const std::string& status)
-{
-  return status == "moved" || status == "covered" || status == "blurred" ||
-         status == "unreachable";
 }
 
 bool alertZone(const GuardEventSignals& signals)
@@ -306,6 +304,34 @@ Json::Value noticeData(const NoticeDataInput& input)
       data["threadKey"] =
           "guard:privacy:" + std::to_string(input.environmentId);
       break;
+    case NoticeKind::LensNotice:
+      data["threadKey"] = "guard:lens:" + std::to_string(notice.cameraId);
+      break;
+    case NoticeKind::TamperAsk:
+      data["threadKey"] = "guard:tamper:" + std::to_string(notice.cameraId);
+      break;
+    case NoticeKind::ViewCheck:
+    case NoticeKind::MaintenanceDuress:
+      data["threadKey"] = "guard:maintenance:" + std::to_string(notice.maintenanceId);
+      break;
+  }
+  if (notice.kind == NoticeKind::Tamper || notice.kind == NoticeKind::TamperAsk ||
+      notice.kind == NoticeKind::LensNotice || notice.kind == NoticeKind::ViewCheck) {
+    data["tamperStatus"] = notice.tamperStatus;
+    data["group"] = notice.lost.size() >= 2;
+    Json::Value cameraIds(Json::arrayValue);
+    for (const auto& line : notice.lost)
+      cameraIds.append(static_cast<Json::Int64>(line.cameraId));
+    if (notice.lost.empty() && notice.cameraId > 0)
+      cameraIds.append(static_cast<Json::Int64>(notice.cameraId));
+    data["cameraCount"] = static_cast<Json::Int64>(cameraIds.size());
+    data["cameraIds"] = std::move(cameraIds);
+    data["onsetAt"] = static_cast<Json::Int64>(notice.onsetAt);
+    data["seenPersonName"] = notice.seenName;
+    data["maintenance"] = notice.probableMaintenance ? "probable" : "";
+    data["canClaim"] = notice.canClaim;
+    data["askId"] = static_cast<Json::Int64>(notice.askId);
+    data["maintenanceId"] = static_cast<Json::Int64>(notice.maintenanceId);
   }
   if (notice.kind == NoticeKind::PrivacyCoverage) {
     Json::Value masked(Json::arrayValue);
@@ -534,6 +560,8 @@ void GuardService::refresh(const Config& fresh)
     next->tamperSustainedS = fresh.tamperSustainedS;
     next->offlineSustainedS = fresh.offlineSustainedS;
     next->healthStaleS = fresh.healthStaleS;
+    next->tamper = fresh.tamper;
+    next->maintenance = fresh.maintenance;
     config_ = std::move(next);
   }
   std::scoped_lock lock(beliefMutex_);
@@ -897,7 +925,9 @@ void GuardService::subscribeHealth()
         rememberCameraName(cameraId, health.get("cameraName", "").asString());
         ingestHealth({.cameraId = cameraId,
                       .status = health.get("status", "").asString(),
-                      .atMs = nowMillis()});
+                      .atMs = nowMillis(),
+                      .sudden = health.get("sudden", false).asBool(),
+                      .link = health.get("link", "wifi").asString()});
       });
   if (subscription) {
     healthSubscription_ = *subscription;
@@ -940,9 +970,57 @@ void GuardService::ingestHealth(const HealthSample& sample)
   CameraHealth& health = healthByCamera_[sample.cameraId];
   if (health.status == sample.status && health.lastSeenMs > 0) {
     health.lastSeenMs = sample.atMs;
+    health.sudden = sample.sudden;
+    health.link = sample.link;
     return;
   }
-  health = {.status = sample.status, .firstSeenMs = sample.atMs, .lastSeenMs = sample.atMs};
+  health = {.status = sample.status,
+            .firstSeenMs = sample.atMs,
+            .lastSeenMs = sample.atMs,
+            .sudden = sample.sudden,
+            .link = sample.link};
+}
+
+std::string GuardService::healthStatusOf(int64_t cameraId) const
+{
+  return cameraHealthStatus(cameraId);
+}
+
+std::string GuardService::nameOf(int64_t cameraId) const
+{
+  return cameraName(cameraId);
+}
+
+void GuardService::attachMaintenance(const MaintenanceService* maintenance)
+{
+  maintenance_ = maintenance;
+}
+
+void GuardService::recordSightings(const SightingInput& input)
+{
+  constexpr int64_t kKeepMs = 120000;
+  constexpr size_t kKeepCount = 32;
+  const Json::Value& objects = input.event["objects"];
+  if (!objects.isArray() || input.cameraId <= 0)
+    return;
+  const Json::Value& frame = input.event["frame"];
+  const double frameArea = std::max(1.0, frame.get("width", 0).asDouble() * frame.get("height", 0).asDouble());
+  std::scoped_lock lock(sightingMutex_);
+  std::deque<KnownSighting>& sightings = knownSightings_[input.cameraId];
+  for (const auto& object : objects) {
+    if (object.get("class", "").asString() != "person" || object.get("identity", "").asString() != "known")
+      continue;
+    const int64_t personId = object.get("personId", 0).asInt64();
+    if (personId <= 0)
+      continue;
+    sightings.push_back({.personId = personId,
+                         .share = object["bbox"].get("w", 0.0).asDouble() *
+                                  object["bbox"].get("h", 0.0).asDouble() / frameArea,
+                         .atMs = input.atMs});
+  }
+  while (!sightings.empty() &&
+         (sightings.size() > kKeepCount || input.atMs - sightings.front().atMs > kKeepMs))
+    sightings.pop_front();
 }
 
 void GuardService::ingestPrivacy(const PrivacySample& sample)
@@ -1142,6 +1220,256 @@ drogon::Task<void> GuardService::checkPrivacyCoverage(int64_t now)
   co_return;
 }
 
+drogon::Task<GuardService::SeenPerson> GuardService::seenNear(const SeenLookup& input)
+{
+  const auto config = currentConfig();
+  std::vector<KnownSighting> window;
+  {
+    std::scoped_lock lock(sightingMutex_);
+    const auto found = knownSightings_.find(input.cameraId);
+    if (found != knownSightings_.end())
+      for (const KnownSighting& sighting : found->second)
+        if (sighting.atMs <= input.onsetMs + 1000 &&
+            input.onsetMs - sighting.atMs <= config->tamper.seenWindowS * 1000)
+          window.push_back(sighting);
+  }
+  std::map<int64_t, std::pair<double, double>> shares;
+  for (const KnownSighting& sighting : window) {
+    auto [entry, inserted] = shares.try_emplace(sighting.personId, sighting.share, sighting.share);
+    if (!inserted)
+      entry->second.second = sighting.share;
+  }
+  int64_t personId = 0;
+  double best = 0.0;
+  for (const auto& [candidate, share] : shares) {
+    if (!guard_tamper::approachingLens(
+            {.firstShare = share.first, .lastShare = share.second, .nearShare = config->tamper.nearShare}))
+      continue;
+    if (share.second > best) {
+      best = share.second;
+      personId = candidate;
+    }
+  }
+  if (personId <= 0 || dependencies_.identity == nullptr)
+    co_return SeenPerson{};
+  const auto profile = co_await BlockingTask<std::optional<PersonProfile>>(
+      [this, personId]() { return dependencies_.identity->getPerson(personId); });
+  if (!profile)
+    co_return SeenPerson{};
+  SeenPerson seen{.found = true,
+                  .personId = personId,
+                  .userId = profile->userId.value_or(0),
+                  .name = profile->name.empty() ? profile->alias : profile->name,
+                  .role = UserRole::Unknown};
+  if (seen.userId > 0)
+    if (const auto users = co_await directoryUsers())
+      for (const ResponseUser& user : *users)
+        if (user.userId == seen.userId && user.active)
+          seen.role = user.role;
+  co_return seen;
+}
+
+drogon::Task<bool> GuardService::userAway(const PresenceLookup& input)
+{
+  if (input.userId <= 0)
+    co_return false;
+  try {
+    const auto rows = co_await presenceRepository_.forEnvironment(
+        {.environmentId = input.environmentId, .userIds = {input.userId}});
+    co_return presence::stateOf(rows, input.userId) == PresenceState::Away;
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Guard tamper: presence read failed: " << error.what();
+  }
+  co_return false;
+}
+
+drogon::Task<std::vector<ResponseUser>> GuardService::householdAtHome(int64_t environmentId)
+{
+  std::vector<ResponseUser> home;
+  const auto users = co_await directoryUsers();
+  if (!users)
+    co_return home;
+  std::vector<PresenceRow> rows;
+  try {
+    rows = co_await presenceRepository_.forEnvironment({.environmentId = environmentId, .userIds = {}});
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Guard tamper: presence read failed: " << error.what();
+    co_return home;
+  }
+  for (const ResponseUser& user : *users)
+    if (user.active && (user.role == UserRole::Owner || user.role == UserRole::Resident) &&
+        presence::stateOf(rows, user.userId) == PresenceState::Home)
+      home.push_back(user);
+  co_return home;
+}
+
+drogon::Task<bool> GuardService::askHousehold(const TamperRaise& input)
+{
+  if (maintenance_ == nullptr)
+    co_return false;
+  const std::vector<ResponseUser> home = co_await householdAtHome(input.scope.environment.id);
+  if (home.empty())
+    co_return false;
+  MaintenanceRepository asks;
+  std::vector<int64_t> userIds;
+  userIds.reserve(home.size());
+  for (const ResponseUser& user : home)
+    userIds.push_back(user.userId);
+  const TamperAsk ask = co_await asks.createAsk({.cameraId = input.cameraId,
+                                                 .environmentId = input.scope.environment.id,
+                                                 .onsetAt = input.onset,
+                                                 .askedAt = input.now,
+                                                 .askedUsers = userIds});
+  GuardNotice notice;
+  notice.kind = NoticeKind::TamperAsk;
+  notice.cameraId = input.cameraId;
+  notice.cameraName = cameraName(input.cameraId);
+  notice.environmentName = input.scope.several ? input.scope.environment.name : std::string{};
+  notice.danger = GuardDanger::Medium;
+  notice.tamperStatus = input.status;
+  notice.onsetAt = input.onset;
+  notice.askId = ask.id;
+  const Json::Value data = noticeData({.notice = notice,
+                                       .environmentId = input.scope.environment.id,
+                                       .digestDay = {},
+                                       .rule = "camera_tamper",
+                                       .incidentId = 0,
+                                       .encounterId = 0,
+                                       .zoneKind = {},
+                                       .identityState = {},
+                                       .phase = "ask"});
+  LOG_INFO << "Guard tamper: camera " << input.cameraId << " lost its sight at home; asking "
+           << home.size() << " person(s) at home";
+  static_cast<void>(co_await targeted_notice::send({.client = dependencies_.notifications,
+                                                    .users = home,
+                                                    .notice = notice,
+                                                    .data = data,
+                                                    .commandId = "tamper:ask:" + std::to_string(ask.id)}));
+  co_return true;
+}
+
+drogon::Task<void> GuardService::settleAsks(int64_t now)
+{
+  const auto config = currentConfig();
+  MaintenanceRepository asks;
+  for (const TamperAsk& ask : co_await asks.pendingAsks())
+    if (now - ask.askedAt >= config->tamper.askAnswerS)
+      static_cast<void>(co_await asks.answerAsk(
+          {.id = ask.id, .answer = TamperAskAnswer::Timeout, .answeredBy = 0, .at = now}));
+}
+
+drogon::Task<bool> GuardService::raiseTamper(const TamperRaise& input)
+{
+  const auto config = currentConfig();
+  const std::string name = cameraName(input.cameraId);
+  Json::Value tamperEvent(Json::objectValue);
+  tamperEvent["status"] = input.lost.size() >= 2 ? std::string("group") : input.status;
+  tamperEvent["mode"] = guardModeToString(input.mode);
+  tamperEvent["onsetAt"] = static_cast<Json::Int64>(input.onset);
+  tamperEvent["seenPersonName"] = input.seenName;
+  tamperEvent["maintenance"] = input.probable ? "probable" : "";
+  Json::Value lostIds(Json::arrayValue);
+  for (const auto& line : input.lost)
+    lostIds.append(static_cast<Json::Int64>(line.cameraId));
+  tamperEvent["cameraIds"] = lostIds;
+  const int64_t incidentId = co_await repository_.insertIncidentForEvent(
+      {.cameraId = input.cameraId,
+       .cameraName = name,
+       .rule = "camera_tamper",
+       .danger = guard_policy::dangerToString(input.danger),
+       .severity = input.danger == GuardDanger::Critical ? "critical" : "high",
+       .personId = 0,
+       .identity = {},
+       .eventId = input.eventId,
+       .eventJson = json_util::toString(tamperEvent),
+       .createdAt = input.now});
+  const GuardCameraContext camera = co_await cameraContextRepository_.find(input.cameraId);
+  const GuardNotice notice{.kind = NoticeKind::Tamper,
+                           .subject = NoticeSubject::Stranger,
+                           .people = 0,
+                           .cameraId = input.cameraId,
+                           .cameraName = name,
+                           .environmentName = input.scope.several ? input.scope.environment.name : std::string{},
+                           .role = camera.role,
+                           .outdoor = camera.outdoor,
+                           .zoneName = {},
+                           .reasons = {},
+                           .dwellS = input.now - input.onset,
+                           .danger = input.danger,
+                           .action = NoticeAction::Watching,
+                           .tamperStatus = input.status,
+                           .held = {},
+                           .routine = {},
+                           .masked = {},
+                           .notified = 0,
+                           .afterQuiet = false,
+                           .actorName = {},
+                           .visitor = {},
+                           .lost = input.lost,
+                           .seenName = input.seenName,
+                           .seenGuest = input.seenGuest,
+                           .probableMaintenance = input.probable,
+                           .canClaim = input.canClaim,
+                           .onsetAt = input.onset,
+                           .askId = 0,
+                           .maintenanceId = 0};
+  const NotifyContent content{.notice = notice,
+                              .data = noticeData({.notice = notice,
+                                                  .environmentId = input.scope.environment.id,
+                                                  .digestDay = {},
+                                                  .rule = "camera_tamper",
+                                                  .incidentId = incidentId,
+                                                  .encounterId = 0,
+                                                  .zoneKind = {},
+                                                  .identityState = {},
+                                                  .phase = "opened"}),
+                              .excludeUserIds = {}};
+  co_await journalDecision({.eventId = input.eventId,
+                            .encounterId = 0,
+                            .incidentId = incidentId,
+                            .cameraId = input.cameraId,
+                            .observationId = {},
+                            .danger = input.danger,
+                            .hardFloor = false,
+                            .beliefScore = 0,
+                            .beliefSignals = {"camera_health_degraded"},
+                            .beliefThreshold = 0,
+                            .legacyWouldNotify = true,
+                            .beliefWouldNotify = false,
+                            .decisionMode = config->decisionMode,
+                            .suppression = DecisionSuppression::None,
+                            .suppressedKinds = {},
+                            .reasons = {},
+                            .noveltyScore = 0.0,
+                            .repeatVisits = 0,
+                            .quietHold = false,
+                            .budgetHold = false,
+                            .assessMs = 0,
+                            .environmentId = input.scope.environment.id,
+                            .at = input.now});
+  const GuardDanger authorized = guardDangerFromRank(std::clamp(config->notifyLevel, 1, 4));
+  const GuardDanger effectDanger =
+      guardDangerRank(input.danger) >= guardDangerRank(authorized) ? input.danger : authorized;
+  const EffectResult sent = co_await performEffect({.kind = GuardActionKind::Notify,
+                                                    .danger = effectDanger,
+                                                    .greetingEnabled = false,
+                                                    .replyRequested = false,
+                                                    .cameraId = input.cameraId,
+                                                    .incidentId = incidentId,
+                                                    .encounterId = 0,
+                                                    .personId = 0,
+                                                    .now = input.now,
+                                                    .text = {},
+                                                    .lang = {},
+                                                    .seconds = 0,
+                                                    .correlationId = input.eventId,
+                                                    .sequence = 1,
+                                                    .notifyContent = content});
+  co_return sent.accepted;
+}
+
 drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
 {
   if (!evaluating())
@@ -1151,8 +1479,8 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
   {
     int64_t cameraId{0};
     std::string status;
-    int64_t firstSeenMs{0};
-    int64_t lastSeenMs{0};
+    bool sudden{false};
+    std::string link;
   };
   std::vector<TamperReading> fresh;
   {
@@ -1160,36 +1488,46 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
     for (const auto& [cameraId, health] : healthByCamera_) {
       if (now - health.lastSeenMs / 1000 > config->healthStaleS)
         continue;
-      fresh.push_back({.cameraId = cameraId,
-                       .status = health.status,
-                       .firstSeenMs = health.firstSeenMs,
-                       .lastSeenMs = health.lastSeenMs});
+      fresh.push_back({.cameraId = cameraId, .status = health.status, .sudden = health.sudden, .link = health.link});
     }
   }
-  const auto readStamp =
-      [this](const std::string& key) -> drogon::Task<int64_t> {
+  const auto readStamp = [this](const std::string& key) -> drogon::Task<int64_t> {
     const std::string stored = co_await repository_.state(key, "");
     int64_t stamp = 0;
-    const auto [end, error] =
-        std::from_chars(stored.data(), stored.data() + stored.size(), stamp);
+    const auto [end, error] = std::from_chars(stored.data(), stored.data() + stored.size(), stamp);
     if (error != std::errc{} || end != stored.data() + stored.size())
       co_return 0;
     co_return stamp;
   };
   for (const auto& masked : maskedCameras())
     co_await closeTamperForPrivacy(masked.cameraId, now);
+  std::vector<MaintenanceWindow> windows;
+  if (maintenance_ != nullptr) {
+    co_await maintenance_->expireDue(now);
+    windows = co_await maintenance_->activeWindows(now);
+  }
+  co_await settleAsks(now);
+
+  struct Tampering
+  {
+    TamperReading reading;
+    int64_t onset{0};
+    GuardEnvironmentScope scope;
+    GuardPosture posture;
+    bool protect{false};
+    bool maintained{false};
+  };
+  std::vector<Tampering> tampering;
   for (const auto& reading : fresh) {
     if (cameraMasked(reading.cameraId))
       continue;
-    const std::string onsetKey =
-        "tamper_onset_" + std::to_string(reading.cameraId);
-    const std::string seenKey =
-        "tamper_last_seen_" + std::to_string(reading.cameraId);
-    const std::string notifiedKey =
-        "tamper_notified_onset_" + std::to_string(reading.cameraId);
-    if (!tamperIndicating(reading.status)) {
-      if (co_await readStamp(onsetKey) > 0 &&
-          now - co_await readStamp(seenKey) >= config->tamperSustainedS) {
+    const std::string id = std::to_string(reading.cameraId);
+    const std::string onsetKey = "tamper_onset_" + id;
+    const std::string seenKey = "tamper_last_seen_" + id;
+    const std::string notifiedKey = "tamper_notified_onset_" + id;
+    const bool lens = reading.status == "blurred";
+    if (!guard_tamper::indicating(reading.status, reading.sudden) && !lens) {
+      if (co_await readStamp(onsetKey) > 0 && now - co_await readStamp(seenKey) >= config->tamperSustainedS) {
         co_await repository_.clearState(onsetKey);
         co_await repository_.clearState(seenKey);
         co_await repository_.clearState(notifiedKey);
@@ -1199,125 +1537,222 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
     int64_t onset = co_await readStamp(onsetKey);
     if (onset <= 0) {
       onset = now;
-      co_await repository_.setState(
-          {.key = onsetKey, .value = std::to_string(now), .updatedAt = now});
+      co_await repository_.setState({.key = onsetKey, .value = std::to_string(now), .updatedAt = now});
     }
-    co_await repository_.setState(
-        {.key = seenKey, .value = std::to_string(now), .updatedAt = now});
-    const int64_t sustainedS = reading.status == "unreachable"
-                                   ? config->offlineSustainedS
-                                   : config->tamperSustainedS;
-    if (now - onset < sustainedS)
+    co_await repository_.setState({.key = seenKey, .value = std::to_string(now), .updatedAt = now});
+    const GuardEnvironmentScope scope = co_await environmentScope(reading.cameraId);
+    const GuardSchedule schedule = guard_schedule::fromEnvironment(scope.environment);
+    const GuardPosture posture = postureAt({.schedule = schedule, .manual = scope.environment.mode, .now = now});
+    const bool maintained = std::ranges::any_of(windows, [&reading](const MaintenanceWindow& window) {
+      return !window.duress && window.covers(reading.cameraId);
+    });
+    tampering.push_back({.reading = reading,
+                         .onset = onset,
+                         .scope = scope,
+                         .posture = posture,
+                         .protect = protectionExpected(posture.mode),
+                         .maintained = maintained});
+  }
+
+  std::vector<TamperReadingRef> refs;
+  for (const Tampering& entry : tampering)
+    if (!entry.maintained && guard_tamper::indicating(entry.reading.status, entry.reading.sudden))
+      refs.push_back({.cameraId = entry.reading.cameraId,
+                      .environmentId = entry.scope.environment.id,
+                      .onsetAt = entry.onset});
+  std::vector<int64_t> grouped;
+  for (const TamperGroup& group : guard_tamper::groupsOf(refs, config->tamper.groupWindowS)) {
+    std::string fingerprint = std::to_string(group.firstOnset);
+    for (const int64_t cameraId : group.cameraIds)
+      fingerprint += ":" + std::to_string(cameraId);
+    const std::string key = "tamper_group_" + std::to_string(group.environmentId);
+    grouped.insert(grouped.end(), group.cameraIds.begin(), group.cameraIds.end());
+    if (co_await repository_.state(key, "") == fingerprint)
       continue;
-    if (co_await repository_.state(notifiedKey, "") ==
-        std::to_string(onset))
+    const auto first = std::ranges::find(tampering, group.cameraIds.front(),
+                                         [](const Tampering& entry) { return entry.reading.cameraId; });
+    if (first == tampering.end())
       continue;
-    const std::string eventId = "tamper:" + std::to_string(reading.cameraId) +
-                                ":" + std::to_string(onset);
-    const std::string name = cameraName(reading.cameraId);
-    const GuardEnvironmentScope scope =
-        co_await environmentScope(reading.cameraId);
-    const GuardSchedule schedule =
-        guard_schedule::fromEnvironment(scope.environment);
-    const GuardPosture posture = postureAt(
-        {.schedule = schedule, .manual = scope.environment.mode, .now = now});
-    const GuardDanger tamperDanger = protectionExpected(posture.mode)
-                                         ? GuardDanger::Critical
-                                         : GuardDanger::High;
-    Json::Value tamperEvent(Json::objectValue);
-    tamperEvent["status"] = reading.status;
-    tamperEvent["mode"] = guardModeToString(posture.mode);
-    const int64_t incidentId =
-        co_await repository_.insertIncidentForEvent(
-            {.cameraId = reading.cameraId,
-             .cameraName = name,
-             .rule = "camera_tamper",
-             .danger = guard_policy::dangerToString(tamperDanger),
-             .severity = tamperDanger == GuardDanger::Critical ? "critical" : "high",
-             .personId = 0,
-             .identity = {},
-             .eventId = eventId,
-             .eventJson = json_util::toString(tamperEvent),
-             .createdAt = now});
-    const GuardCameraContext camera =
-        co_await cameraContextRepository_.find(reading.cameraId);
-    const GuardNotice notice{.kind = NoticeKind::Tamper,
-                             .subject = NoticeSubject::Stranger,
-                             .people = 0,
-                             .cameraId = reading.cameraId,
-                             .cameraName = name,
-                             .environmentName = scope.several
-                                                    ? scope.environment.name
-                                                    : std::string{},
-                             .role = camera.role,
-                             .outdoor = camera.outdoor,
-                             .zoneName = {},
-                             .reasons = {},
-                             .dwellS = now - onset,
-                             .danger = tamperDanger,
-                             .action = NoticeAction::Watching,
-                             .tamperStatus = reading.status,
-                             .held = {},
-                             .routine = {},
-                             .notified = 0,
-                             .afterQuiet = false, .actorName = {}, .visitor = {}};
-    const NotifyContent content{
-        .notice = notice,
-        .data = noticeData({.notice = notice,
-                            .environmentId = scope.environment.id,
-                            .digestDay = {},
-                            .rule = "camera_tamper",
-                            .incidentId = incidentId,
-                            .encounterId = 0,
-                            .zoneKind = {},
-                            .identityState = {},
-                            .phase = "opened"}),
-        .excludeUserIds = {}};
-    co_await journalDecision(
-        {.eventId = eventId,
-         .encounterId = 0,
-         .incidentId = incidentId,
-         .cameraId = reading.cameraId,
-         .observationId = {},
-         .danger = tamperDanger,
-         .hardFloor = false,
-         .beliefScore = 0,
-         .beliefSignals = {"camera_health_degraded"},
-         .beliefThreshold = 0,
-         .legacyWouldNotify = true,
-         .beliefWouldNotify = false,
-         .decisionMode = config->decisionMode,
-         .suppression = DecisionSuppression::None,
-         .suppressedKinds = {},
-         .reasons = {},
-         .noveltyScore = 0.0,
-         .repeatVisits = 0,
-         .quietHold = false,
-         .budgetHold = false,
-         .assessMs = 0,
-         .environmentId = scope.environment.id,
-         .at = now});
-    const EffectResult sent = co_await performEffect(
-        {.kind = GuardActionKind::Notify,
-         .danger = tamperDanger,
-         .greetingEnabled = false,
-         .replyRequested = false,
-         .cameraId = reading.cameraId,
-         .incidentId = incidentId,
-         .encounterId = 0,
-         .personId = 0,
+    const bool anyoneHome = co_await familyInside(group.environmentId);
+    const GuardDanger danger = guard_tamper::groupDanger({.protect = first->protect, .anyoneHome = anyoneHome});
+    std::vector<DigestLine> lost;
+    for (const int64_t cameraId : group.cameraIds)
+      lost.push_back({.cameraId = cameraId, .cameraName = cameraName(cameraId), .count = 1});
+    LOG_WARN << "Guard tamper: " << lost.size() << " cameras of environment " << group.environmentId
+             << " lost their sight within " << config->tamper.groupWindowS << " s";
+    const bool accepted = co_await raiseTamper({.cameraId = group.cameraIds.front(),
+                                                .status = first->reading.status,
+                                                .onset = group.firstOnset,
+                                                .now = now,
+                                                .danger = danger,
+                                                .scope = first->scope,
+                                                .mode = first->posture.mode,
+                                                .lost = lost,
+                                                .seenName = {},
+                                                .seenGuest = false,
+                                                .probable = false,
+                                                .canClaim = false,
+                                                .eventId = "tamper:group:" + std::to_string(group.environmentId) +
+                                                           ":" + fingerprint});
+    if (!accepted)
+      continue;
+    co_await repository_.setState({.key = key, .value = fingerprint, .updatedAt = now});
+    for (const int64_t cameraId : group.cameraIds) {
+      const auto member = std::ranges::find(tampering, cameraId,
+                                            [](const Tampering& entry) { return entry.reading.cameraId; });
+      if (member != tampering.end())
+        co_await repository_.setState({.key = "tamper_notified_onset_" + std::to_string(cameraId),
+                                       .value = std::to_string(member->onset),
+                                       .updatedAt = now});
+    }
+  }
+
+  for (const Tampering& entry : tampering) {
+    const TamperReading& reading = entry.reading;
+    const std::string id = std::to_string(reading.cameraId);
+    const std::string notifiedKey = "tamper_notified_onset_" + id;
+    if (co_await repository_.state(notifiedKey, "") == std::to_string(entry.onset))
+      continue;
+    if (std::ranges::find(grouped, reading.cameraId) != grouped.end())
+      continue;
+    const TamperWindow window = guard_tamper::windowFor({.status = reading.status,
+                                                         .sudden = reading.sudden,
+                                                         .link = reading.link,
+                                                         .protect = entry.protect,
+                                                         .windows = config->tamper,
+                                                         .homeS = config->tamperSustainedS,
+                                                         .offlineHomeS = config->offlineSustainedS});
+    if (window.action == TamperAction::Ignore)
+      continue;
+    if (entry.maintained) {
+      LOG_INFO << "Guard tamper: camera " << reading.cameraId << " is " << reading.status
+               << " inside a declared maintenance window; no alarm";
+      co_await repository_.setState({.key = notifiedKey, .value = std::to_string(entry.onset), .updatedAt = now});
+      continue;
+    }
+    if (window.action == TamperAction::LensNotice) {
+      if (now - entry.onset < window.afterS)
+        continue;
+      GuardNotice notice;
+      notice.kind = NoticeKind::LensNotice;
+      notice.cameraId = reading.cameraId;
+      notice.cameraName = cameraName(reading.cameraId);
+      notice.environmentName = entry.scope.several ? entry.scope.environment.name : std::string{};
+      notice.danger = GuardDanger::Low;
+      notice.tamperStatus = reading.status;
+      notice.onsetAt = entry.onset;
+      const Json::Value data = noticeData({.notice = notice,
+                                           .environmentId = entry.scope.environment.id,
+                                           .digestDay = {},
+                                           .rule = "camera_lens",
+                                           .incidentId = 0,
+                                           .encounterId = 0,
+                                           .zoneKind = {},
+                                           .identityState = {},
+                                           .phase = "notice"});
+      const EffectResult sent = co_await performEffect(
+          {.kind = GuardActionKind::Notify,
+           .danger = guardDangerFromRank(std::clamp(config->notifyLevel, 1, 4)),
+           .greetingEnabled = false,
+           .replyRequested = false,
+           .cameraId = reading.cameraId,
+           .incidentId = 0,
+           .encounterId = 0,
+           .personId = 0,
+           .now = now,
+           .text = {},
+           .lang = {},
+           .seconds = 0,
+           .correlationId = "lens:" + id + ":" + std::to_string(entry.onset),
+           .sequence = 1,
+           .notifyContent = {.notice = notice, .data = data, .excludeUserIds = {}}});
+      if (sent.accepted || !sent.resumable)
+        co_await repository_.setState({.key = notifiedKey, .value = std::to_string(entry.onset), .updatedAt = now});
+      continue;
+    }
+
+    const SeenPerson seen = co_await seenNear({.cameraId = reading.cameraId, .onsetMs = entry.onset * 1000});
+    bool personAway = false;
+    if (seen.found)
+      personAway = co_await userAway({.environmentId = entry.scope.environment.id, .userId = seen.userId});
+    bool onDuty = false;
+    if (seen.found && seen.role == UserRole::Guard && seen.userId > 0) {
+      const std::vector<int64_t> duty = co_await responseRepository_.dutyEnvironments(seen.userId);
+      onDuty = std::ranges::find(duty, entry.scope.environment.id) != duty.end();
+    }
+    const SeenVerdict verdict = guard_tamper::seenVerdict({.found = seen.found,
+                                                           .role = seen.role,
+                                                           .onDuty = onDuty,
+                                                           .personAway = personAway,
+                                                           .protect = entry.protect});
+    bool escalateNow = false;
+    if (!entry.protect && verdict == SeenVerdict::None) {
+      MaintenanceRepository asks;
+      const auto ask = co_await asks.askForOnset({.cameraId = reading.cameraId, .onsetAt = entry.onset});
+      if (!ask) {
+        const bool someoneHome = co_await familyInside(entry.scope.environment.id);
+        if (guard_tamper::shouldAsk({.protect = entry.protect, .seen = verdict, .anyoneHome = someoneHome})) {
+          const bool asked = co_await askHousehold({.cameraId = reading.cameraId,
+                                 .status = reading.status,
+                                 .onset = entry.onset,
+                                 .now = now,
+                                 .danger = GuardDanger::Medium,
+                                 .scope = entry.scope,
+                                 .mode = entry.posture.mode,
+                                 .lost = {},
+                                 .seenName = {},
+                                 .seenGuest = false,
+                                 .probable = false,
+                                 .canClaim = false,
+                                 .eventId = {}});
+          if (asked)
+            continue;
+        }
+      }
+      else if (ask->answer == TamperAskAnswer::Pending || ask->answer == TamperAskAnswer::Me) {
+        continue;
+      }
+      else if (ask->answer == TamperAskAnswer::No) {
+        escalateNow = true;
+      }
+    }
+    if (!escalateNow && now - entry.onset < window.afterS)
+      continue;
+    GuardDanger danger = entry.protect ? GuardDanger::Critical : GuardDanger::High;
+    bool probable = false;
+    switch (verdict) {
+      case SeenVerdict::HomeNotice:
+        danger = GuardDanger::Low;
+        probable = true;
+        break;
+      case SeenVerdict::Lowered:
+        danger = GuardDanger::High;
+        probable = true;
+        break;
+      case SeenVerdict::KeptCritical:
+        danger = GuardDanger::Critical;
+        break;
+      case SeenVerdict::GuestNamed:
+      case SeenVerdict::None:
+        break;
+    }
+    const bool accepted = co_await raiseTamper(
+        {.cameraId = reading.cameraId,
+         .status = reading.status,
+         .onset = entry.onset,
          .now = now,
-         .text = {},
-         .lang = {},
-         .seconds = 0,
-         .correlationId = eventId,
-         .sequence = 1,
-         .notifyContent = content});
-    if (!sent.accepted)
+         .danger = danger,
+         .scope = entry.scope,
+         .mode = entry.posture.mode,
+         .lost = {},
+         .seenName = verdict == SeenVerdict::None ? std::string{} : seen.name,
+         .seenGuest = verdict == SeenVerdict::GuestNamed,
+         .probable = probable,
+         .canClaim = entry.protect,
+         .eventId = "tamper:" + id + ":" + std::to_string(entry.onset)});
+    if (!accepted)
       continue;
-    co_await repository_.setState({.key = notifiedKey,
-                                   .value = std::to_string(onset),
-                                   .updatedAt = now});
+    co_await repository_.setState({.key = notifiedKey, .value = std::to_string(entry.onset), .updatedAt = now});
   }
   co_return;
 }
@@ -1494,6 +1929,7 @@ void GuardService::startSweeps()
     return;
   sweepsStarted_ = true;
   scheduleEncounterSweep();
+  scheduleTamperSweep();
   scheduleRetentionSweep();
 }
 
@@ -1624,6 +2060,32 @@ void GuardService::publishKnownSeen(const KnownSeenInput& input)
                              json_util::toString(payload));
 }
 
+void GuardService::scheduleTamperSweep()
+{
+  const auto config = currentConfig();
+  const double every = static_cast<double>(std::max<int64_t>(1, config->tamper.sweepS));
+  trackTimer(drogon::app().getLoop()->runEvery(every, [this, lifecycle = lifecycle_]() {
+    if (tamperSweepRunning_.exchange(true, std::memory_order_acq_rel))
+      return;
+    drogon::async_run([this, lifecycle]() -> drogon::Task<void> {
+      const LifecycleGuard guard(lifecycle);
+      const SweepFlag running(tamperSweepRunning_);
+      if (!guard.alive())
+        co_return;
+      try {
+        co_await checkTamperSweep(static_cast<int64_t>(std::time(nullptr)));
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Guard service: tamper sweep failed: " << error.what();
+      }
+      catch (...) {
+        LOG_WARN << "Guard service: tamper sweep failed with unknown error";
+      }
+      co_return;
+    });
+  }));
+}
+
 void GuardService::scheduleEncounterSweep()
 {
   trackTimer(drogon::app().getLoop()->runEvery(60.0, [this, lifecycle = lifecycle_]() {
@@ -1645,7 +2107,6 @@ void GuardService::scheduleEncounterSweep()
                .closedAt = now,
                .decisionMode = config->decisionMode});
         }
-        co_await checkTamperSweep(now);
         co_await checkPrivacyCoverage(now);
         co_await refreshHouseholdPosture(now);
         co_await maybeSendDigests(now);
@@ -1720,6 +2181,17 @@ GuardService::handleEvent(HandleEventInput input)
     co_return true;
 
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  recordSightings({.cameraId = signals.cameraId, .event = input.event, .atMs = nowMillis()});
+  if (maintenance_ != nullptr && input.event["objects"].isArray()) {
+    const bool stranger = std::ranges::any_of(input.event["objects"], [](const Json::Value& object) {
+      return object.get("class", "").asString() == "person" &&
+             object.get("identity", "").asString() != "known";
+    });
+    if (stranger) {
+      const GuardEnvironmentScope place = co_await environmentScope(signals.cameraId);
+      co_await maintenance_->endForUnknownPerson({.environmentId = place.environment.id, .at = now});
+    }
+  }
   const std::string eventId = input.event.get("eventId", "").asString();
   if (eventId.empty()) {
     co_await applyObservation({.event = input.event,

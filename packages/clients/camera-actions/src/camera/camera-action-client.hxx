@@ -135,6 +135,8 @@ public:
 
   virtual CameraCommandResult listen(const CameraListenInput& input) const;
 
+  virtual bool relearn(int64_t cameraId) const;
+
 private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::camera::v1::CameraActionService::StubInterface> stub_;

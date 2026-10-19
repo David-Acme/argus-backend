@@ -132,7 +132,7 @@ TEST_CASE("the camera catalog builds through the registry")
 {
   const auto catalog = cameraSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{cameraSettingsCatalog()});
-  CHECK(catalog.size() == 25);
+  CHECK(catalog.size() == 36);
   CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) == 8);
 
   std::vector<std::string> live;
@@ -193,6 +193,20 @@ TEST_CASE("every fallback is what the camera runs with when the key is absent")
   CHECK(std::stod(fallback("health.blur_threshold")) == doctest::Approx(health.thresholds.blur));
   CHECK(std::stod(fallback("health.scene_diff")) == doctest::Approx(health.thresholds.sceneDiff));
   CHECK(std::stoll(fallback("health.rebaseline_after_s")) * 1000 == health.rebaselineAfterMs);
+  CHECK(std::stod(fallback("tamper.saturated_share")) == doctest::Approx(health.thresholds.saturatedShare));
+  CHECK(std::stod(fallback("tamper.whiteout_edge_ratio")) ==
+        doctest::Approx(health.thresholds.whiteoutEdgeRatio));
+  CHECK(std::stod(fallback("tamper.blind_edge_ratio")) == doctest::Approx(health.thresholds.blindEdgeRatio));
+  CHECK(std::stod(fallback("tamper.cover_entropy")) == doctest::Approx(health.thresholds.coverEntropy));
+  CHECK(std::stod(fallback("tamper.cover_edge_ratio")) == doctest::Approx(health.thresholds.coverEdgeRatio));
+  CHECK(std::stod(fallback("tamper.partial_block_share")) ==
+        doctest::Approx(health.thresholds.partialBlockShare));
+  CHECK(std::stod(fallback("tamper.defocus_sharpness")) ==
+        doctest::Approx(health.thresholds.defocusSharpness));
+  CHECK(std::stod(fallback("tamper.reaim_shift_px")) == doctest::Approx(health.thresholds.reaimShiftPx));
+  CHECK(std::stod(fallback("tamper.infrared_chroma")) == doctest::Approx(health.thresholds.infraredChroma));
+  CHECK(std::stoll(fallback("tamper.protect_interval_ms")) == health.protectIntervalMs);
+  CHECK(std::stoll(fallback("tamper.day_night_hold_s")) * 1000 == health.dayNightHoldMs);
 }
 
 TEST_CASE("a viewer limit changed through the registry reaches the hub without a restart")

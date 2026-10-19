@@ -17,6 +17,7 @@
 #include <feature/guard/services/episode-change-gate.hxx>
 #include <feature/guard/services/response-plan.hxx>
 #include <feature/guard/vocabulary/safety-reach.hxx>
+#include <auth/user-role.hxx>
 #include <shared/repositories/presence/presence-repository.hxx>
 
 #include <atomic>
@@ -40,6 +41,7 @@
 #include <vector>
 
 class CameraActionClient;
+class MaintenanceService;
 class GuardAssessment;
 class ObservationRetryPump;
 class IdentityClient;
@@ -132,6 +134,8 @@ public:
     int64_t cameraId{0};
     std::string status;
     int64_t atMs{0};
+    bool sudden{false};
+    std::string link{"wifi"};
   };
 
   void ingestHealth(const HealthSample& sample);
@@ -169,6 +173,28 @@ public:
   [[nodiscard]] HouseholdPosture householdPosture() const;
 
   [[nodiscard]] drogon::Task<void> checkTamperSweep(int64_t now);
+
+  void attachMaintenance(const MaintenanceService* maintenance);
+
+  [[nodiscard]] std::string healthStatusOf(int64_t cameraId) const;
+
+  [[nodiscard]] std::string nameOf(int64_t cameraId) const;
+
+  struct KnownSighting
+  {
+    int64_t personId{0};
+    double share{0.0};
+    int64_t atMs{0};
+  };
+
+  struct SightingInput
+  {
+    int64_t cameraId{0};
+    const Json::Value& event;
+    int64_t atMs{0};
+  };
+
+  void recordSightings(const SightingInput& input);
 
   [[nodiscard]] drogon::Task<void> closeTamperForPrivacy(int64_t cameraId,
                                                          int64_t now);
@@ -533,6 +559,58 @@ private:
 
   void subscribeHealth();
 
+  void scheduleTamperSweep();
+
+  struct TamperRaise
+  {
+    int64_t cameraId{0};
+    std::string status;
+    int64_t onset{0};
+    int64_t now{0};
+    GuardDanger danger{GuardDanger::High};
+    GuardEnvironmentScope scope;
+    GuardMode mode{GuardMode::Home};
+    std::vector<DigestLine> lost;
+    std::string seenName;
+    bool seenGuest{false};
+    bool probable{false};
+    bool canClaim{false};
+    std::string eventId;
+  };
+
+  drogon::Task<bool> raiseTamper(const TamperRaise& input);
+
+  struct SeenLookup
+  {
+    int64_t cameraId{0};
+    int64_t onsetMs{0};
+  };
+
+  struct SeenPerson
+  {
+    bool found{false};
+    int64_t personId{0};
+    int64_t userId{0};
+    std::string name;
+    UserRole role{UserRole::Unknown};
+  };
+
+  drogon::Task<SeenPerson> seenNear(const SeenLookup& input);
+
+  struct PresenceLookup
+  {
+    int64_t environmentId{0};
+    int64_t userId{0};
+  };
+
+  drogon::Task<bool> userAway(const PresenceLookup& input);
+
+  drogon::Task<std::vector<ResponseUser>> householdAtHome(int64_t environmentId);
+
+  drogon::Task<bool> askHousehold(const TamperRaise& input);
+
+  drogon::Task<void> settleAsks(int64_t now);
+
   void subscribePrivacy();
 
   [[nodiscard]] bool cameraMasked(int64_t cameraId) const;
@@ -698,7 +776,13 @@ private:
     std::string status;
     int64_t firstSeenMs{0};
     int64_t lastSeenMs{0};
+    bool sudden{false};
+    std::string link{"wifi"};
   };
+  const MaintenanceService* maintenance_{nullptr};
+  std::atomic<bool> tamperSweepRunning_{false};
+  mutable std::mutex sightingMutex_;
+  std::map<int64_t, std::deque<KnownSighting>> knownSightings_;
   mutable std::mutex healthMutex_;
   std::map<int64_t, CameraHealth> healthByCamera_;
   std::map<int64_t, std::string> cameraNames_;
