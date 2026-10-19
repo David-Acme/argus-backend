@@ -183,6 +183,20 @@ bool VoiceGrpcRelay::resumeOf(const Json::Value& message)
   return resume.isBool() && resume.asBool();
 }
 
+argus::voice::v1::VoiceLeg VoiceGrpcRelay::legOf(const Json::Value& message)
+{
+  if (!message.isObject() || !message["payload"].isObject())
+    return argus::voice::v1::VOICE_LEG_UNSPECIFIED;
+  const Json::Value& leg = message["payload"]["leg"];
+  if (!leg.isString())
+    return argus::voice::v1::VOICE_LEG_UNSPECIFIED;
+  if (leg.asString() == "phone")
+    return argus::voice::v1::VOICE_LEG_PHONE;
+  if (leg.asString() == "laptop")
+    return argus::voice::v1::VOICE_LEG_LAPTOP;
+  return argus::voice::v1::VOICE_LEG_UNSPECIFIED;
+}
+
 class VoiceGrpcRelay::StreamObserver final : public VoiceStreamObserver
 {
 public:
@@ -328,7 +342,8 @@ drogon::Task<bool> VoiceGrpcRelay::forwardText(const SyncFrameInput& input)
     if (stopping_.load(std::memory_order_acquire))
       throw ResponseException(503, SyncErrors::VoiceUnavailable);
     co_await startStream(
-        {.conn = conn, .session = session, .mode = startModeOf(message), .resume = resumeOf(message)});
+        {.conn = conn, .session = session, .mode = startModeOf(message), .resume = resumeOf(message),
+         .leg = legOf(message)});
     co_return true;
   }
 
@@ -387,6 +402,7 @@ drogon::Task<void> VoiceGrpcRelay::startStream(StartInput input)
   const auto conn = input.conn;
   const auto mode = input.mode;
   const bool resume = input.resume;
+  const auto leg = input.leg;
   std::shared_ptr<VoiceStream> stream;
   {
     std::scoped_lock lock(session->mutex);
@@ -409,6 +425,7 @@ drogon::Task<void> VoiceGrpcRelay::startStream(StartInput input)
   }
   start.set_mode(mode);
   start.set_resume(resume);
+  start.set_leg(leg);
 
   if (stream) {
     session->inCall = true;

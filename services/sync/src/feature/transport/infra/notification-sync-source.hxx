@@ -7,6 +7,24 @@
 #include <sync/sync-filter.hxx>
 #include <vector>
 
+struct ConversationPull
+{
+  bool requiredCreate{false};
+  bool findLastCreated{false};
+  SyncFilter created;
+  bool requiredDeleted{false};
+  bool findLastDeleted{false};
+  SyncFilter deleted;
+};
+
+struct ConversationPage
+{
+  std::vector<Json::Value> created;
+  std::optional<Json::Value> lastCreated;
+  std::vector<Json::Value> deleted;
+  std::optional<Json::Value> lastDeleted;
+};
+
 class NotificationSyncSource
 {
 public:
@@ -17,4 +35,7 @@ public:
 
   [[nodiscard]] virtual drogon::Task<std::optional<Json::Value>>
   findLast(const JwtContext& ctx) const = 0;
+
+  [[nodiscard]] virtual drogon::Task<ConversationPage>
+  conversation(const JwtContext& ctx, const ConversationPull& pull) const = 0;
 };

@@ -285,7 +285,30 @@ public:
     co_return std::nullopt;
   }
 
+  drogon::Task<ConversationPage>
+  conversation(const JwtContext& ctx, const ConversationPull& pull) const override
+  {
+    lastUser = ctx.sub;
+    lastPull = pull;
+    ConversationPage page;
+    if (ctx.sub == 7 && pull.requiredCreate) {
+      Json::Value row(Json::objectValue);
+      row["id"] = Json::Int64(5);
+      row["userId"] = Json::Int64(7);
+      row["createdAt"] = Json::Int64(100);
+      page.created.push_back(row);
+    }
+    if (ctx.sub == 7 && pull.requiredDeleted) {
+      Json::Value tombstone(Json::objectValue);
+      tombstone["id"] = Json::Int64(4);
+      tombstone["deletedAt"] = Json::Int64(90);
+      page.deleted.push_back(tombstone);
+    }
+    co_return page;
+  }
+
   mutable int64_t lastUser{0};
+  mutable ConversationPull lastPull{};
 };
 
 class RecordingConnection final : public drogon::WebSocketConnection
@@ -636,6 +659,29 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   REQUIRE(ownSync["info"]["notification"]["created"].size() == 1);
   CHECK(ownSync["info"]["notification"]["created"][0]["id"].asInt64() == 1);
   CHECK(notificationSource.lastUser == 7);
+
+  Json::Value conversationSyncBody;
+  Json::Value conversationBody;
+  conversationBody["requiredCreate"] = true;
+  conversationBody["requiredDeleted"] = true;
+  conversationBody["findLastCreated"] = true;
+  conversationBody["created"]["startTime"] = Json::Int64(50);
+  conversationSyncBody["conversation_message"] = conversationBody;
+  const auto ownConversation = drogon::sync_wait(
+      synchronizedService.sync(SynchronizedDto::fromJson(conversationSyncBody), residentCtx));
+  CHECK(notificationSource.lastUser == 7);
+  CHECK(notificationSource.lastPull.requiredCreate);
+  CHECK(notificationSource.lastPull.requiredDeleted);
+  CHECK(notificationSource.lastPull.created.startTime == 50);
+  const Json::Value& conversationNode = ownConversation["info"]["conversation_message"];
+  REQUIRE(conversationNode["created"].size() == 1);
+  CHECK(conversationNode["created"][0]["id"].asInt64() == 5);
+  REQUIRE(conversationNode["deleted"].size() == 1);
+  CHECK(conversationNode["deleted"][0]["id"].asInt64() == 4);
+  const auto ownerConversation = drogon::sync_wait(
+      synchronizedService.sync(SynchronizedDto::fromJson(conversationSyncBody), ownerCtx));
+  CHECK(ownerConversation["info"]["conversation_message"]["created"].size() == 0);
+  CHECK(notificationSource.lastUser == 42);
 
   SynchronizedService bare;
   bool unavailable = false;

@@ -86,5 +86,9 @@ private:
   drogon::Task<Json::Value>
   syncUserNotification(const SynchronizedBodyDto& dto,
                        const JwtContext& ctx) const;
+
+  drogon::Task<Json::Value>
+  syncUserConversation(const SynchronizedBodyDto& dto,
+                       const JwtContext& ctx) const;
   std::vector<TableName> auditTablesForRole(UserRole role) const;
 };

@@ -237,3 +237,35 @@ CREATE TABLE IF NOT EXISTS call_response_member (
 
 CREATE INDEX IF NOT EXISTS idx_call_response_member_user
     ON call_response_member (user_id, response_id);
+
+CREATE TABLE IF NOT EXISTS conversation_message (
+    id               INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
+    user_id          INTEGER NOT NULL,
+    counterpart_id   INTEGER NOT NULL  DEFAULT 0,
+    counterpart_name TEXT    NOT NULL  DEFAULT '',
+    direction        TEXT    NOT NULL  CHECK (direction IN ('out', 'in')),
+    kind             TEXT    NOT NULL  CHECK (kind IN ('turn', 'relay', 'reply', 'visitor')),
+    body             TEXT    NOT NULL,
+    leg              TEXT              CHECK (leg IS NULL OR leg IN ('camera', 'phone', 'laptop')),
+    state            TEXT    NOT NULL  CHECK (state IN ('sent', 'delivered', 'notified', 'answered',
+                                              'expired', 'received')),
+    message_key      TEXT    NOT NULL,
+    reply_to_key     TEXT,
+    is_read          INTEGER NOT NULL  DEFAULT 0  CHECK (is_read IN (0, 1)),
+    read_at          INTEGER,
+    expires_at       INTEGER NOT NULL  DEFAULT 0,
+    created_at       INTEGER NOT NULL  DEFAULT (strftime('%s', 'now')),
+    updated_at       INTEGER,
+    deleted_at       INTEGER
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_message_copy
+    ON conversation_message (message_key, user_id);
+CREATE INDEX IF NOT EXISTS idx_conversation_message_sync
+    ON conversation_message (user_id, created_at, id);
+CREATE INDEX IF NOT EXISTS idx_conversation_message_thread
+    ON conversation_message (user_id, counterpart_id, id);
+CREATE INDEX IF NOT EXISTS idx_conversation_message_deleted
+    ON conversation_message (user_id, deleted_at, id) WHERE deleted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_conversation_message_expiry
+    ON conversation_message (expires_at) WHERE deleted_at IS NULL AND expires_at > 0;

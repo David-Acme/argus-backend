@@ -327,6 +327,57 @@ drogon::Task<Json::Value> SynchronizedService::syncUserNotification(
   co_return node;
 }
 
+drogon::Task<Json::Value> SynchronizedService::syncUserConversation(
+    const SynchronizedBodyDto& dto, const JwtContext& ctx) const
+{
+  if (!notificationSyncSource_)
+    throw ResponseException(503, SyncErrors::NotificationSyncUnavailable);
+
+  const ConversationPull pull{.requiredCreate = dto.requiredCreate,
+                              .findLastCreated = dto.findLastCreated,
+                              .created = applyRange({}, dto.created),
+                              .requiredDeleted = dto.requiredDeleted,
+                              .findLastDeleted = dto.findLastDeleted,
+                              .deleted = applyRange({}, dto.deleted)};
+  ConversationPage page = co_await notificationSyncSource_->conversation(ctx, pull);
+
+  Json::Value node(Json::objectValue);
+  Json::Value created(Json::arrayValue);
+  if (!page.created.empty()) {
+    const auto& last = page.created.back();
+    node["lastSyncDate"]["createdId"] = last.get("id", Json::Value());
+    node["lastSyncDate"]["created"] = last.get("createdAt", Json::Value());
+  }
+  for (auto& row : page.created)
+    created.append(std::move(row));
+  node["created"] = std::move(created);
+
+  Json::Value deleted(Json::arrayValue);
+  if (!page.deleted.empty()) {
+    const auto& last = page.deleted.back();
+    node["lastSyncDate"]["deletedId"] = last.get("id", Json::Value());
+    node["lastSyncDate"]["deleted"] = last.get("deletedAt", Json::Value());
+  }
+  for (auto& row : page.deleted)
+    deleted.append(std::move(row));
+  node["deleted"] = std::move(deleted);
+
+  if (dto.findLastCreated || dto.findLastDeleted) {
+    Json::Value last(Json::objectValue);
+    if (page.lastCreated) {
+      last["createdId"] = (*page.lastCreated)["id"];
+      last["created"] = (*page.lastCreated)["createdAt"];
+    }
+    if (page.lastDeleted) {
+      last["deletedId"] = (*page.lastDeleted)["id"];
+      last["deleted"] = (*page.lastDeleted)["deletedAt"];
+    }
+    node["lastSyncDate"] = std::move(last);
+  }
+
+  co_return node;
+}
+
 std::vector<TableName> SynchronizedService::auditTablesForRole(UserRole role) const
 {
   return auditTablesFor(role, *moduleGate().current());
@@ -370,6 +421,7 @@ drogon::Task<Json::Value> SynchronizedService::sync(const SynchronizedDto& body,
       {"person", &SynchronizedDto::person},
       {"notification", &SynchronizedDto::notification},
       {"user_action_log", &SynchronizedDto::userActionLog},
+      {"conversation_message", &SynchronizedDto::conversationMessage},
   };
 
   Json::Value out(Json::objectValue);
@@ -428,6 +480,9 @@ SynchronizedService::pullTable(const TablePullInput& input) const
 
   if (table == TableName::Notification)
     co_return co_await syncUserNotification(dto, ctx);
+
+  if (table == TableName::ConversationMessage)
+    co_return co_await syncUserConversation(dto, ctx);
 
   if (table == TableName::Event)
     co_return emptyTableNode(dto);

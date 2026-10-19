@@ -7,6 +7,7 @@ namespace
 {
 constexpr int kCallTimeoutMs = 5000;
 constexpr int kCreateTimeoutMs = 3000;
+constexpr int kRelayTimeoutMs = 6000;
 
 NotificationRpcOutcome outcomeForStatus(grpc::StatusCode code)
 {
@@ -26,7 +27,8 @@ NotificationClient::NotificationClient(NotificationClientConfig config)
     : channel_(argus::client::makeChannel(config.target)),
       credential_(std::move(config.credential)),
       stub_(argus::notification::v1::NotificationService::NewStub(channel_)),
-      callStub_(argus::notification::v1::CallService::NewStub(channel_))
+      callStub_(argus::notification::v1::CallService::NewStub(channel_)),
+      conversationStub_(argus::notification::v1::ConversationService::NewStub(channel_))
 {
 }
 
@@ -67,6 +69,60 @@ NotificationPullResult NotificationClient::pullNotifications(
   result.outcome = status.ok() ? NotificationRpcOutcome::Success
                                : outcomeForStatus(status.error_code());
   return result;
+}
+
+NotificationConversationPullResult NotificationClient::pullConversation(
+    const argus::notification::v1::PullConversationRequest& request,
+    const argus::client::CallerIdentity& identity) const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerIdentity(context, identity);
+  argus::client::addCallerCredential(context, credential_);
+
+  NotificationConversationPullResult result;
+  result.status = stub_->PullConversation(&context, request, &result.response);
+  result.outcome = result.status.ok() ? NotificationRpcOutcome::Success
+                                      : outcomeForStatus(result.status.error_code());
+  return result;
+}
+
+NotificationRelayResult NotificationClient::relayMessage(
+    const argus::notification::v1::RelayMessageRequest& request) const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kRelayTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+
+  NotificationRelayResult result;
+  result.status = conversationStub_->RelayMessage(&context, request, &result.response);
+  result.outcome = result.status.ok() ? NotificationRpcOutcome::Success
+                                      : outcomeForStatus(result.status.error_code());
+  return result;
+}
+
+NotificationRpcOutcome NotificationClient::settleMessage(
+    const argus::notification::v1::SettleMessageRequest& request) const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+
+  argus::notification::v1::SettleMessageResponse response;
+  const grpc::Status status = conversationStub_->SettleMessage(&context, request, &response);
+  return status.ok() ? NotificationRpcOutcome::Success : outcomeForStatus(status.error_code());
+}
+
+NotificationRpcOutcome NotificationClient::appendTurns(
+    const argus::notification::v1::AppendTurnsRequest& request) const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+
+  argus::notification::v1::AppendTurnsResponse response;
+  const grpc::Status status = conversationStub_->AppendTurns(&context, request, &response);
+  return status.ok() ? NotificationRpcOutcome::Success : outcomeForStatus(status.error_code());
 }
 
 NotificationCallClaimResult

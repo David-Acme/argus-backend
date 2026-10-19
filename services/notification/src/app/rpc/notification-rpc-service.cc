@@ -47,6 +47,48 @@ void toProto(const Json::Value& row,
 }
 
 
+ConversationSyncFilter conversationFilterOf(const argus::notification::v1::SyncRange& range, int64_t userId)
+{
+  ConversationSyncFilter filter{.userId = userId, .startTime = std::nullopt, .startId = std::nullopt, .endTime = std::nullopt};
+  if (range.has_start_time())
+    filter.startTime = range.start_time();
+  if (range.has_start_id())
+    filter.startId = range.start_id();
+  if (range.has_end_time())
+    filter.endTime = range.end_time();
+  return filter;
+}
+
+void toProto(const ConversationMessageSchema& row, argus::notification::v1::ConversationMessageRow* out)
+{
+  const Json::Value json = row.toJson();
+  out->set_id(row.id);
+  out->set_user_id(row.userId);
+  out->set_counterpart_id(row.counterpartId);
+  out->set_counterpart_name(row.counterpartName);
+  out->set_direction(json["direction"].asString());
+  out->set_kind(json["kind"].asString());
+  out->set_body(row.body);
+  if (json["leg"].isString())
+    out->set_leg(json["leg"].asString());
+  out->set_state(json["state"].asString());
+  out->set_message_key(row.messageKey);
+  if (row.replyToKey)
+    out->set_reply_to_key(*row.replyToKey);
+  out->set_is_read(row.isRead);
+  if (row.readAt)
+    out->set_read_at(*row.readAt);
+  out->set_created_at(row.createdAt);
+  if (row.updatedAt)
+    out->set_updated_at(*row.updatedAt);
+}
+
+void toTombstone(const ConversationMessageSchema& row, argus::notification::v1::ConversationTombstone* out)
+{
+  out->set_id(row.id);
+  out->set_deleted_at(row.deletedAt.value_or(0));
+}
+
 bool assistantNoticeOnly(
     const argus::notification::v1::CreateNotificationsRequest& request)
 {
@@ -315,6 +357,64 @@ grpc::ServerUnaryReactor* NotificationRpcService::PullNotifications(
       }
       catch (const std::exception& e) {
         LOG_WARN << "Notification RPC: PullNotifications failed: " << e.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
+      }
+      co_return;
+    });
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* NotificationRpcService::PullConversation(
+    grpc::CallbackServerContext* context,
+    const argus::notification::v1::PullConversationRequest* request,
+    argus::notification::v1::PullConversationResponse* response)
+{
+  if (!argus::client::authorizeCaller(context, syncCallers_).has_value()) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "argus-sync caller credential required"));
+    return reactor;
+  }
+  const auto userId = argus::client::callerUserId(context);
+  if (!userId) {
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "identity metadata missing or invalid"));
+    return reactor;
+  }
+
+  const argus::notification::v1::ConversationPull pull = request->pull();
+  const int64_t sub = *userId;
+  auto* reactor = context->DefaultReactor();
+  auto* responseWriter = response;
+  drogon::app().getLoop()->queueInLoop([this, reactor, pull, responseWriter, sub]() {
+    drogon::async_run([this, reactor, pull, responseWriter, sub]() -> drogon::Task<void> {
+      try {
+        if (pull.required_create()) {
+          const ConversationSyncFilter created = conversationFilterOf(pull.created(), sub);
+          for (const auto& row : co_await conversations_.findSync(created))
+            toProto(row, responseWriter->add_created());
+        }
+        if (pull.find_last_created()) {
+          const auto last = co_await conversations_.findLastSync(sub);
+          if (last)
+            toProto(*last, responseWriter->mutable_last_created());
+        }
+        if (pull.required_deleted()) {
+          const ConversationSyncFilter deleted = conversationFilterOf(pull.deleted(), sub);
+          for (const auto& row : co_await conversations_.findDeletedSync(deleted))
+            toTombstone(row, responseWriter->add_deleted());
+        }
+        if (pull.find_last_deleted()) {
+          const auto last = co_await conversations_.findLastDeletedSync(sub);
+          if (last)
+            toTombstone(*last, responseWriter->mutable_last_deleted());
+        }
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& e) {
+        LOG_WARN << "Notification RPC: PullConversation failed: " << e.what();
         reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, e.what()));
       }
       co_return;

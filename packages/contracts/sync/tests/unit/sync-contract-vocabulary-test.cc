@@ -86,7 +86,7 @@ TEST_CASE("table name strings round-trip")
         TableName::UserAuditLog,    TableName::Notification,
         TableName::NotificationToken, TableName::UserActionLog,
         TableName::RefreshToken,    TableName::FaceEmbedding,
-        TableName::Memory,
+        TableName::Memory,          TableName::ConversationMessage,
     };
     const std::vector<std::string> names = {
         "user",               "user_invitation",     "person",
@@ -96,7 +96,7 @@ TEST_CASE("table name strings round-trip")
         "camera",             "camera_stream",       "zone",
         "audit_log",          "user_audit_log",      "notification",
         "notification_token", "user_action_log",     "refresh_token",
-        "face_embedding",     "memory",
+        "face_embedding",     "memory",              "conversation_message",
     };
     checkRoundTrip(CheckRoundTripInput{.values = values,
                                         .names = names,
@@ -128,8 +128,9 @@ TEST_CASE("every table name keeps the number it was given")
         {TableName::Notification, 18},    {TableName::NotificationToken, 19},
         {TableName::UserActionLog, 20},   {TableName::RefreshToken, 21},
         {TableName::FaceEmbedding, 22},   {TableName::Memory, 23},
+        {TableName::ConversationMessage, 24},
     };
     for (const auto& [table, number] : pinned)
         CHECK(static_cast<int>(table) == number);
-    CHECK(static_cast<int>(kLastTableName) == 23);
+    CHECK(static_cast<int>(kLastTableName) == 24);
 }

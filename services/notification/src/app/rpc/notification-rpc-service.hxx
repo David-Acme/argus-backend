@@ -2,6 +2,7 @@
 
 #include <argus/notification/v1/notification.grpc.pb.h>
 #include <feature/call/services/call-engine.hxx>
+#include <feature/conversation/repositories/conversation-message/conversation-message-repository.hxx>
 #include <grpc/grpc-server-identity.hxx>
 #include <grpcpp/grpcpp.h>
 #include <memory>
@@ -27,6 +28,11 @@ public:
       const argus::notification::v1::PullNotificationsRequest* request,
       argus::notification::v1::PullNotificationsResponse* response) override;
 
+  grpc::ServerUnaryReactor* PullConversation(
+      grpc::CallbackServerContext* context,
+      const argus::notification::v1::PullConversationRequest* request,
+      argus::notification::v1::PullConversationResponse* response) override;
+
   void startDeliveryReconciler();
 
   drogon::Task<void> bootSelfTest() const;
@@ -44,4 +50,5 @@ private:
   std::shared_ptr<TaskGate> tasks_;
   std::shared_ptr<const NotificationService> notificationService_;
   NotificationRepository repository_;
+  ConversationMessageRepository conversations_;
 };

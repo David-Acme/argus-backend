@@ -121,6 +121,7 @@ struct SynchronizedDto
   std::optional<SynchronizedBodyDto> person;
   std::optional<SynchronizedBodyDto> notification;
   std::optional<SynchronizedBodyDto> userActionLog;
+  std::optional<SynchronizedBodyDto> conversationMessage;
 
   static SynchronizedDto fromJson(const Json::Value& json)
   {
@@ -143,6 +144,7 @@ struct SynchronizedDto
         {"person", &SynchronizedDto::person},
         {"notification", &SynchronizedDto::notification},
         {"user_action_log", &SynchronizedDto::userActionLog},
+        {"conversation_message", &SynchronizedDto::conversationMessage},
     };
 
     SynchronizedDto dto;

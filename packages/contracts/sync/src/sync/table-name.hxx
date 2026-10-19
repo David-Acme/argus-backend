@@ -30,10 +30,11 @@ enum class TableName : uint8_t
   UserActionLog,
   RefreshToken,
   FaceEmbedding,
-  Memory
+  Memory,
+  ConversationMessage
 };
 
-inline constexpr TableName kLastTableName = TableName::Memory;
+inline constexpr TableName kLastTableName = TableName::ConversationMessage;
 
 inline std::string tableNameToString(TableName t)
 {
@@ -86,6 +87,8 @@ inline std::string tableNameToString(TableName t)
       return "face_embedding";
     case TableName::Memory:
       return "memory";
+    case TableName::ConversationMessage:
+      return "conversation_message";
   }
   return "user";
 }
@@ -117,6 +120,7 @@ inline std::optional<TableName> findTableName(const std::string& s)
       {"refresh_token", TableName::RefreshToken},
       {"face_embedding", TableName::FaceEmbedding},
       {"memory", TableName::Memory},
+      {"conversation_message", TableName::ConversationMessage},
   };
   const auto it = kMap.find(s);
   if (it == kMap.end())
