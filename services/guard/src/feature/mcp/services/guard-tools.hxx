@@ -3,6 +3,7 @@
 #include <mcp/server.hxx>
 #include <shared/vocabulary/maintenance-voice.hxx>
 #include <shared/vocabulary/masked-camera.hxx>
+#include <shared/vocabulary/whereabouts-voice.hxx>
 
 #include <cstdint>
 #include <drogon/utils/coroutine.h>
@@ -26,6 +27,7 @@ struct GuardToolsInput
   MaskedCameraDirectory maskedCameras{};
   std::function<trantor::EventLoop*()> loop;
   MaintenanceVoicePorts maintenance{};
+  WhereaboutsVoice whereabouts{};
 };
 
 [[nodiscard]] std::shared_ptr<argus::mcp::McpServer> guardToolServer(const GuardToolsInput& input);

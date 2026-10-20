@@ -243,6 +243,14 @@ target_compile_definitions(guard-proximity-test PRIVATE
 target_compile_options(guard-proximity-test PRIVATE -Wall -Wextra)
 add_test(NAME guard-proximity-test COMMAND guard-proximity-test)
 
+add_executable(guard-whereabouts-test tests/unit/guard-whereabouts-test.cc)
+set_target_properties(guard-whereabouts-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+target_link_libraries(guard-whereabouts-test PRIVATE
+    argus::guard-proximity
+    argus::lib::doctest-main)
+target_compile_options(guard-whereabouts-test PRIVATE -Wall -Wextra)
+add_test(NAME guard-whereabouts-test COMMAND guard-whereabouts-test)
+
 add_executable(guard-settings-test tests/unit/guard-settings-test.cc)
 set_target_properties(guard-settings-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 target_link_libraries(guard-settings-test PRIVATE

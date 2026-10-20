@@ -41,6 +41,7 @@
 #include <feature/memory/repositories/memory-graph/memory-graph-repository.hxx>
 #include <config/config-service.hxx>
 #include <feature/encounter-closed/services/encounter-closed-consumer.hxx>
+#include <feature/encounter-closed/services/maintenance-ended-consumer.hxx>
 #include <runtime/thread-budget.hxx>
 #include <feature/memory/services/memory/in-process-memory-chat.hxx>
 #include <feature/memory/services/memory/memory-service.hxx>
@@ -142,6 +143,15 @@ struct EncounterSummaryInput
   std::string grade;
   std::string lang;
 };
+
+int localOffsetSeconds(int64_t at)
+{
+  std::tm local{};
+  const auto seconds = static_cast<std::time_t>(at);
+  if (localtime_r(&seconds, &local) == nullptr)
+    return 0;
+  return static_cast<int>(local.tm_gmtoff);
+}
 
 std::string summarizeEncounter(const EncounterSummaryInput& input)
 {
@@ -475,6 +485,7 @@ int main()
     intentFeed = std::make_unique<ModuleIntentFeed>(bus, *intents, ModuleIntentFeed::defaults());
 
   std::unique_ptr<EncounterClosedConsumer> encounterConsumer;
+  std::unique_ptr<MaintenanceEndedConsumer> maintenanceConsumer;
   MemoryGraphRepository encounterRepository;
   const LlmMemoryConfig memoryConfig = LlmConfig::resolveMemory();
   if (bus && memory.isLoaded() && memoryConfig.observeCameraEvents) {
@@ -533,6 +544,34 @@ int main()
                 .poisonMaxAttempts = 3,
                 .ownerUserId = ownerUserId,
                 .lang = ownerLang});
+        maintenanceConsumer = std::make_unique<MaintenanceEndedConsumer>(
+            MaintenanceEndedConsumer::Dependencies{
+                .bus = bus.get(),
+                .graph = &static_cast<SqliteGraph&>(memory.graph()),
+                .repository = &encounterRepository,
+                .capture =
+                    [&memory](const MaintenanceCaptureInput& capture) {
+                      const MaintenanceEndedEvent& event = capture.event;
+                      return memory.observeSystemEvent(
+                          {.channel = "maintenance",
+                           .summary = maintenance_episode::summary(
+                               {.event = event,
+                                .lang = capture.lang,
+                                .utcOffsetSeconds = localOffsetSeconds(event.startedAt)}),
+                           .actor = "argus-guard",
+                           .at = event.endedAt,
+                           .userId = capture.ownerUserId,
+                           .lang = capture.lang,
+                           .entitiesHint = {}});
+                    }},
+            MaintenanceEndedConsumer::Config{
+                .stream = std::string(nats_subject::kGuardStream),
+                .durable = "argus-llm-maintenance",
+                .subject = std::string(nats_subject::kGuardMaintenanceEnded),
+                .maxDeliver = 10,
+                .poisonMaxAttempts = 3,
+                .ownerUserId = ownerUserId,
+                .lang = ownerLang});
         LOG_INFO << "argus-llm: camera events feed memory (user "
                  << ownerUserId << ")";
       }
@@ -543,12 +582,14 @@ int main()
   }
 
   drogon::app().registerBeginningAdvice([&memory, &replica,
-                                         &encounterConsumer, &intents, &intentFeed]() {
+                                         &encounterConsumer, &maintenanceConsumer, &intents, &intentFeed]() {
     intents->start();
     if (intentFeed)
       intentFeed->start();
     if (encounterConsumer)
       encounterConsumer->start();
+    if (maintenanceConsumer)
+      maintenanceConsumer->start();
     drogon::async_run([&memory,
                        &replica]() -> drogon::Task<void> {
       try {
@@ -587,6 +628,8 @@ int main()
     shutdown_signal::onStop(shutdown_signal::drainOf(*rpc, "llm-rpc"));
   if (encounterConsumer)
     shutdown_signal::onStop(shutdown_signal::drainOf(*encounterConsumer, "llm-encounters"));
+  if (maintenanceConsumer)
+    shutdown_signal::onStop(shutdown_signal::drainOf(*maintenanceConsumer, "llm-maintenance"));
   if (replica)
     shutdown_signal::onStop(shutdown_signal::drainOf(*replica, "llm-catalog-replica"));
   shutdown_signal::onStop(shutdown_signal::drainOf(memory, "llm-memory-worker"));
@@ -604,6 +647,8 @@ int main()
     replica->stop();
   if (encounterConsumer)
     encounterConsumer->stop();
+  if (maintenanceConsumer)
+    maintenanceConsumer->stop();
   conversationPurge->stop();
   memory.shutdown();
   llm->shutdownEngine();

@@ -9,6 +9,7 @@
     "memory.recall",
     "app.open",
     "app.show_camera",
-    "guard.maintenance_status"
+    "guard.maintenance_status",
+    "guard.where_is"
   ]
 }

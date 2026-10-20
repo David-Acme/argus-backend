@@ -271,7 +271,7 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
                             .callsConfirmed = input.callsConfirmed,
                            .scrub = {},
                            .replacement = {}},
-                          {.lang = lang, .grounding = input.contextBlock}));
+                          {.lang = lang, .grounding = situation}));
         std::size_t forwarded = 0;
         bool failed = false;
         engine_.chatStream(req, [&](const std::string& token, bool done) {
@@ -334,7 +334,7 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
     reply_claims::StrippedReply stripped =
         reply_claims::withoutTrailingOffer(std::move(raw), {.lang = lang, .asked = input.asked});
     const std::string reply =
-        turn::speech::withoutUngroundedClaims({.reply = stripped.text, .lang = lang, .grounding = input.contextBlock});
+        turn::speech::withoutUngroundedClaims({.reply = stripped.text, .lang = lang, .grounding = situation});
     verdict = turn::speech::check({.speech = input.speech,
                                    .reply = reply,
                                    .wrote = input.wrote,

@@ -8,6 +8,7 @@
 #include <feature/guard/repositories/maintenance/maintenance-repository.hxx>
 #include <feature/guard/services/maintenance-service.hxx>
 #include <nats/nats-bus.hxx>
+#include <text/json-util.hxx>
 
 #include <atomic>
 #include <functional>
@@ -328,6 +329,41 @@ TEST_CASE("the home question: yes declares a window, no is kept for the sweep, s
   CHECK(drogon::sync_wait(repository.answerAsk(
       {.id = silent.id, .answer = TamperAskAnswer::Timeout, .answeredBy = 0, .at = 770})));
   CHECK(drogon::sync_wait(repository.findAsk(silent.id))->answer == TamperAskAnswer::Timeout);
+}
+
+TEST_CASE("a window that ends is published once on the guard feed, with who, when and which cameras")
+{
+  static_cast<void>(boot());
+  Rig rig;
+  assign(41, homeId());
+  const int64_t opened = rig.clock;
+  const Json::Value window = drogon::sync_wait(rig.service.declare(
+      {.actor = {.userId = 2, .role = UserRole::Resident}, .cameraIds = {41}, .environmentId = 0, .minutes = 30,
+       .source = MaintenanceSource::Assistant}));
+  const std::string eventId = "guard-maintenance-ended:" + std::to_string(window["id"].asInt64());
+  CHECK(scalar("SELECT COUNT(*) FROM change_outbox WHERE event_id = '" + eventId + "'") == "0");
+  rig.clock += 1800;
+  static_cast<void>(drogon::sync_wait(
+      rig.service.end({.actor = {.userId = 2, .role = UserRole::Resident}, .id = window["id"].asInt64()})));
+  CHECK(scalar("SELECT subject FROM change_outbox WHERE event_id = '" + eventId + "'") ==
+        "argus.guard.v1.maintenance_ended");
+  const Json::Value payload =
+      json_util::fromString(scalar("SELECT payload FROM change_outbox WHERE event_id = '" + eventId + "'"));
+  CHECK(payload["eventId"].asString() == eventId);
+  CHECK(payload["declaredBy"].asInt64() == 2);
+  CHECK(payload["declaredName"].asString() == "Luis");
+  CHECK(payload["declaredRole"].asString() == "resident");
+  CHECK(payload["cameraIds"][0].asInt64() == 41);
+  CHECK(payload["cameras"][0].asString() == "Cámara 41");
+  CHECK(payload["startedAt"].asInt64() == opened);
+  CHECK(payload["endedAt"].asInt64() == opened + 1800);
+  CHECK(payload["endReason"].asString() == "done");
+  CHECK(payload["source"].asString() == "assistant");
+  CHECK_FALSE(payload.isMember("duress"));
+
+  static_cast<void>(drogon::sync_wait(
+      rig.service.end({.actor = {.userId = 2, .role = UserRole::Resident}, .id = window["id"].asInt64()})));
+  CHECK(scalar("SELECT COUNT(*) FROM change_outbox WHERE event_id = '" + eventId + "'") == "1");
 }
 
 TEST_CASE("the lost-sight copy speaks Spanish and English")

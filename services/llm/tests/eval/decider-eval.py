@@ -28,6 +28,7 @@ FAMILIES = {
     "camera": ("app.show_camera",),
     "sight": ("camera.look", "camera.goto_preset"),
     "maintenance": ("guard.maintenance_start", "guard.maintenance_end", "guard.maintenance_status"),
+    "whereabouts": ("guard.where_is",),
 }
 FAMILY_OF = {tool: family for family, tools in FAMILIES.items() for tool in tools}
 MODULE_FAMILIES = ("calendar", "task", "project", "modules", "reminders")

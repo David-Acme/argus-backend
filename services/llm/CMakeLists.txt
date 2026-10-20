@@ -227,6 +227,16 @@ set_target_properties(llm-sight-command-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
 
 add_test(NAME llm-sight-command-test COMMAND llm-sight-command-test)
 
+add_executable(llm-whereabouts-command-test tests/unit/llm-whereabouts-command-test.cc)
+
+target_link_libraries(llm-whereabouts-command-test PRIVATE argus::llm argus::lib::doctest-main)
+
+target_compile_options(llm-whereabouts-command-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-whereabouts-command-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-whereabouts-command-test COMMAND llm-whereabouts-command-test)
+
 add_executable(llm-tool-providers-test tests/unit/llm-tool-providers-test.cc)
 
 target_link_libraries(llm-tool-providers-test PRIVATE argus::llm
@@ -641,6 +651,23 @@ set_target_properties(encounter-closed-consumer-test PROPERTIES
 
 add_test(NAME encounter-closed-consumer-test
     COMMAND encounter-closed-consumer-test)
+
+add_executable(maintenance-ended-consumer-test
+    tests/unit/maintenance-ended-consumer-test.cc)
+
+target_link_libraries(maintenance-ended-consumer-test PRIVATE
+    argus::encounter-closed argus::memory argus::lib::doctest-main)
+
+target_compile_definitions(maintenance-ended-consumer-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(maintenance-ended-consumer-test PRIVATE -Wall -Wextra)
+
+set_target_properties(maintenance-ended-consumer-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME maintenance-ended-consumer-test
+    COMMAND maintenance-ended-consumer-test)
 
 add_executable(encounter-closed-live-test
     tests/unit/encounter-closed-live-test.cc)

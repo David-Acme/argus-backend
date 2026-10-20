@@ -1547,7 +1547,7 @@ TEST_CASE("the read-only tools are exactly the list in tool-effects.json and eve
 {
   const std::vector<std::string> expected{"calendar.list_events", "task.list", "project.list", "modules.list", "modules.explain",
                                           "reminder.list", "memory.recall", "app.open", "app.show_camera",
-                                          "guard.maintenance_status"};
+                                          "guard.maintenance_status", "guard.where_is"};
   CHECK(turn::kReadOnlyTools.size() == expected.size());
   for (const std::string& name : expected)
     CHECK(turn::isReadOnlyTool(name));
@@ -2645,4 +2645,91 @@ TEST_CASE("a new relay command while the question is open replaces the question 
   REQUIRE(world.ran.size() == 2);
   CHECK(world.ran.back().arguments["recipient"].asString() == "ana lopez");
   CHECK(world.ran.back().arguments["message"].asString() == "venga a comer");
+}
+
+namespace
+{
+tools::ToolDescriptor whereIsStub(World& world)
+{
+  return tool_stubs::stub({.name = "guard.where_is",
+                           .capability = "presence.read",
+                           .handler = [&world](const tools::ToolCall& call) {
+                             world.ran.push_back(call);
+                             return tool_stubs::okResult(
+                                 "David Acme está en la sala. Estoy seguro: por la cámara, ahora mismo.");
+                           },
+                           .module = "surveillance",
+                           .schema = schema::object({{.name = "person", .schema = schema::text(), .required = false},
+                                                     {.name = "room", .schema = schema::text(), .required = false}})});
+}
+}
+
+TEST_CASE("where a member is, is the rules' choice for the owner, and the room the tool named survives the location guard")
+{
+  Spoken spoken;
+  spoken.world.add(whereIsStub(spoken.world));
+  spoken.script.replies = {"David está en la sala, lo vio la cámara hace un momento."};
+  const auto output = spoken.sync("¿dónde está David?");
+  REQUIRE(spoken.world.ran.size() == 1);
+  CHECK(spoken.world.ran.front().name == "guard.where_is");
+  CHECK(spoken.world.ran.front().arguments["person"].asString() == "david");
+  CHECK(output.reply == "David está en la sala, lo vio la cámara hace un momento.");
+
+  Spoken resident(UserRole::Resident);
+  resident.world.add(whereIsStub(resident.world));
+  resident.script.replies = {"David está en la sala."};
+  const auto refused = resident.sync("¿quién está en la sala?");
+  CHECK(resident.world.ran.empty());
+  CHECK(refused.reply.find("la sala") == std::string::npos);
+  CHECK(resident.script.requests.empty());
+}
+
+TEST_CASE("a monthly reminder on a named day is a reminder by rule in both languages, and a question stays a question")
+{
+  const UtcZone zone;
+  const turn::TriggerDecider triggers;
+  const std::vector<Repeated> heard{
+      {.utterance = "recuérdame el día 5 de cada mes a las 9 pagar el alquiler", .lang = "es", .rule = "FREQ=MONTHLY;BYMONTHDAY=5"},
+      {.utterance = "recuérdame el 15 de cada mes pagar la tarjeta a las 10", .lang = "es", .rule = "FREQ=MONTHLY;BYMONTHDAY=15"},
+      {.utterance = "remind me on the 5th of every month at 9 to pay the rent", .lang = "en", .rule = "FREQ=MONTHLY;BYMONTHDAY=5"},
+  };
+  for (const Repeated& said : heard) {
+    INFO(said.utterance);
+    World world;
+    world.now = at({.day = 7, .hour = 15, .minute = 20});
+    world.context.lang = said.lang;
+    addRemind(world);
+    world.flow.useDecider(triggers);
+    const auto done = world.say(said.utterance);
+    REQUIRE(world.ran.size() == 1);
+    CHECK(world.ran.front().name == "memory.remind");
+    CHECK(world.ran.front().arguments["repeat"].asString() == said.rule);
+    CHECK(actAs<turn::speech::Done>(done) != nullptr);
+  }
+
+  World untimed;
+  untimed.now = at({.day = 7, .hour = 15, .minute = 20});
+  addRemind(untimed);
+  untimed.flow.useDecider(triggers);
+  const auto asked = untimed.say("recuérdame el día 5 de cada mes pagar el alquiler");
+  CHECK(untimed.ran.empty());
+  const auto* ask = actAs<turn::speech::AskSlot>(asked);
+  REQUIRE(ask != nullptr);
+  CHECK(ask->tool == "memory.remind");
+  CHECK(ask->reason == turn::speech::AskReason::RepeatTime);
+
+  const auto decide = [&](const std::string& utterance, const std::string& lang) {
+    return triggers.decide(
+        {.utterance = utterance, .lang = lang, .offered = untimed.offered, .modules = untimed.audience.modules});
+  };
+  CHECK(must(decide("recuérdame el día 5 de cada mes pagar el alquiler", "es")).tool == "memory.remind");
+  CHECK(must(decide("avísame el 20 de cada mes que toca pagar el colegio", "es")).tool == "memory.remind");
+  CHECK(must(decide("remind me every month on the 5th to pay the rent", "en")).tool == "memory.remind");
+  for (const char* question : {"¿qué tengo el día 5?", "¿qué tengo el día 5 de cada mes?",
+                               "recuérdame qué tengo el día 5 de cada mes", "remind me what I pay on the 5th of every month",
+                               "¿me recuerdas qué pago el 5 de cada mes?"}) {
+    INFO(question);
+    const auto decided = decide(question, std::string(question).starts_with("remind") ? "en" : "es");
+    CHECK((!decided.has_value() || decided->tool != "memory.remind"));
+  }
 }

@@ -3,6 +3,7 @@
 #include <feature/llm/services/tools/app-command.hxx>
 #include <feature/llm/services/tools/module-command.hxx>
 #include <feature/llm/services/tools/sight-command.hxx>
+#include <feature/llm/services/tools/whereabouts-command.hxx>
 #include <feature/memory/services/extract/call-time.hxx>
 #include <feature/memory/services/extract/repeat-rule.hxx>
 #include <feature/memory/services/extract/temporal-resolver.hxx>
@@ -60,6 +61,48 @@ bool asksAQuestion(const QuestionHeard& heard)
     return true;
   folded.erase(folded.find(*ask), ask->size());
   return heard.parser.isQuestion({.text = folded, .lang = heard.input.lang});
+}
+
+constexpr std::array<std::string_view, 15> kAskedQuestionWords{
+    "que", "what", "cuando", "when", "donde", "where", "quien", "who", "como", "how", "cual", "which", "si", "if",
+    "cuanto"};
+
+bool hasQuestionMark(std::string_view utterance)
+{
+  return utterance.find('?') != std::string_view::npos || utterance.find("\xc2\xbf") != std::string_view::npos;
+}
+
+std::string wordAfterAsk(std::string_view utterance)
+{
+  const std::string folded = foldAsk(utterance);
+  for (const std::string_view ask : kReminderAsks) {
+    const std::size_t at = folded.find(ask);
+    if (at == std::string::npos)
+      continue;
+    std::size_t begin = at + ask.size();
+    while (begin < folded.size() && folded[begin] == ' ')
+      ++begin;
+    const std::size_t end = std::min(folded.find(' ', begin), folded.size());
+    return folded.substr(begin, end - begin);
+  }
+  return {};
+}
+
+struct MonthlyAsk
+{
+  std::string_view utterance;
+  std::string_view lang;
+};
+
+bool asksMonthlyOnADay(const MonthlyAsk& ask)
+{
+  if (hasQuestionMark(ask.utterance) || !asksToBeReminded(ask.utterance))
+    return false;
+  const RepeatReading reading = repeat_rule::read({.text = ask.utterance, .lang = ask.lang});
+  if (!reading.repeat || reading.repeat->frequency != RepeatFrequency::Monthly || reading.repeat->monthDay <= 0)
+    return false;
+  const std::string next = wordAfterAsk(ask.utterance);
+  return !next.empty() && std::ranges::find(kAskedQuestionWords, std::string_view(next)) == kAskedQuestionWords.end();
 }
 
 bool namesOneInstant(std::string_view utterance, std::string_view lang)
@@ -128,6 +171,15 @@ std::optional<Candidate> RuleDecider::decide(const DecideInput& input) const
                      .decider = std::string(id()),
                      .exact = true,
                      .runnerUp = std::nullopt};
+  if (auto command = whereaboutsCommandFor(utterance); command && isOffered(input, command->name))
+    return Candidate{.tool = command->name,
+                     .arguments = command->arguments,
+                     .fill = {},
+                     .confidence = kRuleConfidence,
+                     .source = "whereabouts command",
+                     .decider = std::string(id()),
+                     .exact = true,
+                     .runnerUp = std::nullopt};
   return std::nullopt;
 }
 
@@ -143,8 +195,9 @@ std::optional<Candidate> TriggerDecider::decide(const DecideInput& input) const
   const RuleParser parser(catalog_);
   const RuleParseInput parseInput{.text = utterance, .lang = lang};
   const bool parsed = parser.parse(parseInput).has_value();
-  const bool repeating = asksToBeReminded(utterance) && !asksAQuestion({.parser = parser, .input = parseInput}) &&
-                         asksToRepeat({.utterance = utterance, .lang = lang, .parsed = parsed});
+  const bool repeating = asksMonthlyOnADay({.utterance = utterance, .lang = lang}) ||
+                         (asksToBeReminded(utterance) && !asksAQuestion({.parser = parser, .input = parseInput}) &&
+                          asksToRepeat({.utterance = utterance, .lang = lang, .parsed = parsed}));
   if (!parsed && !repeating)
     return std::nullopt;
   const bool reminder = repeating || (asksToBeReminded(utterance) && namesOneInstant(utterance, lang));

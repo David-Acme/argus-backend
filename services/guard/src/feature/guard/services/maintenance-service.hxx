@@ -121,6 +121,7 @@ private:
   [[nodiscard]] drogon::Task<MaintenanceWindow> open(const MaintenanceDeclareInput& input) const;
   [[nodiscard]] drogon::Task<void> close(const CloseInput& input) const;
   [[nodiscard]] drogon::Task<void> announce(const AuditInput& input) const;
+  [[nodiscard]] drogon::Task<void> publishEnded(const MaintenanceWindow& window) const;
   [[nodiscard]] drogon::Task<std::vector<ResponseUser>> users() const;
   [[nodiscard]] drogon::Task<MaintenanceWindow> require(int64_t id) const;
   [[nodiscard]] drogon::Task<void> notifyDuress(const MaintenanceWindow& window) const;

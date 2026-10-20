@@ -87,6 +87,15 @@ ResourceChangeOutbox::publishAction(const ActionPublishInput& input) const
        .client = input.client}));
 }
 
+drogon::Task<void>
+ResourceChangeOutbox::recordEvent(const GuardEventInput& input) const
+{
+  static_cast<void>(co_await outbox_.record({.eventId = input.eventId,
+                                             .subject = input.subject,
+                                             .payload = input.payload,
+                                             .client = input.client}));
+}
+
 outbox::OutboxRepository ResourceChangeOutbox::repository()
 {
   return outbox::OutboxRepository([] { return DbService::client(); });

@@ -156,6 +156,26 @@ drogon::Task<argus::mcp::ToolOutcome> maintenanceCall(MaintenanceVoice port, arg
   co_return outcome;
 }
 
+drogon::Task<argus::mcp::ToolOutcome> whereaboutsCall(WhereaboutsVoice port, argus::mcp::ToolInvocation invocation)
+{
+  const bool english = invocation.caller.lang == "en";
+  if (!port)
+    co_return argus::mcp::toolFailure({.text = english ? "I cannot tell where anyone is right now."
+                                                       : "Ahora no puedo saber dónde está nadie.",
+                                       .code = "whereabouts_unavailable"});
+  const WhereaboutsVoiceReply reply = co_await port({.userId = invocation.caller.userId,
+                                                     .role = invocation.caller.role,
+                                                     .lang = invocation.caller.lang,
+                                                     .person = invocation.arguments.get("person", "").asString(),
+                                                     .room = invocation.arguments.get("room", "").asString()});
+  if (!reply.ok)
+    co_return argus::mcp::toolFailure({.text = reply.text, .code = reply.code});
+  argus::mcp::ToolOutcome outcome;
+  outcome.text = reply.text;
+  outcome.structured = reply.structured;
+  co_return outcome;
+}
+
 }
 
 std::shared_ptr<argus::mcp::McpServer> guardToolServer(const GuardToolsInput& input)
@@ -212,6 +232,21 @@ std::shared_ptr<argus::mcp::McpServer> guardToolServer(const GuardToolsInput& in
                .capability = "guard.maintenance"},
               argus::mcp::onLoop({.loop = input.loop, .handler = [maintenance](const argus::mcp::ToolInvocation& invocation) {
                                     return maintenanceCall(maintenance.status, invocation);
+                                  }}));
+  const WhereaboutsVoice whereabouts = input.whereabouts;
+  server->add({.name = "guard.where_is",
+               .title = "",
+               .description = "Dice dónde está alguien de casa: la habitación en la que Argus le ubica, o si está en "
+                              "casa o fuera, y qué tan seguro está. person es el nombre de la persona; room es una "
+                              "habitación (sala, cocina...) para saber quién está ahí; vacíos los dos, quién está en "
+                              "casa. Solo cuenta a quien comparte su ubicación",
+               .inputSchema = schema::object({{.name = "person", .schema = schema::text(), .required = false},
+                                              {.name = "room", .schema = schema::text(), .required = false}}),
+               .annotations = {.readOnly = true},
+               .module = "surveillance",
+               .capability = "presence.read"},
+              argus::mcp::onLoop({.loop = input.loop, .handler = [whereabouts](const argus::mcp::ToolInvocation& invocation) {
+                                    return whereaboutsCall(whereabouts, invocation);
                                   }}));
   server->setGate(tool_gate::capabilities());
   return server;

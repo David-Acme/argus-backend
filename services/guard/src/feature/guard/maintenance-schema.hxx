@@ -58,8 +58,17 @@ struct TamperAsk
   int64_t answeredAt{0};
 };
 
+struct MaintenanceEndedEvent
+{
+  const MaintenanceWindow& window;
+  std::vector<std::string> cameraNames;
+  std::string environmentName;
+};
+
 namespace maintenance_schema
 {
+[[nodiscard]] std::string endedEventId(int64_t windowId);
+[[nodiscard]] Json::Value endedEventJson(const MaintenanceEndedEvent& event);
 [[nodiscard]] std::string idsToJson(const std::vector<int64_t>& ids);
 [[nodiscard]] std::vector<int64_t> idsFromJson(const std::string& text);
 [[nodiscard]] std::string viewChecksToJson(const std::vector<ViewCheck>& checks);

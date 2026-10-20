@@ -1,6 +1,7 @@
 argus_module(NAME encounter-closed
     SOURCES
         services/encounter-closed-consumer.cc
+        services/maintenance-ended-consumer.cc
     INCLUDES
         ../..
     DEPENDS
