@@ -45,6 +45,7 @@ argus_module(NAME llm
         services/turn-engines.cc
         services/tools/app-command.cc
         services/tools/sight-command.cc
+        services/tools/whereabouts-command.cc
         services/tools/claim-check.cc
         services/tools/core-tools.cc
         services/tools/module-command-lexicon.cc

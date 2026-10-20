@@ -92,6 +92,30 @@ TEST_CASE("the owner keeps answering where a person is")
   CHECK_FALSE(ask("¿dónde está Tomás?", UserRole::Owner).has_value());
 }
 
+TEST_CASE("who is in a room or whether someone is home stays the owner's, as where a person is")
+{
+  for (const UserRole role : {UserRole::Resident, UserRole::Guard, UserRole::Guest, UserRole::Unknown}) {
+    CHECK(valueOf(ask("¿quién está en la sala?", role)).reason == turn::refusal::kPrivatePerson);
+    const auto home = valueOf(ask("¿está David en casa?", role));
+    CHECK(home.reason == turn::refusal::kPrivatePerson);
+    CHECK(home.name == "David");
+    const auto english = valueOf(ask("is Ana home?", role, "en"));
+    CHECK(english.reason == turn::refusal::kPrivatePerson);
+    CHECK(english.name == "Ana");
+    CHECK(valueOf(ask("who is in the kitchen?", role, "en")).reason == turn::refusal::kPrivatePerson);
+  }
+  CHECK_FALSE(ask("¿quién está en la sala?", UserRole::Owner).has_value());
+  CHECK_FALSE(ask("¿está David en casa?", UserRole::Owner).has_value());
+  CHECK_FALSE(ask("who is in the kitchen?", UserRole::Owner, "en").has_value());
+}
+
+TEST_CASE("where a camera is, is not a question about a person")
+{
+  CHECK_FALSE(ask("¿dónde está la cámara del patio?", UserRole::Resident).has_value());
+  CHECK_FALSE(ask("where is the camera of the garage?", UserRole::Guest, "en").has_value());
+  CHECK(valueOf(ask("¿dónde está Ana?", UserRole::Guest)).reason == turn::refusal::kPrivatePerson);
+}
+
 TEST_CASE("a security question refuses while surveillance is off")
 {
   const ToolAudience off = audienceFor(UserRole::Guard, false);

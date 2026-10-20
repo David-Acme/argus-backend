@@ -1,5 +1,6 @@
 #include "refusal-rules.hxx"
 
+#include <feature/llm/services/tools/whereabouts-command.hxx>
 #include <text/name-match.hxx>
 #include <text/text-norm.hxx>
 
@@ -227,6 +228,26 @@ std::optional<std::string> nameAt(const std::vector<Word>& words, const NameWind
   return name;
 }
 
+bool namesCamera(const std::vector<Word>& words, std::size_t from)
+{
+  std::size_t index = from;
+  while (index < words.size() && inList(words.at(index).folded, kRelaySkip))
+    ++index;
+  return index < words.size() &&
+         (words.at(index).folded.starts_with("camara") || words.at(index).folded.starts_with("camera"));
+}
+
+std::string titled(std::string name)
+{
+  bool start = true;
+  for (char& c : name) {
+    if (start)
+      c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    start = c == ' ';
+  }
+  return name;
+}
+
 std::optional<std::string> relayTarget(const std::vector<Word>& words, bool english)
 {
   if (english) {
@@ -302,9 +323,16 @@ std::optional<Refusal> refusalFor(const Ask& ask)
                                                   : std::span<const std::string_view>(kWherePersonEs))) {
     if (owner)
       return std::nullopt;
-    return Refusal{.reason = std::string(kPrivatePerson),
-                   .name = nameAt(words, {.start = hit->at + hit->size, .most = 1}).value_or(std::string())};
+    if (!namesCamera(words, hit->at + hit->size))
+      return Refusal{.reason = std::string(kPrivatePerson),
+                     .name = nameAt(words, {.start = hit->at + hit->size, .most = 1}).value_or(std::string())};
   }
+
+  const std::optional<tools::ToolCall> whereabouts =
+      owner ? std::nullopt : whereaboutsCommandFor(std::string(ask.utterance));
+  if (whereabouts)
+    return Refusal{.reason = std::string(kPrivatePerson),
+                   .name = titled(whereabouts->arguments.get("person", "").asString())};
 
   if (firstPhrase(words, english ? std::span<const std::string_view>(kOtherPrivateEn)
                                  : std::span<const std::string_view>(kOtherPrivateEs)))

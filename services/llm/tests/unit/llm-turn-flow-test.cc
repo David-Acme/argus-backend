@@ -1547,7 +1547,7 @@ TEST_CASE("the read-only tools are exactly the list in tool-effects.json and eve
 {
   const std::vector<std::string> expected{"calendar.list_events", "task.list", "project.list", "modules.list", "modules.explain",
                                           "reminder.list", "memory.recall", "app.open", "app.show_camera",
-                                          "guard.maintenance_status"};
+                                          "guard.maintenance_status", "guard.where_is"};
   CHECK(turn::kReadOnlyTools.size() == expected.size());
   for (const std::string& name : expected)
     CHECK(turn::isReadOnlyTool(name));
@@ -2645,4 +2645,41 @@ TEST_CASE("a new relay command while the question is open replaces the question 
   REQUIRE(world.ran.size() == 2);
   CHECK(world.ran.back().arguments["recipient"].asString() == "ana lopez");
   CHECK(world.ran.back().arguments["message"].asString() == "venga a comer");
+}
+
+namespace
+{
+tools::ToolDescriptor whereIsStub(World& world)
+{
+  return tool_stubs::stub({.name = "guard.where_is",
+                           .capability = "presence.read",
+                           .handler = [&world](const tools::ToolCall& call) {
+                             world.ran.push_back(call);
+                             return tool_stubs::okResult(
+                                 "David Acme está en la sala. Estoy seguro: por la cámara, ahora mismo.");
+                           },
+                           .module = "surveillance",
+                           .schema = schema::object({{.name = "person", .schema = schema::text(), .required = false},
+                                                     {.name = "room", .schema = schema::text(), .required = false}})});
+}
+}
+
+TEST_CASE("where a member is, is the rules' choice for the owner, and the room the tool named survives the location guard")
+{
+  Spoken spoken;
+  spoken.world.add(whereIsStub(spoken.world));
+  spoken.script.replies = {"David está en la sala, lo vio la cámara hace un momento."};
+  const auto output = spoken.sync("¿dónde está David?");
+  REQUIRE(spoken.world.ran.size() == 1);
+  CHECK(spoken.world.ran.front().name == "guard.where_is");
+  CHECK(spoken.world.ran.front().arguments["person"].asString() == "david");
+  CHECK(output.reply == "David está en la sala, lo vio la cámara hace un momento.");
+
+  Spoken resident(UserRole::Resident);
+  resident.world.add(whereIsStub(resident.world));
+  resident.script.replies = {"David está en la sala."};
+  const auto refused = resident.sync("¿quién está en la sala?");
+  CHECK(resident.world.ran.empty());
+  CHECK(refused.reply.find("la sala") == std::string::npos);
+  CHECK(resident.script.requests.empty());
 }

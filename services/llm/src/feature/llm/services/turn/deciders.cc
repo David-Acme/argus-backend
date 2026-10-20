@@ -3,6 +3,7 @@
 #include <feature/llm/services/tools/app-command.hxx>
 #include <feature/llm/services/tools/module-command.hxx>
 #include <feature/llm/services/tools/sight-command.hxx>
+#include <feature/llm/services/tools/whereabouts-command.hxx>
 #include <feature/memory/services/extract/call-time.hxx>
 #include <feature/memory/services/extract/repeat-rule.hxx>
 #include <feature/memory/services/extract/temporal-resolver.hxx>
@@ -125,6 +126,15 @@ std::optional<Candidate> RuleDecider::decide(const DecideInput& input) const
                      .fill = {},
                      .confidence = kRuleConfidence,
                      .source = "sight command",
+                     .decider = std::string(id()),
+                     .exact = true,
+                     .runnerUp = std::nullopt};
+  if (auto command = whereaboutsCommandFor(utterance); command && isOffered(input, command->name))
+    return Candidate{.tool = command->name,
+                     .arguments = command->arguments,
+                     .fill = {},
+                     .confidence = kRuleConfidence,
+                     .source = "whereabouts command",
                      .decider = std::string(id()),
                      .exact = true,
                      .runnerUp = std::nullopt};

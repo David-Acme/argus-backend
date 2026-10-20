@@ -35,6 +35,7 @@
       "guard.maintenance_end",
       "guard.maintenance_start",
       "guard.maintenance_status",
+      "guard.where_is",
       "memory.forget",
       "memory.recall",
       "memory.remember",
@@ -121,6 +122,10 @@
     },
     "guard.maintenance_status": {
       "capability": "guard.maintenance",
+      "module": "surveillance"
+    },
+    "guard.where_is": {
+      "capability": "presence.read",
       "module": "surveillance"
     },
     "memory.forget": {
