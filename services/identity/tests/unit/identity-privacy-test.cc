@@ -8,6 +8,7 @@
 #include <errors/validation-exception.hxx>
 #include <feature/privacy/dtos/response-privacy-dto.hxx>
 #include <feature/privacy/dtos/update-household-privacy-dto.hxx>
+#include <feature/privacy/dtos/update-minor-dto.hxx>
 #include <feature/privacy/dtos/update-privacy-dto.hxx>
 #include <feature/privacy/services/privacy-feature-service.hxx>
 #include <feature/voiceprint/services/passive/passive-enrollment-service.hxx>
@@ -568,4 +569,115 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
         {.userId = 7, .noticeVersion = kPrivacyNoticeVersion, .choices = allOn(), .location = true}));
     CHECK(drogon::sync_wait(gate.effectiveFor(7)).location);
   }
+
+  {
+    INFO("a minor without the guardian's consent is neither recognised nor learned, and the learned voice goes");
+    drogon::sync_wait(service.decide(
+        {.userId = 7, .noticeVersion = kPrivacyNoticeVersion, .choices = allOn(), .location = true}));
+    DbService::identityClient()->execSqlSync(
+        "INSERT OR REPLACE INTO voice_profile (user_id, model, embedding, sample_count, speech_seconds, source, "
+        "linked_at, refreshed_at) VALUES (7, 'test-model', x'00000000', 3, 20.0, 'passive', 1000, 1000)");
+    sink.clear();
+    const auto marked = drogon::sync_wait(service.markMinor(
+        {.actorId = 1, .userId = 7, .minor = true, .guardianConsent = false}));
+    const auto rita = std::ranges::find(marked.users, int64_t{7}, &PrivacyDirectoryEntry::userId);
+    REQUIRE(rita != marked.users.end());
+    CHECK(rita->state.minor);
+    CHECK_FALSE(rita->state.guardianConsent);
+    CHECK(rita->state.choices.faceCameras);
+    CHECK_FALSE(rita->state.effective.faceCameras);
+    CHECK_FALSE(rita->state.effective.voiceLearning);
+    CHECK(rita->state.effective.presence);
+    CHECK(countRows("voice_profile", 7) == 0);
+    const auto effective = drogon::sync_wait(gate.effectiveFor(7));
+    CHECK_FALSE(effective.faceCameras);
+    CHECK_FALSE(effective.voiceLearning);
+    CHECK(drogon::sync_wait(service.me(7)).state.minor);
+    CHECK(hasJournalEvent(sink.actions(), "minor_mark"));
+    const auto catalog = sink.catalog();
+    REQUIRE_FALSE(catalog.empty());
+    CHECK(catalog.back()["privacy"]["minor"].asBool());
+    CHECK_FALSE(catalog.back()["privacy"]["voiceLearning"].asBool());
+    const auto json = ResponsePrivacyDirectoryDto{.directory = marked}.toJson();
+    bool listed = false;
+    for (const auto& user : json["users"])
+      if (user["userId"].asInt64() == 7) {
+        listed = true;
+        CHECK(user["minor"].asBool());
+        CHECK_FALSE(user["guardianConsent"].asBool());
+      }
+    CHECK(listed);
+
+    RpcHarness harness;
+    const IdentityClient client(harness.target());
+    const auto answer = client.getUser(7);
+    REQUIRE(answer.has_value());
+    CHECK(answer->user().privacy().minor());
+    CHECK_FALSE(answer->user().privacy().guardian_consent());
+    CHECK_FALSE(answer->user().privacy().voice_learning());
+  }
+
+  {
+    INFO("the guardian's consent gives the minor back their own choices, and unmarking clears the mark");
+    const auto consented = drogon::sync_wait(service.markMinor(
+        {.actorId = 1, .userId = 7, .minor = true, .guardianConsent = true}));
+    const auto rita = std::ranges::find(consented.users, int64_t{7}, &PrivacyDirectoryEntry::userId);
+    REQUIRE(rita != consented.users.end());
+    CHECK(rita->state.minor);
+    CHECK(rita->state.guardianConsent);
+    CHECK(rita->state.effective.voiceLearning);
+    CHECK(rita->state.effective.faceCameras);
+    const auto guardian = DbService::identityClient()->execSqlSync(
+        "SELECT guardian_id FROM user_minor WHERE user_id = 7");
+    REQUIRE(guardian.size() == 1);
+    CHECK(guardian.front()[0].as<int64_t>() == 1);
+    drogon::sync_wait(service.markMinor({.actorId = 1, .userId = 7, .minor = false, .guardianConsent = false}));
+    CHECK_FALSE(drogon::sync_wait(gate.stateFor(7)).minor);
+    CHECK(countRows("user_minor", 7) == 0);
+    CHECK_THROWS_AS(drogon::sync_wait(service.markMinor(
+                        {.actorId = 1, .userId = 9, .minor = true, .guardianConsent = false})),
+                    ResponseException);
+  }
+}
+
+TEST_CASE("the minor mark is the owner's, and its body is checked")
+{
+  using role_access::hasHttpAccess;
+  CHECK(hasHttpAccess({.role = UserRole::Owner, .path = "/privacy/users/7/minor", .method = drogon::Put}));
+  CHECK_FALSE(hasHttpAccess({.role = UserRole::Resident, .path = "/privacy/users/7/minor", .method = drogon::Put}));
+  CHECK_FALSE(hasHttpAccess({.role = UserRole::Guard, .path = "/privacy/users/7/minor", .method = drogon::Put}));
+
+  Json::Value body(Json::objectValue);
+  CHECK_THROWS_AS(UpdateMinorDto::fromJson(body, 7), ValidationException);
+  body["minor"] = false;
+  body["guardianConsent"] = true;
+  CHECK_THROWS_AS(UpdateMinorDto::fromJson(body, 7), ValidationException);
+  body["minor"] = true;
+  CHECK_THROWS_AS(UpdateMinorDto::fromJson(body, 0), ValidationException);
+  const auto dto = UpdateMinorDto::fromJson(body, 7);
+  CHECK(dto.minor == std::optional<bool>(true));
+  CHECK(dto.guardianConsent == std::optional<bool>(true));
+}
+
+TEST_CASE("a minor mark turns off the biometric signals unless the guardian consented")
+{
+  PrivacyState state;
+  state.decided = true;
+  state.choices = allOn();
+  state.effective = allOn();
+  CHECK(privacy_policy::withMinor(state, std::nullopt).effective == allOn());
+  UserMinorSchema mark;
+  mark.userId = 7;
+  const PrivacyState minor = privacy_policy::withMinor(state, mark);
+  CHECK(minor.minor);
+  CHECK_FALSE(minor.effective.faceCameras);
+  CHECK_FALSE(minor.effective.voiceLearning);
+  CHECK(minor.effective.presence);
+  CHECK(minor.effective.cameraAudio);
+  CHECK(minor.choices == allOn());
+  mark.guardianConsent = true;
+  const PrivacyState consented = privacy_policy::withMinor(state, mark);
+  CHECK(consented.guardianConsent);
+  CHECK(consented.effective == allOn());
+  CHECK(privacy_policy::toJson(minor)["minor"].asBool());
 }

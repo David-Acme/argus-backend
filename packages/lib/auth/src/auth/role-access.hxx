@@ -230,10 +230,11 @@ inline constexpr std::array<AuthRouteAccess, 1> kSyncAccess = {{
     {.path = "/sync/heartbeat", .method = drogon::Get, .roles = kEveryRoleBaseline},
 }};
 
-inline constexpr std::array<AuthRouteAccess, 4> kPrivacyAccess = {{
+inline constexpr std::array<AuthRouteAccess, 5> kPrivacyAccess = {{
     {.path = "/privacy/me", .method = drogon::Get, .roles = kEveryRoleBaseline},
     {.path = "/privacy/me", .method = drogon::Put, .roles = kEveryRoleBaseline},
     {.path = "/privacy/users", .method = drogon::Get, .roles = kOwnerOnly},
+    {.path = "/privacy/users/{id}/minor", .method = drogon::Put, .roles = kOwnerOnly},
     {.path = "/privacy/household", .method = drogon::Patch, .roles = kOwnerOnly},
 }};
 

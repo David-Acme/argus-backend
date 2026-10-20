@@ -104,6 +104,7 @@ identity	PATCH	/privacy/household	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFil
 identity	GET	/privacy/me	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/privacy/controllers/privacy-controller.hxx
 identity	PUT	/privacy/me	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/privacy/controllers/privacy-controller.hxx
 identity	GET	/privacy/users	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/privacy/controllers/privacy-controller.hxx
+identity	PUT	/privacy/users/{1}/minor	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/privacy/controllers/privacy-controller.hxx
 identity	GET	/user	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/user/controllers/user-controller.hxx
 identity	DELETE	/user/{1}	DeviceFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/user/controllers/user-controller.hxx
 identity	PATCH	/user/{1}	DeviceFilter,ValidJsonFilter,JwtFilter,RoleFilter	-	services/identity/src/feature/user/controllers/user-controller.hxx

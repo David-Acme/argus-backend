@@ -8,6 +8,7 @@ argus_module(NAME identity-shared
         repositories/user-invitation/user-invitation-repository.cc
         repositories/user-portrait/user-portrait-repository.cc
         repositories/user/user-repository.cc
+        repositories/user-minor/user-minor-repository.cc
         schemas/face-embedding/face-embedding-schema.cc
         schemas/person/person-schema.cc
         schemas/privacy/privacy-schema.cc
@@ -15,6 +16,7 @@ argus_module(NAME identity-shared
         schemas/user-invitation/user-invitation-schema.cc
         schemas/user-portrait/user-portrait-schema.cc
         schemas/user/user-schema.cc
+        schemas/user-minor/user-minor-schema.cc
         services/face/anti-spoof.cc
         services/face/face-check.cc
         services/face/face-db.cc

@@ -79,6 +79,7 @@ constexpr std::array kRouteProbes = std::to_array<RouteProbe>({
     {.capability = "users.manage", .method = drogon::Patch, .path = "/user/1"},
     {.capability = "invitations.manage", .method = drogon::Post, .path = "/invitation"},
     {.capability = "privacy.household", .method = drogon::Patch, .path = "/privacy/household"},
+    {.capability = "privacy.household", .method = drogon::Put, .path = "/privacy/users/7/minor"},
     {.capability = "settings.manage", .method = drogon::Patch, .path = "/settings/llm"},
     {.capability = "modules.manage", .method = drogon::Post, .path = "/modules/surveillance/install"},
     {.capability = "activity.read", .method = drogon::Get, .path = "/sync/activity"},

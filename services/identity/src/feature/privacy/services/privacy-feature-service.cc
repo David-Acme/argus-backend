@@ -83,7 +83,8 @@ drogon::Task<PrivacyView> PrivacyFeatureService::me(int64_t userId) const
     throw ResponseException(IdentityErrors::UserNotFound);
   const auto household = co_await repository_.household();
   const auto record = co_await repository_.findUser(userId);
-  co_return PrivacyView{.state = privacy_policy::stateOf(record, household),
+  const auto minor = co_await minorRepository_.find(userId);
+  co_return PrivacyView{.state = privacy_policy::withMinor(privacy_policy::stateOf(record, household), minor),
                         .household = household.allowed};
 }
 
@@ -111,7 +112,8 @@ PrivacyFeatureService::decide(const PrivacyDecisionInput& input) const
                                          .noticeVersion = input.noticeVersion,
                                          .choices = choices,
                                          .client = transaction.get()});
-    view.state = privacy_policy::stateOf(after, household);
+    const auto minor = co_await minorRepository_.find(input.userId, transaction.get());
+    view.state = privacy_policy::withMinor(privacy_policy::stateOf(after, household), minor);
     view.household = household.allowed;
 
     if (!view.state.effective.voiceLearning)
@@ -244,5 +246,55 @@ PrivacyFeatureService::updateHousehold(const HouseholdPrivacyChange& change) con
   }
   for (const auto& entry : erased)
     co_await VoiceprintFeatureService::dropFromIndex(entry);
+  co_return co_await directory();
+}
+
+drogon::Task<PrivacyDirectory> PrivacyFeatureService::markMinor(const MinorMarkInput& input) const
+{
+  VoiceprintEraseResult erased;
+  auto transaction = co_await db_transaction::begin(DbService::identityClient());
+  try {
+    const auto user = co_await userRepository_.findById(input.userId, transaction.get());
+    if (!user || !user->isActive)
+      throw ResponseException(IdentityErrors::UserNotFound);
+    const auto before = co_await minorRepository_.find(input.userId, transaction.get());
+    if (input.minor)
+      static_cast<void>(co_await minorRepository_.upsert(
+          {.userId = input.userId,
+           .guardianConsent = input.guardianConsent,
+           .guardianId = input.guardianConsent ? std::optional<int64_t>(input.actorId) : std::nullopt,
+           .setBy = input.actorId,
+           .client = transaction.get()}));
+    else
+      static_cast<void>(co_await minorRepository_.remove(input.userId, transaction.get()));
+    const PrivacyState state = co_await gate_.stateFor(input.userId, transaction.get());
+    if (!state.effective.voiceLearning)
+      erased = co_await voiceprint_.eraseForConsent({.actorId = input.actorId,
+                                                     .subjectId = input.userId,
+                                                     .reason = kVoiceEraseMinor,
+                                                     .byOwner = true,
+                                                     .client = transaction.get()});
+    co_await publishCatalog({.user = *user, .state = state, .client = transaction.get()});
+    co_await announce({.scope = ResourceScope::PrivacyChoice, .user = input.userId, .client = transaction.get()});
+    Json::Value data(Json::objectValue);
+    data["event"] = "minor_mark";
+    data["minor"] = input.minor;
+    data["guardianConsent"] = input.minor && input.guardianConsent;
+    data["wasMinor"] = before.has_value();
+    data["byOwner"] = true;
+    co_await journal({.actorId = input.actorId,
+                      .subjectId = input.userId,
+                      .action = UserAction::Update,
+                      .data = std::move(data),
+                      .client = transaction.get()});
+    if (!co_await db_transaction::Commit(std::move(transaction)))
+      throw ResponseException(IdentityErrors::ChangeNotRecorded);
+  }
+  catch (...) {
+    db_transaction::rollback(transaction);
+    throw;
+  }
+  co_await VoiceprintFeatureService::dropFromIndex(erased);
+  LOG_INFO << "Privacy: the minor mark of user " << input.userId << " was set by user " << input.actorId;
   co_return co_await directory();
 }

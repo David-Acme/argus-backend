@@ -16,6 +16,8 @@ Json::Value stateJson(const PrivacyState& state)
                           : Json::Value();
   json["choices"] = state.choices.toJson();
   json["effective"] = state.effective.toJson();
+  json["minor"] = state.minor;
+  json["guardianConsent"] = state.guardianConsent;
   return json;
 }
 

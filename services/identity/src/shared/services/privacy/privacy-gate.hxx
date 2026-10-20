@@ -4,6 +4,7 @@
 #include <drogon/utils/coroutine.h>
 #include <optional>
 #include <shared/repositories/privacy/privacy-repository.hxx>
+#include <shared/repositories/user-minor/user-minor-repository.hxx>
 #include <shared/vocabulary/privacy-choices.hxx>
 #include <unordered_map>
 
@@ -11,6 +12,7 @@ namespace privacy_policy
 {
 [[nodiscard]] PrivacyState stateOf(const std::optional<UserPrivacySchema>& record,
                                     const HouseholdPrivacySchema& household);
+[[nodiscard]] PrivacyState withMinor(PrivacyState state, const std::optional<UserMinorSchema>& minor);
 [[nodiscard]] Json::Value toJson(const PrivacyState& state);
 }
 
@@ -33,4 +35,5 @@ public:
 
 private:
   PrivacyRepository repository_;
+  UserMinorRepository minorRepository_;
 };

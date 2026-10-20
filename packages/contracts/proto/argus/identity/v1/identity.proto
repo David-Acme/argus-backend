@@ -13,6 +13,8 @@ message PrivacyChoices
   bool visitor_recognition = 7;
   bool location = 8;
   bool watchman = 9;
+  bool minor = 10;
+  bool guardian_consent = 11;
 }
 
 message UserIdentity

@@ -193,6 +193,14 @@ CREATE TABLE IF NOT EXISTS household_privacy (
 
 INSERT OR IGNORE INTO household_privacy (id) VALUES (1);
 
+CREATE TABLE IF NOT EXISTS user_minor (
+    user_id           INTEGER NOT NULL  PRIMARY KEY REFERENCES user(id) ON DELETE CASCADE,
+    guardian_consent  INTEGER NOT NULL  DEFAULT 0  CHECK (guardian_consent IN (0, 1)),
+    guardian_id       INTEGER,
+    set_by            INTEGER NOT NULL,
+    set_at            INTEGER NOT NULL  DEFAULT (strftime('%s', 'now'))
+);
+
 CREATE TABLE IF NOT EXISTS person_visit (
     id             INTEGER NOT NULL  PRIMARY KEY AUTOINCREMENT,
     person_id      INTEGER NOT NULL  REFERENCES person(id) ON DELETE CASCADE,
