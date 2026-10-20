@@ -7,6 +7,7 @@
 #include <feature/llm/controllers/llm-controller.hxx>
 #include <feature/llm/services/lfm-adapter.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
+#include <feature/memory/infra/minor-learning-gate.hxx>
 #include <feature/memory/services/memory/memory-chat.hxx>
 #include <feature/memory/services/memory/memory-service.hxx>
 #include <feature/memory/services/memory/sqlite-graph.hxx>
@@ -162,7 +163,7 @@ struct ScreenRig
 
   [[nodiscard]] turn::ScreenedText say(int64_t userId, UserRole role, std::string_view text) const
   {
-    return screen.screen({.userId = userId, .role = role, .text = text});
+    return screen.screen({.userId = userId, .role = role, .text = text, .anonymousCamera = false});
   }
 
   std::shared_ptr<ScriptedLink> link;
@@ -388,6 +389,67 @@ TEST_CASE("nobody else is withheld: other words, a guest, an anonymous caller, a
   CHECK(rig.link->attempts().empty());
 }
 
+TEST_CASE("an unrecognised speaker at a camera who says the phrase is withheld, and llm raises nothing for them")
+{
+  ScreenRig rig(sealed(kPhrase));
+  const turn::ScreenedText camera = rig.screen.screen({.userId = 0,
+                                                       .role = UserRole::Unknown,
+                                                       .text = "oiga, el gato está en el tejado",
+                                                       .anonymousCamera = true});
+  CHECK(camera.withheld);
+  CHECK(camera.text == llm_speech::kWithheldUtterance);
+  CHECK_FALSE(rig.screen.screen({.userId = 0,
+                                 .role = UserRole::Unknown,
+                                 .text = "¿a qué hora pasa el camión?",
+                                 .anonymousCamera = true})
+                  .withheld);
+  CHECK_FALSE(rig.screen.screen({.userId = 0,
+                                 .role = UserRole::Unknown,
+                                 .text = "el gato está en el tejado",
+                                 .anonymousCamera = false})
+                  .withheld);
+  CHECK(eventually([&rig] { return rig.screen.idle(); }));
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  CHECK(rig.link->attempts().empty());
+}
+
+TEST_CASE("an unrecognised camera speaker is screened at the turn, and only argus-voice may declare a camera")
+{
+  ScreenRig rig(sealed(kPhrase));
+  ChatRequest visitor = turnOf(historyEndingWith("el gato está en el tejado"));
+  visitor.userId = 0;
+  visitor.role = UserRole::Unknown;
+  visitor.surface = ConversationSurface::CameraVisitor;
+  const ScreenedRequest screened = screenTurn(&rig.screen, visitor);
+  CHECK(screened.withheld);
+  CHECK(screened.request.messages.back().content == llm_speech::kWithheldUtterance);
+
+  ChatRequest app = visitor;
+  app.surface = ConversationSurface::App;
+  CHECK_FALSE(screenTurn(&rig.screen, app).withheld);
+
+  const ChatRequest outsider = boundToCaller(visitor, "guard");
+  CHECK(outsider.surface == ConversationSurface::App);
+  CHECK_FALSE(screenTurn(&rig.screen, outsider).withheld);
+  CHECK(boundToCaller(visitor, kIdentityCaller).surface == ConversationSurface::CameraVisitor);
+}
+
+TEST_CASE("without a key yet, an unrecognised camera speaker's words go on as heard")
+{
+  const auto link = std::make_shared<ScriptedLink>(std::nullopt);
+  DuressScreen screen({.link = link, .eligible = disarmer}, quick());
+  screen.start();
+  REQUIRE(eventually([&link] { return link->asked() > 0; }));
+  CHECK_FALSE(screen.screen({.userId = 0,
+                             .role = UserRole::Unknown,
+                             .text = "el gato está en el tejado",
+                             .anonymousCamera = true})
+                  .withheld);
+  link->setKey(sealed(kPhrase));
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  CHECK(link->attempts().empty());
+}
+
 TEST_CASE("a raise guard did not take is retried until it is, and only once per speaker")
 {
   ScreenRig rig(sealed(kPhrase), std::chrono::milliseconds(200));
@@ -425,7 +487,7 @@ TEST_CASE("what is said before guard first answers is not withheld, and still ra
   DuressScreen screen({.link = link, .eligible = disarmer}, quick());
   screen.start();
   REQUIRE(eventually([&link] { return link->asked() > 0; }));
-  CHECK_FALSE(screen.screen({.userId = 2, .role = UserRole::Owner, .text = "el gato está en el tejado"}).withheld);
+  CHECK_FALSE(screen.screen({.userId = 2, .role = UserRole::Owner, .text = "el gato está en el tejado", .anonymousCamera = false}).withheld);
   std::this_thread::sleep_for(std::chrono::milliseconds(30));
   CHECK(link->attempts().empty());
   link->setKey(sealed(kPhrase));
@@ -517,6 +579,73 @@ TEST_CASE("the memory graph keeps the same words when they are not the phrase")
   CHECK(std::ranges::any_of(texts, [](const std::string& text) { return text.find("caf") != std::string::npos; }));
 }
 
+TEST_CASE("a minor's words are never learned without the guardian's consent")
+{
+  const std::string db = scratchDb("minor.db");
+  SilentChat chat;
+  MemoryService memory(VecDb::instance(), chat);
+  memory.init({});
+  memory.setLearningGate([](int64_t userId) { return userId != 2; });
+  const tools::ToolResult refused = rememberAsTheTurnWould(memory, turnOf(historyEndingWith(kStatement)));
+  CHECK_FALSE(refused.ok);
+  CHECK(refused.code == "learning_off");
+  ChatRequest adult = turnOf(historyEndingWith(kStatement));
+  adult.userId = 3;
+  CHECK(rememberAsTheTurnWould(memory, adult).ok);
+  memory.shutdown();
+  const auto texts = graphTexts(db);
+  CHECK(std::ranges::count_if(texts, [](const std::string& text) { return text.find("caf") != std::string::npos; }) >= 1);
+}
+
+TEST_CASE("the learning gate reads who is a minor from identity, and keeps its last answer")
+{
+  argus::identity::v1::ListPrivacyResponse privacy;
+  auto* minor = privacy.add_users();
+  minor->set_user_id(2);
+  minor->mutable_choices()->set_minor(true);
+  auto* consented = privacy.add_users();
+  consented->set_user_id(4);
+  consented->mutable_choices()->set_minor(true);
+  consented->mutable_choices()->set_guardian_consent(true);
+  auto* adult = privacy.add_users();
+  adult->set_user_id(3);
+  CHECK_FALSE(minor_learning::allows(privacy, 2));
+  CHECK(minor_learning::allows(privacy, 4));
+  CHECK(minor_learning::allows(privacy, 3));
+  CHECK(minor_learning::allows(privacy, 9));
+
+  int asked = 0;
+  bool reachable = true;
+  auto now = std::chrono::steady_clock::now();
+  const MinorLearningGate gate({.fetch = [&]() -> std::optional<argus::identity::v1::ListPrivacyResponse> {
+                                  ++asked;
+                                  if (!reachable)
+                                    return std::nullopt;
+                                  return privacy;
+                                },
+                                .refresh = std::chrono::milliseconds(1000),
+                                .clock = [&now] { return now; }});
+  CHECK_FALSE(gate.learns(2));
+  CHECK(gate.learns(3));
+  CHECK(asked == 1);
+  CHECK_FALSE(gate.learns(0));
+  reachable = false;
+  now += std::chrono::milliseconds(1500);
+  CHECK_FALSE(gate.learns(2));
+  CHECK(gate.learns(3));
+  CHECK(asked == 2);
+
+  int never = 0;
+  const MinorLearningGate silent({.fetch = [&never]() -> std::optional<argus::identity::v1::ListPrivacyResponse> {
+                                    ++never;
+                                    return std::nullopt;
+                                  },
+                                  .refresh = std::chrono::milliseconds(1000),
+                                  .clock = {}});
+  CHECK_FALSE(silent.learns(3));
+  CHECK(never == 1);
+}
+
 TEST_CASE("the memory graph keeps no trace of the phrase once it is withheld")
 {
   const std::string db = scratchDb("screened.db");
@@ -549,7 +678,7 @@ TEST_CASE("a match is written down before the turn goes on, as the key's digest 
   screen.start();
   REQUIRE(eventually([&link, &screen] { return link->asked() > 0 && screen.idle(); }));
 
-  CHECK(screen.screen({.userId = 2, .role = UserRole::Resident, .text = "oye, el gato está en el tejado"}).withheld);
+  CHECK(screen.screen({.userId = 2, .role = UserRole::Resident, .text = "oye, el gato está en el tejado", .anonymousCamera = false}).withheld);
   const std::vector<OutboxRow> written = outboxRows(db);
   REQUIRE(written.size() == 1);
   CHECK(written.front().userId == 2);
@@ -562,7 +691,7 @@ TEST_CASE("a match is written down before the turn goes on, as the key's digest 
     CHECK(written.front().keyDigest.find(word) == std::string::npos);
   }
 
-  CHECK(screen.screen({.userId = 2, .role = UserRole::Resident, .text = "el gato está en el tejado"}).withheld);
+  CHECK(screen.screen({.userId = 2, .role = UserRole::Resident, .text = "el gato está en el tejado", .anonymousCamera = false}).withheld);
   CHECK(outboxRows(db).size() == 1);
 
   REQUIRE(eventually([&link] { return !link->attempts().empty(); }));
@@ -584,7 +713,7 @@ TEST_CASE("a raise written down survives a restart of argus-llm and reaches guar
     DuressScreen before({.link = unreachable, .eligible = disarmer, .outbox = outboxOver(graph)}, quick());
     before.start();
     REQUIRE(eventually([&unreachable, &before] { return unreachable->asked() > 0 && before.idle(); }));
-    CHECK(before.screen({.userId = 3, .role = UserRole::Owner, .text = "el gato está en el tejado"}).withheld);
+    CHECK(before.screen({.userId = 3, .role = UserRole::Owner, .text = "el gato está en el tejado", .anonymousCamera = false}).withheld);
     REQUIRE(eventually([&unreachable] { return unreachable->attempts().size() >= 2; }));
   }
   const std::vector<OutboxRow> carried = outboxRows(db);
@@ -616,7 +745,7 @@ TEST_CASE("the raise carries the instant the words reached the screen, and every
   screen.start();
   REQUIRE(eventually([&link, &screen] { return link->asked() > 0 && screen.idle(); }));
   clock.seconds = 1'790'000'100;
-  CHECK(screen.screen({.userId = 2, .role = UserRole::Resident, .text = "el gato está en el tejado"}).withheld);
+  CHECK(screen.screen({.userId = 2, .role = UserRole::Resident, .text = "el gato está en el tejado", .anonymousCamera = false}).withheld);
   clock.seconds = 1'790'009'999;
   REQUIRE(eventually([&link, &screen] { return link->attempts().size() == 3 && screen.idle(); }));
   for (const DuressRaise& attempt : link->attempts())
@@ -632,7 +761,7 @@ TEST_CASE("words matched once guard answers carry the time they were heard, not 
   screen.start();
   REQUIRE(eventually([&link] { return link->asked() > 0; }));
   clock.seconds = 1'790'000'200;
-  CHECK_FALSE(screen.screen({.userId = 2, .role = UserRole::Owner, .text = "el gato está en el tejado"}).withheld);
+  CHECK_FALSE(screen.screen({.userId = 2, .role = UserRole::Owner, .text = "el gato está en el tejado", .anonymousCamera = false}).withheld);
   clock.seconds = 1'790'000'900;
   link->setKey(sealed(kPhrase));
   REQUIRE(eventually([&link] { return link->attempts().size() == 1; }));
@@ -653,7 +782,7 @@ TEST_CASE("raises written down before a restart are read once the memory store o
                         quick());
     before.start();
     REQUIRE(eventually([&unreachable, &before] { return unreachable->asked() > 0 && before.idle(); }));
-    CHECK(before.screen({.userId = 3, .role = UserRole::Owner, .text = "el gato está en el tejado"}).withheld);
+    CHECK(before.screen({.userId = 3, .role = UserRole::Owner, .text = "el gato está en el tejado", .anonymousCamera = false}).withheld);
   }
   REQUIRE(outboxRows(db).size() == 1);
 
@@ -719,7 +848,7 @@ TEST_CASE("a raise whose phrase changed while argus-llm was down is crossed out 
     DuressScreen before({.link = unreachable, .eligible = disarmer, .outbox = outboxOver(graph)}, quick());
     before.start();
     REQUIRE(eventually([&unreachable, &before] { return unreachable->asked() > 0 && before.idle(); }));
-    CHECK(before.screen({.userId = 3, .role = UserRole::Owner, .text = "el gato está en el tejado"}).withheld);
+    CHECK(before.screen({.userId = 3, .role = UserRole::Owner, .text = "el gato está en el tejado", .anonymousCamera = false}).withheld);
   }
   REQUIRE(outboxRows(db).size() == 1);
 

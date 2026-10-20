@@ -328,6 +328,8 @@ std::string LlmHttpClient::screen(const UtteranceScreenRequest& request) const
     payload["user_id"] = Json::Int64{request.userId};
   if (userRoleKnown(request.role))
     payload["role"] = userRoleToString(request.role);
+  if (request.surface != ConversationSurface::App)
+    payload["surface"] = std::string(conversationSurfaceToString(request.surface));
   Json::StreamWriterBuilder builder;
   builder["indentation"] = "";
   const std::string body = Json::writeString(builder, payload);

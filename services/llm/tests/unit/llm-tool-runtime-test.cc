@@ -512,3 +512,28 @@ TEST_CASE("a camera conversation never runs a tool outside the camera set and as
   CHECK(sensitive.ran);
   CHECK(cameraFloorLine("es", true) == "Eso no se hace por la cámara; te dejé la confirmación en tu celular.");
 }
+
+TEST_CASE("a minor at a camera never runs the sensitive camera capabilities, and is never sent a confirmation")
+{
+  Probe view;
+  Probe respond;
+  Probe reminder;
+  ToolRegistry registry;
+  registry.registerTool(probeDescriptor("probe.view", view, "camera.view"));
+  registry.registerTool(probeDescriptor("probe.respond", respond, "safety.respond"));
+  registry.registerTool(probeDescriptor("probe.reminder", reminder, "reminders.write"));
+  ToolExecutor executor(registry);
+  std::vector<CameraConfirmRequest> asked;
+  executor.attachConfirmations([&asked](const CameraConfirmRequest& request) { asked.push_back(request); });
+
+  const ToolAudience minor{.role = UserRole::Resident, .modules = {}, .surface = ConversationSurface::CameraMinor};
+  const auto looked = executor.execute(callFor("probe.view"), minor);
+  CHECK_FALSE(looked.ok);
+  CHECK(looked.code == "camera_floor");
+  CHECK_FALSE(view.ran);
+  CHECK_FALSE(executor.execute(callFor("probe.respond"), minor).ok);
+  CHECK_FALSE(respond.ran);
+  CHECK(asked.empty());
+  CHECK(executor.execute(callFor("probe.reminder"), minor).ok);
+  CHECK(reminder.ran);
+}

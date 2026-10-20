@@ -69,8 +69,11 @@ std::string LlmConfig::resolveCameraCredential()
 
 LlmMemoryConfig LlmConfig::resolveMemory()
 {
-  return {.observeCameraEvents =
-              ConfigService::getBool("memory.observe_camera_events")};
+  LlmMemoryConfig config;
+  config.observeCameraEvents = ConfigService::getBool("memory.observe_camera_events");
+  if (ConfigService::hasKey("memory.minor_refresh_ms") && ConfigService::getInt("memory.minor_refresh_ms") > 0)
+    config.minorRefresh = std::chrono::milliseconds(ConfigService::getInt("memory.minor_refresh_ms"));
+  return config;
 }
 
 LlmConversationConfig LlmConfig::resolveConversation()

@@ -18,6 +18,8 @@ ScreenDto ScreenDto::fromJson(const Json::Value& json)
     dto.userId = json["user_id"].asInt64();
   if (json.isMember("role") && json["role"].isString())
     dto.role = json["role"].asString();
+  if (json.isMember("surface") && json["surface"].isString())
+    dto.surface = json["surface"].asString();
 
   START_VALIDATION(ScreenDto, dto)
   IS_NOT_EMPTY(text)
@@ -28,6 +30,7 @@ ScreenDto ScreenDto::fromJson(const Json::Value& json)
     return std::nullopt;
   })
   IS_IN_OPTIONAL(role, "owner", "resident", "guard", "guest")
+  IS_IN_OPTIONAL(surface, "app", "camera", "camera_visitor", "camera_minor")
   END_VALIDATION()
   return dto;
 }
@@ -39,5 +42,6 @@ ChatRequest ScreenDto::request() const
   request.toolsEnabled = false;
   request.userId = userId.value_or(0);
   request.role = role ? userRoleFromString(*role) : UserRole::Unknown;
+  request.surface = conversationSurfaceFromString(surface.value_or("app")).value_or(ConversationSurface::App);
   return request;
 }

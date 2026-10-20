@@ -32,6 +32,8 @@ bool surfaceAllows(const ToolAudience& audience, const argus::mcp::ToolSpec& spe
     case ConversationSurface::CameraVisitor:
       return std::ranges::find(role_access::kCameraVisitorCapabilities, spec.capability) !=
              role_access::kCameraVisitorCapabilities.end();
+    case ConversationSurface::CameraMinor:
+      return role_access::inCameraMinorSet(spec.capability);
   }
   return false;
 }

@@ -102,7 +102,7 @@ ChatCompletionDto ChatCompletionDto::fromJson(const Json::Value& json)
   })
   IS_IN_OPTIONAL(role, "owner", "resident", "guard", "guest")
   IS_IN_OPTIONAL(lang, "es", "en")
-  IS_IN_OPTIONAL(surface, "app", "camera", "camera_visitor")
+  IS_IN_OPTIONAL(surface, "app", "camera", "camera_visitor", "camera_minor")
   END_VALIDATION()
   return dto;
 }

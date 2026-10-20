@@ -157,6 +157,22 @@ inline constexpr std::array kCameraVisitorCapabilities = std::to_array<std::stri
     "safety.read",
 });
 
+inline constexpr std::array kCameraMinorCapabilities = std::to_array<std::string_view>({
+    "assistant.voice",
+    "reminders.read",
+    "reminders.write",
+    "agenda.read",
+    "projects.read",
+    "safety.panic",
+    "safety.read",
+    "notifications.read",
+});
+
+inline bool inCameraMinorSet(std::string_view capability)
+{
+  return std::ranges::find(kCameraMinorCapabilities, capability) != kCameraMinorCapabilities.end();
+}
+
 inline bool inCameraWatchSet(std::string_view capability)
 {
   return std::ranges::find(kCameraWatchCapabilities, capability) != kCameraWatchCapabilities.end();

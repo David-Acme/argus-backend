@@ -200,6 +200,7 @@ std::string Client::screen(const UtteranceScreenRequest& request) const
   wire.set_text(request.text);
   wire.set_user_id(request.userId);
   wire.set_caller_role(wireRole(request.role));
+  wire.set_surface(static_cast<wire::ConversationSurface>(static_cast<int>(request.surface)));
   wire::ScreenResponse response;
   check(impl_->stub->Screen(&context, wire, &response), deadlineAt);
   return response.text();

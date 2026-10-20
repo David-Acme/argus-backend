@@ -587,3 +587,16 @@ TEST_CASE("a visitor at a camera can only talk and ask for help")
   CHECK_FALSE(role_access::hasCameraVisitorCapability(all, "camera.view"));
   CHECK_FALSE(role_access::hasCameraVisitorCapability(all, "reminders.read"));
 }
+
+TEST_CASE("a minor at a camera keeps a narrower set than the camera set, without the sensitive capabilities")
+{
+  for (const std::string_view capability : role_access::kCameraMinorCapabilities) {
+    CHECK(role_access::knownCapability(capability));
+    CHECK(role_access::inCameraWatchSet(capability));
+  }
+  for (const std::string_view sensitive : {"camera.view", "safety.respond", "agenda.write", "projects.write"}) {
+    CHECK(role_access::inCameraWatchSet(sensitive));
+    CHECK_FALSE(role_access::inCameraMinorSet(sensitive));
+  }
+  CHECK(role_access::inCameraMinorSet("safety.panic"));
+}

@@ -36,6 +36,7 @@ gpu_layers = -1
 
 [memory]
 observe_camera_events = false
+minor_refresh_ms = 60000
 db_file = "memory/memory.db"
 schema_file = "database/schema.sql"
 catalog_person_table = "catalog_person"

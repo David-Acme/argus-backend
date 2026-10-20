@@ -108,6 +108,7 @@ flush_timeout_ms = 60000
 compact_wait_ms = 15000
 compact_max_tokens = 256
 observe_camera_events = false
+minor_refresh_ms = 60000
 
 [extract]
 bundle_dir = "models/extract/bundle-gliner-pilot"
