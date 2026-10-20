@@ -73,6 +73,7 @@ constexpr std::array kRouteProbes = std::to_array<RouteProbe>({
     {.capability = "calls.join", .method = drogon::Get, .path = "/rtc/ice"},
     {.capability = "calls.join", .method = drogon::Get, .path = "/rtc/watch"},
     {.capability = "calls.join", .method = drogon::Post, .path = "/rtc/watch/0123456789abcdef0123456789abcdef/end"},
+    {.capability = "calls.join", .method = drogon::Post, .path = "/rtc/watch/0123456789abcdef0123456789abcdef/reply"},
     {.capability = "heartbeat.read", .method = drogon::Get, .path = "/sync/heartbeat"},
     {.capability = "modules.read", .method = drogon::Get, .path = "/modules"},
     {.capability = "safety.panic", .method = drogon::Post, .path = "/guard/panic"},

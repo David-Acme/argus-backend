@@ -76,3 +76,11 @@ drogon::Task<drogon::HttpResponsePtr> RtcController::endWatch(drogon::HttpReques
   const auto result = co_await service_.endWatch({.body = body, .caller = caller});
   co_return ApiResponse::ok(result.toJson());
 }
+
+drogon::Task<drogon::HttpResponsePtr> RtcController::replyWatch(drogon::HttpRequestPtr req, std::string conversationId)
+{
+  const auto body = RtcWatchReplyDto::fromJson(*req->getJsonObject(), conversationId);
+  const auto& caller = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const auto result = co_await service_.replyWatch({.body = body, .caller = caller});
+  co_return ApiResponse::ok(result.toJson());
+}

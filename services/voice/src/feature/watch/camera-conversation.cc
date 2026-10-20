@@ -60,6 +60,7 @@ CameraConversation::CameraConversation(CameraConversationInput input)
   snapshot_.cameraId = input_.cameraId;
   snapshot_.cameraName = input_.cameraName;
   snapshot_.audience = input_.audience;
+  snapshot_.visitorPersonId = input_.visitorPersonId;
   snapshot_.startedAt = epochSeconds();
   snapshot_.updatedAt = snapshot_.startedAt;
 }
@@ -184,6 +185,14 @@ void CameraConversation::markHandoff(ConversationHandoff handoff)
     snapshot_.updatedAt = epochSeconds();
   }
   publish();
+}
+
+void CameraConversation::say(std::string line)
+{
+  if (line.empty() || closed_.load())
+    return;
+  std::scoped_lock lock(mutex_);
+  lines_.push_back(std::move(line));
 }
 
 ConversationSnapshot CameraConversation::snapshot() const

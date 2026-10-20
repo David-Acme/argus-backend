@@ -4,6 +4,11 @@
 
 #include <algorithm>
 
+namespace
+{
+constexpr size_t kMaxWatchReplyBytes = 4000;
+}
+
 bool isWatchConversationId(const std::string& value)
 {
   constexpr size_t kIdChars = 32;
@@ -21,6 +26,24 @@ RtcWatchEndDto RtcWatchEndDto::fromPath(const std::string& id)
       return std::nullopt;
     return "conversationId must be 32 lowercase hex characters";
   })
+  END_VALIDATION()
+  return dto;
+}
+
+RtcWatchReplyDto RtcWatchReplyDto::fromJson(const Json::Value& json, const std::string& id)
+{
+  RtcWatchReplyDto dto;
+  dto.conversationId = id;
+  if (json.isMember("text") && json["text"].isString())
+    dto.text = json["text"].asString();
+  START_VALIDATION(RtcWatchReplyDto, dto)
+  CUSTOM_LAMBDA(conversationId, [](const RtcWatchReplyDto& value) -> std::optional<std::string> {
+    if (isWatchConversationId(value.conversationId))
+      return std::nullopt;
+    return "conversationId must be 32 lowercase hex characters";
+  })
+  IS_NOT_EMPTY(text)
+  MAX_LENGTH(text, kMaxWatchReplyBytes)
   END_VALIDATION()
   return dto;
 }

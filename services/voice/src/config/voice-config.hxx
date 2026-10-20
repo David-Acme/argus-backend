@@ -145,6 +145,9 @@ struct VoiceWatchConfig
   std::chrono::milliseconds faceWindow{1500};
   int visitorConsentAsks{2};
   int visitorConsentMaxWords{6};
+  std::chrono::milliseconds visitorReplyAccept{1800000};
+  std::chrono::milliseconds visitorReplyHold{1800000};
+  int visitorReplyMaxChars{300};
 };
 
 class VoiceConfig

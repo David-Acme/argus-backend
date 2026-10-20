@@ -171,13 +171,16 @@ void ConversationManager::onWake(const ConfirmedWake& wake)
       .onEnded = [this](const ConversationEnded& done) { ended(done); },
       .onUserText = [this, id](const std::string& text) { heard(id, text); },
       .askConsent = opening.audience == ConversationAudience::Visitor,
-      .onWithheld = [this, id] { withheld(id); }});
+      .onWithheld = [this, id] { withheld(id); },
+      .visitorPersonId = opening.strangerPersonId});
   {
     std::scoped_lock lock(mutex_);
     live_[id] = conversation;
     levels_[id] = std::make_shared<SpeakerLevels>(input_.config.gainAlpha);
   }
   conversation->open(wake.capture ? wake.capture->snapshot() : std::vector<float>{});
+  if (opening.audience == ConversationAudience::Visitor && deliverReply(conversation))
+    LOG_INFO << "Voice watch: a household reply waits to be said on camera " << wake.cameraId;
   const std::optional<WatchCameraInfo> info = input_.cameraInfo ? input_.cameraInfo(wake.cameraId) : std::nullopt;
   if (input_.aim && info && info->panTilt && !opening.faceSeen) {
     {
@@ -487,4 +490,32 @@ void ConversationManager::reap(const std::stop_token& stop)
         input_.onUpdate(snapshot);
     retired.clear();
   }
+}
+
+bool ConversationManager::deliverReply(const std::shared_ptr<CameraConversation>& conversation)
+{
+  if (!input_.replies || !conversation || conversation->closed())
+    return false;
+  const ConversationSnapshot snapshot = conversation->snapshot();
+  if (snapshot.audience != ConversationAudience::Visitor)
+    return false;
+  const auto pending = input_.replies->take(
+      {.cameraId = snapshot.cameraId, .personId = snapshot.visitorPersonId, .now = epochSeconds()});
+  if (!pending)
+    return false;
+  conversation->say(visitorReplyLine(input_.lang, pending->text));
+  return true;
+}
+
+VisitorReplyResult ConversationManager::replyToVisitor(const VisitorReplyInput& input)
+{
+  if (!input_.replies)
+    return {.outcome = VisitorReplyOutcome::NotFound, .replyUntil = 0, .cameraId = 0};
+  VisitorReplyResult result = input_.replies->reply(input);
+  if (result.outcome != VisitorReplyOutcome::Queued)
+    return result;
+  LOG_INFO << "Voice watch: a household reply to a visitor is kept for camera " << result.cameraId;
+  if (deliverReply(onCamera(result.cameraId)))
+    result.outcome = VisitorReplyOutcome::Said;
+  return result;
 }

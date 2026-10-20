@@ -57,6 +57,7 @@ struct CameraConversationInput
   std::function<void(const std::string&)> onUserText;
   bool askConsent{false};
   std::function<void()> onWithheld;
+  int64_t visitorPersonId{0};
 };
 
 [[nodiscard]] std::vector<int16_t> pcm16Of(const std::string& bytes);
@@ -78,6 +79,7 @@ public:
   void requestEnd(ConversationEnd reason);
   [[nodiscard]] std::optional<VoiceSessionCarry> handOver(std::chrono::milliseconds wait);
   void markHandoff(ConversationHandoff handoff);
+  void say(std::string line);
   void join();
 
   [[nodiscard]] bool closed() const { return closed_.load(); }

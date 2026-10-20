@@ -24,6 +24,13 @@ public:
 
 using VoiceCleanupDispatch = std::function<void(std::function<void()>)>;
 
+struct WatchReplyRequest
+{
+  int64_t userId{0};
+  std::string conversationId;
+  std::string text;
+};
+
 class VoiceWatchDirectory
 {
 public:
@@ -31,6 +38,7 @@ public:
 
   [[nodiscard]] virtual std::vector<argus::voice::v1::WatchConversation> conversations(int64_t userId) const = 0;
   [[nodiscard]] virtual bool end(int64_t userId, const std::string& conversationId) = 0;
+  [[nodiscard]] virtual argus::voice::v1::ReplyWatchVisitorResponse reply(const WatchReplyRequest& request) = 0;
 };
 
 struct VoiceRpcInput
@@ -74,6 +82,11 @@ public:
   EndWatchConversation(grpc::CallbackServerContext* context,
                        const argus::voice::v1::EndWatchConversationRequest* request,
                        argus::voice::v1::EndWatchConversationResponse* reply) override;
+
+  grpc::ServerUnaryReactor*
+  ReplyWatchVisitor(grpc::CallbackServerContext* context,
+                    const argus::voice::v1::ReplyWatchVisitorRequest* request,
+                    argus::voice::v1::ReplyWatchVisitorResponse* reply) override;
 
   [[nodiscard]] bool idle() const { return live_->load() == 0; }
 

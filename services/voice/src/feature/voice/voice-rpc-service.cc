@@ -434,3 +434,26 @@ VoiceRpcService::EndWatchConversation(grpc::CallbackServerContext* context,
   reactor->Finish(grpc::Status::OK);
   return reactor;
 }
+
+grpc::ServerUnaryReactor*
+VoiceRpcService::ReplyWatchVisitor(grpc::CallbackServerContext* context,
+                                   const argus::voice::v1::ReplyWatchVisitorRequest* request,
+                                   argus::voice::v1::ReplyWatchVisitorResponse* reply)
+{
+  auto* reactor = context->DefaultReactor();
+  if (!argus::client::authorizeCaller(context, syncCallers_).has_value()) {
+    reactor->Finish({grpc::StatusCode::UNAUTHENTICATED, "argus-sync caller credential required"});
+    return reactor;
+  }
+  if (request->user_id() <= 0 || request->conversation_id().empty() || request->text().empty()) {
+    reactor->Finish({grpc::StatusCode::INVALID_ARGUMENT, "user_id, conversation_id and text are required"});
+    return reactor;
+  }
+  if (watch_ == nullptr)
+    reply->set_outcome(argus::voice::v1::WATCH_REPLY_OUTCOME_NOT_FOUND);
+  else
+    *reply = watch_->reply(
+        {.userId = request->user_id(), .conversationId = request->conversation_id(), .text = request->text()});
+  reactor->Finish(grpc::Status::OK);
+  return reactor;
+}

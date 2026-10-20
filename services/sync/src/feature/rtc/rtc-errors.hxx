@@ -33,4 +33,16 @@ inline constexpr ErrorDefinition WatchExpired{
     .code = ErrorCode::WatchExpired,
     .status = 410,
     .message = "The camera conversation can no longer be continued"};
+inline constexpr ErrorDefinition WatchVisitorNotFound{
+    .code = ErrorCode::WatchNotFound,
+    .status = 404,
+    .message = "No visitor's message to you by that id"};
+inline constexpr ErrorDefinition WatchReplyClosed{
+    .code = ErrorCode::WatchExpired,
+    .status = 410,
+    .message = "The visitor's message can no longer be answered"};
+inline constexpr ErrorDefinition WatchReplyTooLong{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "The reply is longer than a camera may say"};
 }

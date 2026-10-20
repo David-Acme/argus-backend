@@ -273,6 +273,29 @@ message EndWatchConversationResponse
   bool ended = 1;
 }
 
+enum WatchReplyOutcome
+{
+  WATCH_REPLY_OUTCOME_UNSPECIFIED = 0;
+  WATCH_REPLY_OUTCOME_QUEUED = 1;
+  WATCH_REPLY_OUTCOME_SAID = 2;
+  WATCH_REPLY_OUTCOME_NOT_FOUND = 3;
+  WATCH_REPLY_OUTCOME_EXPIRED = 4;
+  WATCH_REPLY_OUTCOME_TOO_LONG = 5;
+}
+
+message ReplyWatchVisitorRequest
+{
+  int64 user_id = 1;
+  string conversation_id = 2;
+  string text = 3;
+}
+
+message ReplyWatchVisitorResponse
+{
+  WatchReplyOutcome outcome = 1;
+  int64 reply_until = 2;
+}
+
 service VoiceService
 {
   rpc Connect(stream ClientFrame) returns (stream ServerFrame) {}
@@ -281,4 +304,5 @@ service VoiceService
   rpc Farewell(RtcFarewell) returns (RtcFarewellDone) {}
   rpc ListWatchConversations(ListWatchConversationsRequest) returns (ListWatchConversationsResponse) {}
   rpc EndWatchConversation(EndWatchConversationRequest) returns (EndWatchConversationResponse) {}
+  rpc ReplyWatchVisitor(ReplyWatchVisitorRequest) returns (ReplyWatchVisitorResponse) {}
 }

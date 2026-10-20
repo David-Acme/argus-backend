@@ -11,6 +11,8 @@
 
 [[nodiscard]] argus::voice::v1::WatchConversation watchConversationOf(const ConversationSnapshot& snapshot);
 
+[[nodiscard]] argus::voice::v1::ReplyWatchVisitorResponse watchReplyOf(const VisitorReplyResult& result);
+
 class ConversationDirectory final : public VoiceWatchDirectory
 {
 public:
@@ -18,6 +20,7 @@ public:
 
   [[nodiscard]] std::vector<argus::voice::v1::WatchConversation> conversations(int64_t userId) const override;
   [[nodiscard]] bool end(int64_t userId, const std::string& conversationId) override;
+  [[nodiscard]] argus::voice::v1::ReplyWatchVisitorResponse reply(const WatchReplyRequest& request) override;
 
 private:
   const std::unique_ptr<ConversationManager>& manager_;

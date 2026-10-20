@@ -161,6 +161,9 @@ VoiceWatchConfig VoiceConfig::resolveWatch()
   config.visitorConsentAsks = std::clamp(positiveInt("watch.visitor_consent_asks", config.visitorConsentAsks), 1, 5);
   config.visitorConsentMaxWords =
       std::clamp(positiveInt("watch.visitor_consent_max_words", config.visitorConsentMaxWords), 1, 12);
+  config.visitorReplyAccept = positiveMs("watch.visitor_reply_accept_ms", config.visitorReplyAccept);
+  config.visitorReplyHold = positiveMs("watch.visitor_reply_hold_ms", config.visitorReplyHold);
+  config.visitorReplyMaxChars = std::clamp(positiveInt("watch.visitor_reply_max_chars", config.visitorReplyMaxChars), 20, 1000);
   return config;
 }
 

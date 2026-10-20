@@ -20,3 +20,12 @@ drogon::Task<std::optional<bool>> VoiceWatchRelay::end(RtcWatchEnd input) const
         return client->endWatchConversation(request.userId, request.conversationId);
       }};
 }
+
+drogon::Task<std::optional<argus::voice::v1::ReplyWatchVisitorResponse>> VoiceWatchRelay::reply(RtcWatchReply input) const
+{
+  co_return co_await BlockingTask<std::optional<argus::voice::v1::ReplyWatchVisitorResponse>>{
+      [client = client_, request = std::move(input)] {
+        return client->replyWatchVisitor(
+            {.userId = request.userId, .conversationId = request.conversationId, .text = request.text});
+      }};
+}

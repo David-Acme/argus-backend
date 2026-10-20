@@ -11,6 +11,7 @@
 #include <feature/watch/fire-log.hxx>
 #include <feature/watch/stage-two.hxx>
 #include <feature/watch/visitor-consent.hxx>
+#include <feature/watch/visitor-replies.hxx>
 #include <feature/watch/wake-words.hxx>
 #include <feature/watch/watch-coordinator.hxx>
 
@@ -663,4 +664,48 @@ TEST_CASE("the visitor's message names the consent it was left under, and an ale
   CHECK(notices.front().data["visitorConsent"] == "declined");
   CHECK(cameraSpeaker(VoiceLang::Es, "Entrada") == "Alguien en la cámara Entrada");
   CHECK(cameraSpeaker(VoiceLang::En, "Gate") == "Someone at the Gate camera");
+}
+
+TEST_CASE("a member's reply to a visitor goes only to that camera, only from a notified member, and expires")
+{
+  VisitorReplies replies({.accept = std::chrono::minutes(30), .hold = std::chrono::minutes(10), .maxChars = 20});
+  const int64_t until = replies.open(
+      {.conversationId = "c1", .cameraId = 3, .personId = 30, .recipients = {1, 2}, .at = 1000});
+  CHECK(until == 1000 + 1800);
+
+  CHECK(replies.reply({.userId = 9, .conversationId = "c1", .text = "hola", .now = 1100}).outcome ==
+        VisitorReplyOutcome::NotFound);
+  CHECK(replies.reply({.userId = 1, .conversationId = "c2", .text = "hola", .now = 1100}).outcome ==
+        VisitorReplyOutcome::NotFound);
+  CHECK(replies.reply({.userId = 1, .conversationId = "c1", .text = "un mensaje demasiado largo para la cámara",
+                       .now = 1100})
+            .outcome == VisitorReplyOutcome::TooLong);
+  CHECK(replies.reply({.userId = 1, .conversationId = "c1", .text = "ñññññññññññññññññññ", .now = 1100}).outcome ==
+        VisitorReplyOutcome::Queued);
+  const VisitorReplyResult queued = replies.reply({.userId = 2, .conversationId = "c1", .text = "Ya bajo", .now = 1200});
+  CHECK(queued.outcome == VisitorReplyOutcome::Queued);
+  CHECK(queued.cameraId == 3);
+  CHECK(queued.replyUntil == 1200 + 600);
+  CHECK(replies.pendingCount() == 1);
+
+  CHECK_FALSE(replies.take({.cameraId = 4, .personId = 30, .now = 1300}).has_value());
+  CHECK_FALSE(replies.take({.cameraId = 3, .personId = 31, .now = 1300}).has_value());
+  const auto taken = replies.take({.cameraId = 3, .personId = 30, .now = 1300});
+  REQUIRE(taken.has_value());
+  CHECK(taken->text == "Ya bajo");
+  CHECK_FALSE(replies.take({.cameraId = 3, .personId = 30, .now = 1300}).has_value());
+
+  CHECK(replies.reply({.userId = 1, .conversationId = "c1", .text = "otra vez", .now = 1400}).outcome ==
+        VisitorReplyOutcome::Queued);
+  CHECK(replies.take({.cameraId = 3, .personId = 0, .now = 1400 + 601}) == std::nullopt);
+  CHECK(replies.reply({.userId = 1, .conversationId = "c1", .text = "tarde", .now = 1000 + 1801}).outcome ==
+        VisitorReplyOutcome::Expired);
+
+  CHECK(visitorReplyLine(VoiceLang::Es, "Ya bajo") == "Tengo un mensaje de la casa para usted: Ya bajo");
+  CHECK(visitorReplyLine(VoiceLang::En, "Coming") == "I have a message from the household for you: Coming");
+  CHECK(utf8Characters("ñandú") == 5);
+  CHECK(watchReplyOf({.outcome = VisitorReplyOutcome::Said, .replyUntil = 9, .cameraId = 3}).outcome() ==
+        argus::voice::v1::WATCH_REPLY_OUTCOME_SAID);
+  CHECK(watchReplyOf({.outcome = VisitorReplyOutcome::Expired, .replyUntil = 0, .cameraId = 3}).outcome() ==
+        argus::voice::v1::WATCH_REPLY_OUTCOME_EXPIRED);
 }

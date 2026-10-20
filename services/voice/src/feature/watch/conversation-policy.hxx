@@ -89,6 +89,7 @@ struct ConversationSnapshot
   std::vector<ConversationTurn> turns;
   VisitorConsent consent{VisitorConsent::None};
   bool minorStated{false};
+  int64_t visitorPersonId{0};
 };
 
 struct ConversationClockInput

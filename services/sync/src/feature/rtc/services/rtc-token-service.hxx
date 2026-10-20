@@ -38,6 +38,12 @@ struct RtcWatchEndRequest
   JwtContext caller;
 };
 
+struct RtcWatchReplyRequest
+{
+  RtcWatchReplyDto body;
+  JwtContext caller;
+};
+
 [[nodiscard]] bool watchExpired(const argus::voice::v1::WatchConversation& conversation, int64_t now);
 
 struct RtcTokenRequest
@@ -79,6 +85,8 @@ public:
   drogon::Task<ResponseRtcWatchDto> watchConversations(JwtContext caller) const;
 
   drogon::Task<ResponseRtcWatchEndDto> endWatch(RtcWatchEndRequest request) const;
+
+  drogon::Task<ResponseRtcWatchReplyDto> replyWatch(RtcWatchReplyRequest request) const;
 
 private:
   struct InFlightCalls
