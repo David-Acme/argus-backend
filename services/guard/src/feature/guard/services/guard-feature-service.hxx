@@ -18,6 +18,7 @@
 #include <feature/guard/repositories/environment/environment-repository.hxx>
 #include <feature/guard/vocabulary/feedback-label.hxx>
 #include <auth/user-role.hxx>
+#include <shared/vocabulary/guard-status.hxx>
 #include <shared/vocabulary/masked-camera.hxx>
 #include <optional>
 #include <json/value.h>
@@ -64,6 +65,8 @@ public:
   drogon::Task<bool> promotePerson(const PromotePersonInput& input) const;
 
   [[nodiscard]] drogon::Task<Json::Value> environments() const;
+
+  [[nodiscard]] drogon::Task<std::vector<GuardEnvironmentStatus>> status() const;
 
   [[nodiscard]] drogon::Task<Json::Value>
   createEnvironment(const CreateEnvironmentDto& input) const;
