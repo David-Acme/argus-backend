@@ -14,6 +14,7 @@ argus_module(NAME guard-proximity
         services/beacon-token.cc
         services/proximity-service.cc
         services/room-belief.cc
+        services/whereabouts.cc
     INCLUDES
         ../..
     DEPENDS

@@ -43,6 +43,7 @@
 #include <feature/proximity/infra/fleet-proximity-world.hxx>
 #include <feature/proximity/infra/http-proximity-probe.hxx>
 #include <feature/proximity/services/proximity-service.hxx>
+#include <feature/proximity/services/whereabouts.hxx>
 #include <feature/settings/guard-settings.hxx>
 #include <shared/vocabulary/masked-camera.hxx>
 #include <auth/auth-access.hxx>
@@ -149,6 +150,7 @@ struct RpcListenerInput
   std::string tlsAddress;
   std::optional<argus::client::InternalTlsMaterial> tls;
   ProximityService* proximity{nullptr};
+  WhereaboutsVoice whereabouts{};
 };
 
 std::unique_ptr<argus::mcp::McpRpcService> toolsService(const RpcListenerInput& input, const GuardRpcConfig& rpc)
@@ -161,7 +163,8 @@ std::unique_ptr<argus::mcp::McpRpcService> toolsService(const RpcListenerInput& 
       .server = guardToolServer({.catalog = input.environments,
                                  .maskedCameras = input.maskedCameras,
                                  .loop = {},
-                                 .maintenance = input.maintenance}),
+                                 .maintenance = input.maintenance,
+                                 .whereabouts = input.whereabouts}),
       .gate = std::make_shared<const argus::client::FleetCallerGate>(argus::client::FleetGateConfig{
           .expectedCallers = {},
           .callerPairs = {{std::string(argus::mcp::kToolCaller), rpc.toolCredential}},
@@ -505,6 +508,36 @@ int main()
          co_return rooms;
        }});
   ProximityService proximity({.probe = &proximityProbe, .world = &proximityWorld, .config = proximityConfig});
+  const WhereaboutsService whereabouts(
+      {.members = [responseDirectory]() -> std::optional<std::vector<WhereaboutsMember>> {
+         if (!responseDirectory)
+           return std::nullopt;
+         const auto users = responseDirectory->users();
+         if (!users)
+           return std::nullopt;
+         std::vector<WhereaboutsMember> members;
+         members.reserve(users->size());
+         for (const ResponseUser& user : *users)
+           members.push_back({.userId = user.userId, .name = user.name, .role = user.role, .active = user.active});
+         return members;
+       },
+       .verdicts = [&proximity]() { return proximity.people(); },
+       .located = [&proximityWorld]() { return proximityWorld.locatedUsers(); },
+       .presence = [&presence]() -> drogon::Task<std::vector<WhereaboutsPresence>> {
+         std::vector<WhereaboutsPresence> rows;
+         for (const PresenceUserView& view : co_await presence.snapshot({}))
+           rows.push_back({.userId = view.userId, .state = view.overall, .since = view.since});
+         co_return rows;
+       },
+       .places = []() -> drogon::Task<std::vector<WhereaboutsPlace>> {
+         const EnvironmentRepository environments;
+         std::vector<WhereaboutsPlace> places;
+         for (const auto& environment : co_await environments.list())
+           places.push_back({.id = environment.id, .name = environment.name});
+         co_return places;
+       },
+       .cameraName = [&guardService](int64_t cameraId) { return guardService.nameOf(cameraId); },
+       .clockMs = {}});
 
   SettingsRegistry settings(guardSettingsCatalog());
   settings.onChange([&guardService, &presence, &proximity, &siren,
@@ -561,7 +594,10 @@ int main()
        .actors = &safetyActors,
        .tlsAddress = internalTlsConfig.address,
        .tls = internalTls,
-       .proximity = &proximity});
+       .proximity = &proximity,
+       .whereabouts = [&whereabouts](WhereaboutsVoiceRequest request) {
+         return whereabouts.answer(std::move(request));
+       }});
 
   registerHealth({.certificatePem = loadedTls.certificatePem,
                   .trustBundlePem = loadedTls.trustBundlePem});

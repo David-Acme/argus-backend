@@ -34,6 +34,7 @@ struct Harness
   std::shared_ptr<McpServer> server;
   int reads{0};
   std::vector<MaskedCamera> masked;
+  std::optional<WhereaboutsVoiceRequest> asked;
 
   explicit Harness(std::vector<EnvironmentChoice> places = defaultPlaces())
   {
@@ -44,15 +45,42 @@ struct Harness
                                 co_return places;
                               },
                               .maskedCameras = [this] { return masked; },
-                              .loop = [loop] { return loop; }});
+                              .loop = [loop] { return loop; },
+                              .maintenance = {},
+                              .whereabouts = [this](WhereaboutsVoiceRequest request) -> drogon::Task<WhereaboutsVoiceReply> {
+                                asked = request;
+                                WhereaboutsVoiceReply reply{.ok = request.person != "Pedro",
+                                                            .text = request.person == "Pedro"
+                                                                        ? "No conozco a nadie de casa llamado Pedro."
+                                                                        : "David está en la sala. Estoy seguro: por la cámara, ahora mismo.",
+                                                            .code = request.person == "Pedro" ? "unknown_person" : "",
+                                                            .structured = Json::Value(Json::objectValue)};
+                                co_return reply;
+                              }});
     moduleGate().reset();
   }
 
   ToolOutcome call(const std::string& role, const std::string& lang, Json::Value arguments)
   {
+    return callTool({.name = "app.set_guard_mode", .role = role, .lang = lang, .arguments = std::move(arguments)});
+  }
+
+  struct ToolCallInput
+  {
+    std::string name;
+    std::string role;
+    std::string lang;
+    Json::Value arguments;
+  };
+
+  ToolOutcome callTool(ToolCallInput input)
+  {
+    const std::string role = input.role;
+    const std::string lang = input.lang;
+    Json::Value arguments = std::move(input.arguments);
     Json::Value info(Json::objectValue);
     Json::Value params(Json::objectValue);
-    params["name"] = "app.set_guard_mode";
+    params["name"] = input.name;
     params["arguments"] = std::move(arguments);
     params["_meta"] = requestMeta(info);
     params["_meta"]["argus/context"] = toJson(CallerContext{
@@ -203,4 +231,60 @@ TEST_CASE("a mode that expects protection warns about the cameras in privacy mod
   const auto home = harness.call("owner", "es", args("home"));
   CHECK(home.text == "La app puso la vigilancia en modo en casa.");
   CHECK_FALSE(must(home.appAction).arguments.isMember("maskedCameras"));
+}
+
+TEST_CASE("where is someone is the guard's read-only tool, behind the owner's presence capability")
+{
+  Harness harness;
+  const auto* spec = harness.server->find("guard.where_is");
+  REQUIRE(spec != nullptr);
+  CHECK(spec->module == "surveillance");
+  CHECK(spec->capability == "presence.read");
+  CHECK(spec->annotations.readOnly);
+}
+
+TEST_CASE("the owner hears where a member is, from the room belief the port reads")
+{
+  Harness harness;
+  Json::Value arguments(Json::objectValue);
+  arguments["person"] = "David";
+  const auto outcome = harness.callTool({.name = "guard.where_is", .role = "owner", .lang = "es", .arguments = arguments});
+  CHECK_FALSE(outcome.isError);
+  CHECK(outcome.text == "David está en la sala. Estoy seguro: por la cámara, ahora mismo.");
+  const auto asked = must(harness.asked);
+  CHECK(asked.person == "David");
+  CHECK(asked.room.empty());
+  CHECK(asked.role == "owner");
+  CHECK(asked.userId == 4);
+}
+
+TEST_CASE("a name the household does not hold is refused with the port's words")
+{
+  Harness harness;
+  Json::Value arguments(Json::objectValue);
+  arguments["person"] = "Pedro";
+  const auto outcome = harness.callTool({.name = "guard.where_is", .role = "owner", .lang = "es", .arguments = arguments});
+  CHECK(outcome.isError);
+  CHECK(outcome.text == "No conozco a nadie de casa llamado Pedro.");
+  CHECK(outcome.structured["code"].asString() == "unknown_person");
+}
+
+TEST_CASE("no role but the owner may ask where someone is, and the port is never reached")
+{
+  Harness harness;
+  Json::Value arguments(Json::objectValue);
+  arguments["room"] = "sala";
+  for (const char* role : {"resident", "guard", "guest", "unknown"}) {
+    const auto refused =
+        harness.callTool({.name = "guard.where_is", .role = role, .lang = "es", .arguments = arguments});
+    CHECK(refused.isError);
+    CHECK(refused.structured["code"].asString() == "forbidden");
+  }
+  CHECK_FALSE(harness.asked.has_value());
+  moduleGate().apply({{.id = "surveillance", .enabled = false}});
+  CHECK(harness.callTool({.name = "guard.where_is", .role = "owner", .lang = "es", .arguments = arguments})
+            .structured["code"]
+            .asString() == "module_inactive");
+  moduleGate().reset();
+  CHECK_FALSE(harness.asked.has_value());
 }
