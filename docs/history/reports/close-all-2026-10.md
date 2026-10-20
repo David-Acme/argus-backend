@@ -340,3 +340,55 @@ Backend `integ/close-batch-4` (T3, T4, then T2 and T1 merged onto `integ/close-b
   - The image test stages linked the vendored llama/ggml libraries at a BuildKit cache path that is gone at test time. The imported targets now point at the copies in `build/<profile>/bin`, the engines are built with an `$ORIGIN` rpath, and the model tests receive their model folders through named build contexts.
   - Two latent races surfaced under load: the guard saga test against its retry worker, and a use-after-free when the safety service was destroyed with a delivery in flight.
 - **Disk.** The laptop disk filled during the image builds. The build directories of two retired worktrees were removed (142 GB freed); no source or data was touched.
+
+## Gaps G5: aim and the speaking camera
+
+Backend `gap/g5-camera-aim` from `origin/master` 67b09f17. It closes the camera-side gaps that Item 6 (CC7 and CC8 "Not done") and Items 7–9 left between the camera call and camera sight. By the owner's order nothing was built or run: the unit tests are written, and the full pass runs after every gap track lands. `check-comments`, `check-deps` and `check-routes` pass. No route was added and the frontend is untouched: the sensor rows already carry `cameraId` and `panOffsetDeg`.
+
+- **1. The conversation aimer keeps to the sectors, the lease and the wear caps.** Every relative move of `WatchAimer` goes through one pure check, `watch_aim_plan::holdFor`, in this order:
+  - the Argus lease;
+  - the wear caps (`[ptz] moves_per_minute` and `daily_moves`, the same `AimBoard` counters the patrol and the look use);
+  - the camera's no-aim sectors, read from its aim settings on the watch board's row.
+  - **What a hold does.** A move whose target is inside a sector is never sent. A camera that has sectors and whose position is unknown (after a preset) does not move relatively. The answer is the new `AIM_OUTCOME_HELD` with the reason (`lease_held`, `wear`, `position_unknown` or `no_aim_sector`). Voice only logs it, so Argus says nothing.
+  - **Preset steps** of the search check the lease and the caps.
+  - **Every move counts** against the caps. A relative move now keeps the estimated position (`AimBoard::recordMove`) and a preset still makes it unknown. This corrects the Integration note: the aimer used to mark the position unknown on every move.
+- **2. Argus speaks from the room the person is in.** argus-guard's new `PresenceService.RoomOccupancy` answers, for each room, the strongest belief confidence. It carries no user id and only argus-voice may call it.
+  - **The choice** is the pure `chooseSpeakingCamera`. When the accepted wakes span rooms and the most confident candidate room reaches `belief_min_confidence` (0.6) and leads the next by `belief_margin` (0.2), the best camera of that room answers. Otherwise arbitration's winner answers (CC3, unchanged).
+  - **Cost.** Voice asks for the occupancy only in that case and keeps it `belief_max_age_ms`.
+  - **Opt-out.** Members who turned location off are never in the belief, so the opt-out holds.
+- **3. LD2450 x/y targets.**
+  - **What guard reads.** For an `ld2450` sensor paired with a camera, guard reads the targets on demand from the ESPHome text sensor `<entity><targets_suffix>` or the Home Assistant `sensor.<entity><targets_suffix>`. The value is `x,y;x,y;x,y` in millimetres and empty slots are dropped.
+  - **The RPC.** `PresenceService.SensorTargets {camera_id}` answers argus-camera alone with each sensor's pan offset.
+  - **The geometry** is pure, in camera's `watch_aim_plan::radarAim`:
+    - the bearing is `atan2(x, y)`;
+    - the camera pan that faces the target is the bearing plus `panOffsetDeg`;
+    - the target nearest the current pan wins;
+    - fixes older than `aim_radar_max_age_ms` and targets beyond `aim_radar_max_range_mm` or behind the sensor are ignored;
+    - the move is the pan difference, outside the dead zone.
+  - **Assumption.** The sensor is mounted at the camera: there is no parallax correction.
+- **4. Aiming at a voice from the radar** is a step of the same `WatchAimer::find`, not a second aimer.
+  - **When it runs.** When nobody is in frame, the aimer asks guard for the paired targets and turns through the same `holdFor` check.
+  - **What it answers.** It looks `aim_look_ms` and centres the person (`CENTERED`, detail `radar`), or answers the new `AIM_OUTCOME_BEARING` when YOLO does not see them yet.
+  - **The fallback.** With no radar, no usable target or an unknown position, it goes back to the preset search.
+- **Config keys.**
+  - Camera `[watch]`: `aim_radar_enabled` true, `aim_radar_max_age_ms` 3000, `aim_radar_max_range_mm` 6000. They are in the template, the deploy template and the catalog, which now holds 90 settings. The golden `settings.json` gains the three rows by hand.
+  - Voice `[watch]`: `belief_enabled` true, `belief_min_confidence` 0.6, `belief_margin` 0.2, `belief_max_age_ms` 2000. They are in the template, the deploy template and the catalog; the voice catalog test counts only the non-watch keys.
+  - Guard `[guard.proximity]`: `targets_suffix` `"_targets"`, a string kept in the templates only, like `ble_entity`.
+- **Wire, additive.**
+  - `AimOutcome` gains `HELD = 7` and `BEARING = 8`.
+  - `PresenceService` gains `SensorTargets` (caller camera) and `RoomOccupancy` (caller voice).
+  - `GuardPresenceClient` gains `sensorTargets` and `roomOccupancy`.
+- **Tests written:**
+  - `camera-watch-test`: sector hold, unknown position with and without sectors, lease before wear, the bearing, the offset and the turn, the nearest target, stale fixes and empty slots, the unknown position, the proto-to-fix conversion.
+  - `camera-settings-test`: 90 settings and the new fallbacks.
+  - `guard-proximity-test`: the target payload and paths; only the paired `ld2450` is read; occupancy per room without ids.
+  - `guard-presence-test`: each RPC admits only its own caller.
+  - `guard-presence-client-test`: both reads.
+  - `voice-watch-test`: belief wins, weak or split belief falls back, one room never asks, best camera of the believed room.
+  - `voice-settings-test`: the fallbacks.
+- **Left.**
+  - A look (`CameraActionService.Look`) does not use the radar: it starts from a box in frame.
+  - The hop to a roommate camera still does not aim the new camera.
+  - The ESPHome/Home Assistant template that publishes the targets text sensor is documented in guard's CONTEXT but not proven on hardware.
+  - The parallax between a sensor and a camera mounted apart is not modelled.
+  - The thresholds are config defaults until M3 (aim) and M4 (rooms) are measured.
