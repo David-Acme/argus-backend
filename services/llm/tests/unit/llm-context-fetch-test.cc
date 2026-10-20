@@ -222,3 +222,89 @@ TEST_CASE("a plain question with no facts of its own is answered over the facts 
   std::vector<ChatMessage> greeting{{.role = "system", .content = "persona"}, {.role = "user", .content = "hola"}};
   CHECK(adapter.chatWithTools(input, greeting).contextBlock.empty());
 }
+
+namespace
+{
+
+class RecallDecider final : public turn::Decider
+{
+public:
+  [[nodiscard]] std::string_view id() const override { return "rules"; }
+
+  [[nodiscard]] std::optional<turn::Candidate> decide(const turn::DecideInput& input) const override
+  {
+    if (!turn::isOffered(input, "memory.recall"))
+      return std::nullopt;
+    Json::Value arguments(Json::objectValue);
+    arguments["query"] = std::string(input.utterance);
+    return turn::Candidate{.tool = "memory.recall",
+                           .arguments = std::move(arguments),
+                           .fill = {},
+                           .confidence = 1.0,
+                           .source = "rules",
+                           .decider = "rules",
+                           .exact = true,
+                           .confident = true,
+                           .runnerUp = std::nullopt,
+                           .now = std::nullopt};
+  }
+};
+
+}
+
+TEST_CASE("a recall that finds nothing gives the turn to the facts the context holds")
+{
+  std::vector<ChatRequest> seen;
+  ToolRegistry registry;
+  Json::Value input = schema::emptyObject();
+  input["properties"]["query"] = schema::text();
+  registry.registerTool({.spec = {.name = "memory.recall",
+                                  .title = "",
+                                  .description = "",
+                                  .inputSchema = std::move(input),
+                                  .annotations = {.readOnly = true},
+                                  .module = "core",
+                                  .capability = "memory.manage"},
+                         .handler = [](const tools::ToolCall& call) {
+                           tools::ToolResult result;
+                           result.tool = call.name;
+                           result.ok = true;
+                           result.data["found"] = false;
+                           result.output = "No tengo nada guardado sobre eso.";
+                           return result;
+                         }});
+  const RecallDecider decider;
+  LfmAdapter adapter({.engine = {.chat =
+                                     [&seen](const ChatRequest& request) {
+                                       seen.push_back(request);
+                                       return std::string("El dentista es mañana a las 10:00.");
+                                     },
+                                 .chatStream = {}},
+                      .registry = registry,
+                      .decider = &decider,
+                      .text = nullptr,
+                      .policies = {},
+                      .contextFetch = {}});
+  ToolChatInput turnInput;
+  turnInput.tools = registry.all();
+  turnInput.audience = {.role = UserRole::Owner, .modules = {}, .surface = ConversationSurface::App};
+  turnInput.context.userId = 7;
+  turnInput.context.role = UserRole::Owner;
+  turnInput.context.lang = "es";
+  turnInput.contextFacts = {{.facet = "agenda", .text = "Agenda de mañana: dentista a las 10:00."}};
+  std::vector<ChatMessage> history{{.role = "system", .content = "persona"},
+                                   {.role = "user", .content = "¿a qué hora era lo del dentista en la agenda?"}};
+  const ToolChatOutput output = adapter.chatWithTools(turnInput, history);
+  REQUIRE(output.executed.size() == 1);
+  CHECK(output.act.empty());
+  CHECK(output.contextBlock.find("dentista a las 10:00") != std::string::npos);
+  REQUIRE_FALSE(seen.empty());
+  CHECK(seen.back().messages.back().content.find("dentista a las 10:00") != std::string::npos);
+  CHECK(seen.back().messages.back().content.find("nada guardado") == std::string::npos);
+
+  turnInput.contextFacts = {};
+  std::vector<ChatMessage> bare{{.role = "system", .content = "persona"},
+                                {.role = "user", .content = "¿qué sabes de mi bicicleta?"}};
+  const ToolChatOutput honest = adapter.chatWithTools(turnInput, bare);
+  CHECK_FALSE(honest.act.empty());
+}
