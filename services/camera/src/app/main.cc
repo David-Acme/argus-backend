@@ -24,6 +24,7 @@
 #include <feature/actions/camera-action-rpc-service.hxx>
 #include <feature/watch/camera-watch-rpc-service.hxx>
 #include <feature/watch/infra/ffmpeg-microphone-source.hxx>
+#include <feature/watch/infra/guard-radar-source.hxx>
 #include <feature/watch/services/watch-aim.hxx>
 #include <shared/services/stream/person-sightings.hxx>
 #include <feature/watch/services/watch-gate.hxx>
@@ -337,12 +338,19 @@ int main()
         identity.target,
         argus::client::PeerCredential{.credential = identity.credential, .fleetSecret = identity.rpcSecret});
   PersonSightings::instance().configure(watchConfig.sightingHoldMs);
+  std::shared_ptr<const GuardRadarSource> watchRadar;
+  if (const GuardDutyConfig guardPeer = CameraConfig::resolveGuardDuty(); !guardPeer.target.empty())
+    watchRadar = std::make_shared<const GuardRadarSource>(std::make_shared<const GuardPresenceClient>(
+        GuardPresenceClientConfig{.target = guardPeer.target, .credential = guardPeer.credential}));
   const auto watchAimer = std::make_shared<WatchAimer>(WatchAimerInput{
       .board = watchBoard,
       .gate = watchGate,
       .config = watchConfig,
       .schedule = [](std::chrono::milliseconds delay, std::function<void()> work) {
         drogon::app().getLoop()->runAfter(static_cast<double>(delay.count()) / 1000.0, std::move(work));
+      },
+      .radar = [watchRadar](int64_t cameraId) {
+        return watchRadar ? watchRadar->fixes(cameraId) : std::vector<RadarFix>{};
       }});
   CameraWatchRpcService cameraWatchRpc(
       {.callers = {argus::client::CallerCredential{.service = std::string(kWatchVoiceCaller),

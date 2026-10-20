@@ -126,15 +126,14 @@ v1::AimResponse WatchAimer::find(const AimTarget& target)
       PtzClaimResult::Refused)
     return answer(v1::AIM_OUTCOME_REFUSED, "lease_held");
   hold(target);
+  const AimSettings settings = settingsOf(cameraId);
   const CameraScene scene = CameraSceneLog::instance().sceneOf(cameraId);
   const int64_t notBefore =
       std::max({now - input_.config.aimInFrameMs, scene.aimedAtMs, scene.moveEndedAtMs});
-  if (const std::optional<PersonSighting> seen = lookFor(cameraId, notBefore)) {
-    if (aimStepFor(*seen, geometry_).centered)
-      return answer(v1::AIM_OUTCOME_IN_FRAME, {});
-    return center(*driver, cameraId, *seen) ? answer(v1::AIM_OUTCOME_CENTERED, {})
-                                            : answer(v1::AIM_OUTCOME_IN_FRAME, "move_failed");
-  }
+  if (const std::optional<PersonSighting> seen = lookFor(cameraId, notBefore))
+    return centerOn({.driver = *driver, .cameraId = cameraId, .sighting = *seen, .settings = settings, .detail = {}});
+  if (std::optional<v1::AimResponse> placed = radarStep({.driver = *driver, .cameraId = cameraId, .settings = settings}))
+    return std::move(*placed);
   const DriverResult listed = driver->presets();
   std::vector<std::string> presets = listed.ok ? presetIdsOf(listed.data) : std::vector<std::string>{};
   if (std::cmp_greater(presets.size(), input_.config.aimMaxPresets))
@@ -142,18 +141,13 @@ v1::AimResponse WatchAimer::find(const AimTarget& target)
   for (const std::string& presetId : presets) {
     if (input_.gate(cameraId) != v1::WATCH_REFUSAL_NONE || !argusHolds(cameraId))
       return answer(v1::AIM_OUTCOME_REFUSED, "interrupted");
-    if (!goPreset(*driver, cameraId, presetId))
+    if (!wearAllows(cameraId))
+      return answer(v1::AIM_OUTCOME_HELD, std::string(aimHoldName(AimHold::Wear)));
+    if (!goPreset({.driver = *driver, .cameraId = cameraId, .presetId = presetId}))
       continue;
-    const int64_t lookFrom = epochMs();
-    const int64_t lookUntil = lookFrom + input_.config.aimLookMs;
-    while (epochMs() < lookUntil) {
-      if (const std::optional<PersonSighting> seen = lookFor(cameraId, lookFrom)) {
-        if (aimStepFor(*seen, geometry_).centered || !center(*driver, cameraId, *seen))
-          return answer(v1::AIM_OUTCOME_IN_FRAME, presetId);
-        return answer(v1::AIM_OUTCOME_CENTERED, presetId);
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds(kLookPollMs));
-    }
+    if (const std::optional<PersonSighting> seen = waitFor(cameraId, epochMs()))
+      return centerOn(
+          {.driver = *driver, .cameraId = cameraId, .sighting = *seen, .settings = settings, .detail = presetId});
   }
   return answer(v1::AIM_OUTCOME_NOT_FOUND, {});
 }
@@ -186,7 +180,6 @@ bool WatchAimer::holds(int64_t cameraId)
 void WatchAimer::markAway(int64_t cameraId)
 {
   AimBoard::instance().setActivity({.cameraId = cameraId, .activity = AimActivity::Looking});
-  AimBoard::instance().lose(cameraId);
   CameraSceneLog::instance().setArgusAway({.cameraId = cameraId, .away = true});
 }
 
@@ -197,16 +190,116 @@ std::optional<PersonSighting> WatchAimer::lookFor(int64_t cameraId, int64_t notB
   return bestSighting({.sightings = recent, .notBeforeMs = notBeforeMs});
 }
 
-bool WatchAimer::center(ICameraDriver& driver, int64_t cameraId, const PersonSighting& sighting) const
+std::optional<PersonSighting> WatchAimer::waitFor(int64_t cameraId, int64_t fromMs) const
 {
-  const AimStep step = aimStepFor(sighting, geometry_);
-  if (step.centered || !argusHolds(cameraId))
+  const int64_t until = fromMs + input_.config.aimLookMs;
+  while (epochMs() < until) {
+    if (std::optional<PersonSighting> seen = lookFor(cameraId, fromMs))
+      return seen;
+    std::this_thread::sleep_for(std::chrono::milliseconds(kLookPollMs));
+  }
+  return std::nullopt;
+}
+
+AimSettings WatchAimer::settingsOf(int64_t cameraId) const
+{
+  const std::optional<CameraSchema> schema = input_.board->schema(cameraId);
+  if (!schema)
+    return {};
+  return aim_settings::parse({.capabilities = schema->capabilities, .config = schema->config});
+}
+
+bool WatchAimer::wearAllows(int64_t cameraId)
+{
+  const CameraPtzConfig& ptz = CameraControlFeatureService::ptz();
+  return AimBoard::instance().wearAllows(
+      {.cameraId = cameraId, .nowMs = epochMs(), .perMinute = ptz.movesPerMinute, .dailyCap = ptz.dailyMoveCap});
+}
+
+AimHold WatchAimer::holdOf(const HoldCheck& check)
+{
+  const bool lease = argusHolds(check.cameraId);
+  const bool wear = lease && wearAllows(check.cameraId);
+  const AimSnapshot aim = AimBoard::instance().snapshot(check.cameraId);
+  return watch_aim_plan::holdFor({.position = aim.position,
+                                  .positionKnown = aim.known,
+                                  .delta = check.delta,
+                                  .sectors = check.settings.noAimSectors,
+                                  .wearAllows = wear,
+                                  .leaseHeld = lease});
+}
+
+v1::AimResponse WatchAimer::centerOn(const CenterRequest& request) const
+{
+  const AimStep step = aimStepFor(request.sighting, geometry_);
+  if (step.centered)
+    return answer(v1::AIM_OUTCOME_IN_FRAME, request.detail);
+  const AimAngles delta{.pan = static_cast<double>(step.pan), .tilt = static_cast<double>(step.tilt)};
+  if (const AimHold held = holdOf({.cameraId = request.cameraId, .delta = delta, .settings = request.settings});
+      held != AimHold::None) {
+    LOG_INFO << "Camera watch: camera " << request.cameraId << " holds instead of centring ("
+             << std::string(aimHoldName(held)) << ")";
+    return answer(v1::AIM_OUTCOME_HELD, std::string(aimHoldName(held)));
+  }
+  if (!turn({.driver = request.driver, .cameraId = request.cameraId, .delta = delta}))
+    return answer(v1::AIM_OUTCOME_IN_FRAME, "move_failed");
+  return answer(v1::AIM_OUTCOME_CENTERED, request.detail);
+}
+
+std::optional<v1::AimResponse> WatchAimer::radarStep(const RadarRequest& request) const
+{
+  if (!input_.config.aimRadarEnabled || !input_.radar)
+    return std::nullopt;
+  const int64_t cameraId = request.cameraId;
+  const std::vector<RadarFix> fixes = input_.radar(cameraId);
+  if (fixes.empty())
+    return std::nullopt;
+  const AimSnapshot aim = AimBoard::instance().snapshot(cameraId);
+  const RadarAim placed = watch_aim_plan::radarAim(
+      {.fixes = fixes,
+       .position = aim.position,
+       .positionKnown = aim.known,
+       .nowMs = epochMs(),
+       .maxAgeMs = input_.config.aimRadarMaxAgeMs,
+       .maxRangeMm = static_cast<double>(input_.config.aimRadarMaxRangeMm),
+       .deadZoneDeg = geometry_.deadZone * geometry_.horizontalFovDegrees});
+  if (!placed.placed || (!placed.move && placed.reason == aimHoldName(AimHold::PositionUnknown)))
+    return std::nullopt;
+  if (placed.move) {
+    if (input_.gate(cameraId) != v1::WATCH_REFUSAL_NONE)
+      return answer(v1::AIM_OUTCOME_REFUSED, "interrupted");
+    if (const AimHold held = holdOf({.cameraId = cameraId, .delta = placed.delta, .settings = request.settings});
+        held != AimHold::None) {
+      LOG_INFO << "Camera watch: camera " << cameraId << " holds instead of turning to radar "
+               << placed.sensorId << " (" << std::string(aimHoldName(held)) << ")";
+      return answer(v1::AIM_OUTCOME_HELD, std::string(aimHoldName(held)));
+    }
+    if (!turn({.driver = request.driver, .cameraId = cameraId, .delta = placed.delta}))
+      return std::nullopt;
+  }
+  if (const std::optional<PersonSighting> seen = waitFor(cameraId, epochMs()))
+    return centerOn(
+        {.driver = request.driver, .cameraId = cameraId, .sighting = *seen, .settings = request.settings, .detail = "radar"});
+  return answer(v1::AIM_OUTCOME_BEARING, "radar");
+}
+
+bool WatchAimer::turn(const TurnRequest& request) const
+{
+  const int64_t cameraId = request.cameraId;
+  const auto pan = static_cast<int64_t>(std::lround(request.delta.pan));
+  const auto tilt = static_cast<int64_t>(std::lround(request.delta.tilt));
+  if ((pan == 0 && tilt == 0) || !argusHolds(cameraId))
     return false;
   const int64_t started = epochMs();
   markAway(cameraId);
   CameraSceneLog::instance().beginMove(
       {.cameraId = cameraId, .startMs = started, .expectedEndMs = started + input_.config.aimSettleMs, .returnsHome = false});
-  const DriverResult moved = driver.move({.x = step.pan, .y = step.tilt, .angle = std::nullopt, .stop = false});
+  const DriverResult moved = request.driver.move({.x = pan, .y = tilt, .angle = std::nullopt, .stop = false});
+  if (moved.ok)
+    AimBoard::instance().recordMove(
+        {.cameraId = cameraId,
+         .delta = {.pan = static_cast<double>(pan), .tilt = static_cast<double>(tilt)},
+         .atMs = started});
   std::this_thread::sleep_for(std::chrono::milliseconds(input_.config.aimSettleMs));
   const int64_t ended = epochMs();
   CameraSceneLog::instance().endMove({.cameraId = cameraId, .atMs = ended});
@@ -216,13 +309,17 @@ bool WatchAimer::center(ICameraDriver& driver, int64_t cameraId, const PersonSig
   return moved.ok;
 }
 
-bool WatchAimer::goPreset(ICameraDriver& driver, int64_t cameraId, const std::string& presetId) const
+bool WatchAimer::goPreset(const PresetRequest& request) const
 {
+  const int64_t cameraId = request.cameraId;
   const int64_t started = epochMs();
   markAway(cameraId);
   CameraSceneLog::instance().beginMove(
       {.cameraId = cameraId, .startMs = started, .expectedEndMs = started + input_.config.aimSettleMs, .returnsHome = false});
-  const DriverResult moved = driver.preset({.action = "goto", .id = presetId, .name = {}});
+  const DriverResult moved = request.driver.preset({.action = "goto", .id = request.presetId, .name = {}});
+  if (moved.ok)
+    AimBoard::instance().recordMove({.cameraId = cameraId, .delta = {}, .atMs = started});
+  AimBoard::instance().lose(cameraId);
   std::this_thread::sleep_for(std::chrono::milliseconds(input_.config.aimSettleMs));
   const int64_t ended = epochMs();
   CameraSceneLog::instance().endMove({.cameraId = cameraId, .atMs = ended});

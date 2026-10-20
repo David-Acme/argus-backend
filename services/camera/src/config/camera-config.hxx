@@ -86,6 +86,9 @@ struct CameraWatchConfig
   int64_t aimLookMs{2000};
   int64_t aimMaxPresets{4};
   int64_t aimReturnMs{30000};
+  bool aimRadarEnabled{true};
+  int64_t aimRadarMaxAgeMs{3000};
+  int64_t aimRadarMaxRangeMm{6000};
 };
 
 struct GuardDutyConfig

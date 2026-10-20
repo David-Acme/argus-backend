@@ -242,6 +242,9 @@ aim_settle_ms = 1500
 aim_look_ms = 2000
 aim_max_presets = 4
 aim_return_ms = 30000
+aim_radar_enabled = true
+aim_radar_max_age_ms = 3000
+aim_radar_max_range_mm = 6000
 
 [stt]
 remote_url = ""

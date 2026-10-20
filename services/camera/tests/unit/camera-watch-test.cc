@@ -4,6 +4,8 @@
 #include <feature/watch/services/microphone-hub.hxx>
 #include <feature/watch/services/speaker-program.hxx>
 #include <feature/watch/services/speaker-session.hxx>
+#include <feature/watch/infra/guard-radar-source.hxx>
+#include <feature/watch/services/watch-aim-plan.hxx>
 #include <feature/watch/services/watch-aim.hxx>
 #include <feature/watch/services/watch-gate.hxx>
 #include <shared/services/stream/person-sightings.hxx>
@@ -443,12 +445,170 @@ TEST_CASE("the aimer refuses a camera the gate closes and one without pan and ti
   WatchAimer closed({.board = board,
                      .gate = [](int64_t) { return v1::WATCH_REFUSAL_MASKED; },
                      .config = {},
-                     .schedule = {}});
+                     .schedule = {},
+                     .radar = {}});
   CHECK(closed.find({.cameraId = 5, .conversationId = "c1"}).outcome() == v1::AIM_OUTCOME_REFUSED);
   WatchAimer open({.board = board,
                    .gate = [](int64_t) { return v1::WATCH_REFUSAL_NONE; },
                    .config = {},
-                   .schedule = {}});
+                   .schedule = {},
+                   .radar = {}});
   CHECK(open.find({.cameraId = 5, .conversationId = "c1"}).outcome() == v1::AIM_OUTCOME_NO_PTZ);
   CHECK(open.release({.cameraId = 5, .conversationId = "c1"}).detail() == "not_held");
+}
+
+TEST_CASE("the aimer never turns into a no-aim sector and holds instead")
+{
+  const std::vector<NoAimSector> sectors{
+      {.name = "vecino", .panFrom = 30.0, .panTo = 90.0, .tiltFrom = -45.0, .tiltTo = 45.0}};
+  CHECK(watch_aim_plan::holdFor({.position = {.pan = 0.0, .tilt = 0.0},
+                                 .positionKnown = true,
+                                 .delta = {.pan = 40.0, .tilt = 0.0},
+                                 .sectors = sectors,
+                                 .wearAllows = true,
+                                 .leaseHeld = true}) == AimHold::NoAimSector);
+  CHECK(watch_aim_plan::holdFor({.position = {.pan = 0.0, .tilt = 0.0},
+                                 .positionKnown = true,
+                                 .delta = {.pan = -40.0, .tilt = 0.0},
+                                 .sectors = sectors,
+                                 .wearAllows = true,
+                                 .leaseHeld = true}) == AimHold::None);
+  CHECK(watch_aim_plan::holdFor({.position = {.pan = 50.0, .tilt = 0.0},
+                                 .positionKnown = true,
+                                 .delta = {.pan = -40.0, .tilt = 0.0},
+                                 .sectors = sectors,
+                                 .wearAllows = true,
+                                 .leaseHeld = true}) == AimHold::None);
+  CHECK(aimHoldName(AimHold::NoAimSector) == "no_aim_sector");
+}
+
+TEST_CASE("an unknown position with sectors holds, and without sectors it may move")
+{
+  const std::vector<NoAimSector> sectors{
+      {.name = "calle", .panFrom = -90.0, .panTo = -60.0, .tiltFrom = -45.0, .tiltTo = 45.0}};
+  CHECK(watch_aim_plan::holdFor({.position = {},
+                                 .positionKnown = false,
+                                 .delta = {.pan = 10.0, .tilt = 0.0},
+                                 .sectors = sectors,
+                                 .wearAllows = true,
+                                 .leaseHeld = true}) == AimHold::PositionUnknown);
+  CHECK(watch_aim_plan::holdFor({.position = {},
+                                 .positionKnown = false,
+                                 .delta = {.pan = 10.0, .tilt = 0.0},
+                                 .sectors = {},
+                                 .wearAllows = true,
+                                 .leaseHeld = true}) == AimHold::None);
+}
+
+TEST_CASE("the aimer yields to the lease first and to the wear caps next")
+{
+  CHECK(watch_aim_plan::holdFor({.position = {},
+                                 .positionKnown = true,
+                                 .delta = {.pan = 10.0, .tilt = 0.0},
+                                 .sectors = {},
+                                 .wearAllows = false,
+                                 .leaseHeld = false}) == AimHold::Lease);
+  CHECK(watch_aim_plan::holdFor({.position = {},
+                                 .positionKnown = true,
+                                 .delta = {.pan = 10.0, .tilt = 0.0},
+                                 .sectors = {},
+                                 .wearAllows = false,
+                                 .leaseHeld = true}) == AimHold::Wear);
+}
+
+TEST_CASE("an LD2450 target becomes a bearing from the sensor's axis")
+{
+  CHECK(valueOf(watch_aim_plan::radarBearingDeg({.xMm = 0.0, .yMm = 2000.0}, 6000.0)) == doctest::Approx(0.0));
+  CHECK(valueOf(watch_aim_plan::radarBearingDeg({.xMm = 1500.0, .yMm = 1500.0}, 6000.0)) == doctest::Approx(45.0));
+  CHECK(valueOf(watch_aim_plan::radarBearingDeg({.xMm = -1000.0, .yMm = 1732.05}, 6000.0)) ==
+        doctest::Approx(-30.0).epsilon(0.001));
+  CHECK_FALSE(watch_aim_plan::radarBearingDeg({.xMm = 0.0, .yMm = 0.0}, 6000.0).has_value());
+  CHECK_FALSE(watch_aim_plan::radarBearingDeg({.xMm = 300.0, .yMm = -500.0}, 6000.0).has_value());
+  CHECK_FALSE(watch_aim_plan::radarBearingDeg({.xMm = 0.0, .yMm = 7000.0}, 6000.0).has_value());
+}
+
+TEST_CASE("the radar aim adds the sensor's pan offset and turns by the difference from the camera's pan")
+{
+  const std::vector<RadarFix> fixes{
+      {.sensorId = 3, .panOffsetDeg = 20.0, .targets = {{.xMm = 1500.0, .yMm = 1500.0}}, .atMs = 9000}};
+  const RadarAim placed = watch_aim_plan::radarAim({.fixes = fixes,
+                                                    .position = {.pan = 10.0, .tilt = 5.0},
+                                                    .positionKnown = true,
+                                                    .nowMs = 10000,
+                                                    .maxAgeMs = 3000,
+                                                    .maxRangeMm = 6000.0,
+                                                    .deadZoneDeg = 5.0});
+  CHECK(placed.placed);
+  CHECK(placed.move);
+  CHECK(placed.sensorId == 3);
+  CHECK(placed.targetPan == doctest::Approx(65.0));
+  CHECK(placed.delta.pan == doctest::Approx(55.0));
+  CHECK(placed.delta.tilt == doctest::Approx(0.0));
+}
+
+TEST_CASE("the radar aim picks the target nearest the camera's pan and ignores stale and empty slots")
+{
+  const std::vector<RadarFix> fixes{
+      {.sensorId = 1,
+       .panOffsetDeg = 0.0,
+       .targets = {{.xMm = 0.0, .yMm = 0.0}, {.xMm = 2000.0, .yMm = 2000.0}, {.xMm = -200.0, .yMm = 3000.0}},
+       .atMs = 9500},
+      {.sensorId = 2, .panOffsetDeg = 0.0, .targets = {{.xMm = 10.0, .yMm = 3000.0}}, .atMs = 1000}};
+  const RadarAim placed = watch_aim_plan::radarAim({.fixes = fixes,
+                                                    .position = {.pan = 0.0, .tilt = 0.0},
+                                                    .positionKnown = true,
+                                                    .nowMs = 10000,
+                                                    .maxAgeMs = 3000,
+                                                    .maxRangeMm = 6000.0,
+                                                    .deadZoneDeg = 5.0});
+  CHECK(placed.placed);
+  CHECK(placed.sensorId == 1);
+  CHECK_FALSE(placed.move);
+  CHECK(placed.reason == "facing");
+  const std::vector<RadarFix> stale{
+      {.sensorId = 2, .panOffsetDeg = 0.0, .targets = {{.xMm = 10.0, .yMm = 3000.0}}, .atMs = 1000}};
+  const RadarAim none = watch_aim_plan::radarAim({.fixes = stale,
+                                                  .position = {},
+                                                  .positionKnown = true,
+                                                  .nowMs = 10000,
+                                                  .maxAgeMs = 3000,
+                                                  .maxRangeMm = 6000.0,
+                                                  .deadZoneDeg = 5.0});
+  CHECK_FALSE(none.placed);
+  CHECK(none.reason == "no_target");
+}
+
+TEST_CASE("the radar places a person but an unknown position cannot be turned from")
+{
+  const std::vector<RadarFix> fixes{
+      {.sensorId = 1, .panOffsetDeg = 0.0, .targets = {{.xMm = 1000.0, .yMm = 1000.0}}, .atMs = 10000}};
+  const RadarAim placed = watch_aim_plan::radarAim({.fixes = fixes,
+                                                    .position = {},
+                                                    .positionKnown = false,
+                                                    .nowMs = 10000,
+                                                    .maxAgeMs = 3000,
+                                                    .maxRangeMm = 6000.0,
+                                                    .deadZoneDeg = 5.0});
+  CHECK(placed.placed);
+  CHECK_FALSE(placed.move);
+  CHECK(placed.reason == "position_unknown");
+}
+
+TEST_CASE("guard's sensor targets read as radar fixes")
+{
+  argus::guard::v1::SensorTargets sensor;
+  sensor.set_sensor_id(8);
+  sensor.set_pan_offset_deg(-12.5);
+  sensor.set_at_ms(4000);
+  auto* target = sensor.add_targets();
+  target->set_x_mm(-400.0);
+  target->set_y_mm(2500.0);
+  const std::vector<RadarFix> fixes = radarFixesOf({sensor});
+  REQUIRE(fixes.size() == 1);
+  CHECK(fixes.front().sensorId == 8);
+  CHECK(fixes.front().panOffsetDeg == doctest::Approx(-12.5));
+  CHECK(fixes.front().atMs == 4000);
+  REQUIRE(fixes.front().targets.size() == 1);
+  CHECK(fixes.front().targets.front().xMm == doctest::Approx(-400.0));
+  CHECK(fixes.front().targets.front().yMm == doctest::Approx(2500.0));
 }
