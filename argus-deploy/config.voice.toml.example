@@ -83,6 +83,10 @@ resumable_ms = 180000
 reply_gap_ms = 700
 camera_drop_ms = 3000
 face_window_ms = 1500
+belief_enabled = true
+belief_min_confidence = 0.6
+belief_margin = 0.2
+belief_max_age_ms = 2000
 
 [stt]
 remote_url = ""

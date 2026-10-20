@@ -303,12 +303,32 @@ void WatchCoordinator::decide(std::vector<EarFire> fires)
         evaluations[index] = evaluate(fires[decision.candidates[index].fire], decision.candidates[index]);
       });
   }
-  std::optional<size_t> winner;
+  std::vector<size_t> accepted;
+  std::vector<SpeakingCandidate> speaking;
   for (size_t index = 0; index < evaluations.size(); ++index) {
     if (evaluations[index].verdict != WakeVerdict::Accepted)
       continue;
-    if (!winner || evaluations[index].score > evaluations[*winner].score)
-      winner = index;
+    const int64_t cameraId = fires[decision.candidates[index].fire].cameraId;
+    accepted.push_back(index);
+    speaking.push_back({.cameraId = cameraId,
+                        .room = input_.rooms ? input_.rooms->roomOf(cameraId) : std::string{},
+                        .score = evaluations[index].score});
+  }
+  const bool spread = std::ranges::any_of(
+      speaking, [&speaking](const SpeakingCandidate& candidate) { return candidate.room != speaking.front().room; });
+  const std::vector<RoomConfidence> rooms =
+      input_.config.beliefEnabled && spread ? occupancy() : std::vector<RoomConfidence>{};
+  const std::optional<SpeakingChoice> choice =
+      chooseSpeakingCamera({.candidates = speaking,
+                            .rooms = rooms,
+                            .minConfidence = static_cast<double>(input_.config.beliefMinConfidence),
+                            .margin = static_cast<double>(input_.config.beliefMargin)});
+  std::optional<size_t> winner;
+  if (choice) {
+    winner = accepted[choice->index];
+    if (choice->byBelief)
+      LOG_INFO << "Voice watch: camera " << speaking[choice->index].cameraId << " answers from the room "
+               << choice->room << " the household's belief places the speaker in";
   }
   for (size_t index = 0; index < evaluations.size(); ++index) {
     const EarFire& fire = fires[decision.candidates[index].fire];
@@ -332,6 +352,31 @@ void WatchCoordinator::decide(std::vector<EarFire> fires)
                    .snrDb = fire.snrDb,
                    .at = fire.at});
   }
+}
+
+std::vector<RoomConfidence> WatchCoordinator::occupancy()
+{
+  const auto now = std::chrono::steady_clock::now();
+  {
+    std::scoped_lock lock(occupancyMutex_);
+    if (occupancyAt_ && now - *occupancyAt_ <= input_.config.beliefMaxAge)
+      return occupancy_;
+  }
+  std::vector<RoomConfidence> fresh;
+  if (input_.guard) {
+    if (const auto rooms = input_.guard->roomOccupancy()) {
+      fresh.reserve(rooms->size());
+      for (const auto& room : *rooms)
+        fresh.push_back({.room = room.room(), .confidence = room.confidence()});
+    }
+    else {
+      LOG_DEBUG << "Voice watch: argus-guard did not answer the room occupancy; arbitration decides alone";
+    }
+  }
+  std::scoped_lock lock(occupancyMutex_);
+  occupancy_ = fresh;
+  occupancyAt_ = now;
+  return fresh;
 }
 
 WatchCoordinator::Evaluation WatchCoordinator::evaluate(const EarFire& fire, const WakeCandidate& candidate)

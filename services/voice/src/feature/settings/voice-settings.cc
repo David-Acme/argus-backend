@@ -60,6 +60,14 @@ void appendWatch(std::vector<SettingSpec>& catalog)
                      .range = {},
                      .choices = {},
                      .fallback = "true"});
+  catalog.push_back({.key = "watch.belief_enabled",
+                     .group = "watchman",
+                     .type = SettingType::Toggle,
+                     .level = SettingLevel::Advanced,
+                     .apply = SettingApply::Restart,
+                     .range = {},
+                     .choices = {},
+                     .fallback = "true"});
   catalog.push_back({.key = "watch.stage1",
                      .group = "watchman",
                      .type = SettingType::Choice,
@@ -125,6 +133,8 @@ void appendWatch(std::vector<SettingSpec>& catalog)
        .range = {.min = 500, .max = 30000, .step = 500}, .fallback = "3000"},
       {.key = "watch.face_window_ms", .group = "watchman", .level = SettingLevel::Advanced,
        .range = {.min = 300, .max = 3000, .step = 100}, .fallback = "1500"},
+      {.key = "watch.belief_max_age_ms", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 500, .max = 30000, .step = 500}, .fallback = "2000"},
   };
   const std::vector<NumericSetting> decimals{
       {.key = "watch.stt_stage1_min_snr_db", .group = "watchman", .level = SettingLevel::Advanced,
@@ -153,6 +163,10 @@ void appendWatch(std::vector<SettingSpec>& catalog)
        .range = {.min = 0, .max = 1, .step = 0.05}, .fallback = "0.5"},
       {.key = "watch.gain_alpha", .group = "watchman", .level = SettingLevel::Advanced,
        .range = {.min = 0.01, .max = 1, .step = 0.01}, .fallback = "0.1"},
+      {.key = "watch.belief_min_confidence", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 0, .max = 1, .step = 0.05}, .fallback = "0.6"},
+      {.key = "watch.belief_margin", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 0, .max = 1, .step = 0.05}, .fallback = "0.2"},
   };
   for (const NumericSetting& setting : integers)
     catalog.push_back(watchInteger(setting));

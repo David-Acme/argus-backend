@@ -143,6 +143,10 @@ struct VoiceWatchConfig
   std::chrono::milliseconds replyGap{700};
   std::chrono::milliseconds cameraDrop{3000};
   std::chrono::milliseconds faceWindow{1500};
+  bool beliefEnabled{true};
+  float beliefMinConfidence{0.6F};
+  float beliefMargin{0.2F};
+  std::chrono::milliseconds beliefMaxAge{2000};
 };
 
 class VoiceConfig

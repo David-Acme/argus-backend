@@ -158,6 +158,11 @@ CameraWatchConfig CameraConfig::resolveWatch()
   config.aimLookMs = positive("watch.aim_look_ms", config.aimLookMs);
   config.aimMaxPresets = nonNegative("watch.aim_max_presets", config.aimMaxPresets);
   config.aimReturnMs = nonNegative("watch.aim_return_ms", config.aimReturnMs);
+  config.aimRadarEnabled = !ConfigService::hasKey("watch.aim_radar_enabled") ||
+                           ConfigService::getBool("watch.aim_radar_enabled");
+  config.aimRadarMaxAgeMs = positive("watch.aim_radar_max_age_ms", config.aimRadarMaxAgeMs);
+  config.aimRadarMaxRangeMm =
+      std::clamp<int64_t>(positive("watch.aim_radar_max_range_mm", config.aimRadarMaxRangeMm), 500, 20000);
   return config;
 }
 

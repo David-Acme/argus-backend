@@ -177,6 +177,7 @@ offline_after_ms = 10000
 request_timeout_ms = 1500
 sighting_window_ms = 45000
 home_assistant_token = ""
+targets_suffix = "_targets"
 weight_face = 1.0
 weight_radar_box = 0.8
 weight_voice = 0.6

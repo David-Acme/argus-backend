@@ -160,6 +160,8 @@ enum AimOutcome
   AIM_OUTCOME_REFUSED = 4;
   AIM_OUTCOME_NO_PTZ = 5;
   AIM_OUTCOME_RELEASED = 6;
+  AIM_OUTCOME_HELD = 7;
+  AIM_OUTCOME_BEARING = 8;
 }
 
 message AimRequest

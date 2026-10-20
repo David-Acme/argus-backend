@@ -5196,6 +5196,51 @@
                     "type": "integer",
                     "unit": "ms",
                     "value": "30000"
+                  },
+                  {
+                    "apply": "restart",
+                    "choices": [],
+                    "fallback": "true",
+                    "group": "watchman",
+                    "key": "watch.aim_radar_enabled",
+                    "level": "advanced",
+                    "max": 0.0,
+                    "min": 0.0,
+                    "pendingRestart": false,
+                    "step": 0.0,
+                    "type": "toggle",
+                    "unit": "",
+                    "value": "true"
+                  },
+                  {
+                    "apply": "restart",
+                    "choices": [],
+                    "fallback": "3000",
+                    "group": "watchman",
+                    "key": "watch.aim_radar_max_age_ms",
+                    "level": "advanced",
+                    "max": 30000.0,
+                    "min": 500.0,
+                    "pendingRestart": false,
+                    "step": 500.0,
+                    "type": "integer",
+                    "unit": "ms",
+                    "value": "3000"
+                  },
+                  {
+                    "apply": "restart",
+                    "choices": [],
+                    "fallback": "6000",
+                    "group": "watchman",
+                    "key": "watch.aim_radar_max_range_mm",
+                    "level": "advanced",
+                    "max": 20000.0,
+                    "min": 500.0,
+                    "pendingRestart": false,
+                    "step": 100.0,
+                    "type": "integer",
+                    "unit": "",
+                    "value": "6000"
                   }
                 ]
               },

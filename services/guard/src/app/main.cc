@@ -212,6 +212,32 @@ RpcListener startRpcListener(const RpcListenerInput& input)
                                                                       .snrDb = row.snrDb,
                                                                       .voiceprint = row.voiceprint,
                                                                       .atMs = row.atMs});
+                         },
+                         .targets = [proximity = input.proximity](int64_t cameraId)
+                             -> drogon::Task<std::vector<SensorTargetsRow>> {
+                           std::vector<SensorTargetsRow> rows;
+                           if (proximity == nullptr)
+                             co_return rows;
+                           for (ProximitySensorTargets& sensor : co_await proximity->targets(cameraId)) {
+                             SensorTargetsRow row{.sensorId = sensor.sensorId,
+                                                  .room = std::move(sensor.room),
+                                                  .panOffsetDeg = sensor.panOffsetDeg,
+                                                  .targets = {},
+                                                  .atMs = sensor.atMs};
+                             row.targets.reserve(sensor.targets.size());
+                             for (const RadarPoint& point : sensor.targets)
+                               row.targets.push_back({.xMm = point.xMm, .yMm = point.yMm});
+                             rows.push_back(std::move(row));
+                           }
+                           co_return rows;
+                         },
+                         .occupancy = [proximity = input.proximity]() -> drogon::Task<std::vector<RoomOccupancyRow>> {
+                           std::vector<RoomOccupancyRow> rows;
+                           if (proximity == nullptr)
+                             co_return rows;
+                           for (ProximityRoomOccupancy& room : co_await proximity->occupancy())
+                             rows.push_back({.room = std::move(room.room), .confidence = room.confidence});
+                           co_return rows;
                          }});
     services.push_back(listener.presence.get());
   }
@@ -493,7 +519,8 @@ int main()
   const HttpProximityProbe proximityProbe(
       {.bleEntity = proximityConfig.bleEntity,
        .homeAssistantToken = proximityConfig.homeAssistantToken,
-       .timeoutSeconds = static_cast<double>(proximityConfig.requestTimeoutMs) / 1000.0});
+       .timeoutSeconds = static_cast<double>(proximityConfig.requestTimeoutMs) / 1000.0,
+       .targetsSuffix = proximityConfig.targetsSuffix});
   const FleetProximityWorld proximityWorld(
       {.camera = watchCameras.get(),
        .identity = identity.get(),

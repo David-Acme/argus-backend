@@ -132,7 +132,7 @@ TEST_CASE("the camera catalog builds through the registry")
 {
   const auto catalog = cameraSettingsCatalog();
   REQUIRE_NOTHROW(SettingsRegistry{cameraSettingsCatalog()});
-  CHECK(catalog.size() == 87);
+  CHECK(catalog.size() == 90);
   CHECK(std::ranges::count(catalog, SettingLevel::Basic, &SettingSpec::level) == 8);
 
   std::vector<std::string> live;
@@ -221,6 +221,12 @@ TEST_CASE("every fallback is what the camera runs with when the key is absent")
   CHECK((fallback("ptz.patrol_enabled") == "true") == ptz.patrolEnabled);
   CHECK(std::stoll(fallback("ptz.patrol_every_seconds")) * 1000 == ptz.patrolEveryMs);
   CHECK(std::stoll(fallback("ptz.patrol_dwell_seconds")) * 1000 == ptz.patrolDwellMs);
+
+  const CameraWatchConfig watch = CameraConfig::resolveWatch();
+  CHECK(std::stoll(fallback("watch.aim_return_ms")) == watch.aimReturnMs);
+  CHECK((fallback("watch.aim_radar_enabled") == "true") == watch.aimRadarEnabled);
+  CHECK(std::stoll(fallback("watch.aim_radar_max_age_ms")) == watch.aimRadarMaxAgeMs);
+  CHECK(std::stoll(fallback("watch.aim_radar_max_range_mm")) == watch.aimRadarMaxRangeMm);
 
   const CameraLookConfig look = CameraConfig::resolveLook();
   CHECK((fallback("look.enabled") == "true") == look.enabled);

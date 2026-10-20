@@ -57,3 +57,12 @@ drogon::Task<std::optional<bool>> HttpProximityProbe::readRadar(ProximitySensorR
     co_return std::nullopt;
   co_return radarPresenceOf(*body);
 }
+
+drogon::Task<std::optional<std::vector<RadarPoint>>> HttpProximityProbe::readTargets(ProximitySensorRow sensor) const
+{
+  const ProximityRequestPath path = radarTargetsPath({.sensor = sensor, .suffix = config_.targetsSuffix});
+  const auto body = co_await fetch({.host = sensor.host, .port = sensor.port, .path = path.path, .bearer = path.bearer});
+  if (!body)
+    co_return std::nullopt;
+  co_return radarTargetsOf(*body);
+}

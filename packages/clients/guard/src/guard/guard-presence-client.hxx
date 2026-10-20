@@ -44,6 +44,11 @@ public:
 
   [[nodiscard]] virtual bool reportVoice(const VoiceEvidenceReport& report) const;
 
+  [[nodiscard]] virtual std::optional<std::vector<argus::guard::v1::SensorTargets>>
+  sensorTargets(int64_t cameraId) const;
+
+  [[nodiscard]] virtual std::optional<std::vector<argus::guard::v1::RoomOccupancy>> roomOccupancy() const;
+
 private:
   std::shared_ptr<grpc::Channel> channel_;
   std::unique_ptr<argus::guard::v1::PresenceService::StubInterface> stub_;

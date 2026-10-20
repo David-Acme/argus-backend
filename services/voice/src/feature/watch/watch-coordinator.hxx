@@ -4,6 +4,7 @@
 #include <feature/watch/camera-ear.hxx>
 #include <feature/watch/camera-gains.hxx>
 #include <feature/watch/room-directory.hxx>
+#include <feature/watch/speaking-camera.hxx>
 #include <feature/watch/echo-guard.hxx>
 #include <feature/watch/fire-log.hxx>
 #include <feature/watch/stage-two.hxx>
@@ -13,6 +14,7 @@
 #include <guard/guard-presence-client.hxx>
 #include <config/voice-config.hxx>
 
+#include <chrono>
 #include <condition_variable>
 #include <cstdint>
 #include <deque>
@@ -132,6 +134,7 @@ private:
   [[nodiscard]] Evaluation evaluate(const EarFire& fire, const WakeCandidate& candidate);
   void record(const EarFire& fire, WakeVerdict verdict, const Evaluation* evaluation);
   [[nodiscard]] bool sameEnvironment(int64_t left, int64_t right) const;
+  [[nodiscard]] std::vector<RoomConfidence> occupancy();
 
   WatchCoordinatorInput input_;
   StageTwo stageTwo_;
@@ -145,4 +148,7 @@ private:
   std::deque<EarFire> queue_;
   std::jthread worker_;
   std::jthread refresher_;
+  std::mutex occupancyMutex_;
+  std::vector<RoomConfidence> occupancy_;
+  std::optional<std::chrono::steady_clock::time_point> occupancyAt_;
 };

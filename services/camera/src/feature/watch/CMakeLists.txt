@@ -2,10 +2,12 @@ argus_module(NAME camera-watch
     SOURCES
         camera-watch-rpc-service.cc
         infra/ffmpeg-microphone-source.cc
+        infra/guard-radar-source.cc
         services/microphone-hub.cc
         services/speaker-program.cc
         services/speaker-session.cc
         services/watch-aim.cc
+        services/watch-aim-plan.cc
         services/watch-camera-board.cc
         services/watch-gate.cc
     INCLUDES
@@ -18,6 +20,7 @@ argus_module(NAME camera-watch
         argus::camera-stream
         argus::camera-talk
         argus::clients::camera-watch
+        argus::clients::guard
         argus::clients::identity
         argus::lib::runtime
         argus::contracts::camera

@@ -15,6 +15,7 @@ struct HttpProximityProbeConfig
   std::string bleEntity{"argus_ble"};
   std::string homeAssistantToken;
   double timeoutSeconds{1.5};
+  std::string targetsSuffix{"_targets"};
 };
 
 class HttpProximityProbe final : public ProximityProbe
@@ -26,6 +27,9 @@ public:
   readBle(ProximityReceiverRow receiver) const override;
 
   [[nodiscard]] drogon::Task<std::optional<bool>> readRadar(ProximitySensorRow sensor) const override;
+
+  [[nodiscard]] drogon::Task<std::optional<std::vector<RadarPoint>>>
+  readTargets(ProximitySensorRow sensor) const override;
 
 private:
   struct Fetch

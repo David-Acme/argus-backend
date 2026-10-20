@@ -54,6 +54,22 @@ double voiceStrength(const ProximityVoiceEvidence& evidence)
   return snr * (evidence.voiceprint ? 1.0 : kVoiceUnconfirmed);
 }
 
+std::vector<ProximityRoomOccupancy> roomOccupancyOf(const std::vector<RoomVerdict>& verdicts)
+{
+  std::vector<ProximityRoomOccupancy> rooms;
+  for (const RoomVerdict& verdict : verdicts) {
+    if (verdict.room.empty())
+      continue;
+    const auto found = std::ranges::find(rooms, verdict.room, &ProximityRoomOccupancy::room);
+    if (found == rooms.end())
+      rooms.push_back({.room = verdict.room, .confidence = verdict.confidence});
+    else
+      found->confidence = std::max(found->confidence, verdict.confidence);
+  }
+  std::ranges::sort(rooms, std::ranges::greater{}, &ProximityRoomOccupancy::confidence);
+  return rooms;
+}
+
 ProximityService::ProximityService(ProximityServiceInput input)
     : input_(std::move(input)), belief_(roomBeliefConfigOf(input_.config)), config_(input_.config)
 {
@@ -287,6 +303,38 @@ drogon::Task<bool> ProximityService::reportVoice(ProximityVoiceEvidence evidence
                   .night = false,
                   .atMs = evidence.atMs > 0 ? evidence.atMs : nowMs()});
   co_return true;
+}
+
+drogon::Task<std::vector<ProximitySensorTargets>> ProximityService::targets(int64_t cameraId)
+{
+  std::vector<ProximitySensorTargets> out;
+  if (!config().enabled || input_.probe == nullptr || cameraId <= 0)
+    co_return out;
+  for (ProximitySensorRow& sensor : co_await sensorRepository_.find()) {
+    if (sensor.model != ProximitySensorModel::Ld2450 || sensor.cameraId != std::optional<int64_t>(cameraId))
+      continue;
+    const int64_t sensorId = sensor.id;
+    std::string room = sensor.room;
+    const double panOffset = sensor.panOffsetDeg.value_or(0.0);
+    const auto points = co_await input_.probe->readTargets(std::move(sensor));
+    if (!points)
+      continue;
+    const int64_t at = nowMs();
+    markSeen(sensorSeenMs_, sensorId, at);
+    out.push_back({.sensorId = sensorId,
+                   .room = std::move(room),
+                   .panOffsetDeg = panOffset,
+                   .targets = *points,
+                   .atMs = at});
+  }
+  co_return out;
+}
+
+drogon::Task<std::vector<ProximityRoomOccupancy>> ProximityService::occupancy() const
+{
+  if (!config().enabled)
+    co_return std::vector<ProximityRoomOccupancy>{};
+  co_return roomOccupancyOf(co_await people());
 }
 
 drogon::Task<std::unordered_set<int64_t>> ProximityService::refreshLocated()

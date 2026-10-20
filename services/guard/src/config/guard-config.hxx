@@ -197,6 +197,7 @@ struct GuardProximityConfig
   int64_t sightingWindowMs{45000};
   std::string bleEntity{"argus_ble"};
   std::string homeAssistantToken;
+  std::string targetsSuffix{"_targets"};
   double weightFace{1.0};
   double weightRadarBox{0.8};
   double weightVoice{0.6};

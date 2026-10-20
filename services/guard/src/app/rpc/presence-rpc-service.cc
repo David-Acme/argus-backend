@@ -4,6 +4,7 @@
 #include <feature/presence/services/presence-service.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <chrono>
 #include <optional>
 #include <string>
 #include <utility>
@@ -206,6 +207,87 @@ grpc::ServerUnaryReactor* PresenceRpcService::ReportVoiceEvidence(
       catch (const std::exception& error) {
         LOG_WARN << "Presence RPC: ReportVoiceEvidence failed: " << error.what();
         reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, "Voice evidence failed"));
+      }
+    });
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* PresenceRpcService::SensorTargets(
+    grpc::CallbackServerContext* context, const v1::SensorTargetsRequest* request,
+    v1::SensorTargetsResponse* response)
+{
+  auto* reactor = context->DefaultReactor();
+  const std::optional<std::string> caller = argus::client::authorizeCaller(context, input_.credentials);
+  if (!caller || *caller != kSensorTargetsCaller) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Caller credential missing or invalid"));
+    return reactor;
+  }
+  if (!input_.targets) {
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+  }
+  const int64_t cameraId = request->camera_id();
+  SensorTargetsLookup targets = input_.targets;
+  drogon::app().getLoop()->queueInLoop([targets = std::move(targets), reactor, response, cameraId]() {
+    drogon::async_run([targets, reactor, response, cameraId]() -> drogon::Task<void> {
+      try {
+        for (const SensorTargetsRow& row : co_await targets(cameraId)) {
+          auto* sensor = response->add_sensors();
+          sensor->set_sensor_id(row.sensorId);
+          sensor->set_room(row.room);
+          sensor->set_pan_offset_deg(row.panOffsetDeg);
+          sensor->set_at_ms(row.atMs);
+          for (const SensorTargetPoint& point : row.targets) {
+            auto* target = sensor->add_targets();
+            target->set_x_mm(point.xMm);
+            target->set_y_mm(point.yMm);
+          }
+        }
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Presence RPC: SensorTargets failed: " << error.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, "Sensor targets failed"));
+      }
+    });
+  });
+  return reactor;
+}
+
+grpc::ServerUnaryReactor* PresenceRpcService::RoomOccupancy(
+    grpc::CallbackServerContext* context, const v1::RoomOccupancyRequest*,
+    v1::RoomOccupancyResponse* response)
+{
+  auto* reactor = context->DefaultReactor();
+  const std::optional<std::string> caller = argus::client::authorizeCaller(context, input_.credentials);
+  if (!caller || *caller != kRoomOccupancyCaller) {
+    reactor->Finish(grpc::Status(grpc::StatusCode::UNAUTHENTICATED,
+                                 "Caller credential missing or invalid"));
+    return reactor;
+  }
+  if (!input_.occupancy) {
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+  }
+  RoomOccupancyLookup occupancy = input_.occupancy;
+  drogon::app().getLoop()->queueInLoop([occupancy = std::move(occupancy), reactor, response]() {
+    drogon::async_run([occupancy, reactor, response]() -> drogon::Task<void> {
+      try {
+        for (const RoomOccupancyRow& row : co_await occupancy()) {
+          auto* room = response->add_rooms();
+          room->set_room(row.room);
+          room->set_confidence(row.confidence);
+        }
+        response->set_at_ms(std::chrono::duration_cast<std::chrono::milliseconds>(
+                                std::chrono::system_clock::now().time_since_epoch())
+                                .count());
+        reactor->Finish(grpc::Status::OK);
+      }
+      catch (const std::exception& error) {
+        LOG_WARN << "Presence RPC: RoomOccupancy failed: " << error.what();
+        reactor->Finish(grpc::Status(grpc::StatusCode::INTERNAL, "Room occupancy failed"));
       }
     });
   });
