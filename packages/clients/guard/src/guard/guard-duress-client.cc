@@ -70,6 +70,7 @@ bool GuardDuressClient::raiseCameraPanic(const CameraPanicCall& call) const
   request.set_speaker(call.speaker);
   request.set_said_at(call.saidAt);
   request.set_conversation_id(call.conversationId);
+  request.set_duress(call.duress);
   argus::guard::v1::CameraPanicResponse response;
   const grpc::Status status = stub_->RaiseCameraPanic(&context, request, &response);
   return status.ok();
