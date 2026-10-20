@@ -1,5 +1,6 @@
 #pragma once
 
+#include <feature/call/services/call-ports.hxx>
 #include <feature/conversation/repositories/conversation-message/conversation-message-repository.hxx>
 #include <feature/conversation/services/conversation-ports.hxx>
 
@@ -69,6 +70,26 @@ struct TranscriptOutcome
   bool duplicate{false};
 };
 
+struct TypedMessageInput
+{
+  int64_t senderId{0};
+  int64_t counterpartId{0};
+  std::string body;
+};
+
+struct TypedMessageLimits
+{
+  int64_t maxMessageChars{500};
+  int64_t maxMessagesPerHour{20};
+  int64_t retentionDays{30};
+};
+
+struct TypedParties
+{
+  CallRecipient sender;
+  CallRecipient recipient;
+};
+
 struct ConversationThreadRef
 {
   int64_t userId{0};
@@ -88,12 +109,18 @@ public:
     std::shared_ptr<const MessageAnnouncer> announcer;
     std::shared_ptr<const MessageNoticeWriter> notices;
     std::shared_ptr<const LiveAnnouncePreference> liveAnnounce;
+    std::shared_ptr<const CallDirectory> directory;
+    TypedMessageLimits limits;
   };
 
   ConversationInboxService() = default;
   explicit ConversationInboxService(Dependencies dependencies);
 
   [[nodiscard]] drogon::Task<RelayReceipt> relay(const RelayLetter& letter) const;
+
+  [[nodiscard]] drogon::Task<ConversationMessageSchema> send(const TypedMessageInput& input) const;
+
+  [[nodiscard]] int64_t maxMessageChars() const;
 
   [[nodiscard]] drogon::Task<int64_t> settle(const SettleLetter& letter) const;
 
@@ -112,6 +139,7 @@ public:
 private:
   [[nodiscard]] drogon::Task<RelayRoute> deliver(const RelayLetter& letter) const;
   [[nodiscard]] drogon::Task<void> moveOutgoing(const SettleLetter& letter) const;
+  [[nodiscard]] drogon::Task<TypedParties> partiesOf(const TypedMessageInput& input) const;
 
   Dependencies dependencies_;
   ConversationMessageRepository repository_;
@@ -120,3 +148,14 @@ private:
 [[nodiscard]] bool validLetter(const RelayLetter& letter);
 
 [[nodiscard]] bool validTranscript(const TranscriptInput& input);
+
+[[nodiscard]] bool reachableMember(const CallRecipient& member);
+
+struct SpokenMessageLine
+{
+  std::string sender;
+  std::string body;
+  std::string lang;
+};
+
+[[nodiscard]] std::string spokenMessageLine(const SpokenMessageLine& line);

@@ -13,6 +13,11 @@ public:
 
   [[nodiscard]] drogon::Task<std::optional<ConversationMessageSchema>> findCopy(const ConversationCopyRef& ref) const;
 
+  [[nodiscard]] drogon::Task<int64_t> countSentSince(const ConversationSentSince& input) const;
+
+  [[nodiscard]] drogon::Task<std::optional<ConversationMessageSchema>>
+  findThreadLast(const ConversationThreadKey& key) const;
+
   [[nodiscard]] drogon::Task<std::vector<ConversationMessageChange>>
   transition(const ConversationTransitionInput& input) const;
 

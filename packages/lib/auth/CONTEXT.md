@@ -96,7 +96,10 @@ and let a guest through. Since the audit:
   `privacy`, `visitor`/`visitor-crop`, `sync` and `guard` each answer from
   their route table; then `kRouteOverrides` (rows that narrow a table, today
   `GET /notification/delivery-summary` and `DELETE /notification/responses` and
-  `/notification/responses/{id}`, all owner-only); then the camera actions;
+  `/notification/responses/{id}`, all owner-only, plus the one row that widens
+  one: `POST /conversation/{id}/message`, the app's typed message, for every
+  registered role and in the baseline, the route of `messages.relay`, while the
+  `conversation_message` table itself stays read, update and delete); then the camera actions;
   then `tableFromPath`, which also matches a whole first segment, so `/user`
   no longer answers for `/users-x`.
 - `permissionForMethod` returns `std::nullopt` for every method it does not

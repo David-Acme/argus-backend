@@ -5,6 +5,7 @@
 #include <errors/response-exception.hxx>
 #include <feature/conversation/dtos/conversation-thread-dto.hxx>
 #include <feature/conversation/dtos/response-conversation-threads-dto.hxx>
+#include <feature/conversation/dtos/send-message-dto.hxx>
 #include <http/api-response.hxx>
 #include <notification/notification-errors.hxx>
 
@@ -31,6 +32,17 @@ drogon::Task<drogon::HttpResponsePtr> ConversationController::markRead(drogon::H
   result["updated"] = static_cast<Json::Int64>(
       co_await service_->markThreadRead({.userId = ctx.sub, .counterpartId = thread.counterpartId}));
   co_return ApiResponse::ok(result);
+}
+
+drogon::Task<drogon::HttpResponsePtr> ConversationController::send(drogon::HttpRequestPtr req,
+                                                                   int64_t counterpartId)
+{
+  const auto dto = SendMessageDto::fromJson(
+      *req->getJsonObject(), {.counterpartId = counterpartId, .maxChars = service_->maxMessageChars()});
+  const auto& ctx = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const auto row =
+      co_await service_->send({.senderId = ctx.sub, .counterpartId = dto.counterpartId, .body = dto.body});
+  co_return ApiResponse::created(row.toJson());
 }
 
 drogon::Task<drogon::HttpResponsePtr> ConversationController::remove(drogon::HttpRequestPtr req, int64_t counterpartId)

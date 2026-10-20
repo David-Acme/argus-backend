@@ -19,6 +19,8 @@ public:
                 "RoleFilter");
   ADD_METHOD_TO(ConversationController::markRead, "/conversation/{1}/read", drogon::Patch, "DeviceFilter",
                 "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(ConversationController::send, "/conversation/{1}/message", drogon::Post, "DeviceFilter",
+                "ValidJsonFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(ConversationController::remove, "/conversation/{1}", drogon::Delete, "DeviceFilter", "JwtFilter",
                 "RoleFilter");
   METHOD_LIST_END
@@ -26,6 +28,8 @@ public:
   drogon::Task<drogon::HttpResponsePtr> list(drogon::HttpRequestPtr req);
 
   drogon::Task<drogon::HttpResponsePtr> markRead(drogon::HttpRequestPtr req, int64_t counterpartId);
+
+  drogon::Task<drogon::HttpResponsePtr> send(drogon::HttpRequestPtr req, int64_t counterpartId);
 
   drogon::Task<drogon::HttpResponsePtr> remove(drogon::HttpRequestPtr req, int64_t counterpartId);
 

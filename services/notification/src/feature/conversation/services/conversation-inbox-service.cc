@@ -1,5 +1,6 @@
 #include "conversation-inbox-service.hxx"
 
+#include <drogon/utils/Utilities.h>
 #include <errors/response-exception.hxx>
 #include <notification/notification-errors.hxx>
 #include <runtime/blocking-task.hxx>
@@ -14,11 +15,14 @@
 #include <ctime>
 #include <exception>
 #include <string>
+#include <unordered_map>
 #include <utility>
 
 namespace
 {
 constexpr int64_t kDeletedRetentionS = 7LL * 24 * 3600;
+constexpr int64_t kHourSeconds = 3600;
+constexpr int64_t kDaySeconds = 24LL * 3600;
 constexpr const char* kHouseholdMessageType = "household_message";
 
 int64_t nowSeconds()
@@ -192,6 +196,19 @@ bool validTranscript(const TranscriptInput& input)
   return true;
 }
 
+bool reachableMember(const CallRecipient& member)
+{
+  return member.found && member.active && member.role.has_value() && *member.role != UserRole::Unknown &&
+         !member.name.empty();
+}
+
+std::string spokenMessageLine(const SpokenMessageLine& line)
+{
+  if (line.lang == "en")
+    return line.sender + " says: " + line.body;
+  return line.sender + " te manda decir: " + line.body;
+}
+
 ConversationInboxService::ConversationInboxService(Dependencies dependencies)
     : dependencies_(std::move(dependencies))
 {
@@ -240,6 +257,63 @@ drogon::Task<RelayReceipt> ConversationInboxService::relay(const RelayLetter& le
                                                                        : MessageState::Notified};
   co_await moveOutgoing(moved);
   co_return RelayReceipt{.messageKey = letter.commandId, .route = route, .duplicate = false};
+}
+
+int64_t ConversationInboxService::maxMessageChars() const
+{
+  return dependencies_.limits.maxMessageChars;
+}
+
+drogon::Task<TypedParties> ConversationInboxService::partiesOf(const TypedMessageInput& input) const
+{
+  const auto directory = dependencies_.directory;
+  if (!directory)
+    throw ResponseException(NotificationErrors::MessengerUnavailable);
+  const std::vector<int64_t> ids{input.senderId, input.counterpartId};
+  const auto found = co_await BlockingTask<std::unordered_map<int64_t, CallRecipient>>(
+      [directory, ids]() { return directory->recipients(ids); });
+  const auto sender = found.find(input.senderId);
+  if (sender == found.end() || !sender->second.found || sender->second.name.empty())
+    throw ResponseException(NotificationErrors::MessengerUnavailable);
+  const auto recipient = found.find(input.counterpartId);
+  if (recipient == found.end() || !reachableMember(recipient->second))
+    throw ResponseException(NotificationErrors::RecipientNotFound);
+  co_return TypedParties{.sender = sender->second, .recipient = recipient->second};
+}
+
+drogon::Task<ConversationMessageSchema> ConversationInboxService::send(const TypedMessageInput& input) const
+{
+  if (input.counterpartId == input.senderId)
+    throw ResponseException(NotificationErrors::MessageToSelf);
+  const TypedParties parties = co_await partiesOf(input);
+  const int64_t at = nowSeconds();
+  const ConversationSentSince window{.userId = input.senderId, .since = at - kHourSeconds};
+  if (co_await repository_.countSentSince(window) >= dependencies_.limits.maxMessagesPerHour)
+    throw ResponseException(NotificationErrors::MessageRateLimited);
+  const ConversationThreadKey thread{.userId = input.senderId, .counterpartId = input.counterpartId};
+  const auto last = co_await repository_.findThreadLast(thread);
+  const bool answering = last && last->direction == MessageDirection::In &&
+                         (last->kind == MessageKind::Relay || last->kind == MessageKind::Reply);
+  const std::string key = "typed-" + std::to_string(input.senderId) + "-" + drogon::utils::getUuid();
+  const RelayLetter letter{
+      .fromUserId = input.senderId,
+      .fromName = parties.sender.name,
+      .toUserId = input.counterpartId,
+      .toName = parties.recipient.name,
+      .kind = answering ? MessageKind::Reply : MessageKind::Relay,
+      .body = input.body,
+      .spokenLine = spokenMessageLine(
+          {.sender = parties.sender.name, .body = input.body, .lang = parties.recipient.lang}),
+      .title = parties.sender.name,
+      .replyToKey = answering ? std::optional<std::string>(last->messageKey) : std::nullopt,
+      .commandId = key,
+      .expiresAt = at + dependencies_.limits.retentionDays * kDaySeconds};
+  static_cast<void>(co_await relay(letter));
+  const ConversationCopyRef own{.messageKey = key, .userId = input.senderId, .client = nullptr};
+  const auto row = co_await repository_.findCopy(own);
+  if (!row)
+    throw ResponseException(NotificationErrors::ChangeNotRecorded);
+  co_return *row;
 }
 
 drogon::Task<bool> ConversationInboxService::announcesLive(int64_t userId) const

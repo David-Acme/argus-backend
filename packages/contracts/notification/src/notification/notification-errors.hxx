@@ -29,4 +29,20 @@ inline constexpr ErrorDefinition MessageInvalid{
     .code = ErrorCode::BadRequest,
     .status = 400,
     .message = "The message is not valid"};
+inline constexpr ErrorDefinition MessageToSelf{
+    .code = ErrorCode::ValidationError,
+    .status = 422,
+    .message = "A message to yourself is not a message"};
+inline constexpr ErrorDefinition RecipientNotFound{
+    .code = ErrorCode::UserNotFound,
+    .status = 404,
+    .message = "No active household member by that id"};
+inline constexpr ErrorDefinition MessageRateLimited{
+    .code = ErrorCode::TooManyRequests,
+    .status = 429,
+    .message = "Message limit reached for this hour (conversation.max_messages_per_hour)"};
+inline constexpr ErrorDefinition MessengerUnavailable{
+    .code = ErrorCode::ServiceUnavailable,
+    .status = 503,
+    .message = "The household directory cannot be read right now"};
 }

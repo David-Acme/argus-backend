@@ -379,10 +379,16 @@ int main()
   drogon::app().registerController(std::make_shared<CallPreferenceController>());
   drogon::app().registerController(std::make_shared<CallResponseController>(callEngine));
   drogon::app().registerController(std::make_shared<NotificationController>(notifications));
+  const ConversationConfig conversationConfig = NotificationConfig::resolveConversation();
+  const TypedMessageLimits typedLimits{.maxMessageChars = conversationConfig.maxMessageChars,
+                                       .maxMessagesPerHour = conversationConfig.maxMessagesPerHour,
+                                       .retentionDays = conversationConfig.retentionDays};
   const auto conversations = std::make_shared<const ConversationInboxService>(ConversationInboxService::Dependencies{
       .announcer = voiceClient ? std::make_shared<VoiceMessageAnnouncer>(voiceClient) : nullptr,
       .notices = std::make_shared<NotificationMessageNotice>(notifications),
-      .liveAnnounce = std::make_shared<CallLiveAnnounce>()});
+      .liveAnnounce = std::make_shared<CallLiveAnnounce>(),
+      .directory = identityClient ? std::make_shared<IdentityCallDirectory>(identityClient) : nullptr,
+      .limits = typedLimits});
   drogon::app().registerController(std::make_shared<ConversationController>(conversations));
   drogon::app().registerBeginningAdvice([conversations, tasks]() {
     drogon::app().getLoop()->runEvery(3600.0, [conversations, tasks]() {

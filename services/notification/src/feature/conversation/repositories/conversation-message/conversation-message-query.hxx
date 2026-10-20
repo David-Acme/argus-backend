@@ -25,6 +25,14 @@ inline constexpr std::string_view FIND_COPY =
 inline constexpr std::string_view FIND_OUTGOING =
     "SELECT * FROM conversation_message WHERE message_key = ? AND direction = 'out' AND deleted_at IS NULL";
 
+inline constexpr std::string_view COUNT_SENT_SINCE =
+    "SELECT COUNT(*) AS sent FROM conversation_message WHERE user_id = ? AND direction = 'out' "
+    "AND kind IN ('relay', 'reply') AND created_at > ?";
+
+inline constexpr std::string_view FIND_THREAD_LAST =
+    "SELECT * FROM conversation_message WHERE user_id = ? AND counterpart_id = ? AND deleted_at IS NULL "
+    "ORDER BY id DESC LIMIT 1";
+
 inline constexpr std::string_view SET_STATE =
     "UPDATE conversation_message SET state = ?, updated_at = ? "
     "WHERE id = ? AND deleted_at IS NULL RETURNING *";
@@ -131,6 +139,18 @@ struct ConversationThreadInput
   int64_t counterpartId{0};
   int64_t at{0};
   drogon::orm::DbClient* client{nullptr};
+};
+
+struct ConversationSentSince
+{
+  int64_t userId{0};
+  int64_t since{0};
+};
+
+struct ConversationThreadKey
+{
+  int64_t userId{0};
+  int64_t counterpartId{0};
 };
 
 struct ConversationSyncFilter

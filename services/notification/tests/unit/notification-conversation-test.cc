@@ -1,7 +1,10 @@
 #include <doctest/doctest.h>
 
 #include <app/rpc/conversation-rpc-service.hxx>
+#include <errors/response-exception.hxx>
+#include <errors/validation-exception.hxx>
 #include <feature/conversation/dtos/response-conversation-threads-dto.hxx>
+#include <feature/conversation/dtos/send-message-dto.hxx>
 #include <feature/conversation/services/conversation-inbox-service.hxx>
 
 #include <drogon/utils/coroutine.h>
@@ -213,7 +216,11 @@ private:
 ConversationInboxService inboxWith(std::optional<bool> answer)
 {
   return ConversationInboxService(ConversationInboxService::Dependencies{
-      .announcer = nullptr, .notices = nullptr, .liveAnnounce = std::make_shared<FixedPreference>(answer)});
+      .announcer = nullptr,
+      .notices = nullptr,
+      .liveAnnounce = std::make_shared<FixedPreference>(answer),
+      .directory = nullptr,
+      .limits = {}});
 }
 }
 
@@ -224,4 +231,70 @@ TEST_CASE("a relayed message is said live only while the recipient's live_announ
   CHECK_FALSE(drogon::sync_wait(inboxWith(std::nullopt).announcesLive(7)));
   const ConversationInboxService unwired;
   CHECK(drogon::sync_wait(unwired.announcesLive(7)));
+}
+
+namespace
+{
+Json::Value bodyOf(const std::string& text)
+{
+  Json::Value json(Json::objectValue);
+  json["body"] = text;
+  return json;
+}
+
+int validationStatusOf(const Json::Value& json, const SendMessageTarget& target)
+{
+  try {
+    static_cast<void>(SendMessageDto::fromJson(json, target));
+  }
+  catch (const ValidationException& error) {
+    return error.statusCode();
+  }
+  return 0;
+}
+
+int refusalStatusOf(const ConversationInboxService& inbox, const TypedMessageInput& input)
+{
+  try {
+    static_cast<void>(drogon::sync_wait(inbox.send(input)));
+  }
+  catch (const ResponseException& error) {
+    return error.statusCode();
+  }
+  return 0;
+}
+}
+
+TEST_CASE("a typed message is the sender's trimmed words, within the configured length")
+{
+  const auto dto = SendMessageDto::fromJson(bodyOf("  ¿vienes a comer?  "), {.counterpartId = 7, .maxChars = 20});
+  CHECK(dto.counterpartId == 7);
+  CHECK(dto.body == "¿vienes a comer?");
+
+  CHECK(validationStatusOf(bodyOf("ñññññ"), {.counterpartId = 7, .maxChars = 5}) == 0);
+  CHECK(validationStatusOf(bodyOf("ññññññ"), {.counterpartId = 7, .maxChars = 5}) == 422);
+  CHECK(validationStatusOf(bodyOf("   "), {.counterpartId = 7, .maxChars = 500}) == 422);
+  CHECK(validationStatusOf(Json::Value(Json::objectValue), {.counterpartId = 7, .maxChars = 500}) == 422);
+  CHECK(validationStatusOf(bodyOf("hola"), {.counterpartId = 0, .maxChars = 500}) == 422);
+}
+
+TEST_CASE("a typed message goes only to another active member the directory knows")
+{
+  CHECK(reachableMember({.found = true, .name = "David", .lang = "es", .role = UserRole::Resident, .active = true}));
+  CHECK_FALSE(reachableMember({.found = false, .name = "David", .lang = "es", .role = UserRole::Resident, .active = true}));
+  CHECK_FALSE(reachableMember({.found = true, .name = "David", .lang = "es", .role = UserRole::Resident, .active = false}));
+  CHECK_FALSE(reachableMember({.found = true, .name = "David", .lang = "es", .role = UserRole::Unknown, .active = true}));
+  CHECK_FALSE(reachableMember({.found = true, .name = "David", .lang = "es", .role = std::nullopt, .active = true}));
+
+  const ConversationInboxService unwired;
+  CHECK(refusalStatusOf(unwired, {.senderId = 3, .counterpartId = 3, .body = "hola"}) == 422);
+  CHECK(refusalStatusOf(unwired, {.senderId = 3, .counterpartId = 7, .body = "hola"}) == 503);
+}
+
+TEST_CASE("a typed message is said in the recipient's language under the sender's own name")
+{
+  CHECK(spokenMessageLine({.sender = "Ana", .body = "que venga a comer", .lang = "es"}) ==
+        "Ana te manda decir: que venga a comer");
+  CHECK(spokenMessageLine({.sender = "Ana", .body = "come eat", .lang = "en"}) == "Ana says: come eat");
+  CHECK(spokenMessageLine({.sender = "Ana", .body = "hola", .lang = ""}) == "Ana te manda decir: hola");
 }

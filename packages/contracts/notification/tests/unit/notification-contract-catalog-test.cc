@@ -14,7 +14,7 @@ struct CatalogEntry
   const char* message;
 };
 
-constexpr std::array<CatalogEntry, 6> kCatalog{{
+constexpr std::array<CatalogEntry, 10> kCatalog{{
     {.name = "ChangeNotRecorded",
      .definition = &NotificationErrors::ChangeNotRecorded,
      .code = ErrorCode::InternalError,
@@ -45,6 +45,26 @@ constexpr std::array<CatalogEntry, 6> kCatalog{{
      .code = ErrorCode::BadRequest,
      .status = 400,
      .message = "The message is not valid"},
+    {.name = "MessageToSelf",
+     .definition = &NotificationErrors::MessageToSelf,
+     .code = ErrorCode::ValidationError,
+     .status = 422,
+     .message = "A message to yourself is not a message"},
+    {.name = "RecipientNotFound",
+     .definition = &NotificationErrors::RecipientNotFound,
+     .code = ErrorCode::UserNotFound,
+     .status = 404,
+     .message = "No active household member by that id"},
+    {.name = "MessageRateLimited",
+     .definition = &NotificationErrors::MessageRateLimited,
+     .code = ErrorCode::TooManyRequests,
+     .status = 429,
+     .message = "Message limit reached for this hour (conversation.max_messages_per_hour)"},
+    {.name = "MessengerUnavailable",
+     .definition = &NotificationErrors::MessengerUnavailable,
+     .code = ErrorCode::ServiceUnavailable,
+     .status = 503,
+     .message = "The household directory cannot be read right now"},
 }};
 
 constexpr std::size_t kMaxMessageBytes = 1024;
@@ -59,7 +79,7 @@ TEST_CASE("the notification catalog matches the table pinned here")
     CHECK(entry.definition->status == entry.status);
     CHECK(std::string(entry.definition->message) == entry.message);
   }
-  CHECK(kCatalog.size() == 6);
+  CHECK(kCatalog.size() == 10);
 }
 
 TEST_CASE("every notification entry is legal on the wire")

@@ -128,6 +128,7 @@ constexpr std::array kRouteProbes = std::to_array<RouteProbe>({
     {.capability = "messages.relay", .method = drogon::Get, .path = "/conversation"},
     {.capability = "messages.relay", .method = drogon::Patch, .path = "/conversation/1/read"},
     {.capability = "messages.relay", .method = drogon::Delete, .path = "/conversation/1"},
+    {.capability = "messages.relay", .method = drogon::Post, .path = "/conversation/1/message"},
 });
 
 constexpr std::array kTableProbes = std::to_array<TableProbe>({

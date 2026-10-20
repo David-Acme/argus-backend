@@ -93,6 +93,25 @@ ConversationMessageRepository::findCopy(const ConversationCopyRef& ref) const
   co_return ConversationMessageSchema(rows.front());
 }
 
+drogon::Task<int64_t> ConversationMessageRepository::countSentSince(const ConversationSentSince& input) const
+{
+  const auto rows =
+      co_await DbService::client()->execSqlCoro(std::string(COUNT_SENT_SINCE), input.userId, input.since);
+  if (rows.empty())
+    co_return 0;
+  co_return rows.front()["sent"].as<int64_t>();
+}
+
+drogon::Task<std::optional<ConversationMessageSchema>>
+ConversationMessageRepository::findThreadLast(const ConversationThreadKey& key) const
+{
+  const auto rows =
+      co_await DbService::client()->execSqlCoro(std::string(FIND_THREAD_LAST), key.userId, key.counterpartId);
+  if (rows.empty())
+    co_return std::nullopt;
+  co_return ConversationMessageSchema(rows.front());
+}
+
 drogon::Task<std::vector<ConversationMessageChange>>
 ConversationMessageRepository::transition(const ConversationTransitionInput& input) const
 {

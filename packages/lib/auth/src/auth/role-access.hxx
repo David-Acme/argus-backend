@@ -304,7 +304,8 @@ inline constexpr std::array<AuthRouteAccess, 1> kRecordingStatusAccess = {{
     {.path = "/camera/recording", .method = drogon::Get, .roles = kOwnerAndGuard},
 }};
 
-inline constexpr std::array<AuthRouteAccess, 5> kRouteOverrides = {{
+inline constexpr std::array<AuthRouteAccess, 6> kRouteOverrides = {{
+    {.path = "/conversation/{id}/message", .method = drogon::Post, .roles = kEveryRoleBaseline},
     {.path = "/notification/delivery-summary", .method = drogon::Get, .roles = kOwnerOnly},
     {.path = "/notification/responses", .method = drogon::Delete, .roles = kOwnerOnly},
     {.path = "/notification/responses/{id}", .method = drogon::Delete, .roles = kOwnerOnly},

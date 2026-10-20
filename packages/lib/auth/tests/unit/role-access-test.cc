@@ -435,7 +435,16 @@ TEST_CASE("conversation messages are own rows every registered role reads, marks
     CHECK(role_access::hasHttpAccess({.role = role, .path = "/conversation/4", .method = drogon::Delete, .roleActive = false}));
     CHECK_FALSE(role_access::hasHttpAccess(
         {.role = role, .path = "/conversation/message", .method = drogon::Post, .roleActive = true}));
+    for (const bool active : {true, false})
+      CHECK(role_access::hasHttpAccess(
+          {.role = role, .path = "/conversation/4/message", .method = drogon::Post, .roleActive = active}));
+    CHECK_FALSE(role_access::hasHttpAccess(
+        {.role = role, .path = "/conversation/4/message", .method = drogon::Patch, .roleActive = true}));
+    CHECK_FALSE(role_access::hasHttpAccess(
+        {.role = role, .path = "/conversation/4", .method = drogon::Post, .roleActive = true}));
   }
+  CHECK_FALSE(role_access::hasHttpAccess(
+      {.role = UserRole::Unknown, .path = "/conversation/4/message", .method = drogon::Post, .roleActive = true}));
   CHECK(role_access::tableFromPath("/conversation/2/read") == TableName::ConversationMessage);
   CHECK_FALSE(role_access::hasAccess({.role = UserRole::Unknown, .table = TableName::ConversationMessage,
                                       .perm = RolePermission::Read, .roleActive = true}));

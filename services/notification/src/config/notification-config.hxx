@@ -50,6 +50,13 @@ struct CallEngineConfig
   std::string fallbackLang{"es"};
 };
 
+struct ConversationConfig
+{
+  int64_t maxMessageChars{500};
+  int64_t maxMessagesPerHour{20};
+  int64_t retentionDays{30};
+};
+
 struct NotificationCallCallers
 {
   std::vector<argus::client::CallerCredential> answer;
@@ -70,5 +77,6 @@ public:
   static NotificationSyncControlConfig resolveSyncControl();
   static NotificationVoiceConfig resolveVoice();
   static CallEngineConfig resolveCalls();
+  static ConversationConfig resolveConversation();
   static NotificationCallCallers resolveCallCallers();
 };

@@ -102,6 +102,25 @@ CallEngineConfig NotificationConfig::resolveCalls()
   return config;
 }
 
+ConversationConfig NotificationConfig::resolveConversation()
+{
+  constexpr int64_t kCountBound = 1000;
+  ConversationConfig config;
+  const auto bounded = [](const char* key, int64_t fallback, int64_t bound) {
+    if (!ConfigService::hasKey(key))
+      return fallback;
+    const int64_t value = ConfigService::getInt(key);
+    return value > 0 ? std::min(value, bound) : fallback;
+  };
+  config.maxMessageChars =
+      bounded("conversation.max_message_chars", config.maxMessageChars, kCountBound);
+  config.maxMessagesPerHour =
+      bounded("conversation.max_messages_per_hour", config.maxMessagesPerHour, kCountBound);
+  config.retentionDays =
+      bounded("conversation.retention_days", config.retentionDays, kScheduleHorizonDays);
+  return config;
+}
+
 NotificationCallCallers NotificationConfig::resolveCallCallers()
 {
   NotificationCallCallers callers;

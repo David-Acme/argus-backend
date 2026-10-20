@@ -1438,7 +1438,34 @@ already talks to it; argus-llm owns the conversation itself and writes here only
   - `AppendTurns` stores the two lines of an identified turn.
 - **The app routes** (every registered role, own rows): `GET /conversation` (one summary per counterpart),
   `PATCH /conversation/{counterpartId}/read`, `DELETE /conversation/{counterpartId}` (clears the caller's copies
-  only). There is no route that sends: messages are sent by voice through Argus, with the sender's spoken yes.
+  only), and `POST /conversation/{counterpartId}/message` (below).
+- **A typed message (gaps closing pass).** `POST /conversation/{counterpartId}/message {body}` sends the app's
+  typed words to a household member; role-access lets every registered role through, inactive ones included,
+  under the core capability `messages.relay` (`kRouteOverrides`). It answers `201` with the sender's new `out`
+  row, the same shape as the sync row.
+  - **One path with the spoken relay.** The route builds a `RelayLetter` and hands it to the same
+    `ConversationInboxService::relay` that `ConversationService.RelayMessage` lands on, so storage, the
+    `live_announce` question, the live `Announce` and the `household_message` notice behave exactly as for a
+    spoken relay. The relay rules of argus-llm live in its messenger (`relay_thread`, its own hourly cap); the
+    typed path is argus-notification's own and does not open a `relay_thread`, so a spoken "respóndele" does not
+    find a typed message (the recipient answers it in the app).
+  - **No impersonation.** The sender is the caller's `JwtContext.sub`; their name, and the recipient's name and
+    language, come from identity (`CallDirectory::recipients`, one `ListUsers`), never from the request. The
+    spoken line is "<sender> te manda decir: …" (or "<sender> says: …" for an English recipient) and the notice
+    title is the sender's name, so the words always arrive under their real author.
+  - **Explicit intent.** Typed words need no read-back: the app shows the text before it is sent, and the body
+    is the message exactly, trimmed.
+  - **Refusals.** `422 VALIDATION_ERROR` for an empty body, a body over `conversation.max_message_chars`
+    characters (UTF-8 code points, default 500, at most 1000), a counterpart `0` (Argus) or the caller
+    themselves; `404 USER_NOT_FOUND` when the counterpart is not an active member with a known role; `429
+    TOO_MANY_REQUESTS` past `conversation.max_messages_per_hour` (default 20) relayed or replied `out` rows of
+    the sender in the last hour, typed and spoken alike, cleared ones included; `503 SERVICE_UNAVAILABLE` when
+    identity cannot be read.
+  - **Reply or new message.** When the newest row of that thread is an incoming `relay` or `reply`, the typed
+    message is a `reply` to it and the other member's copy becomes `answered`; otherwise it is a new `relay`.
+  - **Keys and lifetime.** `message_key` is `typed-<senderId>-<uuid>`; `expires_at` is
+    `conversation.retention_days` (default 30) after sending. The three `[conversation]` keys are in the
+    template and the deploy template only, not in the settings catalog.
 - **Privacy.** The sender's copy says only `sent`, `delivered`, `notified`, `answered` or `expired`; the
   recipient's read state never reaches the sender, and nothing says where the recipient is. The app's own
   `CreateNotifications` admission for argus-llm stays `assistant_task` only: the `household_message` notice is

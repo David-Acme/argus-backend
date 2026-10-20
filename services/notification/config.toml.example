@@ -60,6 +60,11 @@ arrival_absence_s = 10800
 scheduled_late_s = 900
 retention_days = 30
 
+[conversation]
+max_message_chars = 500
+max_messages_per_hour = 20
+retention_days = 30
+
 [identity]
 target = "tls:127.0.0.1:7240"
 credential = ""

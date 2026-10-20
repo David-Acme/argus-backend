@@ -3,6 +3,7 @@ argus_module(NAME notification-conversation
         controllers/conversation-controller.cc
         dtos/conversation-thread-dto.cc
         dtos/response-conversation-threads-dto.cc
+        dtos/send-message-dto.cc
         infra/call-live-announce.cc
         infra/notification-message-notice.cc
         infra/voice-message-announcer.cc
