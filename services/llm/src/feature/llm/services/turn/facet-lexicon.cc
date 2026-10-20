@@ -15,11 +15,15 @@ namespace
 
 constexpr std::array<std::string_view, 2> kCameraEs{"camara", "camaras"};
 constexpr std::array<std::string_view, 2> kCameraEn{"camera", "cameras"};
-constexpr std::array<std::string_view, 13> kAgendaEs{"agenda", "calendario", "pendiente", "pendientes", "evento",
-                                                     "eventos", "cita",      "citas",      "reunion",   "reuniones",
-                                                     "entrega", "entregas",  "compromiso"};
-constexpr std::array<std::string_view, 8> kAgendaEn{"agenda",  "calendar",  "schedule", "pending",
-                                                    "event",   "events",    "meeting",  "appointment"};
+constexpr std::array<std::string_view, 22> kAgendaEs{"agenda",    "calendario", "pendiente", "pendientes", "evento",
+                                                     "eventos",   "cita",       "citas",     "reunion",    "reuniones",
+                                                     "entrega",   "entregas",   "compromiso", "lunes",     "martes",
+                                                     "miercoles", "jueves",     "viernes",   "sabado",     "domingo",
+                                                     "semana",    "finde"};
+constexpr std::array<std::string_view, 17> kAgendaEn{"agenda",   "calendar", "schedule", "pending",  "event",
+                                                     "events",   "meeting",  "appointment", "monday", "tuesday",
+                                                     "wednesday", "thursday", "friday",   "saturday", "sunday",
+                                                     "week",     "weekend"};
 constexpr std::array<std::string_view, 48> kGuardEs{
     "vigilancia", "guardia",   "alarma",     "alarmas",    "seguridad", "modo",      "armada",     "armado",
     "desarmada",  "desarmado", "policia",    "policias",   "panico",    "emergencia", "emergencias", "intruso",
@@ -77,12 +81,13 @@ constexpr std::array<std::string_view, 26> kGuardPhrasesEs{
     "donde estan", "que hago",  "llama a la policia", "se fue", "ya se fue", "se marcho", "ya no esta",
     "llego alguien", "vino solo", "vino sola", "esta armada", "hay alguien", "alguien entro",
     "como esta todo", "como esta la casa", "que esta haciendo", "a que hora", "que hora", "fue alguien"};
-constexpr std::array<std::string_view, 26> kGuardPhrasesEn{
+constexpr std::array<std::string_view, 31> kGuardPhrasesEn{
     "house armed", "who was it",  "what happened", "where is he",    "where is she",  "where are they",
     "what should i do", "what do i do", "call the police", "is the alarm", "did they leave", "did he leave",
     "did she leave", "come home", "came home",     "who came",       "who arrived",   "how is everything",
     "come in", "came in",
-    "what are they doing", "what is he doing", "what is she doing", "what time", "was she alone", "by herself"};
+    "what are they doing", "what is he doing", "what is she doing", "what time", "was she alone", "by herself",
+    "home yet", "got home", "get home", "back home", "at home"};
 constexpr std::array<std::string_view, 9> kRemindersPhrasesEs{"tengo que",       "cuando toca", "cuando tengo que",
                                                               "cuando debo",     "que dia",     "cuando es el pago",
                                                               "a que hora tengo que", "a que hora debo", "me toca"};
