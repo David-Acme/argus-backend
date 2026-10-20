@@ -25,6 +25,7 @@ constexpr Frame kContextFrame{
           "parties, not the person talking to you; mention it only when it matters):"};
 
 constexpr std::size_t kStemFloor = 5;
+constexpr std::string_view kMorningSense = " la manana ";
 
 constexpr std::array<std::string_view, 48> kFunctionWords{
     "que",  "los",   "las",   "del",   "con",   "por",  "para",  "una",   "uno",   "unos",  "unas",  "hay",
@@ -58,14 +59,6 @@ bool sameStem(std::string_view a, std::string_view b)
   return shared >= kStemFloor || shared + 1 >= shorter;
 }
 
-bool namesFocus(std::string_view text, const std::vector<std::string>& focus)
-{
-  const std::vector<std::string> words = wordsOf(text);
-  return std::ranges::any_of(focus, [&words](const std::string& asked) {
-    return std::ranges::any_of(words, [&asked](const std::string& word) { return sameStem(word, asked); });
-  });
-}
-
 }
 
 ContextChoice ContextSelector::select(const ContextInput& input) const
@@ -87,6 +80,22 @@ ContextChoice ContextSelector::select(const ContextInput& input) const
   if (choice.facets.empty())
     add(input.previousAssistant, input.lang);
   return choice;
+}
+
+std::size_t focusScore(std::string_view text, const std::vector<std::string>& focus)
+{
+  std::string plain = " " + text_norm::folded(std::string(text)) + " ";
+  for (std::size_t at = plain.find(kMorningSense); at != std::string::npos; at = plain.find(kMorningSense, at))
+    plain.replace(at, kMorningSense.size(), " ");
+  const std::vector<std::string> words = wordsOf(plain);
+  return static_cast<std::size_t>(std::ranges::count_if(focus, [&words](const std::string& asked) {
+    return std::ranges::any_of(words, [&asked](const std::string& word) { return sameStem(word, asked); });
+  }));
+}
+
+bool namesFocus(std::string_view text, const std::vector<std::string>& focus)
+{
+  return focusScore(text, focus) > 0;
 }
 
 std::vector<ContextFact> selectedFacts(const std::vector<ContextFact>& facts, const ContextChoice& choice)

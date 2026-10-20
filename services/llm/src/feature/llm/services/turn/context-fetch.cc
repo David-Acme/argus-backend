@@ -1,4 +1,5 @@
 #include "context-fetch.hxx"
+#include "context-selector.hxx"
 
 #include <feature/llm/services/tools/tool-executor.hxx>
 #include <feature/llm/services/turn/tool-effects.hxx>
@@ -24,16 +25,18 @@ struct FacetTool
   std::string_view tool;
 };
 
-constexpr std::array<FacetTool, 7> kFacetTools{{{.facet = ContextFacet::Agenda, .tool = "calendar.list_events"},
+constexpr std::array<FacetTool, 8> kFacetTools{{{.facet = ContextFacet::Agenda, .tool = "calendar.list_events"},
                                                 {.facet = ContextFacet::Reminders, .tool = "reminder.list"},
                                                 {.facet = ContextFacet::Tasks, .tool = "task.list"},
                                                 {.facet = ContextFacet::Projects, .tool = "project.list"},
                                                 {.facet = ContextFacet::Modules, .tool = "modules.list"},
                                                 {.facet = ContextFacet::Camera, .tool = "camera.status"},
-                                                {.facet = ContextFacet::Guard, .tool = "guard.status"}}};
+                                                {.facet = ContextFacet::Guard, .tool = "guard.status"},
+                                                {.facet = ContextFacet::People, .tool = "guard.where_is"}}};
 
 constexpr int64_t kDaySeconds = 24LL * 3600;
-constexpr int kListLimit = 5;
+constexpr int kListLimit = 12;
+constexpr std::size_t kLineCeiling = 24;
 constexpr std::string_view kEllipsis = "…";
 
 std::string_view trimmed(std::string_view line)
@@ -126,24 +129,34 @@ std::vector<std::string> factLines(const FactLinesInput& input)
   std::vector<std::string> out;
   if (!input.result.ok || input.maxLines <= 0 || input.maxChars <= 0)
     return out;
-  const auto limit = static_cast<size_t>(input.maxLines);
-  const auto width = static_cast<size_t>(input.maxChars);
-  const auto take = [&out, limit, width](std::string_view line) {
+  std::vector<std::string_view> bodies;
+  const auto take = [&bodies](std::string_view line) {
     const std::string_view body = trimmed(line);
-    if (!body.empty() && out.size() < limit)
-      out.push_back(clipped(body, width));
+    if (!body.empty() && bodies.size() < kLineCeiling)
+      bodies.push_back(body);
   };
-  std::string_view text = input.result.output;
-  while (!text.empty() && out.size() < limit) {
+  const auto takeAll = [&take](const Json::Value& lines) {
+    if (lines.isArray())
+      for (const Json::Value& line : lines)
+        if (line.isString())
+          take(line.asCString());
+  };
+  takeAll(input.result.data["lines"]);
+  std::string_view text = bodies.empty() ? std::string_view(input.result.output) : std::string_view();
+  while (!text.empty()) {
     const size_t end = text.find('\n');
     take(text.substr(0, end));
     text = end == std::string_view::npos ? std::string_view() : text.substr(end + 1);
   }
-  const Json::Value& facts = input.result.data["facts"];
-  if (out.empty() && facts.isArray())
-    for (const Json::Value& fact : facts)
-      if (fact.isString())
-        take(fact.asString());
+  if (bodies.empty())
+    takeAll(input.result.data["facts"]);
+  if (!input.focus.empty())
+    std::ranges::stable_sort(bodies, std::ranges::greater{},
+                             [&input](std::string_view body) { return focusScore(body, input.focus); });
+  const auto limit = std::min(bodies.size(), static_cast<size_t>(input.maxLines));
+  out.reserve(limit);
+  for (size_t index = 0; index < limit; ++index)
+    out.push_back(clipped(bodies[index], static_cast<size_t>(input.maxChars)));
   return out;
 }
 
@@ -178,7 +191,7 @@ ContextFetch toolContextFetch(const ToolContextFetchInput& input)
       try {
         const tools::ToolResult result = executor->execute(call, args.audience);
         for (std::string& line :
-             factLines({.result = result, .maxLines = limits.maxLines, .maxChars = limits.maxChars}))
+             factLines({.result = result, .maxLines = limits.maxLines, .maxChars = limits.maxChars, .focus = args.focus}))
           facts.push_back({.facet = std::string(contextFacetToString(facet)), .text = std::move(line)});
       }
       catch (const std::exception& error) {

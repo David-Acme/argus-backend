@@ -424,7 +424,8 @@ std::string LfmAdapter::turnContext(const TurnContextInput& args) const
                              .offered = args.input.tools,
                              .audience = args.input.audience,
                              .context = context,
-                             .ran = args.ran});
+                             .ran = args.ran,
+                             .focus = choice.focus});
     facts = &fetched;
   }
   std::vector<std::string> texts;

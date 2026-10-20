@@ -32,6 +32,10 @@ public:
   [[nodiscard]] ContextChoice select(const ContextInput& input) const;
 };
 
+[[nodiscard]] std::size_t focusScore(std::string_view text, const std::vector<std::string>& focus);
+
+[[nodiscard]] bool namesFocus(std::string_view text, const std::vector<std::string>& focus);
+
 [[nodiscard]] std::vector<ContextFact> selectedFacts(const std::vector<ContextFact>& facts,
                                                      const ContextChoice& choice);
 

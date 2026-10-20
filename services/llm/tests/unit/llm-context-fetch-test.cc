@@ -87,7 +87,7 @@ struct Bench
   {
     const turn::ContextFetch fetcher = turn::toolContextFetch({.executor = executor, .limits = limits});
     const std::vector<tools::ToolHandle> offered = executor.offered(audience);
-    return fetcher({.facets = facets, .offered = offered, .audience = audience, .context = context, .ran = ran});
+    return fetcher({.facets = facets, .offered = offered, .audience = audience, .context = context, .ran = ran, .focus = {}});
   }
 };
 
@@ -103,7 +103,7 @@ TEST_CASE("every readable facet names one read tool, and memory and people name 
   CHECK(turn::fetchToolFor(ContextFacet::Camera) == std::optional<std::string_view>("camera.status"));
   CHECK(turn::fetchToolFor(ContextFacet::Guard) == std::optional<std::string_view>("guard.status"));
   CHECK_FALSE(turn::fetchToolFor(ContextFacet::Memory).has_value());
-  CHECK_FALSE(turn::fetchToolFor(ContextFacet::People).has_value());
+  CHECK(turn::fetchToolFor(ContextFacet::People) == "guard.where_is");
   CHECK(turn::facetForTool("camera.status") == ContextFacet::Camera);
   CHECK(turn::facetForTool("guard.status") == ContextFacet::Guard);
 }
@@ -113,18 +113,38 @@ TEST_CASE("a tool result becomes at most the line cap of clipped facts, and a fa
   tools::ToolResult result;
   result.ok = true;
   result.output = "Casa: modo noche.\n\n  Oficina: modo en casa.  \nTienda: modo fuera de casa.";
-  CHECK(turn::factLines({.result = result, .maxLines = 2, .maxChars = 220}) ==
+  CHECK(turn::factLines({.result = result, .maxLines = 2, .maxChars = 220, .focus = {}}) ==
         std::vector<std::string>{"Casa: modo noche.", "Oficina: modo en casa."});
   result.output = "Tienes 2 eventos: dentista a las nueve, cena con Ana a las ocho.";
-  const auto clipped = turn::factLines({.result = result, .maxLines = 4, .maxChars = 30});
+  const auto clipped = turn::factLines({.result = result, .maxLines = 4, .maxChars = 30, .focus = {}});
   REQUIRE(clipped.size() == 1);
   CHECK(clipped.front() == "Tienes 2 eventos: dentista a…");
   result.output.clear();
   result.data["facts"].append("Un hecho.");
-  CHECK(turn::factLines({.result = result, .maxLines = 4, .maxChars = 220}) == std::vector<std::string>{"Un hecho."});
+  CHECK(turn::factLines({.result = result, .maxLines = 4, .maxChars = 220, .focus = {}}) == std::vector<std::string>{"Un hecho."});
   result.ok = false;
   result.output = "No pude usar esa herramienta ahora.";
-  CHECK(turn::factLines({.result = result, .maxLines = 4, .maxChars = 220}).empty());
+  CHECK(turn::factLines({.result = result, .maxLines = 4, .maxChars = 220, .focus = {}}).empty());
+}
+
+TEST_CASE("a provider's item lines win over its sentence, and the lines the turn names come before the cap")
+{
+  tools::ToolResult result;
+  result.ok = true;
+  result.output = "Tienes 5 eventos: «Gimnasio», el lunes; «Mercado», el martes; «Cumpleaños de Rosa», el miércoles.";
+  for (const char* line : {"Evento: «Gimnasio», el lunes 3 a las 7 de la mañana.",
+                           "Evento: «Mercado», el martes 4 a las 9 de la mañana.",
+                           "Evento: «Cumpleaños de Rosa», el miércoles 5 a las 7 de la noche.",
+                           "Evento: «Dentista», el jueves 6 a las 10 de la mañana.",
+                           "Evento: «Revisión del carro», mañana a las 10 de la mañana."})
+    result.data["lines"].append(line);
+  const auto plain = turn::factLines({.result = result, .maxLines = 2, .maxChars = 220, .focus = {}});
+  CHECK(plain == std::vector<std::string>{"Evento: «Gimnasio», el lunes 3 a las 7 de la mañana.",
+                                          "Evento: «Mercado», el martes 4 a las 9 de la mañana."});
+  const auto asked = turn::factLines({.result = result, .maxLines = 2, .maxChars = 220, .focus = {"manana", "carro"}});
+  REQUIRE(asked.size() == 2);
+  CHECK(asked.front() == "Evento: «Revisión del carro», mañana a las 10 de la mañana.");
+  CHECK(asked.back() == "Evento: «Gimnasio», el lunes 3 a las 7 de la mañana.");
 }
 
 TEST_CASE("the fetch reads the facets' tools through the executor, marked as a context read")
@@ -145,7 +165,7 @@ TEST_CASE("the fetch reads the facets' tools through the executor, marked as a c
   const Json::Value& window = bench.reads->at(1).arguments;
   CHECK(window["from"].isString());
   CHECK(window["to"].isString());
-  CHECK(window["limit"].asInt() == 5);
+  CHECK(window["limit"].asInt() == 12);
 }
 
 TEST_CASE("the fetch reads nothing a role does not hold, a module that is off, or a tool the decider already ran")

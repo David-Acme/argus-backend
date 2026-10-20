@@ -27,6 +27,7 @@ struct ContextFetchInput
   const ToolAudience& audience;
   const tools::ToolContext& context;
   const std::vector<std::string>& ran;
+  std::vector<std::string> focus{};
 };
 
 using ContextFetch = std::function<std::vector<ContextFact>(const ContextFetchInput&)>;
@@ -54,6 +55,7 @@ struct FactLinesInput
   const tools::ToolResult& result;
   int maxLines{4};
   int maxChars{220};
+  std::vector<std::string> focus{};
 };
 
 [[nodiscard]] std::vector<std::string> factLines(const FactLinesInput& input);
