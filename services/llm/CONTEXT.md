@@ -1227,7 +1227,15 @@ The scenario eval measures this path with `--facts fetched`: the request
 carries no facts, the stub read tools answer with the scenario's facts of
 their facet (one per line) to a `context_fetch` read, and to a decided call
 too when the scenario has facts of that facet; `--facts injected` (the old
-mode) still sets `request.contextFacts` from the fixture.
+mode) still sets `request.contextFacts` from the fixture and stays what ctest
+runs. `--fetch-lines` and `--fetch-chars` override the line cap and the clip
+for an experiment. Measured 2026-10-19 at temperature 0.3, seed 42, 63 cases:
+injected casePass 19, missedFacts 39, invented 9, ungroundedNumbers 0;
+fetched casePass 19, missedFacts 43, invented 7, ungroundedNumbers 3;
+fetched with six lines casePass 17, missedFacts 46, invented 6. The fetched
+misses are the production gaps the injected mode hid: the `people` facts no
+tool serves, the agenda lines past the cap, and a facet the decider already
+ran (its result reaches the situation, not the block).
 
 ## The prompt is a prefix (2026-10-10)
 
