@@ -337,3 +337,39 @@ TEST_CASE("a camera Argus cannot confirm is shown as masked, and the mask is not
   CHECK(maskAgain.structured["code"].asString() == "privacy_doubted");
   CHECK(maskAgain.text.find("already being treated as masked") != std::string::npos);
 }
+
+TEST_CASE("the camera status is a read behind camera.view, one line per camera")
+{
+  Harness harness({{.id = 1,
+                    .name = "Garaje",
+                    .privacyState = CameraPrivacyState::Off,
+                    .privacyObeyed = false,
+                    .online = true,
+                    .health = "ok"},
+                   {.id = 2,
+                    .name = "Patio",
+                    .privacyState = CameraPrivacyState::Off,
+                    .privacyObeyed = false,
+                    .online = false,
+                    .health = "unreachable"}});
+  harness.masked = 0;
+  const auto* spec = harness.server->find("camera.status");
+  REQUIRE(spec != nullptr);
+  CHECK(spec->module == "surveillance");
+  CHECK(spec->capability == "camera.view");
+  CHECK(spec->annotations.readOnly);
+  const auto spanish = harness.call("guest", "es", Json::Value(Json::objectValue), "camera.status");
+  CHECK_FALSE(spanish.isError);
+  CHECK(spanish.text ==
+        "Cámara Garaje: en línea, modo privacidad apagado, imagen normal.\nCámara Patio: fuera de línea, modo "
+        "privacidad apagado.");
+  CHECK(spanish.structured["cameras"].size() == 2);
+  harness.masked = 1;
+  Json::Value one(Json::objectValue);
+  one["camera"] = "garaje";
+  const auto english = harness.call("owner", "en", one, "camera.status");
+  CHECK(english.text == "The Garaje camera: online, privacy mode on (Argus does not see it), picture normal.");
+  Json::Value missing(Json::objectValue);
+  missing["camera"] = "sótano";
+  CHECK(harness.call("owner", "es", missing, "camera.status").isError);
+}
