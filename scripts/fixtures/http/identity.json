@@ -1192,6 +1192,7 @@
               "presence": false,
               "voiceLearning": false
             },
+            "guardianConsent": false,
             "household": {
               "cameraAudio": true,
               "faceCameras": true,
@@ -1199,6 +1200,7 @@
               "presence": true,
               "voiceLearning": true
             },
+            "minor": false,
             "noticeVersion": 0,
             "updatedAt": "<masked:null>"
           },
@@ -1250,6 +1252,7 @@
               "presence": false,
               "voiceLearning": false
             },
+            "guardianConsent": false,
             "household": {
               "cameraAudio": true,
               "faceCameras": true,
@@ -1257,6 +1260,7 @@
               "presence": true,
               "voiceLearning": true
             },
+            "minor": false,
             "noticeVersion": 0,
             "updatedAt": "<masked:null>"
           },
@@ -1308,6 +1312,7 @@
               "presence": false,
               "voiceLearning": false
             },
+            "guardianConsent": false,
             "household": {
               "cameraAudio": true,
               "faceCameras": true,
@@ -1315,6 +1320,7 @@
               "presence": true,
               "voiceLearning": true
             },
+            "minor": false,
             "noticeVersion": 0,
             "updatedAt": "<masked:null>"
           },
@@ -1689,6 +1695,8 @@
                   "presence": false,
                   "voiceLearning": false
                 },
+                "guardianConsent": false,
+                "minor": false,
                 "noticeVersion": 0,
                 "updatedAt": "<masked:null>",
                 "userId": 1
@@ -1711,6 +1719,8 @@
                   "presence": false,
                   "voiceLearning": false
                 },
+                "guardianConsent": false,
+                "minor": false,
                 "noticeVersion": 0,
                 "updatedAt": "<masked:null>",
                 "userId": 2
@@ -1733,6 +1743,8 @@
                   "presence": false,
                   "voiceLearning": false
                 },
+                "guardianConsent": false,
+                "minor": false,
                 "noticeVersion": 0,
                 "updatedAt": "<masked:null>",
                 "userId": 3
@@ -4269,6 +4281,167 @@
         "status": 200
       },
       "route": "/voiceprint/users",
+      "unit": "identity"
+    },
+    {
+      "method": "PUT",
+      "path": "/privacy/users/999999/minor",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/privacy/users/{1}/minor",
+      "unit": "identity"
+    },
+    {
+      "method": "PUT",
+      "path": "/privacy/users/999999/minor",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/privacy/users/{1}/minor",
+      "unit": "identity"
+    },
+    {
+      "method": "PUT",
+      "path": "/privacy/users/999999/minor",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/privacy/users/{1}/minor",
+      "unit": "identity"
+    },
+    {
+      "method": "PUT",
+      "path": "/privacy/users/999999/minor",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/privacy/users/{1}/minor",
+      "unit": "identity"
+    },
+    {
+      "method": "PUT",
+      "path": "/privacy/users/999999/minor",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/privacy/users/{1}/minor",
+      "unit": "identity"
+    },
+    {
+      "method": "PUT",
+      "path": "/privacy/users/999999/minor",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "minor": [
+                "minor must be a boolean"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/privacy/users/{1}/minor",
       "unit": "identity"
     }
   ],

@@ -46,7 +46,7 @@
       "errors"
     ]
   },
-  "probes": 1032,
+  "probes": 1050,
   "sessions": "scripts/seed-golden.py --roles (owner, resident, guest)",
   "sources": "scripts/lib/route-baseline.txt (the route census)",
   "units": [
@@ -94,9 +94,10 @@
     {
       "keys": [
         "since",
-        "until"
+        "until",
+        "byCameraHour[].bucket"
       ],
-      "reason": "the summary's window is bounded by the first and last decision, which carry the second the seeded tamper group opened; the counts and the histograms stay pinned",
+      "reason": "the summary's window is bounded by the first and last decision, which carry the second the seeded tamper group opened, and each camera-hour bucket is the hour of that boot; the counts and the histograms stay pinned",
       "route": "/guard/decisions/summary",
       "unit": "guard"
     },

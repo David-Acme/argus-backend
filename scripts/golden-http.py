@@ -360,10 +360,11 @@ VOLATILE_FIELDS = {
                   "stay pinned",
     },
     ("guard", "/guard/decisions/summary"): {
-        "keys": ("since", "until"),
+        "keys": ("since", "until", "byCameraHour[].bucket"),
         "reason": "the summary's window is bounded by the first and last "
                   "decision, which carry the second the seeded tamper group "
-                  "opened; the counts and the histograms stay pinned",
+                  "opened, and each camera-hour bucket is the hour of that "
+                  "boot; the counts and the histograms stay pinned",
     },
     ("guard", "/guard/episodes"): {
         "keys": ("rows[].firstSeen", "rows[].lastSeen"),

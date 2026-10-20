@@ -586,7 +586,7 @@
             ],
             "byCameraHour": [
               {
-                "bucket": "2026-10-20 00:00",
+                "bucket": "<VOLATILE:string>",
                 "cameraId": 1,
                 "events": 1,
                 "notified": 1
