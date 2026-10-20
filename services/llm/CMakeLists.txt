@@ -652,6 +652,23 @@ set_target_properties(encounter-closed-consumer-test PROPERTIES
 add_test(NAME encounter-closed-consumer-test
     COMMAND encounter-closed-consumer-test)
 
+add_executable(maintenance-ended-consumer-test
+    tests/unit/maintenance-ended-consumer-test.cc)
+
+target_link_libraries(maintenance-ended-consumer-test PRIVATE
+    argus::encounter-closed argus::memory argus::lib::doctest-main)
+
+target_compile_definitions(maintenance-ended-consumer-test PRIVATE
+    ARGUS_TEST_MEMORY_SCHEMA="${CMAKE_CURRENT_SOURCE_DIR}/database/schema.sql")
+
+target_compile_options(maintenance-ended-consumer-test PRIVATE -Wall -Wextra)
+
+set_target_properties(maintenance-ended-consumer-test PROPERTIES
+    EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME maintenance-ended-consumer-test
+    COMMAND maintenance-ended-consumer-test)
+
 add_executable(encounter-closed-live-test
     tests/unit/encounter-closed-live-test.cc)
 
