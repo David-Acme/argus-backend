@@ -87,6 +87,7 @@ public:
   {
     std::shared_ptr<const MessageAnnouncer> announcer;
     std::shared_ptr<const MessageNoticeWriter> notices;
+    std::shared_ptr<const LiveAnnouncePreference> liveAnnounce;
   };
 
   ConversationInboxService() = default;
@@ -105,6 +106,8 @@ public:
   [[nodiscard]] drogon::Task<bool> removeThread(const ConversationThreadRef& ref) const;
 
   [[nodiscard]] drogon::Task<int64_t> expire(int64_t now) const;
+
+  [[nodiscard]] drogon::Task<bool> announcesLive(int64_t userId) const;
 
 private:
   [[nodiscard]] drogon::Task<RelayRoute> deliver(const RelayLetter& letter) const;

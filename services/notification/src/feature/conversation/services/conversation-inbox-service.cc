@@ -242,9 +242,23 @@ drogon::Task<RelayReceipt> ConversationInboxService::relay(const RelayLetter& le
   co_return RelayReceipt{.messageKey = letter.commandId, .route = route, .duplicate = false};
 }
 
+drogon::Task<bool> ConversationInboxService::announcesLive(int64_t userId) const
+{
+  if (!dependencies_.liveAnnounce)
+    co_return true;
+  try {
+    co_return co_await dependencies_.liveAnnounce->allows(userId);
+  }
+  catch (const std::exception& error) {
+    LOG_WARN << "Conversation: the live announce preference could not be read; the message goes as a notice: "
+             << error.what();
+  }
+  co_return false;
+}
+
 drogon::Task<RelayRoute> ConversationInboxService::deliver(const RelayLetter& letter) const
 {
-  if (dependencies_.announcer && !letter.spokenLine.empty()) {
+  if (dependencies_.announcer && !letter.spokenLine.empty() && co_await announcesLive(letter.toUserId)) {
     const auto announcer = dependencies_.announcer;
     const MessageAnnouncement announcement{.userId = letter.toUserId, .text = letter.spokenLine};
     try {

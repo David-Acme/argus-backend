@@ -1429,6 +1429,11 @@ already talks to it; argus-llm owns the conversation itself and writes here only
     argus-voice's `Announce` into the recipient's live sessions; heard, the sender's copy becomes `delivered`;
     not heard, a `household_message` notification is written (push included) and the copy becomes `notified`. A
     message is never a call. A repeated `command_id` answers the first receipt.
+  - **The recipient's `live_announce` first (gaps G2).** Before `Announce`, the inbox asks the recipient's call
+    preference `liveAnnounce` (`LiveAnnouncePreference`, the call feature's `CallPreferenceService::read` through
+    `infra/call-live-announce`; no row reads as the default, on). Off, or a preference that cannot be read, and the
+    message is never said into a live session: it goes straight to the `household_message` notice and the copy
+    becomes `notified`. `notification-conversation-test` pins the four answers.
   - `SettleMessage` moves the sender's copy to `answered` or `expired`.
   - `AppendTurns` stores the two lines of an identified turn.
 - **The app routes** (every registered role, own rows): `GET /conversation` (one summary per counterpart),
