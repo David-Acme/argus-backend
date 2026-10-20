@@ -6,6 +6,7 @@
 #include <feature/llm/services/tools/claim-check.hxx>
 #include <feature/llm/services/tools/tool-access.hxx>
 #include <feature/llm/services/tools/tool-executor.hxx>
+#include <feature/llm/services/turn/context-fetch.hxx>
 #include <feature/llm/services/turn/context-selector.hxx>
 #include <feature/llm/services/turn/deciders.hxx>
 #include <feature/llm/services/turn/decision-policy.hxx>
@@ -14,6 +15,7 @@
 #include <feature/llm/services/turn/turn-flow.hxx>
 #include <functional>
 #include <string>
+#include <utility>
 #include <vector>
 
 struct ToolChatInput
@@ -111,6 +113,14 @@ struct LfmAdapterInput
   const turn::Decider* decider{nullptr};
   const slots::TextSlots* text{nullptr};
   turn::PolicySet policies{};
+  turn::ContextFetch contextFetch{};
+};
+
+struct TurnContextInput
+{
+  const ToolChatInput& input;
+  turn::ContextInput selection;
+  const std::vector<std::string>& ran;
 };
 
 struct SpeakInput
@@ -149,6 +159,8 @@ public:
 
   ToolExecutor& executor() { return executor_; }
 
+  void useContextFetch(turn::ContextFetch fetch) { contextFetch_ = std::move(fetch); }
+
   turn::TurnFlow& flow() { return flow_; }
 
   [[nodiscard]] const turn::RuleDecider& ruleDecider() const { return ruleDecider_; }
@@ -164,12 +176,15 @@ private:
 
   [[nodiscard]] std::vector<ChatMessage> speakMessages(const SpeakInput& args, const std::string& notes) const;
 
+  [[nodiscard]] std::string turnContext(const TurnContextInput& args) const;
+
   ChatEngine engine_;
   ToolExecutor executor_;
   turn::RuleDecider ruleDecider_;
   turn::TriggerDecider triggerDecider_;
   turn::FirstOf stack_;
   turn::ContextSelector contextSelector_;
+  turn::ContextFetch contextFetch_;
   slots::RuleText ruleText_;
   turn::TurnFlow flow_;
 };

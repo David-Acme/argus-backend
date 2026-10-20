@@ -19,6 +19,7 @@
 #include <feature/guard/infra/resource-change-outbox.hxx>
 #include <feature/guard/services/guard-module-impact.hxx>
 #include <feature/guard/services/guard-module-wind-down.hxx>
+#include <feature/guard/services/guard-feature-service.hxx>
 #include <feature/guard/services/posture-watch.hxx>
 #include <feature/guard/services/response-verdict-feed.hxx>
 #include <feature/guard/guard-assessment.hxx>
@@ -144,6 +145,7 @@ struct RpcListenerInput
   EnvironmentCatalog environments;
   MaskedCameraDirectory maskedCameras;
   MaintenanceVoicePorts maintenance;
+  GuardStatusDirectory status;
   std::shared_ptr<const SafetyService> safety;
   const SafetyActorDirectory* actors{nullptr};
   std::string tlsAddress;
@@ -161,7 +163,8 @@ std::unique_ptr<argus::mcp::McpRpcService> toolsService(const RpcListenerInput& 
       .server = guardToolServer({.catalog = input.environments,
                                  .maskedCameras = input.maskedCameras,
                                  .loop = {},
-                                 .maintenance = input.maintenance}),
+                                 .maintenance = input.maintenance,
+                                 .status = input.status}),
       .gate = std::make_shared<const argus::client::FleetCallerGate>(argus::client::FleetGateConfig{
           .expectedCallers = {},
           .callerPairs = {{std::string(argus::mcp::kToolCaller), rpc.toolCredential}},
@@ -535,6 +538,11 @@ int main()
   const GuardModuleImpact moduleImpact;
   GuardOwnerPin ownerPin(safety);
   const IdentityActorDirectory safetyActors(identity.get());
+  const auto statusBoard = std::make_shared<const GuardFeatureService>(
+      GuardFeatureDependencies{.identity = identity.get(),
+                               .disarm = safety.get(),
+                               .changes = &resourceChanges,
+                               .maskedCameras = maskedCameras});
   const RpcListener rpcListener = startRpcListener(
       {.registry = settings,
        .presence = presence,
@@ -557,6 +565,9 @@ int main()
                        .status = [&maintenance](MaintenanceVoiceRequest request) {
                          return maintenance.statusByVoice(std::move(request));
                        }},
+       .status = [statusBoard]() -> drogon::Task<std::vector<GuardEnvironmentStatus>> {
+         co_return co_await statusBoard->status();
+       },
        .safety = safety,
        .actors = &safetyActors,
        .tlsAddress = internalTlsConfig.address,

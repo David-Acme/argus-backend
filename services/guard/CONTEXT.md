@@ -1870,6 +1870,30 @@ caller `llm` only (`[rpc.callers] llm`; `GuardConfig::resolveRpc` reads it as
 mode in both languages, the environment resolution and its three refusals, the
 gate for each role and the unpaired case.
 
+### `guard.status`: the places, read for the assistant's context (2026-10-19)
+
+`guard.status {}` is a read (`readOnly`, in argus-llm's `tool-effects.json`),
+module `surveillance`, capability `guard.read` (Owner, Resident and Guard; a
+Guest is refused `forbidden`). argus-llm calls it as the read behind its
+`guard` context facet (`services/llm/CONTEXT.md`, "Where the facts come
+from"). It answers one line per environment in the caller's language: the
+effective mode after the schedule (`en casa`, `noche`, `fuera de casa`,
+`máxima alerta`), whether it is armed (any mode but home, the same test as
+`protectionExpected`), and the latest episode in one clause: what (a person
+episode's subject, `una persona desconocida`, or `la cámara X perdió la
+imagen` for a tamper incident), where, its danger, how long ago, and whether it
+is still open or how it resolved (`se fue`, `era alguien de casa`, `la cámara
+volvió a ver`). `structured.environments` carries the same fields.
+
+The data is `GuardFeatureService::status()`: per environment the posture
+`guard_schedule::resolve` gives now, and the newest of the latest person
+episode and the latest tamper incident of that environment (the same two
+queries `/guard/episodes` merges, `limit 1`). The shape is
+`shared/vocabulary/guard-status.hxx` (`GuardEnvironmentStatus`,
+`GuardStatusDirectory`), shared by the feature that fills it and the MCP
+server that speaks it; `main.cc` wires `GuardToolsInput::status` to a
+`GuardFeatureService` of its own.
+
 ### Three relays, and why only one of them is new (2026-10-12, R1/R2 of the real-time plan)
 
 Guard writes to the bus through three different mechanisms, and the difference

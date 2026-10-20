@@ -1159,6 +1159,84 @@ Degradation: a turn that selects nothing composes no block, which is exactly a
 plain chat and shares the cached prefix. The Laya facet pass (one `noul`
 question per unsure facet) is U24's; nothing links it here.
 
+### Where the facts come from: the server reads them (2026-10-19)
+
+The wire field `context_facts` was removed in e808604b (it is `reserved` in
+`packages/contracts/llm/llm.proto`) and nothing replaced it, so in production
+`ChatRequest::contextFacts` is always empty: the model saw data only when the
+decider ran a tool, and a plain or follow-up question (`¿está armada la
+vigilancia?`, `¿qué tengo mañana?`, `¿se fue?`) reached it with no data at all.
+The scenario eval hid it, because it injected `request.contextFacts` straight
+from the fixture.
+
+The facts are now read on the server. `LfmAdapter::turnContext` runs the
+selector, and when the turn carries no facts of its own and selected at least
+one facet it calls the `turn::ContextFetch` hook
+(`services/turn/context-fetch.{hxx,cc}`) with the facets, the tools offered to
+this audience, the audience, the turn's `ToolContext` and the names of the
+tools the decider already ran this turn. The hook is injected through
+`LfmAdapterInput::contextFetch` (none by default) or `useContextFetch`;
+`main.cc` installs the production one, `turn::toolContextFetch`, over the
+adapter's `ToolExecutor`. `chatPlainTurn` has no audience and never reads.
+
+The production fetch is a deterministic system read, never the model choosing
+a tool. Each facet has one read tool:
+
+| Facet | Tool | Arguments |
+|---|---|---|
+| agenda | `calendar.list_events` | `from` = start of the local day, `to` = `from` + 1 + `agenda_days` days, `limit` 5 |
+| reminders | `reminder.list` | `limit` 5 |
+| tasks | `task.list` | `limit` 5 |
+| projects | `project.list` | `limit` 5 |
+| modules | `modules.list` | none |
+| camera | `camera.status` (argus-camera) | none |
+| guard | `guard.status` (argus-guard) | none |
+
+`memory` is not read here (recall is injected separately) and `people` has no
+read tool every role holds (`guard.where_is` does not exist; presence is the
+Owner's alone), so neither facet fetches. A facet is skipped when its tool is
+not in the offered list, is not in `tool-effects.json`'s read-only list, is
+not runnable for the audience under the module gate
+(`tool_access::runnable`), is refused by the conversation surface, or was
+already run by the decider this turn (its result is already in the
+situation). The read goes through `ToolExecutor::execute` with the channel
+`context_fetch`, `decided = false` and no app-action emitter, so capability,
+module and surface gating are exactly those of a decided call. Each
+`ToolResult` that is `ok` becomes up to `max_lines` facts of its facet, one per
+line of `output` (or of `data.facts` when the output is empty), each clipped at
+a word boundary to `max_chars` with an ellipsis; a failed read adds nothing and
+never fails the turn.
+
+The reads run in facet order, one after another; the budget is checked before
+each read, so a turn spends at most `budget_ms` plus the read that was already
+running when it ran out (a remote tool's own transport timeout is 15 s; a
+read never starts after the budget is spent). The `[context]` keys, all
+optional and clamped by `LlmConfig::boundContext`:
+
+| Key | Default | Range |
+|---|---|---|
+| `context.budget_ms` | 300 | 0-5000 |
+| `context.max_lines` | 4 | 0-10 |
+| `context.max_chars` | 220 | 40-600 |
+| `context.agenda_days` | 2 | 0-14 |
+
+`facetForTool` maps `camera.status` to camera and `guard.status` to guard, so
+a turn the decider routes to either keeps its facet.
+
+The scenario eval measures this path with `--facts fetched`: the request
+carries no facts, the stub read tools answer with the scenario's facts of
+their facet (one per line) to a `context_fetch` read, and to a decided call
+too when the scenario has facts of that facet; `--facts injected` (the old
+mode) still sets `request.contextFacts` from the fixture and stays what ctest
+runs. `--fetch-lines` and `--fetch-chars` override the line cap and the clip
+for an experiment. Measured 2026-10-19 at temperature 0.3, seed 42, 63 cases:
+injected casePass 19, missedFacts 39, invented 9, ungroundedNumbers 0;
+fetched casePass 19, missedFacts 43, invented 7, ungroundedNumbers 3;
+fetched with six lines casePass 17, missedFacts 46, invented 6. The fetched
+misses are the production gaps the injected mode hid: the `people` facts no
+tool serves, the agenda lines past the cap, and a facet the decider already
+ran (its result reaches the situation, not the block).
+
 ## The prompt is a prefix (2026-10-10)
 
 `LlmService::prefill` reuses the KV cache across calls: it rewinds the cached

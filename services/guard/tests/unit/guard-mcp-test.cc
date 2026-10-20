@@ -6,6 +6,7 @@
 
 #include <trantor/net/EventLoopThread.h>
 
+#include <ctime>
 #include <memory>
 #include <optional>
 #include <string>
@@ -34,6 +35,7 @@ struct Harness
   std::shared_ptr<McpServer> server;
   int reads{0};
   std::vector<MaskedCamera> masked;
+  std::vector<GuardEnvironmentStatus> board;
 
   explicit Harness(std::vector<EnvironmentChoice> places = defaultPlaces())
   {
@@ -44,15 +46,18 @@ struct Harness
                                 co_return places;
                               },
                               .maskedCameras = [this] { return masked; },
-                              .loop = [loop] { return loop; }});
+                              .loop = [loop] { return loop; },
+                              .maintenance = {},
+                              .status = [this]() -> drogon::Task<std::vector<GuardEnvironmentStatus>> { co_return board; }});
     moduleGate().reset();
   }
 
-  ToolOutcome call(const std::string& role, const std::string& lang, Json::Value arguments)
+  ToolOutcome call(const std::string& role, const std::string& lang, Json::Value arguments,
+                   const std::string& tool = "app.set_guard_mode")
   {
     Json::Value info(Json::objectValue);
     Json::Value params(Json::objectValue);
-    params["name"] = "app.set_guard_mode";
+    params["name"] = tool;
     params["arguments"] = std::move(arguments);
     params["_meta"] = requestMeta(info);
     params["_meta"]["argus/context"] = toJson(CallerContext{
@@ -203,4 +208,51 @@ TEST_CASE("a mode that expects protection warns about the cameras in privacy mod
   const auto home = harness.call("owner", "es", args("home"));
   CHECK(home.text == "La app puso la vigilancia en modo en casa.");
   CHECK_FALSE(must(home.appAction).arguments.isMember("maskedCameras"));
+}
+
+TEST_CASE("the guard status is a read behind guard.read, one line per place with its mode and its latest episode")
+{
+  Harness harness;
+  const auto* spec = harness.server->find("guard.status");
+  REQUIRE(spec != nullptr);
+  CHECK(spec->module == "surveillance");
+  CHECK(spec->capability == "guard.read");
+  CHECK(spec->annotations.readOnly);
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  harness.board = {{.id = 1,
+                    .name = "Casa",
+                    .mode = "away",
+                    .armed = true,
+                    .latest = GuardEpisodeStatus{.kind = GuardEpisodeKind::Person,
+                                                 .subject = "stranger",
+                                                 .danger = "medium",
+                                                 .camera = {},
+                                                 .at = now - 7200,
+                                                 .resolved = true,
+                                                 .resolution = "left"}},
+                   {.id = 2, .name = "Restaurante", .mode = "home", .armed = false, .latest = std::nullopt}};
+  const auto spanish = harness.call("guard", "es", Json::Value(Json::objectValue), "guard.status");
+  CHECK_FALSE(spanish.isError);
+  CHECK(spanish.text ==
+        "Casa: modo fuera de casa, vigilancia armada. Último episodio: una persona desconocida en Casa (riesgo medio), "
+        "hace 2 h, resuelto: se fue.\nRestaurante: modo en casa, vigilancia desarmada. Último episodio: ninguno.");
+  CHECK(spanish.structured["environments"].size() == 2);
+  harness.board.front().latest = GuardEpisodeStatus{.kind = GuardEpisodeKind::Camera,
+                                                    .subject = {},
+                                                    .danger = "high",
+                                                    .camera = "Garaje",
+                                                    .at = now - 30,
+                                                    .resolved = false,
+                                                    .resolution = {}};
+  const auto english = harness.call("owner", "en", Json::Value(Json::objectValue), "guard.status");
+  CHECK(english.text.starts_with(
+      "Casa: mode away, armed. Latest episode: the Garaje camera lost its picture (high risk), just now, still open."));
+}
+
+TEST_CASE("a guest does not read the guard status")
+{
+  Harness harness;
+  const auto refused = harness.call("guest", "es", Json::Value(Json::objectValue), "guard.status");
+  CHECK(refused.isError);
+  CHECK(refused.structured["code"].asString() == "forbidden");
 }

@@ -143,6 +143,20 @@ std::vector<ToolSpec> mirroredProviders()
                         .annotations = {.readOnly = true},
                         .module = "surveillance",
                         .capability = "camera.view"}));
+  out.push_back(specOf({.name = "camera.status",
+                        .description = "Dice el estado de las cámaras: si están en línea, si tienen el modo privacidad y cómo "
+                                       "está su imagen. camera es el nombre de una cámara; vacío las dice todas",
+                        .inputSchema = schema::object({{.name = "camera", .schema = schema::text(), .required = false}}),
+                        .annotations = {.readOnly = true},
+                        .module = "surveillance",
+                        .capability = "camera.view"}));
+  out.push_back(specOf({.name = "guard.status",
+                        .description = "Dice el estado de la vigilancia de cada lugar: su modo, si está armada y el último "
+                                       "episodio (qué pasó, dónde, cuándo y si se resolvió)",
+                        .inputSchema = schema::emptyObject(),
+                        .annotations = {.readOnly = true},
+                        .module = "surveillance",
+                        .capability = "guard.read"}));
   out.push_back(specOf({.name = "app.set_guard_mode",
                         .description = "Cambia el modo de vigilancia: home al estar en casa, night al dormir, away al salir, "
                                        "armed para máxima alerta. environment es el nombre del lugar (casa, restaurante, "
@@ -211,6 +225,10 @@ std::string_view outputFor(const tools::ToolCall& call)
     return english ? "I have nothing saved about that." : "No tengo nada guardado sobre eso.";
   if (tool == "reminder.list" || tool == "calendar.list_events" || tool == "task.list" || tool == "project.list")
     return english ? "There is nothing pending." : "No hay nada pendiente.";
+  if (tool == "camera.status")
+    return english ? "There is no camera data right now." : "No tengo datos de las cámaras ahora.";
+  if (tool == "guard.status")
+    return english ? "There is no guard data right now." : "No tengo datos de la vigilancia ahora.";
   if (tool == "modules.list")
     return english ? "core active; productivity and surveillance active."
                    : "core activo; productivity y surveillance activos.";

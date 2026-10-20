@@ -71,6 +71,12 @@ reuse_port = false
 handle_sig_term = true
 relaunch_on_error = false
 
+[context]
+budget_ms = 300
+max_lines = 4
+max_chars = 220
+agenda_days = 2
+
 [conversation]
 idle_seconds = 900
 retention_days = 30

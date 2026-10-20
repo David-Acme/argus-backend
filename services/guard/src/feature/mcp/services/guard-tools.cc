@@ -7,6 +7,8 @@
 
 #include <algorithm>
 #include <array>
+#include <ctime>
+#include <span>
 #include <string_view>
 #include <utility>
 
@@ -136,6 +138,120 @@ drogon::Task<argus::mcp::ToolOutcome> setGuardMode(EnvironmentCatalog catalog, M
                             : "No encuentro un lugar llamado " + asked + ". Los lugares son: " + listed(places) + ".", .code = "unknown_environment"});
 }
 
+struct Phrase
+{
+  std::string_view key;
+  std::string_view es;
+  std::string_view en;
+};
+
+constexpr std::array<Phrase, 4> kSubjects{{{.key = "stranger", .es = "una persona desconocida", .en = "an unknown person"},
+                                           {.key = "several", .es = "varias personas", .en = "several people"},
+                                           {.key = "accompanied", .es = "una persona acompañada", .en = "a person with company"},
+                                           {.key = "unobserved", .es = "una persona", .en = "a person"}}};
+
+constexpr std::array<Phrase, 4> kDangers{{{.key = "low", .es = "riesgo bajo", .en = "low risk"},
+                                          {.key = "medium", .es = "riesgo medio", .en = "medium risk"},
+                                          {.key = "high", .es = "riesgo alto", .en = "high risk"},
+                                          {.key = "critical", .es = "riesgo crítico", .en = "critical risk"}}};
+
+constexpr std::array<Phrase, 3> kResolutions{{{.key = "recognized", .es = "resuelto: era alguien de casa", .en = "resolved: it was someone from home"},
+                                              {.key = "left", .es = "resuelto: se fue", .en = "resolved: they left"},
+                                              {.key = "recovered", .es = "resuelto: la cámara volvió a ver", .en = "resolved: the camera sees again"}}};
+
+std::string_view phraseOf(std::span<const Phrase> table, std::string_view key, bool english)
+{
+  const auto found = std::ranges::find(table, key, &Phrase::key);
+  if (found == table.end())
+    return {};
+  return english ? found->en : found->es;
+}
+
+std::string agoText(int64_t seconds, bool english)
+{
+  constexpr int64_t kMinute = 60;
+  constexpr int64_t kHour = 60 * kMinute;
+  constexpr int64_t kDay = 24 * kHour;
+  if (seconds < kMinute)
+    return english ? "just now" : "hace un momento";
+  const auto amount = [english](int64_t count, std::string_view es, std::string_view en) {
+    return english ? std::to_string(count) + " " + std::string(en) + " ago"
+                   : "hace " + std::to_string(count) + " " + std::string(es);
+  };
+  if (seconds < kHour)
+    return amount(seconds / kMinute, "min", "min");
+  if (seconds < kDay)
+    return amount(seconds / kHour, "h", "h");
+  return amount(seconds / kDay, seconds / kDay == 1 ? "día" : "días", seconds / kDay == 1 ? "day" : "days");
+}
+
+std::string episodeText(const GuardEpisodeStatus& episode, const GuardStatusLineInput& input)
+{
+  const bool english = input.english;
+  std::string what;
+  if (episode.kind == GuardEpisodeKind::Camera) {
+    const std::string camera = episode.camera.empty() ? std::string(english ? "a camera" : "una cámara")
+                                                      : (english ? "the " + episode.camera + " camera"
+                                                                 : "la cámara " + episode.camera);
+    what = english ? camera + " lost its picture" : camera + " perdió la imagen";
+  }
+  else {
+    const std::string_view subject = phraseOf(kSubjects, episode.subject, english);
+    what = std::string(subject.empty() ? (english ? "a person" : "una persona") : subject);
+    what += english ? " at " + input.environment.name : " en " + input.environment.name;
+  }
+  const std::string_view danger = phraseOf(kDangers, episode.danger, english);
+  if (!danger.empty())
+    what += " (" + std::string(danger) + ")";
+  what += ", " + agoText(std::max<int64_t>(0, input.now - episode.at), english);
+  if (!episode.resolved)
+    what += english ? ", still open" : ", sigue abierto";
+  else {
+    const std::string_view resolution = phraseOf(kResolutions, episode.resolution, english);
+    what += ", " + std::string(resolution.empty() ? (english ? "resolved" : "resuelto") : resolution);
+  }
+  return what;
+}
+
+drogon::Task<argus::mcp::ToolOutcome> guardStatus(GuardStatusDirectory directory, argus::mcp::ToolInvocation invocation)
+{
+  const bool english = invocation.caller.lang == "en";
+  if (!directory)
+    co_return argus::mcp::toolFailure({.text = english ? "The guard status is not available right now."
+                                                       : "El estado de la vigilancia no está disponible ahora.",
+                                       .code = "status_unavailable"});
+  const auto environments = co_await directory();
+  argus::mcp::ToolOutcome outcome;
+  if (environments.empty()) {
+    outcome.text = english ? "There is no guarded place yet." : "Todavía no hay lugares vigilados.";
+    outcome.structured["environments"] = Json::Value(Json::arrayValue);
+    co_return outcome;
+  }
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  Json::Value listed(Json::arrayValue);
+  for (const auto& environment : environments) {
+    outcome.text += (outcome.text.empty() ? "" : "\n") +
+                    guardStatusLine({.environment = environment, .english = english, .now = now});
+    Json::Value entry(Json::objectValue);
+    entry["environmentId"] = static_cast<Json::Int64>(environment.id);
+    entry["name"] = environment.name;
+    entry["mode"] = environment.mode;
+    entry["armed"] = environment.armed;
+    if (environment.latest) {
+      Json::Value latest(Json::objectValue);
+      latest["kind"] = environment.latest->kind == GuardEpisodeKind::Camera ? "camera" : "person";
+      latest["danger"] = environment.latest->danger;
+      latest["camera"] = environment.latest->camera;
+      latest["at"] = static_cast<Json::Int64>(environment.latest->at);
+      latest["resolved"] = environment.latest->resolved;
+      entry["latest"] = std::move(latest);
+    }
+    listed.append(std::move(entry));
+  }
+  outcome.structured["environments"] = std::move(listed);
+  co_return outcome;
+}
+
 drogon::Task<argus::mcp::ToolOutcome> maintenanceCall(MaintenanceVoice port, argus::mcp::ToolInvocation invocation)
 {
   const bool english = invocation.caller.lang == "en";
@@ -156,6 +272,23 @@ drogon::Task<argus::mcp::ToolOutcome> maintenanceCall(MaintenanceVoice port, arg
   co_return outcome;
 }
 
+}
+
+std::string guardStatusLine(const GuardStatusLineInput& input)
+{
+  const GuardEnvironmentStatus& environment = input.environment;
+  const bool english = input.english;
+  const auto known = std::ranges::find(kModes, std::string_view(environment.mode), &ModeLabel::value);
+  const std::string_view mode = known == kModes.end() ? std::string_view() : (english ? known->en : known->es);
+  std::string line = environment.name + ": ";
+  line += english ? "mode " : "modo ";
+  line += mode.empty() ? environment.mode : std::string(mode);
+  line += environment.armed ? (english ? ", armed" : ", vigilancia armada")
+                            : (english ? ", not armed" : ", vigilancia desarmada");
+  line += english ? ". Latest episode: " : ". Último episodio: ";
+  line += environment.latest ? episodeText(*environment.latest, input) : std::string(english ? "none" : "ninguno");
+  line += ".";
+  return line;
 }
 
 std::shared_ptr<argus::mcp::McpServer> guardToolServer(const GuardToolsInput& input)
@@ -212,6 +345,17 @@ std::shared_ptr<argus::mcp::McpServer> guardToolServer(const GuardToolsInput& in
                .capability = "guard.maintenance"},
               argus::mcp::onLoop({.loop = input.loop, .handler = [maintenance](const argus::mcp::ToolInvocation& invocation) {
                                     return maintenanceCall(maintenance.status, invocation);
+                                  }}));
+  server->add({.name = "guard.status",
+               .title = "",
+               .description = "Dice el estado de la vigilancia de cada lugar: su modo, si está armada y el último "
+                              "episodio (qué pasó, dónde, cuándo y si se resolvió)",
+               .inputSchema = schema::object({}),
+               .annotations = {.readOnly = true},
+               .module = "surveillance",
+               .capability = "guard.read"},
+              argus::mcp::onLoop({.loop = input.loop, .handler = [status = input.status](const argus::mcp::ToolInvocation& invocation) {
+                                    return guardStatus(status, invocation);
                                   }}));
   server->setGate(tool_gate::capabilities());
   return server;
