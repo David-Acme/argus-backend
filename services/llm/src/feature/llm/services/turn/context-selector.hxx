@@ -16,6 +16,8 @@ struct ContextInput
   std::string_view utterance;
   std::string_view lang;
   std::string_view tool{};
+  std::string_view previousUser{};
+  std::string_view previousAssistant{};
 };
 
 struct ContextChoice

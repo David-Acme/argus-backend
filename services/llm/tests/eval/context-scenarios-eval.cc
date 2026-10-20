@@ -592,8 +592,7 @@ CaseRun runCase(const CaseInput& input)
   const UserRole role = userRoleFromString(input.item.role);
   ModuleFlags flags = moduleGate().known();
   for (ModuleFlag& flag : flags)
-    if (std::ranges::find(input.item.modulesOff, flag.id) != input.item.modulesOff.end())
-      flag.enabled = false;
+    flag.enabled = std::ranges::find(input.item.modulesOff, flag.id) == input.item.modulesOff.end();
   std::ignore = moduleGate().apply(flags);
   run.staticPrefix = call_checks::staticPrompt({.roles = std::nullopt,
                                                 .rolesDefault = input.roles,

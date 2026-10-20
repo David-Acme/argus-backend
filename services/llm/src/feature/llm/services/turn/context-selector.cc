@@ -28,9 +28,16 @@ ContextChoice ContextSelector::select(const ContextInput& input) const
   ContextChoice choice;
   if (const auto implied = facetForTool(input.tool))
     choice.facets.push_back(*implied);
-  for (const ContextFacet facet : facetsInText({.text = input.utterance, .lang = input.lang}))
-    if (std::ranges::find(choice.facets, facet) == choice.facets.end())
-      choice.facets.push_back(facet);
+  const auto add = [&choice](std::string_view text, std::string_view lang) {
+    for (const ContextFacet facet : facetsInText({.text = text, .lang = lang}))
+      if (std::ranges::find(choice.facets, facet) == choice.facets.end())
+        choice.facets.push_back(facet);
+  };
+  add(input.utterance, input.lang);
+  if (choice.facets.empty())
+    add(input.previousUser, input.lang);
+  if (choice.facets.empty())
+    add(input.previousAssistant, input.lang);
   return choice;
 }
 
