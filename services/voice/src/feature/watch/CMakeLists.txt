@@ -10,6 +10,7 @@ argus_module(NAME voice-watch
         fire-log.cc
         room-directory.cc
         speaker-resolution.cc
+        speaking-camera.cc
         stage-two.cc
         wake-spotter.cc
         watch-directory.cc

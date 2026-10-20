@@ -129,6 +129,10 @@ TEST_CASE("the watchman's catalog fallbacks are the defaults the ear runs with")
   CHECK(std::stof(fallbackOf(catalog, "watch.echo_correlation")) == doctest::Approx(watch.echoCorrelation));
   CHECK(std::stof(fallbackOf(catalog, "watch.min_wake_snr_db")) == doctest::Approx(watch.minWakeSnrDb));
   CHECK(fallbackOf(catalog, "watch.stage1") == wakeStageOneToString(watch.stageOne));
+  CHECK((fallbackOf(catalog, "watch.belief_enabled") == "true") == watch.beliefEnabled);
+  CHECK(std::stof(fallbackOf(catalog, "watch.belief_min_confidence")) == doctest::Approx(watch.beliefMinConfidence));
+  CHECK(std::stof(fallbackOf(catalog, "watch.belief_margin")) == doctest::Approx(watch.beliefMargin));
+  CHECK(std::stoi(fallbackOf(catalog, "watch.belief_max_age_ms")) == watch.beliefMaxAge.count());
 }
 
 TEST_CASE("the voice catalog names no plumbing")

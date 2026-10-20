@@ -4,6 +4,7 @@
 #include <feature/watch/camera-identity.hxx>
 #include <feature/watch/conversation-policy.hxx>
 #include <feature/watch/speaker-resolution.hxx>
+#include <feature/watch/speaking-camera.hxx>
 #include <feature/watch/watch-conversations.hxx>
 #include <feature/watch/watch-directory.hxx>
 #include <feature/watch/watch-sync.hxx>
@@ -521,4 +522,59 @@ TEST_CASE("a carried conversation keeps its turns and drops the camera's notes")
   CHECK(phone.userTurns() == 1);
   CHECK(phone.entries().back().message.content == "Tienes dos cosas.");
   CHECK(std::ranges::none_of(phone.entries(), [](const CallEntry& entry) { return entry.kind == CallEntryKind::Note; }));
+}
+
+TEST_CASE("the room the household's belief places the speaker in picks the camera that answers")
+{
+  const std::vector<SpeakingCandidate> candidates{{.cameraId = 1, .room = "1:living", .score = 2.4F},
+                                                  {.cameraId = 2, .room = "1:kitchen", .score = 2.1F}};
+  const std::vector<RoomConfidence> rooms{{.room = "1:kitchen", .confidence = 0.85},
+                                          {.room = "1:living", .confidence = 0.1}};
+  const auto choice = valueOf(chooseSpeakingCamera(
+      {.candidates = candidates, .rooms = rooms, .minConfidence = 0.6, .margin = 0.2}));
+  CHECK(choice.index == 1);
+  CHECK(choice.byBelief);
+  CHECK(choice.room == "1:kitchen");
+}
+
+TEST_CASE("a weak or a split belief leaves the choice to arbitration")
+{
+  const std::vector<SpeakingCandidate> candidates{{.cameraId = 1, .room = "1:living", .score = 2.4F},
+                                                  {.cameraId = 2, .room = "1:kitchen", .score = 2.1F}};
+  const std::vector<RoomConfidence> weak{{.room = "1:kitchen", .confidence = 0.5}};
+  const auto byScore = valueOf(chooseSpeakingCamera(
+      {.candidates = candidates, .rooms = weak, .minConfidence = 0.6, .margin = 0.2}));
+  CHECK(byScore.index == 0);
+  CHECK_FALSE(byScore.byBelief);
+  const std::vector<RoomConfidence> split{{.room = "1:kitchen", .confidence = 0.9},
+                                          {.room = "1:living", .confidence = 0.8}};
+  const auto close = valueOf(chooseSpeakingCamera(
+      {.candidates = candidates, .rooms = split, .minConfidence = 0.6, .margin = 0.2}));
+  CHECK(close.index == 0);
+  CHECK_FALSE(close.byBelief);
+  const auto empty = valueOf(chooseSpeakingCamera(
+      {.candidates = candidates, .rooms = {}, .minConfidence = 0.6, .margin = 0.2}));
+  CHECK(empty.index == 0);
+  CHECK_FALSE(empty.byBelief);
+}
+
+TEST_CASE("cameras of one room never consult the belief, and in the believed room the best score answers")
+{
+  const std::vector<SpeakingCandidate> sameRoom{{.cameraId = 1, .room = "1:living", .score = 1.0F},
+                                                {.cameraId = 2, .room = "1:living", .score = 3.0F}};
+  const std::vector<RoomConfidence> elsewhere{{.room = "1:kitchen", .confidence = 1.0}};
+  const auto alone = valueOf(chooseSpeakingCamera(
+      {.candidates = sameRoom, .rooms = elsewhere, .minConfidence = 0.6, .margin = 0.2}));
+  CHECK(alone.index == 1);
+  CHECK_FALSE(alone.byBelief);
+  const std::vector<SpeakingCandidate> three{{.cameraId = 1, .room = "1:living", .score = 3.0F},
+                                             {.cameraId = 2, .room = "1:kitchen", .score = 1.0F},
+                                             {.cameraId = 3, .room = "1:kitchen", .score = 2.0F}};
+  const std::vector<RoomConfidence> kitchen{{.room = "1:kitchen", .confidence = 0.7}};
+  const auto believed = valueOf(chooseSpeakingCamera(
+      {.candidates = three, .rooms = kitchen, .minConfidence = 0.6, .margin = 0.2}));
+  CHECK(believed.index == 2);
+  CHECK(believed.byBelief);
+  CHECK_FALSE(chooseSpeakingCamera({.candidates = {}, .rooms = kitchen, .minConfidence = 0.6, .margin = 0.2})
+                  .has_value());
 }

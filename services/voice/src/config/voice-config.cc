@@ -158,6 +158,11 @@ VoiceWatchConfig VoiceConfig::resolveWatch()
   config.replyGap = positiveMs("watch.reply_gap_ms", config.replyGap);
   config.cameraDrop = positiveMs("watch.camera_drop_ms", config.cameraDrop);
   config.faceWindow = positiveMs("watch.face_window_ms", config.faceWindow);
+  config.beliefEnabled = !ConfigService::hasKey("watch.belief_enabled") || ConfigService::getBool("watch.belief_enabled");
+  config.beliefMinConfidence =
+      std::clamp(decimalOf("watch.belief_min_confidence", config.beliefMinConfidence), 0.0F, 1.0F);
+  config.beliefMargin = std::clamp(decimalOf("watch.belief_margin", config.beliefMargin), 0.0F, 1.0F);
+  config.beliefMaxAge = positiveMs("watch.belief_max_age_ms", config.beliefMaxAge);
   return config;
 }
 
