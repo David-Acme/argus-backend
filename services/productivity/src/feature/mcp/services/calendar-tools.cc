@@ -215,12 +215,12 @@ drogon::Task<argus::mcp::ToolOutcome> listEvents(argus::mcp::ToolInvocation invo
   const auto events = agendaWithin(co_await repository.findVisibleAgenda(range), range);
   const auto limit = static_cast<size_t>(limitOf(arguments));
   argus::mcp::ToolOutcome outcome;
-  const std::string range = spokenWhen({.epoch = from, .allDay = true}, lang(invocation)) + " – " +
+  const std::string window = spokenWhen({.epoch = from, .allDay = true}, lang(invocation)) + " – " +
                             spokenWhen({.epoch = to, .allDay = true}, lang(invocation));
   if (events.empty()) {
     outcome.text = argus::mcp::speech::say({.invocation = invocation,
-                        .spanish = "No tienes eventos entre " + range + ".",
-                        .english = "You have no events between " + range + "."});
+                        .spanish = "No tienes eventos entre " + window + ".",
+                        .english = "You have no events between " + window + "."});
     outcome.structured["events"] = Json::Value(Json::arrayValue);
     co_return outcome;
   }
