@@ -49,6 +49,37 @@ Json::Value MaintenanceWindow::toJson(const MaintenanceJsonInput& input) const
 
 namespace maintenance_schema
 {
+std::string endedEventId(int64_t windowId)
+{
+  return "guard-maintenance-ended:" + std::to_string(windowId);
+}
+
+Json::Value endedEventJson(const MaintenanceEndedEvent& event)
+{
+  const MaintenanceWindow& window = event.window;
+  Json::Value json(Json::objectValue);
+  json["eventId"] = endedEventId(window.id);
+  json["maintenanceId"] = static_cast<Json::Int64>(window.id);
+  json["environmentId"] = static_cast<Json::Int64>(window.environmentId);
+  json["environment"] = event.environmentName;
+  Json::Value ids(Json::arrayValue);
+  for (const int64_t cameraId : window.cameraIds)
+    ids.append(static_cast<Json::Int64>(cameraId));
+  json["cameraIds"] = std::move(ids);
+  Json::Value names(Json::arrayValue);
+  for (const std::string& name : event.cameraNames)
+    names.append(name);
+  json["cameras"] = std::move(names);
+  json["declaredBy"] = static_cast<Json::Int64>(window.declaredBy);
+  json["declaredName"] = window.declaredName;
+  json["declaredRole"] = userRoleToString(window.declaredRole);
+  json["source"] = maintenanceSourceToString(window.source);
+  json["startedAt"] = static_cast<Json::Int64>(window.startedAt);
+  json["endedAt"] = static_cast<Json::Int64>(window.endedAt);
+  json["endReason"] = maintenanceEndReasonToString(window.endReason);
+  return json;
+}
+
 std::string idsToJson(const std::vector<int64_t>& ids)
 {
   Json::Value array(Json::arrayValue);

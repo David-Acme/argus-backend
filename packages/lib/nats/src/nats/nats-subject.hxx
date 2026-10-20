@@ -61,6 +61,9 @@ inline constexpr const char* kGuardChange = "argus.guard.v1.change";
 inline constexpr const char* kGuardEncounterClosed =
     "argus.guard.v1.encounter_closed";
 
+inline constexpr const char* kGuardMaintenanceEnded =
+    "argus.guard.v1.maintenance_ended";
+
 inline constexpr const char* kGuardKnownSeen = "argus.guard.v1.known_seen";
 
 inline constexpr const char* kNotificationResponseVerdict =

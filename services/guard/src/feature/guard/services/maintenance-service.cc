@@ -5,7 +5,9 @@
 #include <feature/guard/controllers/guard-errors.hxx>
 #include <feature/guard/guard-tamper-policy.hxx>
 #include <feature/guard/services/targeted-notice.hxx>
+#include <nats/nats-subject.hxx>
 #include <runtime/blocking-task.hxx>
+#include <text/json-util.hxx>
 #include <text/name-match.hxx>
 #include <trantor/utils/Logger.h>
 
@@ -258,6 +260,27 @@ drogon::Task<void> MaintenanceService::close(const CloseInput& input) const
            << maintenanceEndReasonToString(input.reason) << "), " << window.viewChecks.size()
            << " camera(s) look different";
   co_await announce({.window = window, .action = UserAction::Update, .actorId = input.actorId});
+  co_await publishEnded(window);
+}
+
+drogon::Task<void> MaintenanceService::publishEnded(const MaintenanceWindow& window) const
+{
+  if (dependencies_.changes == nullptr || window.endedAt < window.startedAt)
+    co_return;
+  std::vector<std::string> cameraNames;
+  cameraNames.reserve(window.cameraIds.size());
+  for (const int64_t cameraId : window.cameraIds) {
+    const std::string name = dependencies_.cameraName ? dependencies_.cameraName(cameraId) : std::string();
+    if (!name.empty())
+      cameraNames.push_back(name);
+  }
+  const auto environment = co_await environmentRepository_.find(window.environmentId);
+  const Json::Value event = maintenance_schema::endedEventJson(
+      {.window = window, .cameraNames = std::move(cameraNames), .environmentName = environment ? environment->name : ""});
+  co_await dependencies_.changes->recordEvent({.eventId = maintenance_schema::endedEventId(window.id),
+                                               .subject = std::string(nats_subject::kGuardMaintenanceEnded),
+                                               .payload = json_util::toString(event),
+                                               .client = nullptr});
 }
 
 drogon::Task<Json::Value> MaintenanceService::end(const MaintenanceEndRequest& input) const

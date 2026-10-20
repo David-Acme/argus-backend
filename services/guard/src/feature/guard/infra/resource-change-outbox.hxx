@@ -21,6 +21,14 @@ struct ResourceChangeInput
   ResourceDomain domain{ResourceDomain::Guard};
 };
 
+struct GuardEventInput
+{
+  std::string eventId;
+  std::string subject;
+  std::string payload;
+  drogon::orm::DbClient* client{nullptr};
+};
+
 struct ResourceChangeRow
 {
   std::string subject;
@@ -40,6 +48,9 @@ public:
 
   [[nodiscard]] drogon::Task<void>
   publishAction(const ActionPublishInput& input) const;
+
+  [[nodiscard]] drogon::Task<void>
+  recordEvent(const GuardEventInput& input) const;
 
   [[nodiscard]] static outbox::OutboxRepository repository();
   void reconcile();
