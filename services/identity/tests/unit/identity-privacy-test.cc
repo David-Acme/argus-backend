@@ -527,8 +527,6 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
     CHECK(household.visitorAcknowledgedAt.has_value());
   }
 
-  identity_change::setSink(nullptr);
-
   {
     INFO("the watchman is the owner's acknowledged switch, and travels to the cameras");
     const auto on = drogon::sync_wait(service.updateHousehold({.actorId = 1,
@@ -638,6 +636,7 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
                         {.actorId = 1, .userId = 9, .minor = true, .guardianConsent = false})),
                     ResponseException);
   }
+  identity_change::setSink(nullptr);
 }
 
 TEST_CASE("the minor mark is the owner's, and its body is checked")
