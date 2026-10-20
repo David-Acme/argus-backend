@@ -442,6 +442,8 @@ GuardProximityConfig GuardConfig::resolveProximity()
   if (const std::string entity = ConfigService::getString("guard.proximity.ble_entity"); !entity.empty())
     config.bleEntity = entity;
   config.homeAssistantToken = ConfigService::getString("guard.proximity.home_assistant_token");
+  if (const std::string suffix = ConfigService::getString("guard.proximity.targets_suffix"); !suffix.empty())
+    config.targetsSuffix = suffix;
   config.weightFace = share("guard.proximity.weight_face", config.weightFace);
   config.weightRadarBox = share("guard.proximity.weight_radar_box", config.weightRadarBox);
   config.weightVoice = share("guard.proximity.weight_voice", config.weightVoice);

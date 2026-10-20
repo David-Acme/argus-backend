@@ -601,7 +601,9 @@ TEST_CASE("only argus-voice reports a speaker's camera, and the report reaches t
                           .voice = [&heardUser](VoiceEvidenceRow row) -> drogon::Task<bool> {
                             heardUser.store(row.userId);
                             co_return row.cameraId == 3;
-                          }});
+                          },
+                          .targets = {},
+                          .occupancy = {}});
   int port = 0;
   grpc::ServerBuilder builder;
   builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
@@ -618,5 +620,55 @@ TEST_CASE("only argus-voice reports a speaker's camera, and the report reaches t
   CHECK(voice.reportVoice({.userId = 7, .cameraId = 3, .snrDb = 15.0F, .voiceprint = false, .atMs = 1}));
   CHECK(heardUser.load() == 7);
   CHECK_FALSE(voice.reportVoice({.userId = 7, .cameraId = 4, .snrDb = 15.0F, .voiceprint = false, .atMs = 1}));
+  server->Shutdown();
+}
+
+TEST_CASE("only argus-camera reads a camera's radar targets and only argus-voice reads the rooms people are in")
+{
+  static_cast<void>(boot());
+  std::atomic<int64_t> askedCamera{0};
+  PresenceRpcService rpc(
+      {.presence = nullptr,
+       .credentials = {{.service = "camera", .secret = "camera-presence-secret"},
+                       {.service = "voice", .secret = "voice-presence-secret"}},
+       .duty = {},
+       .rooms = {},
+       .voice = {},
+       .targets = [&askedCamera](int64_t cameraId) -> drogon::Task<std::vector<SensorTargetsRow>> {
+         askedCamera.store(cameraId);
+         co_return std::vector<SensorTargetsRow>{{.sensorId = 5,
+                                                  .room = "1:living",
+                                                  .panOffsetDeg = -20.0,
+                                                  .targets = {{.xMm = 400.0, .yMm = 1800.0}},
+                                                  .atMs = 77}};
+       },
+       .occupancy = []() -> drogon::Task<std::vector<RoomOccupancyRow>> {
+         co_return std::vector<RoomOccupancyRow>{{.room = "1:kitchen", .confidence = 0.75}};
+       }});
+  int port = 0;
+  grpc::ServerBuilder builder;
+  builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+  builder.RegisterService(&rpc);
+  const std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
+  REQUIRE(server);
+  const std::string target = "127.0.0.1:" + std::to_string(port);
+
+  const GuardPresenceClient camera({.target = target, .credential = "camera-presence-secret"});
+  const GuardPresenceClient voice({.target = target, .credential = "voice-presence-secret"});
+  CHECK_FALSE(voice.sensorTargets(9).has_value());
+  CHECK(askedCamera.load() == 0);
+  const auto sensors = camera.sensorTargets(9).value_or(std::vector<argus::guard::v1::SensorTargets>{});
+  CHECK(askedCamera.load() == 9);
+  REQUIRE(sensors.size() == 1);
+  CHECK(sensors.front().sensor_id() == 5);
+  CHECK(sensors.front().pan_offset_deg() == doctest::Approx(-20.0));
+  REQUIRE(sensors.front().targets_size() == 1);
+  CHECK(sensors.front().targets(0).x_mm() == doctest::Approx(400.0));
+
+  CHECK_FALSE(camera.roomOccupancy().has_value());
+  const auto rooms = voice.roomOccupancy().value_or(std::vector<argus::guard::v1::RoomOccupancy>{});
+  REQUIRE(rooms.size() == 1);
+  CHECK(rooms.front().room() == "1:kitchen");
+  CHECK(rooms.front().confidence() == doctest::Approx(0.75));
   server->Shutdown();
 }

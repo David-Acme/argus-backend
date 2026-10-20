@@ -76,3 +76,32 @@ bool GuardPresenceClient::reportVoice(const VoiceEvidenceReport& report) const
     return false;
   return response.accepted();
 }
+
+std::optional<std::vector<argus::guard::v1::SensorTargets>> GuardPresenceClient::sensorTargets(int64_t cameraId) const
+{
+  if (cameraId <= 0)
+    return std::nullopt;
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+
+  argus::guard::v1::SensorTargetsRequest request;
+  request.set_camera_id(cameraId);
+  argus::guard::v1::SensorTargetsResponse response;
+  if (const grpc::Status status = stub_->SensorTargets(&context, request, &response); !status.ok())
+    return std::nullopt;
+  return std::vector<argus::guard::v1::SensorTargets>(response.sensors().begin(), response.sensors().end());
+}
+
+std::optional<std::vector<argus::guard::v1::RoomOccupancy>> GuardPresenceClient::roomOccupancy() const
+{
+  grpc::ClientContext context;
+  argus::client::setDeadline(context, kCallTimeoutMs);
+  argus::client::addCallerCredential(context, credential_);
+
+  const argus::guard::v1::RoomOccupancyRequest request;
+  argus::guard::v1::RoomOccupancyResponse response;
+  if (const grpc::Status status = stub_->RoomOccupancy(&context, request, &response); !status.ok())
+    return std::nullopt;
+  return std::vector<argus::guard::v1::RoomOccupancy>(response.rooms().begin(), response.rooms().end());
+}

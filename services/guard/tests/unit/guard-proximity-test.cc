@@ -98,10 +98,32 @@ public:
     co_return present_;
   }
 
+  void points(std::optional<std::vector<RadarPoint>> targets)
+  {
+    std::scoped_lock lock(mutex_);
+    points_ = std::move(targets);
+  }
+
+  [[nodiscard]] drogon::Task<std::optional<std::vector<RadarPoint>>>
+  readTargets(ProximitySensorRow sensor) const override
+  {
+    std::scoped_lock lock(mutex_);
+    asked_.push_back(sensor.id);
+    co_return points_;
+  }
+
+  [[nodiscard]] std::vector<int64_t> asked() const
+  {
+    std::scoped_lock lock(mutex_);
+    return asked_;
+  }
+
 private:
   mutable std::mutex mutex_;
   std::vector<BleHeard> heard_;
   std::optional<bool> present_;
+  std::optional<std::vector<RadarPoint>> points_;
+  mutable std::vector<int64_t> asked_;
 };
 
 class FakeWorld final : public ProximityWorld
@@ -384,4 +406,98 @@ TEST_CASE("a sensor is registered with its room and its optional camera mapping"
   drogon::sync_wait(service.poll());
   CHECK(drogon::sync_wait(service.sensors()).back().online);
   drogon::sync_wait(service.removeSensor(added.row.id));
+}
+
+TEST_CASE("an LD2450's targets read as x and y in millimetres and empty slots are dropped")
+{
+  Json::Value esphome(Json::objectValue);
+  esphome["value"] = "120,2300; 0,0;-850.5,1400;bad;7";
+  const auto points = valueOf(radarTargetsOf(esphome));
+  REQUIRE(points.size() == 2);
+  CHECK(points[0].xMm == doctest::Approx(120.0));
+  CHECK(points[0].yMm == doctest::Approx(2300.0));
+  CHECK(points[1].xMm == doctest::Approx(-850.5));
+  CHECK(points[1].yMm == doctest::Approx(1400.0));
+  Json::Value assistant(Json::objectValue);
+  assistant["state"] = "";
+  CHECK(valueOf(radarTargetsOf(assistant)).empty());
+  CHECK_FALSE(radarTargetsOf(Json::Value(Json::objectValue)).has_value());
+
+  ProximitySensorRow sensor{.id = 1,
+                            .name = "Radar sala",
+                            .room = "1:living",
+                            .model = ProximitySensorModel::Ld2450,
+                            .source = ProximitySensorSource::Esphome,
+                            .host = "10.0.0.9",
+                            .port = 80,
+                            .entityId = "binary_sensor.ld2450_presence",
+                            .cameraId = 1,
+                            .panOffsetDeg = -30.0,
+                            .createdAt = 0};
+  CHECK(radarTargetsPath({.sensor = sensor, .suffix = "_targets"}).path == "/text_sensor/ld2450_presence_targets");
+  CHECK_FALSE(radarTargetsPath({.sensor = sensor, .suffix = "_targets"}).bearer);
+  sensor.source = ProximitySensorSource::HomeAssistant;
+  CHECK(radarTargetsPath({.sensor = sensor, .suffix = "_targets"}).path ==
+        "/api/states/sensor.ld2450_presence_targets");
+  CHECK(radarTargetsPath({.sensor = sensor, .suffix = "_targets"}).bearer);
+}
+
+TEST_CASE("a camera's radar targets come only from the LD2450 paired with that camera")
+{
+  boot();
+  FakeProbe probe;
+  FakeWorld world;
+  ProximityService service({.probe = &probe, .world = &world, .config = {}});
+  const ProximitySensorView paired = drogon::sync_wait(service.addSensor({.name = "Radar cocina",
+                                                                          .room = "1:kitchen",
+                                                                          .model = ProximitySensorModel::Ld2450,
+                                                                          .source = ProximitySensorSource::Esphome,
+                                                                          .host = "10.0.0.10",
+                                                                          .port = 80,
+                                                                          .entityId = "presence",
+                                                                          .cameraId = 2,
+                                                                          .panOffsetDeg = 15.0}));
+  const ProximitySensorView presenceOnly = drogon::sync_wait(service.addSensor({.name = "Presencia cocina",
+                                                                                .room = "1:kitchen",
+                                                                                .model = ProximitySensorModel::Ld2410,
+                                                                                .source = ProximitySensorSource::Esphome,
+                                                                                .host = "10.0.0.11",
+                                                                                .port = 80,
+                                                                                .entityId = "presence",
+                                                                                .cameraId = 2,
+                                                                                .panOffsetDeg = std::nullopt}));
+  probe.points(std::vector<RadarPoint>{{.xMm = 300.0, .yMm = 2000.0}});
+  const std::vector<ProximitySensorTargets> targets = drogon::sync_wait(service.targets(2));
+  REQUIRE(targets.size() == 1);
+  CHECK(targets.front().sensorId == paired.row.id);
+  CHECK(targets.front().room == "1:kitchen");
+  CHECK(targets.front().panOffsetDeg == doctest::Approx(15.0));
+  REQUIRE(targets.front().targets.size() == 1);
+  CHECK(targets.front().targets.front().yMm == doctest::Approx(2000.0));
+  const std::vector<int64_t> asked = probe.asked();
+  CHECK(std::ranges::find(asked, presenceOnly.row.id) == asked.end());
+  CHECK(drogon::sync_wait(service.targets(99)).empty());
+  probe.points(std::nullopt);
+  CHECK(drogon::sync_wait(service.targets(2)).empty());
+  drogon::sync_wait(service.removeSensor(paired.row.id));
+  drogon::sync_wait(service.removeSensor(presenceOnly.row.id));
+}
+
+TEST_CASE("room occupancy keeps each room's strongest belief and names nobody")
+{
+  const std::vector<RoomVerdict> verdicts{
+      {.userId = 7, .room = "1:living", .confidence = 0.4, .sinceMs = 0, .updatedMs = 0,
+       .strongest = ProximityEvidenceKind::Ble},
+      {.userId = 8, .room = "1:living", .confidence = 0.9, .sinceMs = 0, .updatedMs = 0,
+       .strongest = ProximityEvidenceKind::Face},
+      {.userId = 9, .room = "1:kitchen", .confidence = 0.6, .sinceMs = 0, .updatedMs = 0,
+       .strongest = ProximityEvidenceKind::Voice},
+      {.userId = 10, .room = "", .confidence = 1.0, .sinceMs = 0, .updatedMs = 0,
+       .strongest = ProximityEvidenceKind::Face}};
+  const std::vector<ProximityRoomOccupancy> rooms = roomOccupancyOf(verdicts);
+  REQUIRE(rooms.size() == 2);
+  CHECK(rooms[0].room == "1:living");
+  CHECK(rooms[0].confidence == doctest::Approx(0.9));
+  CHECK(rooms[1].room == "1:kitchen");
+  CHECK(rooms[1].confidence == doctest::Approx(0.6));
 }

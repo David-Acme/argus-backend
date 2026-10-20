@@ -44,6 +44,41 @@ public:
     return reactor;
   }
 
+  grpc::ServerUnaryReactor* SensorTargets(grpc::CallbackServerContext* context,
+                                          const v1::SensorTargetsRequest* request,
+                                          v1::SensorTargetsResponse* out) override
+  {
+    {
+      const std::scoped_lock lock(mutex_);
+      credential_ = argus::client::metadata(context, argus::client::kCallerCredentialKey);
+      asked_ = {request->camera_id()};
+    }
+    auto* sensor = out->add_sensors();
+    sensor->set_sensor_id(4);
+    sensor->set_room("1:living");
+    sensor->set_pan_offset_deg(-15.0);
+    sensor->set_at_ms(900);
+    auto* target = sensor->add_targets();
+    target->set_x_mm(500.0);
+    target->set_y_mm(2000.0);
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+  }
+
+  grpc::ServerUnaryReactor* RoomOccupancy(grpc::CallbackServerContext* context,
+                                          const v1::RoomOccupancyRequest*,
+                                          v1::RoomOccupancyResponse* out) override
+  {
+    auto* room = out->add_rooms();
+    room->set_room("1:kitchen");
+    room->set_confidence(0.8);
+    out->set_at_ms(1200);
+    auto* reactor = context->DefaultReactor();
+    reactor->Finish(grpc::Status::OK);
+    return reactor;
+  }
+
   [[nodiscard]] std::string credential() const
   {
     const std::scoped_lock lock(mutex_);
@@ -123,4 +158,31 @@ TEST_CASE("a voice report without a person or a camera is not sent, and an absen
   CHECK_FALSE(client.reportVoice({.userId = 0, .cameraId = 3, .snrDb = 12.0F, .voiceprint = true, .atMs = 1}));
   CHECK_FALSE(client.reportVoice({.userId = 7, .cameraId = 0, .snrDb = 12.0F, .voiceprint = true, .atMs = 1}));
   CHECK_FALSE(client.reportVoice({.userId = 7, .cameraId = 3, .snrDb = 12.0F, .voiceprint = true, .atMs = 1}));
+}
+
+TEST_CASE("the presence client reads a camera's radar targets and the rooms people are in")
+{
+  ScriptedPresenceService service;
+  int port = 0;
+  grpc::ServerBuilder builder;
+  builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+  builder.RegisterService(&service);
+  const std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
+  REQUIRE(server);
+
+  const GuardPresenceClient client({.target = "127.0.0.1:" + std::to_string(port), .credential = kCredential});
+  const auto sensors = client.sensorTargets(12).value_or(std::vector<v1::SensorTargets>{});
+  REQUIRE(sensors.size() == 1);
+  CHECK(sensors.front().sensor_id() == 4);
+  CHECK(sensors.front().pan_offset_deg() == doctest::Approx(-15.0));
+  REQUIRE(sensors.front().targets_size() == 1);
+  CHECK(sensors.front().targets(0).y_mm() == doctest::Approx(2000.0));
+  CHECK(service.asked() == std::vector<int64_t>{12});
+  CHECK(service.credential() == kCredential);
+  const auto rooms = client.roomOccupancy().value_or(std::vector<v1::RoomOccupancy>{});
+  REQUIRE(rooms.size() == 1);
+  CHECK(rooms.front().room() == "1:kitchen");
+  CHECK(rooms.front().confidence() == doctest::Approx(0.8));
+  CHECK_FALSE(client.sensorTargets(0).has_value());
+  server->Shutdown();
 }

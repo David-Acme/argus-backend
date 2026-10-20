@@ -80,6 +80,23 @@ struct ProximityVoiceEvidence
   int64_t atMs{0};
 };
 
+struct ProximitySensorTargets
+{
+  int64_t sensorId{0};
+  std::string room;
+  double panOffsetDeg{0.0};
+  std::vector<RadarPoint> targets;
+  int64_t atMs{0};
+};
+
+struct ProximityRoomOccupancy
+{
+  std::string room;
+  double confidence{0.0};
+};
+
+[[nodiscard]] std::vector<ProximityRoomOccupancy> roomOccupancyOf(const std::vector<RoomVerdict>& verdicts);
+
 struct ProximityServiceInput
 {
   const ProximityProbe* probe{nullptr};
@@ -125,6 +142,8 @@ public:
 
   [[nodiscard]] drogon::Task<std::vector<RoomVerdict>> people() const;
   [[nodiscard]] drogon::Task<bool> reportVoice(ProximityVoiceEvidence evidence);
+  [[nodiscard]] drogon::Task<std::vector<ProximitySensorTargets>> targets(int64_t cameraId);
+  [[nodiscard]] drogon::Task<std::vector<ProximityRoomOccupancy>> occupancy() const;
 
   drogon::Task<void> poll();
 

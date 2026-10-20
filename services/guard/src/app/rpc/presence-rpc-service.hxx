@@ -37,6 +37,35 @@ using VoiceEvidenceSink = std::function<drogon::Task<bool>(VoiceEvidenceRow)>;
 
 inline constexpr std::string_view kVoiceEvidenceCaller = "voice";
 
+struct SensorTargetPoint
+{
+  double xMm{0.0};
+  double yMm{0.0};
+};
+
+struct SensorTargetsRow
+{
+  int64_t sensorId{0};
+  std::string room;
+  double panOffsetDeg{0.0};
+  std::vector<SensorTargetPoint> targets;
+  int64_t atMs{0};
+};
+
+using SensorTargetsLookup = std::function<drogon::Task<std::vector<SensorTargetsRow>>(int64_t)>;
+
+inline constexpr std::string_view kSensorTargetsCaller = "camera";
+
+struct RoomOccupancyRow
+{
+  std::string room;
+  double confidence{0.0};
+};
+
+using RoomOccupancyLookup = std::function<drogon::Task<std::vector<RoomOccupancyRow>>()>;
+
+inline constexpr std::string_view kRoomOccupancyCaller = "voice";
+
 struct PresenceRpcInput
 {
   const PresenceService* presence{nullptr};
@@ -44,6 +73,8 @@ struct PresenceRpcInput
   DutyLookup duty{};
   CameraRoomLookup rooms{};
   VoiceEvidenceSink voice{};
+  SensorTargetsLookup targets{};
+  RoomOccupancyLookup occupancy{};
 };
 
 class PresenceRpcService final
@@ -71,6 +102,16 @@ public:
   ReportVoiceEvidence(grpc::CallbackServerContext* context,
                       const argus::guard::v1::VoiceEvidenceRequest* request,
                       argus::guard::v1::VoiceEvidenceResponse* response) override;
+
+  grpc::ServerUnaryReactor*
+  SensorTargets(grpc::CallbackServerContext* context,
+                const argus::guard::v1::SensorTargetsRequest* request,
+                argus::guard::v1::SensorTargetsResponse* response) override;
+
+  grpc::ServerUnaryReactor*
+  RoomOccupancy(grpc::CallbackServerContext* context,
+                const argus::guard::v1::RoomOccupancyRequest* request,
+                argus::guard::v1::RoomOccupancyResponse* response) override;
 
 private:
   PresenceRpcInput input_;

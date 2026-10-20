@@ -87,10 +87,53 @@ message VoiceEvidenceResponse
   bool accepted = 1;
 }
 
+message RadarTarget
+{
+  double x_mm = 1;
+  double y_mm = 2;
+}
+
+message SensorTargets
+{
+  int64 sensor_id = 1;
+  string room = 2;
+  double pan_offset_deg = 3;
+  repeated RadarTarget targets = 4;
+  int64 at_ms = 5;
+}
+
+message SensorTargetsRequest
+{
+  int64 camera_id = 1;
+}
+
+message SensorTargetsResponse
+{
+  repeated SensorTargets sensors = 1;
+}
+
+message RoomOccupancy
+{
+  string room = 1;
+  double confidence = 2;
+}
+
+message RoomOccupancyRequest
+{
+}
+
+message RoomOccupancyResponse
+{
+  repeated RoomOccupancy rooms = 1;
+  int64 at_ms = 2;
+}
+
 service PresenceService
 {
   rpc ListPresence(ListPresenceRequest) returns (ListPresenceResponse) {}
   rpc GetDuty(DutyRequest) returns (DutyResponse) {}
   rpc CameraRooms(CameraRoomsRequest) returns (CameraRoomsResponse) {}
   rpc ReportVoiceEvidence(VoiceEvidenceRequest) returns (VoiceEvidenceResponse) {}
+  rpc SensorTargets(SensorTargetsRequest) returns (SensorTargetsResponse) {}
+  rpc RoomOccupancy(RoomOccupancyRequest) returns (RoomOccupancyResponse) {}
 }

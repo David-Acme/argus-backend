@@ -16,6 +16,12 @@ struct BleHeard
   int rssi{-100};
 };
 
+struct RadarPoint
+{
+  double xMm{0.0};
+  double yMm{0.0};
+};
+
 struct ProximitySighting
 {
   int64_t cameraId{0};
@@ -43,6 +49,9 @@ public:
   readBle(ProximityReceiverRow receiver) const = 0;
 
   [[nodiscard]] virtual drogon::Task<std::optional<bool>> readRadar(ProximitySensorRow sensor) const = 0;
+
+  [[nodiscard]] virtual drogon::Task<std::optional<std::vector<RadarPoint>>>
+  readTargets(ProximitySensorRow sensor) const = 0;
 };
 
 class ProximityWorld
