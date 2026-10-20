@@ -278,6 +278,9 @@ void listingShowsTheCallersEventsAndThoseSharedWithThem(Env& env)
   CHECK(listed.text.find("Mía dos") != std::string::npos);
   CHECK(listed.text.find("De Luis") == std::string::npos);
   CHECK(listed.structured["events"].size() == 2);
+  REQUIRE(listed.structured["lines"].size() == 2);
+  CHECK(listed.structured["lines"][0].asString().starts_with("Evento: «Mía uno», "));
+  CHECK(listed.structured["lines"][1].asString().starts_with("Evento: «Mía dos», "));
 
   const auto limited = env.ana("calendar.list_events", args({{"from", "2030-03-06T00:00:00+00:00"}, {"to", "2030-03-08T00:00:00+00:00"}, {"limit", 1}}));
   CHECK(limited.structured["events"].size() == 1);
@@ -446,6 +449,8 @@ void projectsAndTasksFollowTheirProject(Env& env)
   CHECK(created.text == "Proyecto creado: Casa nueva.");
   const auto project = env.ana("project.list", args({}));
   CHECK(project.text == "Tus proyectos: Casa nueva (active).");
+  REQUIRE(project.structured["lines"].size() == 1);
+  CHECK(project.structured["lines"][0].asString() == "Proyecto: «Casa nueva» (active).");
 
   const auto lone = env.ana("task.create", args({{"title", "Llamar al dentista"}, {"priority", "high"}}));
   CHECK_FALSE(lone.isError);
@@ -474,6 +479,8 @@ void projectsAndTasksFollowTheirProject(Env& env)
   const auto pending = env.ana("task.list", args({}));
   CHECK(pending.text.find("Tareas pendientes:") == 0);
   CHECK(pending.structured["tasks"].size() == 2);
+  REQUIRE(pending.structured["lines"].size() == 2);
+  CHECK(pending.structured["lines"][0].asString().starts_with("Tarea: «"));
   const auto inWork = env.ana("task.list", args({{"project", "Trabajo"}}));
   CHECK(inWork.structured["tasks"].size() == 1);
 

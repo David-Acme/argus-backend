@@ -38,6 +38,22 @@ std::string describe(const CalendarEventSchema& event, const argus::mcp::ToolInv
   return "«" + event.title + "», " + spokenWhen({.epoch = event.startsAt, .allDay = event.isAllDay}, lang(invocation));
 }
 
+std::string contextLine(const CalendarEventSchema& event, const argus::mcp::ToolInvocation& invocation)
+{
+  const bool english = argus::mcp::speech::inEnglish(invocation);
+  const std::string language = lang(invocation);
+  const spoken_time::When when{.epoch = event.startsAt,
+                               .now = static_cast<int64_t>(std::time(nullptr)),
+                               .lang = language,
+                               .day = spoken_time::Day::Relative,
+                               .bare = false};
+  std::string line = (english ? "Event: «" : "Evento: «") + event.title + "», " +
+                     (event.isAllDay ? spoken_time::day(when) : spoken_time::moment(when));
+  if (!event.location.empty())
+    line += (english ? ", at " : ", en ") + event.location;
+  return line + ".";
+}
+
 std::string spokenStart(const CalendarEventSchema& event, const argus::mcp::ToolInvocation& invocation)
 {
   const std::string language = lang(invocation);
@@ -226,9 +242,11 @@ drogon::Task<argus::mcp::ToolOutcome> listEvents(argus::mcp::ToolInvocation invo
   }
   std::vector<std::string> spoken;
   Json::Value listed(Json::arrayValue);
+  Json::Value lines(Json::arrayValue);
   for (size_t index = 0; index < events.size() && index < limit; ++index) {
     const ListedEvent& item = events[index];
     spoken.push_back(describe(item.event, invocation));
+    lines.append(contextLine(item.event, invocation));
     Json::Value entry = summary(item.event);
     entry["shared"] = item.event.ownerId != userId;
     if (item.occurrence)
@@ -242,6 +260,7 @@ drogon::Task<argus::mcp::ToolOutcome> listEvents(argus::mcp::ToolInvocation invo
   if (more > 0)
     outcome.text += argus::mcp::speech::inEnglish(invocation) ? " And " + std::to_string(more) + " more." : " Y " + std::to_string(more) + " más.";
   outcome.structured["events"] = std::move(listed);
+  outcome.structured["lines"] = std::move(lines);
   co_return outcome;
 }
 

@@ -27,6 +27,7 @@
 #include <phrase/rule-parser.hxx>
 #include <feature/memory/services/memory/sqlite-graph.hxx>
 #include <sqlite/vec-db.hxx>
+#include <text/spoken-time.hxx>
 #include <text/text-norm.hxx>
 #include <feature/memory/repositories/memory-graph/memory-graph-query.hxx>
 #include <feature/memory/services/extract/vocabulary-lexicon.hxx>
@@ -1298,8 +1299,17 @@ tools::ToolResult MemoryService::handleReminderList(const tools::ToolCall& call)
   }
   result.ok = true;
   Json::Value listed(Json::arrayValue);
+  Json::Value lines(Json::arrayValue);
   std::string spoken;
+  const auto now = static_cast<int64_t>(std::time(nullptr));
   for (const auto& row : *rows) {
+    lines.append((english(call) ? "Reminder: «" : "Recordatorio: «") + row.title + "», " +
+                 spoken_time::moment({.epoch = row.scheduledAt,
+                                      .now = now,
+                                      .lang = call.context.lang,
+                                      .day = spoken_time::Day::Relative,
+                                      .bare = false}) +
+                 ".");
     const auto seconds = static_cast<std::time_t>(row.scheduledAt);
     std::tm local{};
     localtime_r(&seconds, &local);
@@ -1314,6 +1324,7 @@ tools::ToolResult MemoryService::handleReminderList(const tools::ToolCall& call)
     listed.append(std::move(entry));
   }
   result.data["reminders"] = std::move(listed);
+  result.data["lines"] = std::move(lines);
   if (rows->empty())
     result.output = english(call) ? "You have no pending reminders." : "No tienes recordatorios pendientes.";
   else

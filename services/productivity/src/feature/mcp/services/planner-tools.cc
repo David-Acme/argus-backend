@@ -10,9 +10,11 @@
 #include <shared/repositories/project-task/project-task-repository.hxx>
 #include <shared/repositories/project/project-repository.hxx>
 #include <text/name-match.hxx>
+#include <text/spoken-time.hxx>
 
 #include <algorithm>
 #include <array>
+#include <ctime>
 #include <string_view>
 
 namespace productivity_tools
@@ -153,6 +155,28 @@ std::string describeTask(const ProjectTaskSchema& task, const std::string& proje
   return out;
 }
 
+struct TaskLineInput
+{
+  const ProjectTaskSchema& task;
+  const std::string& project;
+  const argus::mcp::ToolInvocation& invocation;
+};
+
+std::string taskLine(const TaskLineInput& input)
+{
+  const bool english = argus::mcp::speech::inEnglish(input.invocation);
+  std::string line = (english ? "Task: «" : "Tarea: «") + input.task.title + "» (" + input.project + ")";
+  if (input.task.dueAt) {
+    const std::string language = lang(input.invocation);
+    line += (english ? ", due " : ", vence ") + spoken_time::day({.epoch = *input.task.dueAt,
+                                                                  .now = static_cast<int64_t>(std::time(nullptr)),
+                                                                  .lang = language,
+                                                                  .day = spoken_time::Day::Relative,
+                                                                  .bare = false});
+  }
+  return line + ".";
+}
+
 struct OpenTask
 {
   ProjectTaskSchema task;
@@ -226,12 +250,16 @@ drogon::Task<argus::mcp::ToolOutcome> listProjects(argus::mcp::ToolInvocation in
   }
   const size_t limit = limitOf(invocation.arguments);
   std::vector<std::string> spoken;
+  Json::Value lines(Json::arrayValue);
+  const std::string label = argus::mcp::speech::inEnglish(invocation) ? "Project: «" : "Proyecto: «";
   for (size_t index = 0; index < shown.size() && index < limit; ++index) {
     spoken.push_back(shown[index].name + " (" + shown[index].status + ")");
+    lines.append(label + shown[index].name + "» (" + shown[index].status + ").");
     listed.append(projectSummary(shown[index]));
   }
   outcome.text = (argus::mcp::speech::inEnglish(invocation) ? "Your projects: " : "Tus proyectos: ") + argus::mcp::speech::joined(spoken, lang(invocation)) + ".";
   outcome.structured["projects"] = std::move(listed);
+  outcome.structured["lines"] = std::move(lines);
   co_return outcome;
 }
 
@@ -298,8 +326,10 @@ drogon::Task<argus::mcp::ToolOutcome> listTasks(argus::mcp::ToolInvocation invoc
   }
   const size_t limit = limitOf(invocation.arguments);
   std::vector<std::string> spoken;
+  Json::Value lines(Json::arrayValue);
   for (size_t index = 0; index < tasks.size() && index < limit; ++index) {
     spoken.push_back(describeTask(tasks[index].task, tasks[index].project, invocation));
+    lines.append(taskLine({.task = tasks[index].task, .project = tasks[index].project, .invocation = invocation}));
     listed.append(taskSummary(tasks[index].task, tasks[index].project));
   }
   outcome.text = (argus::mcp::speech::inEnglish(invocation) ? "Pending tasks: " : "Tareas pendientes: ") + argus::mcp::speech::joined(spoken, lang(invocation)) + ".";
@@ -307,6 +337,7 @@ drogon::Task<argus::mcp::ToolOutcome> listTasks(argus::mcp::ToolInvocation invoc
     outcome.text += argus::mcp::speech::inEnglish(invocation) ? " And " + std::to_string(tasks.size() - limit) + " more."
                                         : " Y " + std::to_string(tasks.size() - limit) + " más.";
   outcome.structured["tasks"] = std::move(listed);
+  outcome.structured["lines"] = std::move(lines);
   co_return outcome;
 }
 
