@@ -331,6 +331,28 @@ teardown order, waiting in-flight handlers out. This is the only camera feed
 long-term memory reads; the raw `object_detected` subscription stays an
 episodic throttle beside it.
 
+## Maintenance windows as episodes (2026-10, G3)
+
+Beside the encounter consumer, `main.cc` wires a `MaintenanceEndedConsumer`
+(`src/feature/encounter-closed/services/maintenance-ended-consumer.cc`) under
+the same condition (`observe_camera_events`, a notifiable owner): a durable
+JetStream consumer on `argus.guard.v1.maintenance_ended` (`ARGUS_GUARD`,
+durable `argus-llm-maintenance`, `maxDeliver = 10`, poison `Term` after 3
+failed attempts). Each window is receipted in the same guard-feed inbox,
+`encounter_closed_inbox`, keyed by its own event id
+(`guard-maintenance-ended:<id>`), with the same states, conflict rule and
+purge (the encounter consumer's daily sweep settles both), and captured once
+through `observeSystemEvent` with channel `maintenance`, the owner's scope and
+language, at the window's end. The summary (`maintenance_episode::summary`)
+names who declared it, the cameras and the place, and the day and the times
+on the host's clock: "Mantenimiento de cámaras (visita del técnico o limpieza)
+declarado por Luis, en las cámaras Patio y Garaje, el lunes 19 de octubre de
+10:05 a 10:40 (35 min)." plus how it ended when it was not "ya terminé". The
+episode tier finds it by its words, so "¿cuándo vino el técnico?" recalls it
+(FTS on "tecnico"). `maintenance-ended-consumer-test` pins the parse, the
+summary in both languages, the single capture, the poison path and the FTS
+recall by owner scope. Not run in G3.
+
 ## The memory stack (Phase 4 step 7)
 
 `packages/memory` and `packages/intent` became features of this service:
@@ -936,6 +958,19 @@ done: `reply_claims::claimsCompletion` reads completion markers as a claim on a
 turn whose act is a question, whatever the user asked for, which is what
 `call-faithfulness-eval --render-acts` measures (its `retryShare` ceiling of
 0.05 is now wired into ctest as `call-faithfulness-render-acts`).
+
+**Who is in a room, whether someone is home (G3).** Every utterance the
+whereabouts rule reads (below, "Where is someone") is `private_person` for a
+caller who is not the Owner, so "¿quién está en la sala?", "¿está David en
+casa?" and "is Ana home?" are refused deterministically like "¿dónde está
+David?", the person named. "¿dónde está la cámara del patio?" is not a person:
+the where-person refusal skips a camera target, and the rule never reads one.
+
+**The act's own words ground the reply.** `LfmAdapter::speakAct` grounds the
+location scrub on the act's situation (the tool's fact plus the context
+block), not on the context block alone: a place the tool itself answered
+("David Acme está en la sala") is not cut as unsupported, while a place no
+tool and no context named still is.
 
 `tests/unit/llm-refusal-rules-test.cc` pins the rules and the lines; the guard
 tests pin impersonation, the location scrub and the ask turn. The pack that
@@ -1715,8 +1750,17 @@ the degradation contract.
 even when the phrase catalog has no trigger for it ("recuérdame cada lunes a
 las 8 sacar la basura" has no "que"): the utterance must ask to be reminded
 (`kReminderAsks`), must not be a question (`RuleParser::isQuestion`, which
-also counts the recall markers such as "recuérdame el día", so "recuérdame el
-día 5 de cada mes" is left to Laya), and must name a recurrence. A readable
+also counts the recall markers such as "recuérdame el día"), and must name a
+recurrence. A monthly series on a named day is decided before that question
+test (`asksMonthlyOnADay`, G3): an ask to be reminded with no question mark,
+a recurrence that reads as `FREQ=MONTHLY;BYMONTHDAY=n`, and a word after the
+ask that is not a question word (que, what, cuándo, when, dónde, quién, cómo,
+cuál, si, cuánto) is `memory.remind`, with or without a clock, in es and en
+("recuérdame el día 5 de cada mes pagar el alquiler", "avísame el 20 de cada
+mes que toca pagar el colegio", "remind me on the 5th of every month to pay
+the rent"); with no clock the turn asks the time as for any series. "¿qué
+tengo el día 5?", "recuérdame qué tengo el día 5 de cada mes" and "remind me
+what I pay on the 5th of every month" stay questions. A readable
 one that the catalog also parses as a save ("recuérdame que mi hermana viene
 los domingos") needs a clock to become a reminder; without one it stays a
 fact, as it was. An unreadable one always goes to `memory.remind`, so the
@@ -2707,6 +2751,16 @@ withheld case).
 ## Aiming a camera and camera maintenance are rules, never the model's choice (2026-10, AL-B7 and TP-A5)
 
 `tools/sight-command` is a rule tier the `RuleDecider` asks after the app commands. "mira hacia la puerta" and "gira la cámara de la sala a la entrada" become `camera.goto_preset {camera, preset}` (a camera word or `hacia`/`towards` is required, so "mira a mi hermana" stays conversation); a direction ("a la izquierda", "up") or the home words ("su posición de vigilancia") become `camera.look`. "voy a limpiar la cámara del patio" (a future word plus a maintenance verb, and a camera or `mantenimiento`) becomes `guard.maintenance_start`, with "por 30 minutos" as `minutes`; a finished word with a camera or maintenance word ("ya terminé con la cámara") becomes `guard.maintenance_end`, and a bare "ya terminé" stays with the other deciders; "¿por qué me avisaste?" and "¿quién movió la cámara?" read `guard.maintenance_status` (read-only in `tool-effects.json`). As every rule, each routes only when the tool is offered to the caller (`camera.aim`, `guard.maintenance`). `llm-sight-command-test` pins the phrases; not run in T2.
+
+## Where is someone: a rule, for the Owner only (2026-10, G3)
+
+`tools/whereabouts-command` is a rule tier the `RuleDecider` asks after the sight commands, and it routes `guard.where_is` (argus-guard's MCP tool, read-only in `tool-effects.json`, capability `presence.read`: the Owner alone) only when the tool is offered, so for anyone else the refusal leg has already answered. It reads, with or without a question mark:
+
+- a person: "¿dónde está David?", "¿dónde anda Luis?", "¿en qué parte de la casa está Marta?", "where is Ana?", "where's David right now?" (`person`), and "¿está David en casa?", "is Ana (at) home?" when the sentence opens with the verb;
+- a room: "¿quién está en la sala?", "¿quiénes están en la cocina?", "¿hay alguien en el garaje?", "who is in the kitchen?", "is anyone in the living room?" (`room`), only for the rooms the guard knows (sala, salón, living, cocina, oficina, estudio, despacho, garaje, cochera, depósito and their English names);
+- the household: "¿quién está en casa?", "who's home?" (no argument).
+
+A name is one or two words with nothing after them but tails (ahora, mismo, now, right, en este momento, please...), and never an article, a possessive, a pronoun, a relation word or a camera: "¿dónde está la cámara del patio?", "¿dónde está el hielo?", "where is justin bieber's home base", "Where is he?" and "¿hay alguien en el patio?" (a camera question) are not routed. The guard answers the room, home or away and how sure Argus is (`services/guard/CONTEXT.md`, "Where is someone"); the model only speaks that answer. `llm-whereabouts-command-test` pins the phrases, the negatives of the sealed set and the offer check; `llm-turn-flow-test` the whole turn for the Owner and the refusal for a Resident. Not run in G3.
 
 ## The camera surface (2026-10, CC5 of the camera call plan)
 
