@@ -2683,3 +2683,53 @@ TEST_CASE("where a member is, is the rules' choice for the owner, and the room t
   CHECK(refused.reply.find("la sala") == std::string::npos);
   CHECK(resident.script.requests.empty());
 }
+
+TEST_CASE("a monthly reminder on a named day is a reminder by rule in both languages, and a question stays a question")
+{
+  const UtcZone zone;
+  const turn::TriggerDecider triggers;
+  const std::vector<Repeated> heard{
+      {.utterance = "recuérdame el día 5 de cada mes a las 9 pagar el alquiler", .lang = "es", .rule = "FREQ=MONTHLY;BYMONTHDAY=5"},
+      {.utterance = "recuérdame el 15 de cada mes pagar la tarjeta a las 10", .lang = "es", .rule = "FREQ=MONTHLY;BYMONTHDAY=15"},
+      {.utterance = "remind me on the 5th of every month at 9 to pay the rent", .lang = "en", .rule = "FREQ=MONTHLY;BYMONTHDAY=5"},
+  };
+  for (const Repeated& said : heard) {
+    INFO(said.utterance);
+    World world;
+    world.now = at({.day = 7, .hour = 15, .minute = 20});
+    world.context.lang = said.lang;
+    addRemind(world);
+    world.flow.useDecider(triggers);
+    const auto done = world.say(said.utterance);
+    REQUIRE(world.ran.size() == 1);
+    CHECK(world.ran.front().name == "memory.remind");
+    CHECK(world.ran.front().arguments["repeat"].asString() == said.rule);
+    CHECK(actAs<turn::speech::Done>(done) != nullptr);
+  }
+
+  World untimed;
+  untimed.now = at({.day = 7, .hour = 15, .minute = 20});
+  addRemind(untimed);
+  untimed.flow.useDecider(triggers);
+  const auto asked = untimed.say("recuérdame el día 5 de cada mes pagar el alquiler");
+  CHECK(untimed.ran.empty());
+  const auto* ask = actAs<turn::speech::AskSlot>(asked);
+  REQUIRE(ask != nullptr);
+  CHECK(ask->tool == "memory.remind");
+  CHECK(ask->reason == turn::speech::AskReason::RepeatTime);
+
+  const auto decide = [&](const std::string& utterance, const std::string& lang) {
+    return triggers.decide(
+        {.utterance = utterance, .lang = lang, .offered = untimed.offered, .modules = untimed.audience.modules});
+  };
+  CHECK(must(decide("recuérdame el día 5 de cada mes pagar el alquiler", "es")).tool == "memory.remind");
+  CHECK(must(decide("avísame el 20 de cada mes que toca pagar el colegio", "es")).tool == "memory.remind");
+  CHECK(must(decide("remind me every month on the 5th to pay the rent", "en")).tool == "memory.remind");
+  for (const char* question : {"¿qué tengo el día 5?", "¿qué tengo el día 5 de cada mes?",
+                               "recuérdame qué tengo el día 5 de cada mes", "remind me what I pay on the 5th of every month",
+                               "¿me recuerdas qué pago el 5 de cada mes?"}) {
+    INFO(question);
+    const auto decided = decide(question, std::string(question).starts_with("remind") ? "en" : "es");
+    CHECK((!decided.has_value() || decided->tool != "memory.remind"));
+  }
+}
