@@ -1547,7 +1547,7 @@ TEST_CASE("the read-only tools are exactly the list in tool-effects.json and eve
 {
   const std::vector<std::string> expected{"calendar.list_events", "task.list", "project.list", "modules.list", "modules.explain",
                                           "reminder.list", "memory.recall", "app.open", "app.show_camera",
-                                          "guard.maintenance_status"};
+                                          "guard.maintenance_status", "camera.status", "guard.status"};
   CHECK(turn::kReadOnlyTools.size() == expected.size());
   for (const std::string& name : expected)
     CHECK(turn::isReadOnlyTool(name));

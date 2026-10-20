@@ -458,6 +458,16 @@ add_test(NAME llm-context-selector-test COMMAND llm-context-selector-test)
 set_tests_properties(llm-context-selector-test PROPERTIES
     ENVIRONMENT "ARGUS_TEST_CONTEXT_PACK=${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/eval/context-scenarios.jsonl:${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/eval/context-axis.jsonl")
 
+add_executable(llm-context-fetch-test tests/unit/llm-context-fetch-test.cc)
+
+target_link_libraries(llm-context-fetch-test PRIVATE argus::llm argus::lib::doctest-main)
+
+target_compile_options(llm-context-fetch-test PRIVATE -Wall -Wextra)
+
+set_target_properties(llm-context-fetch-test PROPERTIES EXCLUDE_FROM_ALL FALSE)
+
+add_test(NAME llm-context-fetch-test COMMAND llm-context-fetch-test)
+
 add_executable(llm-bundle-loader-test tests/unit/llm-bundle-loader-test.cc)
 
 target_link_libraries(llm-bundle-loader-test PRIVATE argus::llm argus::lib::doctest-main)

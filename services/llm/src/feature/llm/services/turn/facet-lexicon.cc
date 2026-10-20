@@ -224,9 +224,9 @@ std::optional<ContextFacet> facetForTool(std::string_view tool)
     return ContextFacet::Memory;
   if (startsWith("modules."))
     return ContextFacet::Modules;
-  if (tool == "app.show_camera")
+  if (tool == "app.show_camera" || tool == "camera.status")
     return ContextFacet::Camera;
-  if (tool == "app.set_guard_mode")
+  if (tool == "app.set_guard_mode" || tool == "guard.status")
     return ContextFacet::Guard;
   return std::nullopt;
 }

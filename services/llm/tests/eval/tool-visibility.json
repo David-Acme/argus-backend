@@ -5,9 +5,11 @@
       "app.show_camera",
       "camera.goto_preset",
       "camera.look",
+      "camera.status",
       "guard.maintenance_end",
       "guard.maintenance_start",
       "guard.maintenance_status",
+      "guard.status",
       "memory.remind",
       "modules.explain",
       "modules.list",
@@ -17,6 +19,7 @@
     "guest": [
       "app.open",
       "app.show_camera",
+      "camera.status",
       "memory.remind",
       "modules.explain",
       "modules.list",
@@ -32,9 +35,11 @@
       "calendar.list_events",
       "camera.goto_preset",
       "camera.look",
+      "camera.status",
       "guard.maintenance_end",
       "guard.maintenance_start",
       "guard.maintenance_status",
+      "guard.status",
       "memory.forget",
       "memory.recall",
       "memory.remember",
@@ -60,9 +65,11 @@
       "calendar.list_events",
       "camera.goto_preset",
       "camera.look",
+      "camera.status",
       "guard.maintenance_end",
       "guard.maintenance_start",
       "guard.maintenance_status",
+      "guard.status",
       "memory.forget",
       "memory.recall",
       "memory.remember",
@@ -111,6 +118,10 @@
       "capability": "camera.aim",
       "module": "surveillance"
     },
+    "camera.status": {
+      "capability": "camera.view",
+      "module": "surveillance"
+    },
     "guard.maintenance_end": {
       "capability": "guard.maintenance",
       "module": "surveillance"
@@ -121,6 +132,10 @@
     },
     "guard.maintenance_status": {
       "capability": "guard.maintenance",
+      "module": "surveillance"
+    },
+    "guard.status": {
+      "capability": "guard.read",
       "module": "surveillance"
     },
     "memory.forget": {
