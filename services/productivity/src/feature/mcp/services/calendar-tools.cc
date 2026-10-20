@@ -5,11 +5,16 @@
 #include <feature/calendar-event/dtos/create-calendar-event-dto.hxx>
 #include <feature/calendar-event/services/calendar-event-feature-service.hxx>
 #include <shared/repositories/calendar-event/calendar-event-repository.hxx>
+#include <shared/services/recurrence/series-window.hxx>
 #include <text/name-match.hxx>
 #include <text/spoken-time.hxx>
 
 #include <algorithm>
 #include <ctime>
+#include <optional>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 namespace productivity_tools
 {
@@ -55,6 +60,44 @@ Json::Value summary(const CalendarEventSchema& event)
   out["location"] = event.location;
   out["allDay"] = event.isAllDay;
   return out;
+}
+
+struct ListedEvent
+{
+  CalendarEventSchema event;
+  std::optional<int64_t> occurrence;
+};
+
+std::vector<ListedEvent> agendaWithin(const std::vector<CalendarEventSchema>& rows, const CalendarEventRangeInput& range)
+{
+  std::vector<ListedEvent> listed;
+  for (const auto& row : rows) {
+    const std::optional<std::string_view> rule = row.recurrenceRule;
+    const auto occurrences = occurrencesWithin({.rule = rule,
+                                                .startsAt = row.startsAt,
+                                                .endsAt = row.endsAt,
+                                                .exceptions = row.recurrenceExceptions,
+                                                .from = range.from,
+                                                .to = range.to});
+    for (const auto& occurrence : occurrences) {
+      ListedEvent entry{.event = row,
+                        .occurrence = occurrence.repeats ? std::optional<int64_t>{occurrence.occurrence}
+                                                         : std::nullopt};
+      entry.event.startsAt = occurrence.startsAt;
+      entry.event.endsAt = occurrence.endsAt;
+      if (occurrence.title)
+        entry.event.title = *occurrence.title;
+      if (occurrence.location)
+        entry.event.location = *occurrence.location;
+      listed.push_back(std::move(entry));
+    }
+  }
+  std::ranges::sort(listed, [](const ListedEvent& left, const ListedEvent& right) {
+    if (left.event.startsAt != right.event.startsAt)
+      return left.event.startsAt < right.event.startsAt;
+    return left.event.id < right.event.id;
+  });
+  return listed;
 }
 
 int limitOf(const Json::Value& arguments)
@@ -168,7 +211,8 @@ drogon::Task<argus::mcp::ToolOutcome> listEvents(argus::mcp::ToolInvocation invo
   const int64_t from = timeArgument(arguments, "from").value_or(now);
   const int64_t to = timeArgument(arguments, "to").value_or(from + 7 * kDay);
   const CalendarEventRepository repository;
-  auto events = co_await repository.findVisibleRange({.ownerId = userId, .from = from, .to = to});
+  const CalendarEventRangeInput range{.ownerId = userId, .from = from, .to = to};
+  const auto events = agendaWithin(co_await repository.findVisibleAgenda(range), range);
   const auto limit = static_cast<size_t>(limitOf(arguments));
   argus::mcp::ToolOutcome outcome;
   const std::string range = spokenWhen({.epoch = from, .allDay = true}, lang(invocation)) + " – " +
@@ -183,9 +227,12 @@ drogon::Task<argus::mcp::ToolOutcome> listEvents(argus::mcp::ToolInvocation invo
   std::vector<std::string> spoken;
   Json::Value listed(Json::arrayValue);
   for (size_t index = 0; index < events.size() && index < limit; ++index) {
-    spoken.push_back(describe(events[index], invocation));
-    Json::Value entry = summary(events[index]);
-    entry["shared"] = events[index].ownerId != userId;
+    const ListedEvent& item = events[index];
+    spoken.push_back(describe(item.event, invocation));
+    Json::Value entry = summary(item.event);
+    entry["shared"] = item.event.ownerId != userId;
+    if (item.occurrence)
+      entry["occurrence"] = static_cast<Json::Int64>(*item.occurrence);
     listed.append(std::move(entry));
   }
   const size_t more = events.size() > limit ? events.size() - limit : 0;

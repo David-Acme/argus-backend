@@ -42,6 +42,46 @@
       "expect": ["2026-01-31T09:00:00", "2026-02-28T09:00:00", "2026-03-31T09:00:00", "2026-04-30T09:00:00", "2026-05-31T09:00:00"]
     },
     {
+      "name": "monthly on day 31 falls on the last day of a shorter month and returns to the 31st",
+      "zone": "America/Lima",
+      "rule": "FREQ=MONTHLY;BYMONTHDAY=31",
+      "anchor": "2026-10-19T09:00:00",
+      "count": 6,
+      "expect": ["2026-10-31T09:00:00", "2026-11-30T09:00:00", "2026-12-31T09:00:00", "2027-01-31T09:00:00", "2027-02-28T09:00:00", "2027-03-31T09:00:00"]
+    },
+    {
+      "name": "monthly on day 5 created after the 5th starts the next month",
+      "zone": "America/Lima",
+      "rule": "BYMONTHDAY=5;FREQ=MONTHLY",
+      "anchor": "2026-10-19T09:00:00",
+      "count": 3,
+      "expect": ["2026-11-05T09:00:00", "2026-12-05T09:00:00", "2027-01-05T09:00:00"]
+    },
+    {
+      "name": "monthly on day 30 created in February starts on the last day of February",
+      "zone": "America/Lima",
+      "rule": "FREQ=MONTHLY;BYMONTHDAY=30",
+      "anchor": "2026-02-10T07:15:00",
+      "count": 3,
+      "expect": ["2026-02-28T07:15:00", "2026-03-30T07:15:00", "2026-04-30T07:15:00"]
+    },
+    {
+      "name": "monthly on day 31 every two months",
+      "zone": "America/Lima",
+      "rule": "FREQ=MONTHLY;INTERVAL=2;BYMONTHDAY=31",
+      "anchor": "2026-01-15T20:00:00",
+      "count": 4,
+      "expect": ["2026-01-31T20:00:00", "2026-03-31T20:00:00", "2026-05-31T20:00:00", "2026-07-31T20:00:00"]
+    },
+    {
+      "name": "monthly on day 31 after the end of November is the last day of December",
+      "zone": "America/Lima",
+      "rule": "FREQ=MONTHLY;BYMONTHDAY=31",
+      "anchor": "2026-10-31T09:00:00",
+      "after": "2026-11-30T10:00:00",
+      "expectFirst": "2026-12-31T09:00:00"
+    },
+    {
       "name": "yearly on 29 February clamps in common years",
       "zone": "America/Lima",
       "rule": "FREQ=YEARLY",
@@ -87,6 +127,14 @@
     "freq=daily",
     "FREQ=DAILY;FREQ=WEEKLY",
     "FREQ=DAILY;",
-    "FREQ=DAILY;;INTERVAL=2"
+    "FREQ=DAILY;;INTERVAL=2",
+    "FREQ=WEEKLY;BYMONTHDAY=5",
+    "FREQ=YEARLY;BYMONTHDAY=5",
+    "FREQ=MONTHLY;BYMONTHDAY=0",
+    "FREQ=MONTHLY;BYMONTHDAY=32",
+    "FREQ=MONTHLY;BYMONTHDAY=-1",
+    "FREQ=MONTHLY;BYMONTHDAY=+5",
+    "FREQ=MONTHLY;BYMONTHDAY=5;BYMONTHDAY=6",
+    "BYMONTHDAY=5"
   ]
 }

@@ -26,6 +26,50 @@ AgendaAnnouncementRepository::dueEvents(const AgendaWindowInput& input) const
   co_return events;
 }
 
+drogon::Task<std::vector<SeriesEventRow>>
+AgendaAnnouncementRepository::liveSeries(int64_t until) const
+{
+  const auto client = DbService::productivityClient();
+  const auto rows = co_await client->execSqlCoro(std::string(LIVE_SERIES), until);
+  std::vector<SeriesEventRow> series;
+  series.reserve(rows.size());
+  for (const auto& row : rows)
+    series.push_back({.id = row["id"].as<int64_t>(),
+                      .ownerId = row["owner_id"].as<int64_t>(),
+                      .title = row["title"].as<std::string>(),
+                      .location = row["location"].as<std::string>(),
+                      .startsAt = row["starts_at"].as<int64_t>(),
+                      .recurrenceRule = row["recurrence_rule"].as<std::string>(),
+                      .recurrenceExceptions = row["recurrence_exceptions"].as<std::string>()});
+  co_return series;
+}
+
+drogon::Task<std::set<EventNoticeKey>>
+AgendaAnnouncementRepository::eventNotices(const AgendaNoticesInput& input) const
+{
+  std::set<EventNoticeKey> notices;
+  if (input.eventIds.empty())
+    co_return notices;
+  std::string sql(EVENT_NOTICES_PREFIX);
+  std::vector<std::string> args;
+  args.reserve(input.eventIds.size() + 2);
+  args.push_back(std::to_string(input.after));
+  args.push_back(std::to_string(input.until));
+  for (std::size_t index = 0; index < input.eventIds.size(); ++index) {
+    sql += index == 0 ? "?" : ", ?";
+    args.push_back(std::to_string(input.eventIds[index]));
+  }
+  sql += ')';
+  const auto client = DbService::productivityClient();
+  const auto& argsRef = args;
+  const auto rows = co_await client->execSqlCoro(sql, argsRef);
+  for (const auto& row : rows)
+    notices.insert(EventNoticeKey{.refId = row["ref_id"].as<int64_t>(),
+                    .occurrenceAt = row["occurrence_at"].as<int64_t>(),
+                    .leadMinutes = row["lead_minutes"].as<int>()});
+  co_return notices;
+}
+
 drogon::Task<std::map<int64_t, std::vector<int64_t>>>
 AgendaAnnouncementRepository::sharesOf(const std::vector<int64_t>& eventIds) const
 {

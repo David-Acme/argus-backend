@@ -193,3 +193,39 @@ std::optional<NextFiring> nextFiring(const NextFiringInput& input)
   }
   return std::nullopt;
 }
+
+std::optional<SnoozedSeries> snoozeSeries(const SnoozeInput& input)
+{
+  const int64_t current = scheduledOccurrence(input.exceptions, input.scheduledAt);
+  const auto slot = occurrenceSlot({.rule = input.rule, .anchor = input.anchor, .moment = current});
+  if (!slot)
+    return std::nullopt;
+  if (!slot->next || input.target < *slot->next) {
+    const std::optional<int64_t> movedTo =
+        input.target == current ? std::nullopt : std::optional<int64_t>{input.target};
+    return SnoozedSeries{.scheduledAt = input.target,
+                         .exceptions = withException(input.exceptions,
+                                                     {.occurrence = current,
+                                                      .cancelled = false,
+                                                      .startsAt = movedTo,
+                                                      .endsAt = std::nullopt,
+                                                      .title = std::nullopt,
+                                                      .location = std::nullopt}),
+                         .folded = false};
+  }
+  auto skipped = withException(input.exceptions,
+                               {.occurrence = current,
+                                .cancelled = true,
+                                .startsAt = std::nullopt,
+                                .endsAt = std::nullopt,
+                                .title = std::nullopt,
+                                .location = std::nullopt});
+  const auto fire = nextFiring({.rule = input.rule,
+                                .anchor = input.anchor,
+                                .after = current - 1,
+                                .moment = slot->previous.value_or(0),
+                                .exceptions = skipped});
+  if (!fire)
+    return std::nullopt;
+  return SnoozedSeries{.scheduledAt = fire->at, .exceptions = std::move(skipped), .folded = true};
+}

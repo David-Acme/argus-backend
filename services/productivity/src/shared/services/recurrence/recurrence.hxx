@@ -16,6 +16,7 @@ struct RecurrenceRule
 {
   RecurrenceFrequency frequency{RecurrenceFrequency::Daily};
   int interval{1};
+  std::optional<int> monthDay;
 };
 
 struct OccurrenceInput
@@ -33,10 +34,12 @@ struct FirstOccurrenceInput
 };
 
 inline constexpr std::string_view kRecurrenceRuleProblem =
-    "recurrenceRule must be FREQ=DAILY, WEEKLY, MONTHLY or YEARLY, with an optional INTERVAL from 1 to 999";
+    "recurrenceRule must be FREQ=DAILY, WEEKLY, MONTHLY or YEARLY, with an optional INTERVAL from 1 to 999 "
+    "and, for MONTHLY only, an optional BYMONTHDAY from 1 to 31";
 
 [[nodiscard]] std::optional<RecurrenceRule> parseRecurrenceRule(std::string_view text);
 [[nodiscard]] std::optional<int64_t> occurrenceAt(const OccurrenceInput& input);
+[[nodiscard]] int64_t seriesStart(const RecurrenceRule& rule, int64_t at);
 [[nodiscard]] std::optional<int64_t> firstOccurrenceAfter(const FirstOccurrenceInput& input);
 [[nodiscard]] std::optional<int64_t> occurrenceIndex(const FirstOccurrenceInput& input);
 [[nodiscard]] std::optional<int64_t> sameTimeTomorrow(int64_t moment);

@@ -114,9 +114,10 @@ inline constexpr std::string_view FIND_BY_OWNER_RANGE =
     "AND starts_at >= ? AND starts_at <= ? "
     "ORDER BY starts_at ASC";
 
-inline constexpr std::string_view FIND_VISIBLE_RANGE =
+inline constexpr std::string_view FIND_VISIBLE_AGENDA =
     "SELECT * FROM calendar_event WHERE deleted_at IS NULL "
-    "AND starts_at >= ? AND starts_at <= ? AND (owner_id = ? OR id IN ("
+    "AND ((COALESCE(recurrence_rule, '') = '' AND starts_at >= ? AND starts_at <= ?) "
+    "OR (COALESCE(recurrence_rule, '') <> '' AND starts_at <= ?)) AND (owner_id = ? OR id IN ("
     "SELECT calendar_event_id FROM calendar_event_share "
     "WHERE user_id = ? AND deleted_at IS NULL)) "
     "ORDER BY starts_at ASC, id ASC";

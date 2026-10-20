@@ -708,7 +708,7 @@ void snoozeMovesOpenRemindersAndRefusesDoneOnes(Env& env)
 
 int64_t dailyAt(int64_t index)
 {
-  return occurrenceAt({.rule = {.frequency = RecurrenceFrequency::Daily, .interval = 1},
+  return occurrenceAt({.rule = {.frequency = RecurrenceFrequency::Daily, .interval = 1, .monthDay = std::nullopt},
                        .anchor = kSoon,
                        .index = index})
       .value_or(0);
@@ -871,6 +871,176 @@ void completingSkipsACancelledOccurrence(Env& env)
   CHECK(reanchored.recurrenceExceptions == "[]");
 }
 
+struct CivilDay
+{
+  int year{0};
+  int month{0};
+  int day{0};
+};
+
+int64_t localEpoch(const CivilDay& civil)
+{
+  std::tm local{};
+  local.tm_year = civil.year - 1900;
+  local.tm_mon = civil.month - 1;
+  local.tm_mday = civil.day;
+  local.tm_hour = 9;
+  local.tm_isdst = -1;
+  return static_cast<int64_t>(std::mktime(&local));
+}
+
+struct SeriesStart
+{
+  std::string title;
+  std::string rule;
+  int64_t scheduledAt{0};
+};
+
+ReminderSchema seriesFrom(Env& env, const SeriesStart& start)
+{
+  CreateReminderDto series = body(start.title);
+  series.scheduledAt = start.scheduledAt;
+  series.recurrenceRule = start.rule;
+  return drogon::sync_wait(env.service.create({.body = series, .userId = kAna, .idempotencyKey = {}}));
+}
+
+int64_t nextAfter(const ReminderSchema& series, int64_t moment)
+{
+  const auto rule = parseRecurrenceRule(series.recurrenceRule.value_or(""));
+  if (!rule)
+    return 0;
+  return firstOccurrenceAfter(
+             {.rule = *rule, .anchor = series.recurrenceAnchor.value_or(series.scheduledAt), .moment = moment})
+      .value_or(0);
+}
+
+ReminderSchema snoozedBy(Env& env, int64_t id, const SnoozeReminderDto& snooze)
+{
+  return drogon::sync_wait(env.service.snooze({.id = id, .body = snooze, .userId = kAna})).value_or(ReminderSchema{});
+}
+
+void aSnoozedOccurrenceCanBeChangedOnlyThisTime(Env& env)
+{
+  startScenario(env);
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  const auto created =
+      seriesFrom(env, {.title = "Medicina", .rule = "FREQ=DAILY", .scheduledAt = now - 300});
+  const int64_t occurrence = created.scheduledAt;
+  const int64_t following = nextAfter(created, occurrence);
+
+  SnoozeReminderDto tenMinutes;
+  tenMinutes.minutes = 10;
+  const ReminderSchema snoozed = snoozedBy(env, created.id, tenMinutes);
+  CHECK(snoozed.scheduledAt >= now + 600);
+  CHECK(snoozed.scheduledAt < following);
+  const auto exceptions = parseOccurrenceExceptions(snoozed.recurrenceExceptions);
+  REQUIRE(exceptions.size() == 1);
+  CHECK(exceptions.front().occurrence == occurrence);
+  CHECK(exceptions.front().startsAt.value_or(0) == snoozed.scheduledAt);
+  CHECK(scheduledOccurrence(exceptions, snoozed.scheduledAt) == occurrence);
+
+  OccurrenceChangeDto later = occurrenceChange(occurrence);
+  later.startsAt = snoozed.scheduledAt + 600;
+  const ReminderSchema moved = changed(env, created.id, later);
+  CHECK(moved.scheduledAt == snoozed.scheduledAt + 600);
+
+  OccurrenceChangeDto skip = occurrenceChange(occurrence);
+  skip.cancelled = true;
+  const ReminderSchema skipped = changed(env, created.id, skip);
+  CHECK(skipped.scheduledAt == following);
+}
+
+void theOccurrenceAfterASnoozeKeepsItsTime(Env& env)
+{
+  startScenario(env);
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  const auto created =
+      seriesFrom(env, {.title = "Vitaminas", .rule = "FREQ=DAILY", .scheduledAt = now - 300});
+  const int64_t following = nextAfter(created, created.scheduledAt);
+
+  SnoozeReminderDto thirtyMinutes;
+  thirtyMinutes.minutes = 30;
+  const ReminderSchema snoozed = snoozedBy(env, created.id, thirtyMinutes);
+
+  ReminderSeries series;
+  const auto next = drogon::sync_wait(series.advance(
+      {.reminderId = created.id, .targetUserId = kAna, .moment = snoozed.scheduledAt, .client = nullptr}));
+  CHECK(next.value_or(0) == following);
+  const auto rolled =
+      drogon::sync_wait(env.service.get({.id = created.id, .userId = kAna})).value_or(ReminderSchema{});
+  CHECK(rolled.scheduledAt == following);
+  CHECK(rolled.recurrenceExceptions == "[]");
+}
+
+void aSnoozePastTheNextOccurrenceFoldsIntoIt(Env& env)
+{
+  startScenario(env);
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  const auto daily =
+      seriesFrom(env, {.title = "Caminar", .rule = "FREQ=DAILY", .scheduledAt = now - 300});
+  const int64_t following = nextAfter(daily, daily.scheduledAt);
+
+  SnoozeReminderDto nextDay;
+  nextDay.tomorrow = true;
+  const ReminderSchema folded = snoozedBy(env, daily.id, nextDay);
+  CHECK(folded.scheduledAt == following);
+  const auto exceptions = parseOccurrenceExceptions(folded.recurrenceExceptions);
+  REQUIRE(exceptions.size() == 1);
+  CHECK(exceptions.front().occurrence == daily.scheduledAt);
+  CHECK(exceptions.front().cancelled);
+
+  const auto weekly =
+      seriesFrom(env, {.title = "Limpiar el horno", .rule = "FREQ=WEEKLY", .scheduledAt = now - 300});
+  const ReminderSchema postponed = snoozedBy(env, weekly.id, nextDay);
+  CHECK(postponed.scheduledAt > now);
+  CHECK(postponed.scheduledAt < nextAfter(weekly, weekly.scheduledAt));
+  const auto moved = parseOccurrenceExceptions(postponed.recurrenceExceptions);
+  REQUIRE(moved.size() == 1);
+  CHECK(moved.front().occurrence == weekly.scheduledAt);
+  CHECK(moved.front().startsAt.value_or(0) == postponed.scheduledAt);
+}
+
+void aMonthlyReminderOnTheLastDaysFiresInShortMonths(Env& env)
+{
+  startScenario(env);
+  const auto created = seriesFrom(env,
+                                  {.title = "Pagar el alquiler",
+                                   .rule = "FREQ=MONTHLY;BYMONTHDAY=31",
+                                   .scheduledAt = localEpoch({.year = 2031, .month = 1, .day = 19})});
+  CHECK(created.scheduledAt == localEpoch({.year = 2031, .month = 1, .day = 31}));
+  CHECK(created.recurrenceAnchor.value_or(0) == localEpoch({.year = 2031, .month = 1, .day = 31}));
+  CHECK(created.recurrenceRule.value_or("") == "FREQ=MONTHLY;BYMONTHDAY=31");
+
+  ReminderSeries series;
+  const auto february = drogon::sync_wait(series.advance(
+      {.reminderId = created.id, .targetUserId = kAna, .moment = created.scheduledAt, .client = nullptr}));
+  CHECK(february.value_or(0) == localEpoch({.year = 2031, .month = 2, .day = 28}));
+  const auto march = drogon::sync_wait(series.advance(
+      {.reminderId = created.id, .targetUserId = kAna, .moment = february.value_or(0), .client = nullptr}));
+  CHECK(march.value_or(0) == localEpoch({.year = 2031, .month = 3, .day = 31}));
+  const auto april = drogon::sync_wait(series.advance(
+      {.reminderId = created.id, .targetUserId = kAna, .moment = march.value_or(0), .client = nullptr}));
+  CHECK(april.value_or(0) == localEpoch({.year = 2031, .month = 4, .day = 30}));
+
+  const auto fifth = seriesFrom(env,
+                                {.title = "Revisar el medidor",
+                                 .rule = "FREQ=MONTHLY;BYMONTHDAY=5",
+                                 .scheduledAt = localEpoch({.year = 2031, .month = 1, .day = 19})});
+  CHECK(fifth.scheduledAt == localEpoch({.year = 2031, .month = 2, .day = 5}));
+
+  UpdateReminderDto rescheduled;
+  rescheduled.scheduledAt = localEpoch({.year = 2031, .month = 6, .day = 10});
+  const ReminderSchema moved =
+      drogon::sync_wait(env.service.update({.id = fifth.id, .body = rescheduled, .userId = kAna}))
+          .value_or(ReminderSchema{});
+  CHECK(moved.scheduledAt == localEpoch({.year = 2031, .month = 7, .day = 5}));
+  CHECK(moved.recurrenceAnchor.value_or(0) == localEpoch({.year = 2031, .month = 7, .day = 5}));
+
+  CreateReminderDto weeklyOnADay = body("Mal dia");
+  weeklyOnADay.recurrenceRule = "FREQ=WEEKLY;BYMONTHDAY=5";
+  CHECK_THROWS_AS(CreateReminderDto::validated(weeklyOnADay), ValidationException);
+}
+
 void unknownRecurrenceIsRefused(Env&)
 {
   CreateReminderDto hourly = body("Cada hora");
@@ -905,6 +1075,10 @@ TEST_CASE("reminders belong to the caller, whoever asks, and every change is pub
   occurrenceChangesThatCannotHoldAreRefused(env);
   theFiringPathSkipsCancelledAndKeepsMovedOccurrences(env);
   completingSkipsACancelledOccurrence(env);
+  aSnoozedOccurrenceCanBeChangedOnlyThisTime(env);
+  theOccurrenceAfterASnoozeKeepsItsTime(env);
+  aSnoozePastTheNextOccurrenceFoldsIntoIt(env);
+  aMonthlyReminderOnTheLastDaysFiresInShortMonths(env);
   user_change::setProductivitySink(nullptr);
 }
 

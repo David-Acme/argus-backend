@@ -310,6 +310,46 @@ void listingShowsTheCallersEventsAndThoseSharedWithThem(Env& env)
   CHECK(revoked.structured["events"].size() == 2);
 }
 
+void listingHonoursSkippedAndMovedOccurrences(Env& env)
+{
+  reset(env);
+  DbService::productivityClient()->execSqlSync(
+      "INSERT INTO calendar_event (owner_id, created_by, title, location, starts_at, ends_at, "
+      "recurrence_rule, recurrence_exceptions) VALUES (?, ?, 'Yoga', 'Sala', 1898589600, 1898593200, "
+      "'FREQ=DAILY', '[{\"occurrence\":1899021600,\"cancelled\":true},"
+      "{\"occurrence\":1899108000,\"cancelled\":false,\"startsAt\":1899136800,\"title\":\"Yoga tarde\"}]')",
+      kAna, kAna);
+
+  const auto skippedDay = env.ana("calendar.list_events", args({{"from", "2030-03-06T00:00:00+00:00"}, {"to", "2030-03-06T23:59:59+00:00"}}));
+  CHECK(skippedDay.text.find("No tienes eventos entre") == 0);
+  CHECK(skippedDay.structured["events"].empty());
+
+  const auto days = env.ana("calendar.list_events", args({{"from", "2030-03-06T00:00:00+00:00"}, {"to", "2030-03-08T23:59:59+00:00"}}));
+  CHECK(days.text.find("Tienes 2 eventos") == 0);
+  const Json::Value& events = days.structured["events"];
+  REQUIRE(events.size() == 2);
+  CHECK(events[0]["title"].asString() == "Yoga tarde");
+  CHECK(events[0]["startsAt"].asInt64() == 1899136800);
+  CHECK(events[0]["endsAt"].asInt64() == 1899136800 + 3600);
+  CHECK(events[0]["occurrence"].asInt64() == 1899108000);
+  CHECK(events[0]["location"].asString() == "Sala");
+  CHECK(events[1]["title"].asString() == "Yoga");
+  CHECK(events[1]["startsAt"].asInt64() == 1899194400);
+  CHECK(events[1]["occurrence"].asInt64() == 1899194400);
+  CHECK(events[0]["id"].asInt64() == events[1]["id"].asInt64());
+
+  const auto later = env.ana("calendar.list_events", args({{"from", "2030-03-09T00:00:00+00:00"}, {"to", "2030-03-09T23:59:59+00:00"}}));
+  REQUIRE(later.structured["events"].size() == 1);
+  CHECK(later.structured["events"][0]["startsAt"].asInt64() == 1899280800);
+
+  env.ana("calendar.create_event", args({{"title", "Una vez"}, {"starts_at", "2030-03-08T09:00:00+00:00"}}));
+  const auto mixed = env.ana("calendar.list_events", args({{"from", "2030-03-08T00:00:00+00:00"}, {"to", "2030-03-08T23:59:59+00:00"}}));
+  REQUIRE(mixed.structured["events"].size() == 2);
+  CHECK(mixed.structured["events"][0]["title"].asString() == "Una vez");
+  CHECK_FALSE(mixed.structured["events"][0].isMember("occurrence"));
+  CHECK(mixed.structured["events"][1]["title"].asString() == "Yoga");
+}
+
 struct CancelExpectation
 {
   const char* lang;
@@ -518,6 +558,7 @@ TEST_CASE("the productivity tools act for the caller on the caller's own rows")
   theReadBackNamesTheDayAndTheTimeInWords(env);
   anEventNeedsAUnderstandableStart(env);
   listingShowsTheCallersEventsAndThoseSharedWithThem(env);
+  listingHonoursSkippedAndMovedOccurrences(env);
   cancellingNeedsTheConfirmationCodeAndTheOwner(env, kSpanishCancel);
   cancellingNeedsTheConfirmationCodeAndTheOwner(env, kEnglishCancel);
   anotherUsersEventCannotBeNamedOrCancelled(env);

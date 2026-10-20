@@ -1,9 +1,11 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <drogon/orm/DbClient.h>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace agenda_announcement_query
 {
@@ -13,16 +15,24 @@ inline constexpr std::string_view DUE_EVENTS =
     "FROM calendar_event e JOIN leads l "
     "ON e.starts_at - l.minutes * 60 <= ? "
     "WHERE e.deleted_at IS NULL AND e.is_all_day = 0 "
+    "AND COALESCE(e.recurrence_rule, '') = '' "
     "AND e.starts_at > ? AND e.starts_at <= ? AND NOT EXISTS ("
-    "SELECT 1 FROM json_each(CASE WHEN json_valid(e.recurrence_exceptions) "
-    "THEN e.recurrence_exceptions ELSE '[]' END) x "
-    "WHERE json_extract(x.value, '$.occurrence') = e.starts_at "
-    "AND (json_extract(x.value, '$.cancelled') = 1 "
-    "OR json_extract(x.value, '$.startsAt') IS NOT NULL)) AND NOT EXISTS ("
     "SELECT 1 FROM agenda_notice a WHERE a.kind = 'event' "
     "AND a.ref_id = e.id AND a.occurrence_at = e.starts_at "
     "AND a.lead_minutes = l.minutes) "
     "ORDER BY e.starts_at ASC, e.id ASC, l.minutes DESC LIMIT ?";
+
+inline constexpr std::string_view LIVE_SERIES =
+    "SELECT id, owner_id, title, location, starts_at, recurrence_rule, "
+    "recurrence_exceptions FROM calendar_event "
+    "WHERE deleted_at IS NULL AND is_all_day = 0 "
+    "AND COALESCE(recurrence_rule, '') <> '' AND starts_at <= ? "
+    "ORDER BY id ASC";
+
+inline constexpr std::string_view EVENT_NOTICES_PREFIX =
+    "SELECT ref_id, occurrence_at, lead_minutes FROM agenda_notice "
+    "WHERE kind = 'event' AND occurrence_at > ? AND occurrence_at <= ? "
+    "AND ref_id IN (";
 
 inline constexpr std::string_view SHARES_PREFIX =
     "SELECT calendar_event_id, user_id FROM calendar_event_share "
@@ -45,6 +55,7 @@ inline constexpr std::string_view PURGE =
 }
 
 inline constexpr int64_t kMaxLeadS = 3600;
+inline constexpr std::array<int, 6> kLeadMinutes{60, 30, 15, 10, 5, 0};
 
 struct AgendaWindowInput
 {
@@ -61,4 +72,11 @@ struct AgendaRecordInput
   int leadMinutes{0};
   int64_t at{0};
   drogon::orm::DbClient* client{nullptr};
+};
+
+struct AgendaNoticesInput
+{
+  std::vector<int64_t> eventIds;
+  int64_t after{0};
+  int64_t until{0};
 };

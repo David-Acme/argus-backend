@@ -56,11 +56,11 @@ CalendarEventRepository::findByOwnerRange(
 }
 
 drogon::Task<std::vector<CalendarEventSchema>>
-CalendarEventRepository::findVisibleRange(const CalendarEventRangeInput& input) const
+CalendarEventRepository::findVisibleAgenda(const CalendarEventRangeInput& input) const
 {
   auto client = DbService::productivityClient();
   const auto result = co_await client->execSqlCoro(
-      std::string(FIND_VISIBLE_RANGE), input.from, input.to, input.ownerId, input.ownerId);
+      std::string(FIND_VISIBLE_AGENDA), input.from, input.to, input.to, input.ownerId, input.ownerId);
 
   std::vector<CalendarEventSchema> data;
   data.reserve(result.size());

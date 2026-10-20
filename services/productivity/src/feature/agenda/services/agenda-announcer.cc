@@ -3,12 +3,14 @@
 #include <runtime/blocking-task.hxx>
 #include <trantor/utils/Logger.h>
 
+#include <shared/services/recurrence/series-window.hxx>
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
 
 #include <algorithm>
 #include <array>
 #include <ctime>
+#include <iterator>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -33,6 +35,47 @@ std::string agenda_notice::clockTime(int64_t epochSeconds)
   const std::size_t written =
       std::strftime(buffer.data(), buffer.size(), "%H:%M", &local);
   return {buffer.data(), written};
+}
+
+std::vector<DueEventRow> agenda_notice::dueOccurrences(const DueOccurrencesInput& input)
+{
+  std::vector<DueEventRow> due;
+  const int64_t until = input.at + kMaxLeadS;
+  for (const auto& series : input.series) {
+    const auto occurrences = occurrencesWithin({.rule = series.recurrenceRule,
+                                                .startsAt = series.startsAt,
+                                                .endsAt = std::nullopt,
+                                                .exceptions = series.recurrenceExceptions,
+                                                .from = input.after + 1,
+                                                .to = until});
+    for (const auto& occurrence : occurrences) {
+      for (const int lead : kLeadMinutes) {
+        if (occurrence.startsAt - int64_t{lead} * 60 > input.at)
+          continue;
+        if (input.notices.contains(
+                EventNoticeKey{.refId = series.id, .occurrenceAt = occurrence.startsAt, .leadMinutes = lead}))
+          continue;
+        due.push_back({.id = series.id,
+                       .ownerId = series.ownerId,
+                       .title = occurrence.title.value_or(series.title),
+                       .location = occurrence.location.value_or(series.location),
+                       .startsAt = occurrence.startsAt,
+                       .leadMinutes = lead});
+      }
+    }
+  }
+  return due;
+}
+
+void agenda_notice::orderDue(std::vector<DueEventRow>& events)
+{
+  std::ranges::sort(events, [](const DueEventRow& left, const DueEventRow& right) {
+    if (left.startsAt != right.startsAt)
+      return left.startsAt < right.startsAt;
+    if (left.id != right.id)
+      return left.id < right.id;
+    return left.leadMinutes > right.leadMinutes;
+  });
 }
 
 AgendaNotice agenda_notice::forEvent(const DueEventRow& event,
@@ -111,6 +154,27 @@ drogon::Task<bool> AgendaAnnouncer::deliver(const AgendaNotice& notice) const
       [notifier, notice]() { return notifier->send(notice); });
 }
 
+drogon::Task<std::vector<DueEventRow>> AgendaAnnouncer::dueEvents(int64_t at) const
+{
+  const int64_t after = at - config_.graceS;
+  auto events = co_await repository_.dueEvents({.after = after, .until = at, .limit = kBatch});
+  const auto series = co_await repository_.liveSeries(at + kMaxLeadS);
+  if (series.empty())
+    co_return events;
+  std::vector<int64_t> seriesIds;
+  seriesIds.reserve(series.size());
+  for (const auto& row : series)
+    seriesIds.push_back(row.id);
+  const AgendaNoticesInput noticesInput{.eventIds = std::move(seriesIds), .after = after, .until = at + kMaxLeadS};
+  const auto notices = co_await repository_.eventNotices(noticesInput);
+  auto occurrences = agenda_notice::dueOccurrences({.series = series, .notices = notices, .after = after, .at = at});
+  events.insert(events.end(), std::make_move_iterator(occurrences.begin()), std::make_move_iterator(occurrences.end()));
+  agenda_notice::orderDue(events);
+  if (events.size() > static_cast<std::size_t>(kBatch))
+    events.resize(static_cast<std::size_t>(kBatch));
+  co_return events;
+}
+
 drogon::Task<AgendaSweepReport> AgendaAnnouncer::sweep() const
 {
   AgendaSweepReport report;
@@ -120,8 +184,7 @@ drogon::Task<AgendaSweepReport> AgendaAnnouncer::sweep() const
 
   std::vector<DueEventRow> events;
   if (!dependencies_.eventsActive || dependencies_.eventsActive())
-    events = co_await repository_.dueEvents(
-        {.after = at - config_.graceS, .until = at, .limit = kBatch});
+    events = co_await dueEvents(at);
   std::vector<int64_t> eventIds;
   eventIds.reserve(events.size());
   for (const auto& event : events)

@@ -2,6 +2,7 @@
 
 #include <shared/services/recurrence/occurrence-exceptions.hxx>
 #include <shared/services/recurrence/recurrence.hxx>
+#include <shared/services/recurrence/series-window.hxx>
 
 #include <json/json.h>
 
@@ -120,6 +121,27 @@ TEST_CASE("a valid rule keeps its frequency and interval")
   const RecurrenceRule parsed = rule.value_or(RecurrenceRule{});
   CHECK(parsed.frequency == RecurrenceFrequency::Weekly);
   CHECK(parsed.interval == 2);
+}
+
+TEST_CASE("a monthly rule may name its day of the month")
+{
+  const auto rule = parseRecurrenceRule("FREQ=MONTHLY;INTERVAL=3;BYMONTHDAY=31");
+  REQUIRE(rule.has_value());
+  const RecurrenceRule parsed = rule.value_or(RecurrenceRule{});
+  CHECK(parsed.frequency == RecurrenceFrequency::Monthly);
+  CHECK(parsed.interval == 3);
+  CHECK(parsed.monthDay.value_or(0) == 31);
+  CHECK_FALSE(parseRecurrenceRule("FREQ=DAILY").value_or(RecurrenceRule{}).monthDay.has_value());
+}
+
+TEST_CASE("a series on a day of the month starts on its first such day")
+{
+  useZone("America/Lima");
+  const auto rule = parseRecurrenceRule("FREQ=MONTHLY;BYMONTHDAY=31").value_or(RecurrenceRule{});
+  CHECK(wallOfEpoch(seriesStart(rule, epochOfWall("2026-11-02T09:00:00"))) == "2026-11-30T09:00:00");
+  CHECK(wallOfEpoch(seriesStart(rule, epochOfWall("2026-12-31T09:00:00"))) == "2026-12-31T09:00:00");
+  const auto plain = parseRecurrenceRule("FREQ=MONTHLY").value_or(RecurrenceRule{});
+  CHECK(seriesStart(plain, epochOfWall("2026-11-02T09:00:00")) == epochOfWall("2026-11-02T09:00:00"));
 }
 
 TEST_CASE("tomorrow keeps the wall time across a change of day length")
@@ -254,4 +276,139 @@ TEST_CASE("the next firing skips cancelled occurrences and fires moved ones at t
   const auto plain = nextFiring(
       {.rule = rule, .anchor = anchor, .after = anchor, .moment = anchor, .exceptions = none});
   CHECK(plain.value_or(NextFiring{}).at == day1);
+}
+
+namespace
+{
+std::vector<std::string> startsOf(const std::vector<SeriesOccurrence>& occurrences)
+{
+  std::vector<std::string> walls;
+  walls.reserve(occurrences.size());
+  for (const auto& occurrence : occurrences)
+    walls.push_back(wallOfEpoch(occurrence.startsAt));
+  return walls;
+}
+}
+
+TEST_CASE("a window of a series leaves skipped occurrences out and shows moved ones at their new time")
+{
+  useZone("America/Lima");
+  const int64_t anchor = epochOfWall("2026-10-05T08:00:00");
+  const int64_t second = epochOfWall("2026-10-06T08:00:00");
+  const int64_t third = epochOfWall("2026-10-07T08:00:00");
+  const int64_t fifth = epochOfWall("2026-10-09T08:00:00");
+  const std::string exceptions = serializeOccurrenceExceptions(
+      {{.occurrence = second,
+        .cancelled = true,
+        .startsAt = std::nullopt,
+        .endsAt = std::nullopt,
+        .title = std::nullopt,
+        .location = std::nullopt},
+       {.occurrence = third,
+        .cancelled = false,
+        .startsAt = third + 5400,
+        .endsAt = std::nullopt,
+        .title = std::string("Yoga en el parque"),
+        .location = std::string("Parque")},
+       {.occurrence = fifth,
+        .cancelled = false,
+        .startsAt = epochOfWall("2026-10-12T19:00:00"),
+        .endsAt = std::nullopt,
+        .title = std::nullopt,
+        .location = std::nullopt}});
+  const std::string rule = "FREQ=DAILY";
+  const auto week = occurrencesWithin({.rule = rule,
+                                       .startsAt = anchor,
+                                       .endsAt = anchor + 3600,
+                                       .exceptions = exceptions,
+                                       .from = epochOfWall("2026-10-06T00:00:00"),
+                                       .to = epochOfWall("2026-10-09T23:59:59")});
+  CHECK(startsOf(week) == std::vector<std::string>{"2026-10-07T09:30:00", "2026-10-08T08:00:00"});
+  REQUIRE(week.size() == 2);
+  CHECK(week.front().occurrence == third);
+  CHECK(week.front().endsAt.value_or(0) == third + 5400 + 3600);
+  CHECK(week.front().title.value_or("") == "Yoga en el parque");
+  CHECK(week.front().location.value_or("") == "Parque");
+  CHECK(week.front().repeats);
+
+  const auto movedIn = occurrencesWithin({.rule = rule,
+                                          .startsAt = anchor,
+                                          .endsAt = std::nullopt,
+                                          .exceptions = exceptions,
+                                          .from = epochOfWall("2026-10-12T12:00:00"),
+                                          .to = epochOfWall("2026-10-12T23:59:59")});
+  CHECK(startsOf(movedIn) == std::vector<std::string>{"2026-10-12T19:00:00"});
+  REQUIRE(movedIn.size() == 1);
+  CHECK(movedIn.front().occurrence == fifth);
+}
+
+TEST_CASE("a window of a row that does not repeat holds its own start when it falls inside")
+{
+  useZone("America/Lima");
+  const int64_t start = epochOfWall("2026-10-05T08:00:00");
+  const auto single = occurrencesWithin({.rule = std::nullopt,
+                                         .startsAt = start,
+                                         .endsAt = std::nullopt,
+                                         .exceptions = "[]",
+                                         .from = start - 60,
+                                         .to = start + 60});
+  REQUIRE(single.size() == 1);
+  CHECK_FALSE(single.front().repeats);
+  const std::string unreadable = "FREQ=HOURLY";
+  CHECK(occurrencesWithin({.rule = unreadable,
+                           .startsAt = start,
+                           .endsAt = std::nullopt,
+                           .exceptions = "[]",
+                           .from = start + 1,
+                           .to = start + 86400})
+            .empty());
+  const std::string monthly = "FREQ=MONTHLY;BYMONTHDAY=31";
+  const auto months = occurrencesWithin({.rule = monthly,
+                                         .startsAt = epochOfWall("2026-10-31T09:00:00"),
+                                         .endsAt = std::nullopt,
+                                         .exceptions = "[]",
+                                         .from = epochOfWall("2027-02-01T00:00:00"),
+                                         .to = epochOfWall("2027-04-30T23:59:59")});
+  CHECK(startsOf(months) ==
+        std::vector<std::string>{"2027-02-28T09:00:00", "2027-03-31T09:00:00", "2027-04-30T09:00:00"});
+}
+
+TEST_CASE("a snooze moves only the current occurrence and folds into the next when it reaches it")
+{
+  useZone("America/Lima");
+  const auto rule = parseRecurrenceRule("FREQ=DAILY").value_or(RecurrenceRule{});
+  const int64_t anchor = epochOfWall("2026-10-05T08:00:00");
+  const int64_t second = epochOfWall("2026-10-06T08:00:00");
+  const OccurrenceExceptions none;
+
+  const auto moved = snoozeSeries(
+      {.rule = rule, .anchor = anchor, .scheduledAt = anchor, .exceptions = none, .target = anchor + 1800});
+  REQUIRE(moved.has_value());
+  CHECK_FALSE(moved->folded);
+  CHECK(moved->scheduledAt == anchor + 1800);
+  REQUIRE(moved->exceptions.size() == 1);
+  CHECK(moved->exceptions.front().occurrence == anchor);
+  CHECK(moved->exceptions.front().startsAt.value_or(0) == anchor + 1800);
+
+  const auto again = snoozeSeries({.rule = rule,
+                                   .anchor = anchor,
+                                   .scheduledAt = anchor + 1800,
+                                   .exceptions = moved->exceptions,
+                                   .target = anchor + 3600});
+  REQUIRE(again.has_value());
+  REQUIRE(again->exceptions.size() == 1);
+  CHECK(again->exceptions.front().occurrence == anchor);
+  CHECK(again->exceptions.front().startsAt.value_or(0) == anchor + 3600);
+
+  const auto folded = snoozeSeries(
+      {.rule = rule, .anchor = anchor, .scheduledAt = anchor, .exceptions = none, .target = second + 60});
+  REQUIRE(folded.has_value());
+  CHECK(folded->folded);
+  CHECK(folded->scheduledAt == second);
+  REQUIRE(folded->exceptions.size() == 1);
+  CHECK(folded->exceptions.front().cancelled);
+
+  CHECK_FALSE(snoozeSeries(
+                  {.rule = rule, .anchor = anchor, .scheduledAt = anchor + 60, .exceptions = none, .target = anchor + 600})
+                  .has_value());
 }
