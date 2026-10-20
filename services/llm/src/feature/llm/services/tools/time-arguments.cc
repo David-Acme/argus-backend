@@ -91,11 +91,11 @@ std::optional<int64_t> chosen(const Json::Value& given, const std::optional<int6
 
 bool asksAboutTime(std::string_view utterance)
 {
-  constexpr std::array<std::string_view, 13> kQuestionsEs{"que hora es", "que hora tienes", "que horas son",
-                                                          "a que hora", "dime la hora", "que dia es",
+  constexpr std::array<std::string_view, 12> kQuestionsEs{"que hora es", "que hora tienes", "que horas son",
+                                                          "dime la hora", "que dia es",
                                                           "que dia estamos", "que fecha es", "es tarde", "es temprano",
                                                           "en que ano estamos", "que ano es", "que ano estamos"};
-  constexpr std::array<std::string_view, 14> kQuestionsEn{"what time", "what s the time", "the time is it",
+  constexpr std::array<std::string_view, 15> kQuestionsEn{"what time is it", "what time s it", "what s the time", "the time is it",
                                                            "do you have the time", "tell me the time", "what day is",
                                                            "what s the day", "what date", "what s the date", "is it late",
                                                            "is it early", "what year is it", "what year are we in",
