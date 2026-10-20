@@ -18,7 +18,7 @@ namespace
 {
 
 constexpr int64_t kHourSeconds = 3600;
-constexpr int64_t kDaySeconds = 24 * 3600;
+constexpr int64_t kDaySeconds = int64_t{24} * 3600;
 constexpr int64_t kRetentionSeconds = kDaySeconds;
 
 bool blank(std::string_view text)
@@ -298,7 +298,7 @@ RelayResult RelayService::deliverTo(const DeliveryInput& input) const
 VisitorReply RelayService::visitorAsk(const VisitorRequest& request) const
 {
   if (request.need.empty())
-    return {.needsAnswer = true, .line = relay_lines::visitorAsk(request.lang)};
+    return {.needsAnswer = true, .line = std::string(relay_lines::visitorAsk(request.lang))};
   const auto resolution = relay_recipient::resolve({.roster = request.roster, .asked = request.recipient, .senderId = 0});
   if (resolution.kind == relay_recipient::ResolutionKind::Resolved) {
     try {
@@ -313,7 +313,7 @@ VisitorReply RelayService::visitorAsk(const VisitorRequest& request) const
       LOG_WARN << "argus-llm: a visitor's notice was not made: " << refusal.what();
     }
   }
-  return {.needsAnswer = false, .line = relay_lines::visitorDone(request.lang)};
+  return {.needsAnswer = false, .line = std::string(relay_lines::visitorDone(request.lang))};
 }
 
 SweepResult RelayService::sweep(int64_t now) const
@@ -366,7 +366,7 @@ void RelayService::notifyVisitor(const VisitorDelivery& delivery) const
                                   .kind = messenger::CourierKind::Visitor,
                                   .body = delivery.need,
                                   .spokenLine = line,
-                                  .title = relay_lines::visitorTitle(delivery.camera, delivery.lang),
+                                  .title = relay_lines::visitorTitle({.camera = delivery.camera, .lang = delivery.lang}),
                                   .replyToKey = {},
                                   .commandId = commandId("visitor", delivery.now, delivery.recipientId),
                                   .expiresAt = expiresAt(delivery.now)})

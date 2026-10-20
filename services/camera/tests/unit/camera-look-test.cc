@@ -11,17 +11,16 @@
 #include <shared/services/camera-driver/camera-scene-log.hxx>
 
 #include <vector>
+#include <test-support/value-of.hxx>
 
 TEST_CASE("a box off center becomes degrees, and the dead zone keeps a centered box still")
 {
   const FieldOfView fov{.horizontalDeg = 80.0, .verticalDeg = 40.0};
-  const auto right = aim_math::centerOffset({.box = {.x = 0.8, .y = 0.45, .w = 0.1, .h = 0.1}, .fov = fov, .deadZone = 0.05});
-  REQUIRE(right.has_value());
-  CHECK(right->pan == doctest::Approx(0.35 * 80.0));
-  CHECK(right->tilt == doctest::Approx(0.0));
-  const auto low = aim_math::centerOffset({.box = {.x = 0.45, .y = 0.8, .w = 0.1, .h = 0.1}, .fov = fov, .deadZone = 0.05});
-  REQUIRE(low.has_value());
-  CHECK(low->tilt == doctest::Approx(-0.35 * 40.0));
+  const auto right = valueOf(aim_math::centerOffset({.box = {.x = 0.8, .y = 0.45, .w = 0.1, .h = 0.1}, .fov = fov, .deadZone = 0.05}));
+  CHECK(right.pan == doctest::Approx(0.35 * 80.0));
+  CHECK(right.tilt == doctest::Approx(0.0));
+  const auto low = valueOf(aim_math::centerOffset({.box = {.x = 0.45, .y = 0.8, .w = 0.1, .h = 0.1}, .fov = fov, .deadZone = 0.05}));
+  CHECK(low.tilt == doctest::Approx(-0.35 * 40.0));
   CHECK_FALSE(aim_math::centerOffset({.box = {.x = 0.47, .y = 0.47, .w = 0.06, .h = 0.06}, .fov = fov, .deadZone = 0.05})
                   .has_value());
 }
@@ -32,9 +31,8 @@ TEST_CASE("a moving target is led only when its velocity agrees")
                                         {.cx = 0.45, .cy = 0.5, .atMs = 500},
                                         {.cx = 0.5, .cy = 0.5, .atMs = 1000},
                                         {.cx = 0.55, .cy = 0.5, .atMs = 1500}};
-  const auto ahead = aim_math::lead({.samples = steady, .minSamples = 3, .consistency = 0.7, .aheadMs = 1000});
-  REQUIRE(ahead.has_value());
-  CHECK(ahead->x > 0.55);
+  const auto ahead = valueOf(aim_math::lead({.samples = steady, .minSamples = 3, .consistency = 0.7, .aheadMs = 1000}));
+  CHECK(ahead.x > 0.55);
   const std::vector<TrackSample> jitter{{.cx = 0.4, .cy = 0.5, .atMs = 0},
                                         {.cx = 0.45, .cy = 0.55, .atMs = 500},
                                         {.cx = 0.42, .cy = 0.5, .atMs = 1000},
@@ -165,9 +163,8 @@ TEST_CASE("a follow keeps one target, re-acquires it at the center after its own
   CHECK_FALSE(board.sighted({.sighting = near, .fov = {}, .deadZone = 0.05, .leadMinSamples = 3, .leadConsistency = 0.7})
                   .has_value());
   const TrackSighting edge{.cameraId = 904, .trackId = 3, .box = {.x = 0.85, .y = 0.4, .w = 0.06, .h = 0.2}, .atMs = 1300};
-  const auto step = board.sighted({.sighting = edge, .fov = {}, .deadZone = 0.05, .leadMinSamples = 3, .leadConsistency = 0.7});
-  REQUIRE(step.has_value());
-  CHECK(step->delta.pan > 0.0);
+  const auto step = valueOf(board.sighted({.sighting = edge, .fov = {}, .deadZone = 0.05, .leadMinSamples = 3, .leadConsistency = 0.7}));
+  CHECK(step.delta.pan > 0.0);
   CHECK_FALSE(board.sighted({.sighting = edge, .fov = {}, .deadZone = 0.05, .leadMinSamples = 3, .leadConsistency = 0.7})
                   .has_value());
   board.settled(904);

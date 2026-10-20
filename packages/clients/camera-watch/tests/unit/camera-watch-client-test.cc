@@ -9,6 +9,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -119,10 +120,9 @@ TEST_CASE("the microphone feed delivers every frame and then the camera's refusa
   CHECK(end.refusal == v1::WATCH_REFUSAL_MASKED);
   CHECK_FALSE(end.stopped);
 
-  const auto cameras = client.listWatch();
-  REQUIRE(cameras.has_value());
-  REQUIRE(cameras->size() == 1);
-  CHECK(cameras->front().name() == "Sala");
+  const auto cameras = valueOf(client.listWatch());
+  REQUIRE(cameras.size() == 1);
+  CHECK(cameras.front().name() == "Sala");
 
   const WatchMicrophoneEnd refused = client.readMicrophone({.cameraId = 0, .onFrame = {}, .stop = {}});
   CHECK(refused.status.error_code() == grpc::StatusCode::INVALID_ARGUMENT);

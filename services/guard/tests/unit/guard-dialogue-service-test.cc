@@ -17,6 +17,7 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+#include <utility>
 
 #include "temp-db.hxx"
 #include "wait-for-boot.hxx"
@@ -204,9 +205,16 @@ public:
   mutable std::atomic<int> calls{0};
 };
 
-Json::Value observation(const std::string& eventId, int64_t cameraId,
-                        int64_t trackId)
+struct ObservationOf
 {
+  std::string eventId;
+  int64_t cameraId{0};
+  int64_t trackId{0};
+};
+
+Json::Value observation(const ObservationOf& of)
+{
+  const auto& [eventId, cameraId, trackId] = of;
   Json::Value event(Json::objectValue);
   event["schemaVersion"] = 2;
   event["eventId"] = eventId;
@@ -227,17 +235,17 @@ Json::Value observation(const std::string& eventId, int64_t cameraId,
   bbox["y"] = 0.0;
   bbox["w"] = 40.0;
   bbox["h"] = 40.0;
-  object["bbox"] = bbox;
+  object["bbox"] = std::move(bbox);
   Json::Value objects(Json::arrayValue);
   objects.append(object);
-  event["objects"] = objects;
+  event["objects"] = std::move(objects);
   return event;
 }
 
 Json::Value alertObservation(const std::string& eventId, int64_t cameraId,
                              int64_t trackId)
 {
-  Json::Value event = observation(eventId, cameraId, trackId);
+  Json::Value event = observation({.eventId = eventId, .cameraId = cameraId, .trackId = trackId});
   event["rule"] = "person_in_alert_zone";
   event["severity"] = "critical";
   return event;
@@ -359,7 +367,7 @@ TEST_CASE("every saga failpoint converges on redelivery without duplicates")
     *failTarget = failpoint;
     bool threw = false;
     try {
-      drogon::sync_wait(service->handle(observation(eventId, cameraRef, 1), 1));
+      drogon::sync_wait(service->handle(observation({.eventId = eventId, .cameraId = cameraRef, .trackId = 1}), 1));
     }
     catch (const std::exception&) {
       threw = true;
@@ -370,9 +378,9 @@ TEST_CASE("every saga failpoint converges on redelivery without duplicates")
     *failTarget = "";
     service = makeService();
     REQUIRE(drogon::sync_wait(
-        service->handle(observation(eventId, cameraRef, 1), 1)));
+        service->handle(observation({.eventId = eventId, .cameraId = cameraRef, .trackId = 1}), 1)));
     REQUIRE(drogon::sync_wait(
-        service->handle(observation(eventId2, cameraRef, 1), 1)));
+        service->handle(observation({.eventId = eventId2, .cameraId = cameraRef, .trackId = 1}), 1)));
 
     CHECK(
         scalar("SELECT status FROM guard_observation_inbox WHERE event_id = '" +

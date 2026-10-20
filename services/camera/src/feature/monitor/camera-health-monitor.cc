@@ -17,6 +17,7 @@
 #include <array>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <chrono>
 #include <cmath>
 #include <cstdlib>
@@ -155,7 +156,8 @@ Texture textureOf(const cv::Mat& gray, int side)
       cv::Scalar blockDeviation;
       cv::meanStdDev(gray(cv::Rect(column * blockWidth, row * blockHeight, width, height)), blockMean,
                      blockDeviation);
-      texture.blocks.at(static_cast<size_t>(row * side + column)) = blockDeviation[0];
+      const int block = row * side + column;
+      texture.blocks.at(static_cast<size_t>(block)) = blockDeviation[0];
     }
   }
   return texture;
@@ -228,7 +230,7 @@ double chromaOf(const cv::Mat& bgr)
   return (cv::mean(blueGreen)[0] + cv::mean(greenRed)[0]) / 2.0;
 }
 
-std::string linkOf(const std::string& config)
+std::string_view linkOf(const std::string& config)
 {
   const Json::Value parsed = json_util::fromString(config);
   if (parsed.isObject() && parsed.get("link", "").asString() == "wired")
@@ -318,7 +320,7 @@ bool health_monitor::tampering(CameraHealthState status, bool sudden)
 
 CameraHealthMonitor::CameraHealthMonitor(Dependencies dependencies,
                                          CameraHealthConfig config)
-    : dependencies_(std::move(dependencies)), config_(std::move(config))
+    : dependencies_(std::move(dependencies)), config_(config)
 {
 }
 
@@ -778,7 +780,7 @@ drogon::Task<void> CameraHealthMonitor::tick(CameraRef camera)
                                  .status = status,
                                  .metrics = published,
                                  .detectedAtMs = capturedAt,
-                                 .link = linkOf(camera.camera.config),
+                                 .link = std::string(linkOf(camera.camera.config)),
                                  .onsetAtMs = onsetAtMs});
   }
   co_return;

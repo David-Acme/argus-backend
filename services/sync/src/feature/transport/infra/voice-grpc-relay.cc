@@ -155,9 +155,9 @@ Json::Value VoiceGrpcRelay::renderServerFrame(
     Json::Value arguments = json_util::fromString(frame.action().arguments());
     if (!arguments.isObject())
       arguments = Json::Value(Json::objectValue);
-    payload["arguments"] = arguments;
+    payload["arguments"] = std::move(arguments);
   }
-  msg["payload"] = payload;
+  msg["payload"] = std::move(payload);
   return msg;
 }
 

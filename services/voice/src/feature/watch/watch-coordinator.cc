@@ -129,6 +129,7 @@ std::vector<WatchCameraInfo> WatchCoordinator::cameras() const
 {
   std::vector<WatchCameraInfo> out;
   std::scoped_lock lock(mutex_);
+  out.reserve(cameras_.size());
   for (const auto& [id, info] : cameras_)
     out.push_back(info);
   return out;

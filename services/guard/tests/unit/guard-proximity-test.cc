@@ -22,6 +22,7 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -175,26 +176,24 @@ RoomBeliefConfig beliefConfig()
 
 TEST_CASE("the beacon token is the first sixteen bytes of HMAC-SHA256 over the big-endian counter")
 {
-  const auto seed = beaconSeedBytes(kSeed);
-  REQUIRE(seed.has_value());
-  CHECK(beaconUuid(beaconToken(*seed, 0)) == "9f0cd9b9-4097-fe49-2991-8d2b8942b344");
-  CHECK(beaconUuid(beaconToken(*seed, 1)) == "c432e059-c378-eef7-fe2f-1181a4050836");
-  CHECK(beaconUuid(beaconToken(*seed, 1902345)) == "adb473b3-b0e2-0243-9cca-c2b4f082d5ca");
+  const auto seed = valueOf(beaconSeedBytes(kSeed));
+  CHECK(beaconUuid(beaconToken(seed, 0)) == "9f0cd9b9-4097-fe49-2991-8d2b8942b344");
+  CHECK(beaconUuid(beaconToken(seed, 1)) == "c432e059-c378-eef7-fe2f-1181a4050836");
+  CHECK(beaconUuid(beaconToken(seed, 1902345)) == "adb473b3-b0e2-0243-9cca-c2b4f082d5ca");
 }
 
 TEST_CASE("the beacon counter is the floor of the time over the rotation")
 {
-  CHECK(beaconCounter(1799, 900) == 1);
-  CHECK(beaconCounter(1800, 900) == 2);
-  CHECK(beaconCounter(5, 0) == 5);
+  CHECK(beaconCounter({.nowSeconds = 1799, .rotateSeconds = 900}) == 1);
+  CHECK(beaconCounter({.nowSeconds = 1800, .rotateSeconds = 900}) == 2);
+  CHECK(beaconCounter({.nowSeconds = 5, .rotateSeconds = 0}) == 5);
 }
 
 TEST_CASE("a seed is 32 random bytes in base64 and a short or broken seed is refused")
 {
   const std::string minted = mintBeaconSeed();
-  const auto bytes = beaconSeedBytes(minted);
-  REQUIRE(bytes.has_value());
-  CHECK(bytes->size() == kBeaconSeedBytes);
+  const auto bytes = valueOf(beaconSeedBytes(minted));
+  CHECK(bytes.size() == kBeaconSeedBytes);
   CHECK(mintBeaconSeed() != minted);
   CHECK_FALSE(beaconSeedBytes("AAEC").has_value());
   CHECK_FALSE(beaconSeedBytes("abc").has_value());
@@ -202,19 +201,17 @@ TEST_CASE("a seed is 32 random bytes in base64 and a short or broken seed is ref
 
 TEST_CASE("the beacon table answers the neighbouring rotations in both byte orders")
 {
-  const auto seed = beaconSeedBytes(kSeed);
-  REQUIRE(seed.has_value());
-  const std::vector<BeaconSeed> seeds{{.userId = 7, .seed = *seed}};
+  const auto seed = valueOf(beaconSeedBytes(kSeed));
+  const std::vector<BeaconSeed> seeds{{.userId = 7, .seed = seed}};
   const auto table = beaconTable({.seeds = seeds, .nowSeconds = 1902345LL * 900 + 10, .rotateSeconds = 900});
-  const auto current = normalizedUuid("ADB473B3-B0E2-0243-9CCA-C2B4F082D5CA");
-  REQUIRE(current.has_value());
-  CHECK(table.at(*current) == 7);
-  BeaconToken reversed = beaconToken(*seed, 1902345);
+  const auto current = valueOf(normalizedUuid("ADB473B3-B0E2-0243-9CCA-C2B4F082D5CA"));
+  CHECK(table.at(current) == 7);
+  BeaconToken reversed = beaconToken(seed, 1902345);
   std::ranges::reverse(reversed);
   CHECK(table.at(*normalizedUuid(beaconUuid(reversed))) == 7);
-  CHECK(table.contains(*normalizedUuid(beaconUuid(beaconToken(*seed, 1902344)))));
-  CHECK(table.contains(*normalizedUuid(beaconUuid(beaconToken(*seed, 1902346)))));
-  CHECK_FALSE(table.contains(*normalizedUuid(beaconUuid(beaconToken(*seed, 1902343)))));
+  CHECK(table.contains(*normalizedUuid(beaconUuid(beaconToken(seed, 1902344)))));
+  CHECK(table.contains(*normalizedUuid(beaconUuid(beaconToken(seed, 1902346)))));
+  CHECK_FALSE(table.contains(*normalizedUuid(beaconUuid(beaconToken(seed, 1902343)))));
   CHECK_FALSE(normalizedUuid("not-a-uuid").has_value());
 }
 
@@ -278,8 +275,8 @@ TEST_CASE("a face outweighs a phone, and at night it counts half")
                         .night = true, .atMs = 0},
                        config) == doctest::Approx(0.5));
   CHECK(decayFactor(20000, 20000) == doctest::Approx(0.5));
-  CHECK(bleStrength(-95, 95) == doctest::Approx(0.0));
-  CHECK(bleStrength(-40, 95) == doctest::Approx(1.0));
+  CHECK(bleStrength({.rssi = -95, .rssiFloor = 95}) == doctest::Approx(0.0));
+  CHECK(bleStrength({.rssi = -40, .rssiFloor = 95}) == doctest::Approx(1.0));
   CHECK(voiceStrength({.userId = 1, .cameraId = 1, .snrDb = 23.0, .voiceprint = false, .atMs = 0}) ==
         doctest::Approx(0.5));
 }
@@ -289,10 +286,9 @@ TEST_CASE("the room switches only after the new room has led by the margin for t
   RoomBelief belief(beliefConfig());
   belief.observe({.userId = 7, .room = "living", .kind = ProximityEvidenceKind::Face, .strength = 1.0,
                   .night = false, .atMs = 1000});
-  auto verdict = belief.verdict({.userId = 7, .nowMs = 1000});
-  REQUIRE(verdict.has_value());
-  CHECK(verdict->room == "living");
-  CHECK(verdict->strongest == ProximityEvidenceKind::Face);
+  auto verdict = valueOf(belief.verdict({.userId = 7, .nowMs = 1000}));
+  CHECK(verdict.room == "living");
+  CHECK(verdict.strongest == ProximityEvidenceKind::Face);
 
   belief.observe({.userId = 7, .room = "kitchen", .kind = ProximityEvidenceKind::Face, .strength = 1.0,
                   .night = false, .atMs = 2000});
@@ -340,10 +336,9 @@ TEST_CASE("a member's beacon is minted on opt-in and a member who opted out of l
   CHECK(receiver.row.id > 0);
   CHECK(drogon::sync_wait(service.me(7)).receivers == 1);
 
-  const auto seed = beaconSeedBytes(*after.seed);
-  REQUIRE(seed.has_value());
-  const int64_t counter = beaconCounter(epochMs() / 1000, config.rotateSeconds);
-  probe.hear({{.uuid = beaconUuid(beaconToken(*seed, static_cast<uint64_t>(counter))), .rssi = -50}});
+  const auto seed = valueOf(beaconSeedBytes(*after.seed));
+  const int64_t counter = beaconCounter({.nowSeconds = epochMs() / 1000, .rotateSeconds = config.rotateSeconds});
+  probe.hear({{.uuid = beaconUuid(beaconToken(seed, static_cast<uint64_t>(counter))), .rssi = -50}});
   drogon::sync_wait(service.poll());
   const std::vector<RoomVerdict> people = drogon::sync_wait(service.people());
   REQUIRE(people.size() == 1);

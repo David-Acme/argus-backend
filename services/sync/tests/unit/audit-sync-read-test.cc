@@ -36,6 +36,8 @@
 #include <trantor/net/EventLoop.h>
 #include <unistd.h>
 #include <vector>
+#include <test-support/value-of.hxx>
+#include <utility>
 
 namespace
 {
@@ -396,9 +398,8 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
   const auto auditRows = drogon::sync_wait(auditRepository.findSync(auditFilter));
   REQUIRE(auditRows.size() == 1);
   CHECK(auditRows.front()["id"].asInt64() == 2);
-  const auto auditLast = drogon::sync_wait(auditRepository.findLastSync(auditFilter));
-  REQUIRE(auditLast);
-  CHECK((*auditLast)["id"].asInt64() == 2);
+  const auto auditLast = valueOf(drogon::sync_wait(auditRepository.findLastSync(auditFilter)));
+  CHECK(auditLast["id"].asInt64() == 2);
 
   UserAuditLogSyncFilter userAuditFilter;
   userAuditFilter.userId = 7;
@@ -545,19 +546,18 @@ TEST_CASE("audit sync reads resolve to the default client, not the "
     v["option"] = "project";
     Json::Value row;
     row["id"] = Json::Int64(9);
-    v["info"] = row;
+    v["info"] = std::move(row);
     Json::Value users(Json::arrayValue);
     users.append(42);
-    v["users"] = users;
+    v["users"] = std::move(users);
     return v;
   }();
   const auto plainConn = std::make_shared<RecordingConnection>();
   drogon::app().getIOLoop(0)->runInLoop(
       [&] { rooms.join(userRoom(42), plainConn); });
-  const auto plainFanout = sync_fan_out::parseEvent(plainEvent);
-  REQUIRE(plainFanout);
+  const auto plainFanout = valueOf(sync_fan_out::parseEvent(plainEvent));
   drogon::app().getIOLoop(0)->runInLoop(
-      [fanout = *plainFanout] { sync_fan_out::dispatchEvent(fanout); });
+      [fanout = plainFanout] { sync_fan_out::dispatchEvent(fanout); });
   REQUIRE(waitForMessages(plainConn, std::chrono::seconds(5)));
   drogon::app().getIOLoop(0)->runInLoop(
       [&] { rooms.leave(userRoom(42), plainConn); });

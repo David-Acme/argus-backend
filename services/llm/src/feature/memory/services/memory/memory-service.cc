@@ -65,9 +65,9 @@ std::vector<std::string> splitSentences(const std::string& text)
 {
   std::vector<std::string> sentences;
   std::string current;
-  for (size_t i = 0; i < text.size(); ++i) {
-    current += text[i];
-    const unsigned char c = static_cast<unsigned char>(text[i]);
+  for (const char ch : text) {
+    current += ch;
+    const auto c = static_cast<unsigned char>(ch);
     const bool boundary =
         c == '.' || c == '!' || c == '?' || c == ';' || c == ':' || c == '\n';
     if (boundary) {
@@ -441,9 +441,10 @@ RecallContext MemoryService::recall(const RecallInput& input)
   return ctx;
 }
 
-std::string MemoryService::durableTranscript(const std::string& transcript,
-                                            const std::string& lang) const
+std::string MemoryService::durableTranscript(const TranscriptJobInput& input) const
 {
+  const std::string& transcript = input.transcript;
+  const std::string& lang = input.lang;
   std::string durable;
   bool dropAnswer = false;
   size_t lineStart = 0;
@@ -487,7 +488,7 @@ void MemoryService::enqueueSummary(const TranscriptJobInput& input)
   if (!chat_.available())
     return;
 
-  const std::string durable = durableTranscript(input.transcript, input.lang);
+  const std::string durable = durableTranscript(input);
   if (durable.empty())
     return;
 
@@ -507,7 +508,7 @@ void MemoryService::enqueueCompaction(const TranscriptJobInput& input)
   if (!chat_.available())
     return;
 
-  const std::string durable = durableTranscript(input.transcript, input.lang);
+  const std::string durable = durableTranscript(input);
   if (durable.empty())
     return;
 
@@ -860,7 +861,7 @@ bool english(const tools::ToolCall& call)
   return call.context.lang == "en";
 }
 
-std::string scopeRefusal(const tools::ToolCall& call)
+std::string_view scopeRefusal(const tools::ToolCall& call)
 {
   return english(call) ? "Memory is only available to identified users."
                        : "La memoria solo está disponible para usuarios identificados.";

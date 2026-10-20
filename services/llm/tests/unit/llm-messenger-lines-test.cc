@@ -32,8 +32,8 @@ TEST_CASE("the visitor's lines do not depend on who was asked for")
   CHECK(relay_lines::visitorAsk("es") == "¿En qué le puedo ayudar?");
   CHECK(relay_lines::visitorDone("es") == "Gracias, se lo hago llegar.");
   CHECK(relay_lines::visitorDone("en") == "Thank you, I will pass it on.");
-  CHECK(relay_lines::visitorTitle("Sala", "es") == "Un visitante en Sala");
+  CHECK(relay_lines::visitorTitle({.camera = "Sala", .lang = "es"}) == "Un visitante en Sala");
   CHECK(relay_lines::visitorMessage({.camera = "Sala", .need = "traigo el paquete", .lang = "es"}) ==
         "Un visitante en Sala dice: traigo el paquete");
-  CHECK(relay_lines::visitorTitle("Patio", "en") == "A visitor at Patio");
+  CHECK(relay_lines::visitorTitle({.camera = "Patio", .lang = "en"}) == "A visitor at Patio");
 }

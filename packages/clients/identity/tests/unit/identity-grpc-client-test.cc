@@ -8,6 +8,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -97,9 +98,8 @@ TEST_CASE("an id the client cannot resolve never reaches the gateway")
   CHECK_FALSE(client.promotePerson(
       {.personId = 12, .accessToken = "", .deviceHash = ""}));
 
-  const auto served = client.getPerson(4);
-  REQUIRE(served);
-  CHECK(served->personId == 12);
+  const auto served = valueOf(client.getPerson(4));
+  CHECK(served.personId == 12);
   CHECK(client.promotePerson(
       {.personId = 12, .accessToken = "owner", .deviceHash = ""}));
 
@@ -163,15 +163,13 @@ TEST_CASE("the optional legs of an answer decide the profile")
 
   auto* person = service.person.mutable_person();
   person->set_person_id(12);
-  const auto nameless = client.getPerson(12);
-  REQUIRE(nameless);
-  CHECK(nameless->personId == 12);
-  CHECK_FALSE(nameless->userId.has_value());
+  const auto nameless = valueOf(client.getPerson(12));
+  CHECK(nameless.personId == 12);
+  CHECK_FALSE(nameless.userId.has_value());
 
   person->set_user_id(42);
-  const auto known = client.getPerson(12);
-  REQUIRE(known);
-  CHECK(known->userId == 42);
+  const auto known = valueOf(client.getPerson(12));
+  CHECK(known.userId == 42);
 
   server->Shutdown();
 }

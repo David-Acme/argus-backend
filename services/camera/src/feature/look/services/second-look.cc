@@ -58,7 +58,7 @@ void LookCooldown::cool(const LookCooldownKey& key, int64_t forMs)
   until_[key.cameraId * kCellsPerCamera + key.cell] = key.atMs + forMs;
 }
 
-SecondLook::SecondLook(SecondLookDependencies dependencies) : dependencies_(std::move(dependencies)) {}
+SecondLook::SecondLook(SecondLookDependencies dependencies) : dependencies_(dependencies) {}
 
 void SecondLook::install(const SecondLook* look)
 {

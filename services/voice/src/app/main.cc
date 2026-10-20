@@ -185,7 +185,7 @@ int main()
           auto carry = conversationsHolder->claim(userId, conversationId);
           if (!carry)
             return std::nullopt;
-          return RtcWatchResume{.carry = std::move(*carry), .openingLine = continueLine(systemLang)};
+          return RtcWatchResume{.carry = std::move(*carry), .openingLine = std::string(continueLine(systemLang))};
         }});
     LOG_INFO << "Voice: realtime calls join LiveKit at " << rtcConfig.url;
   }

@@ -225,13 +225,13 @@ std::string repeatSentence(const RepeatSpoken& spoken)
   return " Te lo recordaré " + repeatMoment(spoken) + "; la primera vez será " + firstDay + ".";
 }
 
-std::string untimedRepeat(std::string_view lang)
+std::string_view untimedRepeat(std::string_view lang)
 {
   return lang == "en" ? " You did not say at what time, so it is not in your reminders yet."
                       : " No me dijiste a qué hora, así que todavía no quedó en tus recordatorios.";
 }
 
-std::string unreadableRepeat(std::string_view lang)
+std::string_view unreadableRepeat(std::string_view lang)
 {
   return lang == "en" ? "I did not understand how often to repeat it, so I did not save the reminder."
                       : "No entendí cada cuánto repetirlo, así que no guardé el recordatorio.";

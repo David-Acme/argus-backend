@@ -327,7 +327,7 @@ void collectPresets(const PresetWalk& walk)
     collectPresets({.node = node[key], .out = out, .depth = walk.depth + 1});
 }
 
-std::string aimRefusalText(const ResponseException& error, bool english)
+std::string_view aimRefusalText(const ResponseException& error, bool english)
 {
   if (error.errorCode() == "GUARD_OFF_DUTY")
     return english ? "You can move the camera only while you are on duty."
@@ -450,7 +450,7 @@ drogon::Task<argus::mcp::ToolOutcome> gotoPreset(AimRequest request)
       co_return argus::mcp::toolFailure({.text = aimFailureText({.result = result, .camera = camera->name, .english = english}), .code = "aim_failed"});
   }
   catch (const ResponseException& error) {
-    co_return argus::mcp::toolFailure({.text = aimRefusalText(error, english), .code = error.errorCode()});
+    co_return argus::mcp::toolFailure({.text = std::string(aimRefusalText(error, english)), .code = error.errorCode()});
   }
   argus::mcp::ToolOutcome outcome;
   outcome.text = english ? "The " + camera->name + " camera turned to " + wanted + "."
@@ -491,7 +491,7 @@ drogon::Task<argus::mcp::ToolOutcome> lookDirection(AimRequest request)
       co_return argus::mcp::toolFailure({.text = aimFailureText({.result = result, .camera = camera->name, .english = english}), .code = "aim_failed"});
   }
   catch (const ResponseException& error) {
-    co_return argus::mcp::toolFailure({.text = aimRefusalText(error, english), .code = error.errorCode()});
+    co_return argus::mcp::toolFailure({.text = std::string(aimRefusalText(error, english)), .code = error.errorCode()});
   }
   argus::mcp::ToolOutcome outcome;
   outcome.text = direction == "home"

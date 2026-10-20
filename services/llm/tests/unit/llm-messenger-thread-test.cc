@@ -9,6 +9,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -63,14 +64,13 @@ TEST_CASE("a relay opens a thread the recipient can answer inside the reply wind
   const RelayThreadRepository repository;
   const int64_t id = relayAt(db.get(), 1, 2, "n-7", kStart);
   CHECK(id > 0);
-  const auto open = repository.openFor(db.get(), {.toUserId = 2, .now = kStart + 100});
-  REQUIRE(open.has_value());
-  CHECK(open->id == id);
-  CHECK(open->fromUserId == 1);
-  CHECK(open->toUserId == 2);
-  CHECK(open->messageId == "n-7");
-  CHECK(open->channel == RelayChannel::Notification);
-  CHECK(open->state == RelayThreadState::Open);
+  const auto open = valueOf(repository.openFor(db.get(), {.toUserId = 2, .now = kStart + 100}));
+  CHECK(open.id == id);
+  CHECK(open.fromUserId == 1);
+  CHECK(open.toUserId == 2);
+  CHECK(open.messageId == "n-7");
+  CHECK(open.channel == RelayChannel::Notification);
+  CHECK(open.state == RelayThreadState::Open);
 }
 
 TEST_CASE("a reply after the window is not a reply to the thread")
@@ -96,10 +96,9 @@ TEST_CASE("the newest open thread for a member is the one a reply travels on")
   const RelayThreadRepository repository;
   relayAt(db.get(), 1, 2, "older", kStart);
   const int64_t newer = relayAt(db.get(), 3, 2, "newer", kStart + 10);
-  const auto open = repository.openFor(db.get(), {.toUserId = 2, .now = kStart + 20});
-  REQUIRE(open.has_value());
-  CHECK(open->id == newer);
-  CHECK(open->fromUserId == 3);
+  const auto open = valueOf(repository.openFor(db.get(), {.toUserId = 2, .now = kStart + 20}));
+  CHECK(open.id == newer);
+  CHECK(open.fromUserId == 3);
 }
 
 TEST_CASE("an answer closes a thread once, and a second answer is refused")
@@ -131,10 +130,9 @@ TEST_CASE("a delivered thread records its channel and the inbox key of its messa
   const RelayThreadRepository repository;
   const int64_t id = relayAt(db.get(), 1, 2, "pending", kStart);
   CHECK(repository.setDelivery(db.get(), {.id = id, .channel = RelayChannel::Conversation, .messageId = "relay-1-9"}));
-  const auto open = repository.openFor(db.get(), {.toUserId = 2, .now = kStart});
-  REQUIRE(open.has_value());
-  CHECK(open->channel == RelayChannel::Conversation);
-  CHECK(open->messageId == "relay-1-9");
+  const auto open = valueOf(repository.openFor(db.get(), {.toUserId = 2, .now = kStart}));
+  CHECK(open.channel == RelayChannel::Conversation);
+  CHECK(open.messageId == "relay-1-9");
 }
 
 TEST_CASE("the relays a sender made since a time are counted, and older ones and other senders' are not")
@@ -164,8 +162,7 @@ TEST_CASE("settled threads older than the cut-off are purged and an open thread 
                                                     .replyUntil = kStart + 10 * kWindow,
                                                     .at = kStart});
   CHECK(repository.purge(db.get(), kStart + kWindow + 1) == 2);
-  const auto open = repository.openFor(db.get(), {.toUserId = 5, .now = kStart + 1});
-  REQUIRE(open.has_value());
-  CHECK(open->id == kept);
-  CHECK(open->channel == RelayChannel::Conversation);
+  const auto open = valueOf(repository.openFor(db.get(), {.toUserId = 5, .now = kStart + 1}));
+  CHECK(open.id == kept);
+  CHECK(open.channel == RelayChannel::Conversation);
 }

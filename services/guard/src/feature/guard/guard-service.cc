@@ -91,7 +91,7 @@ Json::Value visitorToJson(const GuardVisitor& visitor)
   Json::Value days(Json::arrayValue);
   for (const int day : visitor.weekdays)
     days.append(day);
-  json["weekdays"] = days;
+  json["weekdays"] = std::move(days);
   json["usualHour"] = visitor.usualHour;
   json["companion"] = visitor.companion;
   return json;
@@ -1447,7 +1447,7 @@ drogon::Task<bool> GuardService::raiseTamper(const TamperRaise& input)
   Json::Value lostIds(Json::arrayValue);
   for (const auto& line : input.lost)
     lostIds.append(static_cast<Json::Int64>(line.cameraId));
-  tamperEvent["cameraIds"] = lostIds;
+  tamperEvent["cameraIds"] = std::move(lostIds);
   const int64_t incidentId = co_await repository_.insertIncidentForEvent(
       {.cameraId = input.cameraId,
        .cameraName = name,
@@ -1650,6 +1650,7 @@ drogon::Task<void> GuardService::checkTamperSweep(int64_t now)
     const bool anyoneHome = co_await familyInside(group.environmentId);
     const GuardDanger danger = guard_tamper::groupDanger({.protect = first->protect, .anyoneHome = anyoneHome});
     std::vector<DigestLine> lost;
+    lost.reserve(group.cameraIds.size());
     for (const int64_t cameraId : group.cameraIds)
       lost.push_back({.cameraId = cameraId, .cameraName = cameraName(cameraId), .count = 1});
     LOG_WARN << "Guard tamper: " << lost.size() << " cameras of environment " << group.environmentId
@@ -1906,7 +1907,7 @@ GuardService::collectSignals(const CollectionInput& input)
   CollectionResult collected;
   try {
     std::tm parts{};
-    const std::time_t at = static_cast<std::time_t>(input.now);
+    const auto at = static_cast<std::time_t>(input.now);
     if (gmtime_r(&at, &parts) == nullptr)
       co_return collected;
     const int dowHour = parts.tm_wday * 24 + parts.tm_hour;
@@ -1949,7 +1950,7 @@ GuardService::computeHolds(const HoldInput& input)
         guard_policy::dangerRank(GuardDanger::High))
       co_return holds;
     std::tm parts{};
-    const std::time_t at = static_cast<std::time_t>(input.now);
+    const auto at = static_cast<std::time_t>(input.now);
     if (localtime_r(&at, &parts) == nullptr)
       co_return holds;
     if (guard_schedule::inQuietHours(window, parts.tm_hour))
@@ -2173,7 +2174,7 @@ void GuardService::scheduleEncounterSweep()
         co_return;
       try {
         const auto config = currentConfig();
-        const int64_t now = static_cast<int64_t>(std::time(nullptr));
+        const auto now = static_cast<int64_t>(std::time(nullptr));
         const auto stale = co_await repository_.staleEncounters(
             now - config->encounterTimeoutS);
         if (!stale.empty()) {
@@ -2255,7 +2256,7 @@ GuardService::handleEvent(HandleEventInput input)
   if (signals.cameraId <= 0 || signals.rule.empty())
     co_return true;
 
-  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const auto now = static_cast<int64_t>(std::time(nullptr));
   recordSightings({.cameraId = signals.cameraId, .event = input.event, .atMs = nowMillis()});
   if (maintenance_ != nullptr && input.event["objects"].isArray()) {
     const bool stranger = std::ranges::any_of(input.event["objects"], [](const Json::Value& object) {
@@ -2529,7 +2530,7 @@ GuardService::applyObservation(const ObservationInput& input)
   const Json::Value& event = input.event;
   const GuardEventSignals& signals = input.signals;
   ObservationClaim state = std::move(input.state);
-  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const auto now = static_cast<int64_t>(std::time(nullptr));
   const std::string eventId = event.get("eventId", "").asString();
 
   ObservationCheckpoint checkpoint =
@@ -2852,12 +2853,12 @@ GuardService::applyObservation(const ObservationInput& input)
       const bool stagedLegacyWould = stagedRank >= config->notifyLevel;
       std::vector<std::string> stagedKinds;
       if (stagedRank >= config->notifyLevel)
-        stagedKinds.push_back("notify");
+        stagedKinds.emplace_back("notify");
       if (stagedRank >= config->announceLevel)
-        stagedKinds.push_back("announce");
+        stagedKinds.emplace_back("announce");
       if (stagedRank >= config->alarmLevel) {
-        stagedKinds.push_back("alarm");
-        stagedKinds.push_back("siren_arm");
+        stagedKinds.emplace_back("alarm");
+        stagedKinds.emplace_back("siren_arm");
       }
       const CollectionResult stagedCollected = co_await collectSignals(
           {.cameraId = signals.cameraId,
@@ -3229,16 +3230,16 @@ GuardService::applyObservation(const ObservationInput& input)
       suppression = DecisionSuppression::None;
     suppressedKinds.clear();
     if ((threadRepeat || grouped || held) && notifyRequested)
-      suppressedKinds.push_back("notify");
+      suppressedKinds.emplace_back("notify");
     if (beliefBlocks) {
       if (notifyRequested && scopeCovers(GuardActionKind::Notify) &&
           !threadRepeat && !grouped && !held)
-        suppressedKinds.push_back("notify");
+        suppressedKinds.emplace_back("notify");
       if (announceRequested && scopeCovers(GuardActionKind::Announce))
-        suppressedKinds.push_back("announce");
+        suppressedKinds.emplace_back("announce");
       if (alarmRequested && scopeCovers(GuardActionKind::Alarm)) {
-        suppressedKinds.push_back("alarm");
-        suppressedKinds.push_back("siren_arm");
+        suppressedKinds.emplace_back("alarm");
+        suppressedKinds.emplace_back("siren_arm");
       }
     }
     beliefSignalNames.clear();
@@ -4073,7 +4074,7 @@ drogon::Task<void> GuardService::uploadEvidence(const EvidenceInput& input)
   evidence["cameraName"] = input.cameraName;
   evidence["rule"] = input.rule;
   evidence["danger"] = guardDangerToString(input.danger);
-  evidence["event"] = stored;
+  evidence["event"] = std::move(stored);
   evidence["createdAt"] = static_cast<Json::Int64>(input.now);
 
   const bool serious =
@@ -4115,7 +4116,7 @@ drogon::Task<void> GuardService::uploadEvidence(const EvidenceInput& input)
 drogon::Task<void> GuardService::runRetentionSweep()
 {
   const auto config = currentConfig();
-  const int64_t now = static_cast<int64_t>(std::time(nullptr));
+  const auto now = static_cast<int64_t>(std::time(nullptr));
   if (config->journalRetentionDays > 0) {
     const int64_t removed = co_await repository_.purgeDecisions(
         now - static_cast<int64_t>(config->journalRetentionDays) * 86400);

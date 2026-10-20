@@ -60,19 +60,19 @@ bool anyCue(const std::array<memory_vocabulary::HouseholdCue, N>& cues, const Cu
 }
 }
 
-bool saysForEveryone(std::string_view text, std::string_view lang)
+bool saysForEveryone(const MemoryScopeInput& input)
 {
-  const std::vector<std::string> utterance = text_norm::words(std::string(text), 1);
-  const std::vector<std::vector<std::string>> clauses = clausesOf(text);
+  const std::vector<std::string> utterance = text_norm::words(std::string(input.text), 1);
+  const std::vector<std::vector<std::string>> clauses = clausesOf(input.text);
   const CueHeard heard{.utterance = utterance, .clauses = clauses};
-  if (lang == "en")
+  if (input.lang == "en")
     return anyCue(memory_vocabulary::kHouseholdCuesEn, heard);
   return anyCue(memory_vocabulary::kHouseholdCuesEs, heard);
 }
 
 MemoryScope classifyMemoryScope(const MemoryScopeInput& input)
 {
-  if (saysForEveryone(input.text, input.lang))
+  if (saysForEveryone(input))
     return MemoryScope::Household;
   return MemoryScope::Personal;
 }

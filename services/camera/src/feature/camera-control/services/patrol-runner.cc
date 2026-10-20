@@ -10,6 +10,7 @@
 #include <drogon/HttpAppFramework.h>
 #include <exception>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace
@@ -30,7 +31,7 @@ int localHourNow()
   return local.tm_hour;
 }
 
-std::string endReason(const PatrolSituation& situation, bool configured)
+std::string_view endReason(const PatrolSituation& situation, bool configured)
 {
   if (!configured)
     return "removed";
@@ -206,7 +207,7 @@ drogon::Task<void> PatrolRunner::follow(PatrolTarget target, PatrolClock moment)
     }
     case PatrolStepKind::End: {
       keep(cameraId, PatrolProgress{});
-      const std::string reason = endReason(situation, target.patrol.has_value());
+      const std::string reason(endReason(situation, target.patrol.has_value()));
       co_await service_.endPatrol({.cameraId = cameraId, .returnHome = step.returnHome});
       co_await service_.recordPatrol({.cameraId = cameraId, .phase = "ended", .reason = reason});
       LOG_INFO << "Camera " << cameraId << ": the patrol ended (" << reason << ")";

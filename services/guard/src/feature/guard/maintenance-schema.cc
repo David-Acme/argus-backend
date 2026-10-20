@@ -3,6 +3,7 @@
 #include <text/json-util.hxx>
 
 #include <algorithm>
+#include <utility>
 
 bool MaintenanceWindow::active(int64_t now) const
 {
@@ -42,7 +43,7 @@ Json::Value MaintenanceWindow::toJson(const MaintenanceJsonInput& input) const
     entry["state"] = viewCheckStateToString(check.state);
     checks.append(entry);
   }
-  json["viewChecks"] = checks;
+  json["viewChecks"] = std::move(checks);
   return json;
 }
 

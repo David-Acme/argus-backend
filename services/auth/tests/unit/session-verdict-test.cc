@@ -37,6 +37,7 @@
 #include <thread>
 #include <vector>
 #include <unistd.h>
+#include <utility>
 
 namespace
 {
@@ -142,7 +143,7 @@ bool publishIdentityChange(const IdentityChange& change)
   event[sync_change::kTableField] = tableNameToString(TableName::User);
   event[sync_change::kRecordIdField] = static_cast<Json::Int64>(kUserId);
   event[sync_change::kDeletedField] = false;
-  event[sync_change::kRowField] = row;
+  event[sync_change::kRowField] = std::move(row);
 
   return change.bus.publishWithMsgId({.subject = change.subject,
                                       .payload = json_util::toString(event),

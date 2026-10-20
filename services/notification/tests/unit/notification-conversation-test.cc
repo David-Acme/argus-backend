@@ -5,6 +5,7 @@
 #include <feature/conversation/services/conversation-inbox-service.hxx>
 
 #include <string>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -95,13 +96,12 @@ TEST_CASE("a reply names the message it answers")
 TEST_CASE("the relay request maps onto the letter and refuses an unknown kind")
 {
   const RelayLetter expected = relayFromAna();
-  const auto letter = relayLetterOf(requestFrom(expected));
-  REQUIRE(letter.has_value());
-  CHECK(letter->fromUserId == 3);
-  CHECK(letter->toUserId == 7);
-  CHECK(letter->kind == MessageKind::Relay);
-  CHECK(letter->body == expected.body);
-  CHECK_FALSE(letter->replyToKey.has_value());
+  const auto letter = valueOf(relayLetterOf(requestFrom(expected)));
+  CHECK(letter.fromUserId == 3);
+  CHECK(letter.toUserId == 7);
+  CHECK(letter.kind == MessageKind::Relay);
+  CHECK(letter.body == expected.body);
+  CHECK_FALSE(letter.replyToKey.has_value());
 
   v1::RelayMessageRequest unknown = requestFrom(expected);
   unknown.set_kind(v1::MESSAGE_KIND_UNSPECIFIED);
@@ -113,9 +113,8 @@ TEST_CASE("a settlement is only answered or expired")
   v1::SettleMessageRequest request;
   request.set_message_key("relay-3-100-1-7");
   request.set_settlement(v1::MESSAGE_SETTLEMENT_EXPIRED);
-  const auto expired = settleLetterOf(request);
-  REQUIRE(expired.has_value());
-  CHECK(expired->state == MessageState::Expired);
+  const auto expired = valueOf(settleLetterOf(request));
+  CHECK(expired.state == MessageState::Expired);
 
   request.set_settlement(v1::MESSAGE_SETTLEMENT_UNSPECIFIED);
   CHECK_FALSE(settleLetterOf(request).has_value());
@@ -138,12 +137,11 @@ TEST_CASE("the turns of a conversation keep who spoke and the leg they were said
   answered->set_speaker(v1::TURN_SPEAKER_ASSISTANT);
   answered->set_body("buenas");
 
-  const auto input = transcriptOf(request);
-  REQUIRE(input.has_value());
-  CHECK(input->leg == ConversationLegKind::Phone);
-  REQUIRE(input->lines.size() == 2);
-  CHECK(input->lines[0].direction == MessageDirection::Out);
-  CHECK(input->lines[1].direction == MessageDirection::In);
+  const auto input = valueOf(transcriptOf(request));
+  CHECK(input.leg == ConversationLegKind::Phone);
+  REQUIRE(input.lines.size() == 2);
+  CHECK(input.lines[0].direction == MessageDirection::Out);
+  CHECK(input.lines[1].direction == MessageDirection::In);
 
   request.set_leg("tablet");
   CHECK_FALSE(transcriptOf(request).has_value());

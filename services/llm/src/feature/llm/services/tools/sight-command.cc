@@ -54,10 +54,16 @@ bool hasAny(const Words& words, std::span<const std::string_view> set)
   return std::ranges::any_of(words, [set](const std::string& word) { return isAny(word, set); });
 }
 
-std::string joined(const Words& words, size_t from, size_t to)
+struct WordSpan
+{
+  size_t from{0};
+  size_t to{0};
+};
+
+std::string joined(const Words& words, WordSpan span)
 {
   std::string text;
-  for (size_t index = from; index < to && index < words.size(); ++index) {
+  for (size_t index = span.from; index < span.to && index < words.size(); ++index) {
     if (isAny(words[index], kFillers) || isAny(words[index], kTails) || isAny(words[index], kCameraWords))
       continue;
     text += text.empty() ? words[index] : " " + words[index];
@@ -103,9 +109,9 @@ std::optional<tools::ToolCall> aimCommand(const Words& words)
   std::string camera;
   if (namesCamera) {
     const auto cameraAt = static_cast<size_t>(cameraWord - words.begin());
-    camera = joined(words, cameraAt + 1, markerAt > cameraAt ? markerAt : words.size());
+    camera = joined(words, {.from = cameraAt + 1, .to = markerAt > cameraAt ? markerAt : words.size()});
     if (camera.empty() && cameraAt > verbAt + 1)
-      camera = joined(words, verbAt + 1, cameraAt);
+      camera = joined(words, {.from = verbAt + 1, .to = cameraAt});
   }
   if (const auto direction = directionOf(words)) {
     tools::ToolCall call = callNamed("camera.look");
@@ -115,7 +121,7 @@ std::optional<tools::ToolCall> aimCommand(const Words& words)
   }
   if (markerAt == words.size())
     return std::nullopt;
-  const std::string target = joined(words, markerAt + 1, words.size());
+  const std::string target = joined(words, {.from = markerAt + 1, .to = words.size()});
   if (target.empty())
     return std::nullopt;
   if (isAny(target, kHomeWords)) {
@@ -167,7 +173,7 @@ std::optional<tools::ToolCall> maintenanceStart(const Words& words)
         end = index;
         break;
       }
-    camera = joined(words, cameraAt + 1, end);
+    camera = joined(words, {.from = cameraAt + 1, .to = end});
   }
   call.arguments["camera"] = camera;
   if (const int minutes = minutesOf(words); minutes > 0)

@@ -12,7 +12,7 @@ struct LlmRemoteConfig
   std::string url;
   int timeoutMs{120000};
 
-  bool enabled() const { return !url.empty(); }
+  [[nodiscard]] bool enabled() const { return !url.empty(); }
 
   static LlmRemoteConfig resolve();
 };

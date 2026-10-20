@@ -51,11 +51,11 @@ TakeoverResult ConversationService::takeover(const TakeoverRequest& request) con
   return {.switched = true, .note = std::move(note)};
 }
 
-bool ConversationService::hasOpenConversation(int64_t userId, int64_t now) const
+bool ConversationService::hasOpenConversation(const OpenConversationQuery& query) const
 {
   std::scoped_lock lock(mutex_);
-  const auto row = repository_.find(db_, userId);
-  return row && isOpen(*row, now);
+  const auto row = repository_.find(db_, query.userId);
+  return row && isOpen(*row, query.now);
 }
 
 bool ConversationService::appendInbound(const InboundRequest& inbound) const

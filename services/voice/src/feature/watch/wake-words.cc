@@ -5,6 +5,7 @@
 #include <cctype>
 #include <iterator>
 #include <optional>
+#include <ranges>
 #include <span>
 
 namespace
@@ -160,8 +161,7 @@ bool hasPhrase(std::string_view text, std::span<const std::string_view> phrases)
 
 bool sentenceStart(std::string_view out)
 {
-  for (auto it = out.rbegin(); it != out.rend(); ++it) {
-    const char c = *it;
+  for (const char c : std::views::reverse(out)) {
     if (c == ' ' || c == '\t' || c == '\n')
       continue;
     return c == '.' || c == '!' || c == '?' || c == '\xBF' || c == '\xA1';

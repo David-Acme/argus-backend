@@ -44,8 +44,8 @@ struct RepeatSpoken
 
 [[nodiscard]] std::string repeatSentence(const RepeatSpoken& spoken);
 
-[[nodiscard]] std::string untimedRepeat(std::string_view lang);
+[[nodiscard]] std::string_view untimedRepeat(std::string_view lang);
 
-[[nodiscard]] std::string unreadableRepeat(std::string_view lang);
+[[nodiscard]] std::string_view unreadableRepeat(std::string_view lang);
 
 }

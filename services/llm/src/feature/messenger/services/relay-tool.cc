@@ -47,7 +47,7 @@ Json::Value namesJson(const std::vector<std::string>& names)
   for (const auto& name : names)
     list.append(name);
   Json::Value data(Json::objectValue);
-  data["candidates"] = list;
+  data["candidates"] = std::move(list);
   return data;
 }
 
@@ -108,7 +108,7 @@ tools::ToolResult unresolved(const RelayResult& result, std::string_view lang)
   if (result.step == RelayStep::AskRecipient)
     return refused(kRelayToolName, relay_lines::recipientQuestion(result.candidates, lang), std::string(kAskCode),
                    namesJson(result.candidates));
-  return refused(kRelayToolName, relay_lines::outcome(RelayOutcome::NoRecipient, lang), std::string(kNoRecipientCode));
+  return refused(kRelayToolName, std::string(relay_lines::outcome(RelayOutcome::NoRecipient, lang)), std::string(kNoRecipientCode));
 }
 
 tools::ToolResult handle(const RelayCall& relay)
@@ -118,7 +118,7 @@ tools::ToolResult handle(const RelayCall& relay)
   const auto members = relay.roster.members();
   const std::string senderName = nameOf(members, call.context.userId);
   if (senderName.empty())
-    return refused(kRelayToolName, relay_lines::outcome(RelayOutcome::NoRecipient, lang), std::string(kUnknownSenderCode));
+    return refused(kRelayToolName, std::string(relay_lines::outcome(RelayOutcome::NoRecipient, lang)), std::string(kUnknownSenderCode));
   RelayAttempt input{.senderId = call.context.userId,
                      .senderName = senderName,
                      .recipient = call.arguments.get("recipient", "").asString(),
@@ -148,7 +148,7 @@ tools::ToolResult handle(const RelayCall& relay)
               .code = {}};
     }
     if (!relay.ledger.consume(key, token))
-      return refused(kRelayToolName, relay_lines::consentExpired(lang), std::string(kConsentCode));
+      return refused(kRelayToolName, std::string(relay_lines::consentExpired(lang)), std::string(kConsentCode));
     input.dryRun = false;
     const RelayResult sent = attempt(relay.service, input);
     if (sent.step != RelayStep::Sent)
@@ -157,7 +157,7 @@ tools::ToolResult handle(const RelayCall& relay)
     data["outcome"] = std::string(relayOutcomeToString(sent.outcome));
     return {.tool = std::string(kRelayToolName),
             .ok = true,
-            .output = relay_lines::outcome(sent.outcome, lang),
+            .output = std::string(relay_lines::outcome(sent.outcome, lang)),
             .data = std::move(data),
             .code = {}};
   }

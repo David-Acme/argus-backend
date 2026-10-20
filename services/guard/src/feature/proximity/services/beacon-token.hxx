@@ -31,7 +31,13 @@ struct BeaconTableInput
 
 [[nodiscard]] std::optional<std::vector<uint8_t>> beaconSeedBytes(std::string_view base64);
 
-[[nodiscard]] int64_t beaconCounter(int64_t nowSeconds, int64_t rotateSeconds);
+struct BeaconClock
+{
+  int64_t nowSeconds{0};
+  int64_t rotateSeconds{900};
+};
+
+[[nodiscard]] int64_t beaconCounter(const BeaconClock& clock);
 
 [[nodiscard]] BeaconToken beaconToken(std::span<const uint8_t> seed, uint64_t counter);
 

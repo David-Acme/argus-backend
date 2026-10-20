@@ -19,6 +19,7 @@
 
 #include "temp-db.hxx"
 #include "wait-for-boot.hxx"
+#include <test-support/value-of.hxx>
 
 using guard_test::TempDb;
 using guard_test::waitForBoot;
@@ -223,7 +224,7 @@ TEST_CASE("planIntent adopts a legacy-numbered sibling instead of duplicating")
        .at = 100}));
   REQUIRE(seeded.has_value());
 
-  const auto planned = drogon::sync_wait(repository.planIntent(
+  const auto planned = valueOf(drogon::sync_wait(repository.planIntent(
       {.commandId = "adp:1:announce:2",
        .encounterId = 0,
        .incidentId = 0,
@@ -231,10 +232,9 @@ TEST_CASE("planIntent adopts a legacy-numbered sibling instead of duplicating")
        .personId = 0,
        .kind = "announce",
        .payload = "{\"fresh\":true}",
-       .at = 101}));
-  REQUIRE(planned.has_value());
-  CHECK(planned->commandId == "adp:1:announce:1");
-  CHECK(planned->payload == "{\"adopted\":true}");
+       .at = 101})));
+  CHECK(planned.commandId == "adp:1:announce:1");
+  CHECK(planned.payload == "{\"adopted\":true}");
   CHECK(scalar("SELECT COUNT(*) FROM guard_action_outbox WHERE command_id "
                "LIKE 'adp:1:announce:%'") == "1");
 }
@@ -290,7 +290,7 @@ TEST_CASE("listen and greet siblings are never adopted")
        .kind = "greet_listen",
        .payload = "{\"first\":true}",
        .at = 100})));
-  const auto second = drogon::sync_wait(repository.planIntent(
+  const auto second = valueOf(drogon::sync_wait(repository.planIntent(
       {.commandId = "dag:1:greet_listen:102",
        .encounterId = 0,
        .incidentId = 0,
@@ -298,9 +298,8 @@ TEST_CASE("listen and greet siblings are never adopted")
        .personId = 0,
        .kind = "greet_listen",
        .payload = "{\"second\":true}",
-       .at = 101}));
-  REQUIRE(second.has_value());
-  CHECK(second->payload == "{\"second\":true}");
+       .at = 101})));
+  CHECK(second.payload == "{\"second\":true}");
   CHECK(scalar("SELECT COUNT(*) FROM guard_action_outbox WHERE command_id "
                "LIKE 'dag:1:greet_listen:%'") == "2");
 
@@ -313,7 +312,7 @@ TEST_CASE("listen and greet siblings are never adopted")
        .kind = "greet",
        .payload = "{\"first\":true}",
        .at = 100})));
-  const auto greetSecond = drogon::sync_wait(repository.planIntent(
+  const auto greetSecond = valueOf(drogon::sync_wait(repository.planIntent(
       {.commandId = "dag:1:greet:2",
        .encounterId = 0,
        .incidentId = 0,
@@ -321,9 +320,8 @@ TEST_CASE("listen and greet siblings are never adopted")
        .personId = 0,
        .kind = "greet",
        .payload = "{\"second\":true}",
-       .at = 101}));
-  REQUIRE(greetSecond.has_value());
-  CHECK(greetSecond->payload == "{\"second\":true}");
+       .at = 101})));
+  CHECK(greetSecond.payload == "{\"second\":true}");
   CHECK(scalar("SELECT COUNT(*) FROM guard_action_outbox WHERE command_id "
                "LIKE 'dag:1:greet:%'") == "2");
 }
@@ -342,7 +340,7 @@ TEST_CASE("colon correlations adopt while malformed ids plan normally")
        .kind = "notify",
        .payload = "{\"adopted\":true}",
        .at = 100})));
-  const auto adopted = drogon::sync_wait(repository.planIntent(
+  const auto adopted = valueOf(drogon::sync_wait(repository.planIntent(
       {.commandId = "cam:9:12:notify:2",
        .encounterId = 0,
        .incidentId = 0,
@@ -350,14 +348,13 @@ TEST_CASE("colon correlations adopt while malformed ids plan normally")
        .personId = 0,
        .kind = "notify",
        .payload = "{\"fresh\":true}",
-       .at = 101}));
-  REQUIRE(adopted.has_value());
-  CHECK(adopted->commandId == "cam:9:12:notify:1");
-  CHECK(adopted->payload == "{\"adopted\":true}");
+       .at = 101})));
+  CHECK(adopted.commandId == "cam:9:12:notify:1");
+  CHECK(adopted.payload == "{\"adopted\":true}");
 
   for (const std::string malformed :
        {"no-colons-at-all", "a:b:x", "a::1", ":b:1"}) {
-    const auto planned = drogon::sync_wait(repository.planIntent(
+    const auto planned = valueOf(drogon::sync_wait(repository.planIntent(
         {.commandId = malformed,
          .encounterId = 0,
          .incidentId = 0,
@@ -365,9 +362,8 @@ TEST_CASE("colon correlations adopt while malformed ids plan normally")
          .personId = 0,
          .kind = "notify",
          .payload = "{\"own\":true}",
-         .at = 102}));
-    REQUIRE(planned.has_value());
-    CHECK(planned->commandId == malformed);
-    CHECK(planned->payload == "{\"own\":true}");
+         .at = 102})));
+    CHECK(planned.commandId == malformed);
+    CHECK(planned.payload == "{\"own\":true}");
   }
 }

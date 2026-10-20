@@ -65,28 +65,28 @@ Json::Value exceptionsOf(const std::string& text)
 Json::Value reminderRowToJson(const argus::productivity::v1::ReminderRow& row)
 {
   Json::Value json(Json::objectValue);
-  json["id"] = Json::Int64(row.id());
+  json["id"] = static_cast<Json::Int64>(row.id());
   json["createdBy"] = row.has_created_by()
-                          ? Json::Value(Json::Int64(row.created_by()))
+                          ? Json::Value(static_cast<Json::Int64>(row.created_by()))
                           : Json::Value();
-  json["targetUserId"] = Json::Int64(row.target_user_id());
+  json["targetUserId"] = static_cast<Json::Int64>(row.target_user_id());
   json["title"] = row.title();
   json["description"] = row.description();
-  json["scheduledAt"] = Json::Int64(row.scheduled_at());
+  json["scheduledAt"] = static_cast<Json::Int64>(row.scheduled_at());
   json["recurrenceRule"] = row.has_recurrence_rule()
                                ? Json::Value(row.recurrence_rule())
                                : Json::Value();
   json["recurrenceExceptions"] = exceptionsOf(row.recurrence_exceptions());
   json["isCompleted"] = row.is_completed();
   json["completedAt"] = row.has_completed_at()
-                            ? Json::Value(Json::Int64(row.completed_at()))
+                            ? Json::Value(static_cast<Json::Int64>(row.completed_at()))
                             : Json::Value();
-  json["createdAt"] = Json::Int64(row.created_at());
+  json["createdAt"] = static_cast<Json::Int64>(row.created_at());
   json["updatedAt"] = row.has_updated_at()
-                          ? Json::Value(Json::Int64(row.updated_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.updated_at()))
                           : Json::Value();
   json["deletedAt"] = row.has_deleted_at()
-                          ? Json::Value(Json::Int64(row.deleted_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.deleted_at()))
                           : Json::Value();
   return json;
 }
@@ -95,20 +95,20 @@ Json::Value
 reminderDetailRowToJson(const argus::productivity::v1::ReminderDetailRow& row)
 {
   Json::Value json(Json::objectValue);
-  json["id"] = Json::Int64(row.id());
-  json["reminderId"] = Json::Int64(row.reminder_id());
+  json["id"] = static_cast<Json::Int64>(row.id());
+  json["reminderId"] = static_cast<Json::Int64>(row.reminder_id());
   json["createdBy"] = row.has_created_by()
-                          ? Json::Value(Json::Int64(row.created_by()))
+                          ? Json::Value(static_cast<Json::Int64>(row.created_by()))
                           : Json::Value();
   json["content"] = row.content();
   json["status"] = row.status();
   json["filePaths"] = row.file_paths();
-  json["createdAt"] = Json::Int64(row.created_at());
+  json["createdAt"] = static_cast<Json::Int64>(row.created_at());
   json["updatedAt"] = row.has_updated_at()
-                          ? Json::Value(Json::Int64(row.updated_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.updated_at()))
                           : Json::Value();
   json["deletedAt"] = row.has_deleted_at()
-                          ? Json::Value(Json::Int64(row.deleted_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.deleted_at()))
                           : Json::Value();
   return json;
 }
@@ -117,33 +117,33 @@ Json::Value
 calendarEventRowToJson(const argus::productivity::v1::CalendarEventRow& row)
 {
   Json::Value json(Json::objectValue);
-  json["id"] = Json::Int64(row.id());
+  json["id"] = static_cast<Json::Int64>(row.id());
   json["createdBy"] = row.has_created_by()
-                          ? Json::Value(Json::Int64(row.created_by()))
+                          ? Json::Value(static_cast<Json::Int64>(row.created_by()))
                           : Json::Value();
-  json["ownerId"] = Json::Int64(row.owner_id());
+  json["ownerId"] = static_cast<Json::Int64>(row.owner_id());
   json["projectId"] = row.has_project_id()
-                          ? Json::Value(Json::Int64(row.project_id()))
+                          ? Json::Value(static_cast<Json::Int64>(row.project_id()))
                           : Json::Value();
   json["title"] = row.title();
   json["description"] = row.description();
   json["location"] = row.location();
   json["color"] = row.color();
-  json["startsAt"] = Json::Int64(row.starts_at());
+  json["startsAt"] = static_cast<Json::Int64>(row.starts_at());
   json["endsAt"] = row.has_ends_at()
-                       ? Json::Value(Json::Int64(row.ends_at()))
+                       ? Json::Value(static_cast<Json::Int64>(row.ends_at()))
                        : Json::Value();
   json["isAllDay"] = row.is_all_day();
   json["recurrenceRule"] = row.has_recurrence_rule()
                                ? Json::Value(row.recurrence_rule())
                                : Json::Value();
   json["recurrenceExceptions"] = exceptionsOf(row.recurrence_exceptions());
-  json["createdAt"] = Json::Int64(row.created_at());
+  json["createdAt"] = static_cast<Json::Int64>(row.created_at());
   json["updatedAt"] = row.has_updated_at()
-                          ? Json::Value(Json::Int64(row.updated_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.updated_at()))
                           : Json::Value();
   json["deletedAt"] = row.has_deleted_at()
-                          ? Json::Value(Json::Int64(row.deleted_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.deleted_at()))
                           : Json::Value();
   return json;
 }
@@ -152,16 +152,16 @@ Json::Value calendarEventShareRowToJson(
     const argus::productivity::v1::CalendarEventShareRow& row)
 {
   Json::Value json(Json::objectValue);
-  json["id"] = Json::Int64(row.id());
-  json["calendarEventId"] = Json::Int64(row.calendar_event_id());
-  json["userId"] = Json::Int64(row.user_id());
+  json["id"] = static_cast<Json::Int64>(row.id());
+  json["calendarEventId"] = static_cast<Json::Int64>(row.calendar_event_id());
+  json["userId"] = static_cast<Json::Int64>(row.user_id());
   json["access"] = row.access();
-  json["createdAt"] = Json::Int64(row.created_at());
+  json["createdAt"] = static_cast<Json::Int64>(row.created_at());
   json["updatedAt"] = row.has_updated_at()
-                          ? Json::Value(Json::Int64(row.updated_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.updated_at()))
                           : Json::Value();
   json["deletedAt"] = row.has_deleted_at()
-                          ? Json::Value(Json::Int64(row.deleted_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.deleted_at()))
                           : Json::Value();
   return json;
 }
@@ -169,24 +169,24 @@ Json::Value calendarEventShareRowToJson(
 Json::Value projectRowToJson(const argus::productivity::v1::ProjectRow& row)
 {
   Json::Value json(Json::objectValue);
-  json["id"] = Json::Int64(row.id());
-  json["ownerId"] = Json::Int64(row.owner_id());
+  json["id"] = static_cast<Json::Int64>(row.id());
+  json["ownerId"] = static_cast<Json::Int64>(row.owner_id());
   json["name"] = row.name();
   json["description"] = row.description();
   json["status"] = row.status();
   json["color"] = row.color();
   json["startsAt"] = row.has_starts_at()
-                         ? Json::Value(Json::Int64(row.starts_at()))
+                         ? Json::Value(static_cast<Json::Int64>(row.starts_at()))
                          : Json::Value();
   json["targetAt"] = row.has_target_at()
-                         ? Json::Value(Json::Int64(row.target_at()))
+                         ? Json::Value(static_cast<Json::Int64>(row.target_at()))
                          : Json::Value();
-  json["createdAt"] = Json::Int64(row.created_at());
+  json["createdAt"] = static_cast<Json::Int64>(row.created_at());
   json["updatedAt"] = row.has_updated_at()
-                          ? Json::Value(Json::Int64(row.updated_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.updated_at()))
                           : Json::Value();
   json["deletedAt"] = row.has_deleted_at()
-                          ? Json::Value(Json::Int64(row.deleted_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.deleted_at()))
                           : Json::Value();
   return json;
 }
@@ -195,16 +195,16 @@ Json::Value
 projectMemberRowToJson(const argus::productivity::v1::ProjectMemberRow& row)
 {
   Json::Value json(Json::objectValue);
-  json["id"] = Json::Int64(row.id());
-  json["projectId"] = Json::Int64(row.project_id());
-  json["userId"] = Json::Int64(row.user_id());
+  json["id"] = static_cast<Json::Int64>(row.id());
+  json["projectId"] = static_cast<Json::Int64>(row.project_id());
+  json["userId"] = static_cast<Json::Int64>(row.user_id());
   json["access"] = row.access();
-  json["createdAt"] = Json::Int64(row.created_at());
+  json["createdAt"] = static_cast<Json::Int64>(row.created_at());
   json["updatedAt"] = row.has_updated_at()
-                          ? Json::Value(Json::Int64(row.updated_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.updated_at()))
                           : Json::Value();
   json["deletedAt"] = row.has_deleted_at()
-                          ? Json::Value(Json::Int64(row.deleted_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.deleted_at()))
                           : Json::Value();
   return json;
 }
@@ -212,27 +212,27 @@ projectMemberRowToJson(const argus::productivity::v1::ProjectMemberRow& row)
 Json::Value projectTaskRowToJson(const argus::productivity::v1::ProjectTaskRow& row)
 {
   Json::Value json(Json::objectValue);
-  json["id"] = Json::Int64(row.id());
-  json["projectId"] = Json::Int64(row.project_id());
+  json["id"] = static_cast<Json::Int64>(row.id());
+  json["projectId"] = static_cast<Json::Int64>(row.project_id());
   json["createdBy"] = row.has_created_by()
-                          ? Json::Value(Json::Int64(row.created_by()))
+                          ? Json::Value(static_cast<Json::Int64>(row.created_by()))
                           : Json::Value();
   json["assigneeId"] = row.has_assignee_id()
-                           ? Json::Value(Json::Int64(row.assignee_id()))
+                           ? Json::Value(static_cast<Json::Int64>(row.assignee_id()))
                            : Json::Value();
   json["title"] = row.title();
   json["status"] = row.status();
   json["priority"] = row.priority();
   json["dueAt"] = row.has_due_at()
-                      ? Json::Value(Json::Int64(row.due_at()))
+                      ? Json::Value(static_cast<Json::Int64>(row.due_at()))
                       : Json::Value();
   json["sortOrder"] = row.sort_order();
-  json["createdAt"] = Json::Int64(row.created_at());
+  json["createdAt"] = static_cast<Json::Int64>(row.created_at());
   json["updatedAt"] = row.has_updated_at()
-                          ? Json::Value(Json::Int64(row.updated_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.updated_at()))
                           : Json::Value();
   json["deletedAt"] = row.has_deleted_at()
-                          ? Json::Value(Json::Int64(row.deleted_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.deleted_at()))
                           : Json::Value();
   return json;
 }
@@ -240,8 +240,8 @@ Json::Value projectTaskRowToJson(const argus::productivity::v1::ProjectTaskRow& 
 Json::Value deletedRowToJson(const argus::productivity::v1::DeletedRow& row)
 {
   Json::Value json(Json::objectValue);
-  json["id"] = Json::Int64(row.id());
-  json["deletedAt"] = Json::Int64(row.deleted_at());
+  json["id"] = static_cast<Json::Int64>(row.id());
+  json["deletedAt"] = static_cast<Json::Int64>(row.deleted_at());
   return json;
 }
 
@@ -273,7 +273,7 @@ std::optional<Json::Value> lastDeletedOf(const Rows& rows)
 
 ResponseException unavailable()
 {
-  return ResponseException(503, SyncErrors::ProductivitySyncUnavailable);
+  return {503, SyncErrors::ProductivitySyncUnavailable};
 }
 
 std::vector<Json::Value> createdRows(const PullTableResponse& response)

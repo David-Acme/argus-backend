@@ -104,12 +104,12 @@ ReplyNudge replyNudge(const ReplyTimerInput& input)
   return ReplyNudge::None;
 }
 
-std::string acknowledgementLine(VoiceLang lang)
+std::string_view acknowledgementLine(VoiceLang lang)
 {
   return lang == VoiceLang::En ? "One moment." : "Un momento.";
 }
 
-std::string giveUpLine(VoiceLang lang)
+std::string_view giveUpLine(VoiceLang lang)
 {
   return lang == VoiceLang::En ? "I couldn't answer right now; try again or continue in the app."
                                : "No pude responder ahora; inténtalo de nuevo o sigue en la app.";
@@ -133,12 +133,12 @@ std::string busyNotice(VoiceLang lang, std::string_view cameraName)
          ", pero alguien la está usando; sigue en la app.";
 }
 
-std::string handoffLine(VoiceLang lang)
+std::string_view handoffLine(VoiceLang lang)
 {
   return lang == VoiceLang::En ? "I'll pass it to your phone." : "Te lo paso al celular.";
 }
 
-std::string continueLine(VoiceLang lang)
+std::string_view continueLine(VoiceLang lang)
 {
   return lang == VoiceLang::En ? "We're continuing here." : "Seguimos aquí.";
 }

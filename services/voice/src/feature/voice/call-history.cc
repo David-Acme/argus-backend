@@ -212,7 +212,7 @@ std::string systemPrompt(VoiceLang lang, const CallSpeaker& speaker)
   const std::string speakerLine = role_access::speakerLine(
       {.lang = code, .role = speaker.role, .name = speaker.name, .voiceCall = speaker.voiceCall});
   if (!speakerLine.empty()) {
-    prompt += "\n";
+    prompt += '\n';
     prompt += speakerLine;
   }
   return prompt;
@@ -432,7 +432,7 @@ void CallHistory::rebuildPrompt()
   const CallTexts& texts = textsOf(lang_);
   std::string prompt = systemPrompt(lang_, speaker_);
   if (!notes_.empty() || !situation_.empty()) {
-    prompt += "\n";
+    prompt += '\n';
     prompt += texts.known;
     for (const auto& note : notes_)
       prompt += "\n" + note;
@@ -440,7 +440,7 @@ void CallHistory::rebuildPrompt()
       prompt += "\n" + situation_;
   }
   if (!earlier_.empty()) {
-    prompt += "\n";
+    prompt += '\n';
     prompt += texts.earlier;
     for (const auto& line : earlier_)
       prompt += "\n" + line;

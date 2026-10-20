@@ -2,6 +2,8 @@
 
 #include <feature/conversation/vocabulary/conversation-turn-role.hxx>
 
+#include <ranges>
+
 ConversationContext buildConversationContext(const ConversationContextInput& input)
 {
   ConversationContext context;
@@ -15,10 +17,10 @@ ConversationContext buildConversationContext(const ConversationContextInput& inp
                                                                             : "system";
     context.messages.push_back({.role = role, .content = turn.content});
   }
-  for (auto message = input.requestMessages.rbegin(); message != input.requestMessages.rend(); ++message) {
-    if (message->role == "user") {
-      context.latestUserText = message->content;
-      context.messages.push_back({.role = "user", .content = message->content});
+  for (const auto& message : std::views::reverse(input.requestMessages)) {
+    if (message.role == "user") {
+      context.latestUserText = message.content;
+      context.messages.push_back({.role = "user", .content = message.content});
       break;
     }
   }

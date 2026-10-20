@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -344,10 +345,9 @@ TEST_CASE("a motion clip still closes on the post-roll window, not on a keyframe
   pushChunk(builder, chunkOf(2), false, 5000);
   CHECK_FALSE(builder.takeReady().has_value());
   pushChunk(builder, chunkOf(3), false, 11000);
-  const auto ready = builder.takeReady();
-  REQUIRE(ready.has_value());
-  CHECK(ready->trigger == CameraClipTrigger::Motion);
-  CHECK(ready->durationMs == 10000);
+  const auto ready = valueOf(builder.takeReady());
+  CHECK(ready.trigger == CameraClipTrigger::Motion);
+  CHECK(ready.durationMs == 10000);
 }
 
 TEST_CASE("the watchdog warns once, backs off, and honours the observed keyframe interval")

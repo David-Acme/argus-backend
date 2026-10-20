@@ -81,6 +81,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <utility>
 
 namespace
 {
@@ -106,7 +107,7 @@ Json::Value drogonConfig(const GuardDrogonConfig& input)
   client["timeout"] = -1.0;
   Json::Value clients(Json::arrayValue);
   clients.append(client);
-  config["db_clients"] = clients;
+  config["db_clients"] = std::move(clients);
 
   config["listeners"] = listenerJson(input.listener);
   return config;

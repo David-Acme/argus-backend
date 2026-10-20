@@ -18,6 +18,7 @@
 #include <map>
 #include <string>
 #include <vector>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -37,11 +38,17 @@ EarFire fireAt(int64_t cameraId, float snrDb, std::chrono::milliseconds offset)
           .transcript = std::nullopt};
 }
 
-std::vector<float> tone(size_t samples, float amplitude)
+struct Tone
 {
-  std::vector<float> out(samples);
-  for (size_t index = 0; index < samples; ++index)
-    out[index] = amplitude * static_cast<float>(std::sin(static_cast<double>(index) * 0.2));
+  size_t samples{0};
+  float amplitude{0.0F};
+};
+
+std::vector<float> tone(const Tone& shape)
+{
+  std::vector<float> out(shape.samples);
+  for (size_t index = 0; index < shape.samples; ++index)
+    out[index] = shape.amplitude * static_cast<float>(std::sin(static_cast<double>(index) * 0.2));
   return out;
 }
 
@@ -122,6 +129,7 @@ TEST_CASE("stage two accepts only a vocative wake")
 TEST_CASE("the echo of what Argus played correlates with it after a delay")
 {
   std::vector<float> played;
+  played.reserve(120);
   for (int index = 0; index < 120; ++index)
     played.push_back(static_cast<float>((index * 37) % 11) / 10.0F);
   std::vector<float> mic(100, 0.05F);
@@ -132,6 +140,7 @@ TEST_CASE("the echo of what Argus played correlates with it after a delay")
   CHECK(echo > 0.9F);
 
   std::vector<float> unrelated;
+  unrelated.reserve(100);
   for (int index = 0; index < 100; ++index)
     unrelated.push_back(static_cast<float>((index * 13) % 7) / 6.0F);
   const float other = alignedCorrelation({.mic = unrelated,
@@ -142,7 +151,7 @@ TEST_CASE("the echo of what Argus played correlates with it after a delay")
                                           .maxLagMs = 0,
                                           .minOverlap = 25});
   CHECK(other < 0.6F);
-  CHECK(envelopeOf(tone(960, 0.5F), 320).size() == 3);
+  CHECK(envelopeOf(tone({.samples = 960, .amplitude = 0.5F}), 320).size() == 3);
 }
 
 TEST_CASE("a camera is muted while it plays and for the tail after it")
@@ -154,7 +163,7 @@ TEST_CASE("a camera is muted while it plays and for the tail after it")
   const auto now = WatchClock::now();
   CHECK_FALSE(guard.muted(1, now));
   guard.beginPlayback(1, now);
-  guard.addPlayed(1, tone(16000, 0.3F), now);
+  guard.addPlayed(1, tone({.samples = 16000, .amplitude = 0.3F}), now);
   CHECK(guard.muted(1, now));
   guard.endPlayback(1, now);
   CHECK(guard.muted(1, now + std::chrono::milliseconds(500)));
@@ -179,11 +188,11 @@ TEST_CASE("the noise floor follows silence and speech is measured over it")
                      .initialFloorDb = -20.0F,
                      .window = std::chrono::milliseconds(2000),
                      .sampleRate = 16000});
-  const std::vector<float> quiet = tone(512, 0.001F);
+  const std::vector<float> quiet = tone({.samples = 512, .amplitude = 0.001F});
   for (int index = 0; index < 50; ++index)
     level.observe(quiet, false);
   CHECK(level.floorDb() < -55.0F);
-  const std::vector<float> loud = tone(512, 0.3F);
+  const std::vector<float> loud = tone({.samples = 512, .amplitude = 0.3F});
   for (int index = 0; index < 20; ++index)
     level.observe(loud, true);
   CHECK(level.speechSnrDb() > 30.0F);
@@ -337,14 +346,13 @@ TEST_CASE("a dropped or busy camera hands the conversation to a free talking cam
     return found->second;
   };
   const std::vector<int64_t> mates{1, 2, 3, 4};
-  const auto hop = chooseHop({.from = 1,
+  const auto hop = valueOf(chooseHop({.from = 1,
                               .roommates = mates,
                               .cameraInfo = info,
                               .listening = [](int64_t) { return true; },
-                              .occupied = [](int64_t id) { return id == 3; }});
-  REQUIRE(hop.has_value());
-  CHECK(hop->cameraId == 4);
-  CHECK(hop->name == "Sala D");
+                              .occupied = [](int64_t id) { return id == 3; }}));
+  CHECK(hop.cameraId == 4);
+  CHECK(hop.name == "Sala D");
   CHECK_FALSE(chooseHop({.from = 1,
                          .roommates = mates,
                          .cameraInfo = info,

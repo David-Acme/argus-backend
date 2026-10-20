@@ -49,7 +49,7 @@ argus::camera::v1::TablePull* mutablePull(argus::camera::v1::PullTableRequest& r
 Json::Value cameraRowToJson(const argus::camera::v1::CameraRow& row)
 {
   Json::Value json(Json::objectValue);
-  json["id"] = Json::Int64(row.id());
+  json["id"] = static_cast<Json::Int64>(row.id());
   json["name"] = row.name();
   json["manufacturer"] = row.manufacturer();
   json["model"] = row.model();
@@ -66,18 +66,18 @@ Json::Value cameraRowToJson(const argus::camera::v1::CameraRow& row)
   json["noAudio"] = row.no_audio();
   json["tvExclusion"] = row.tv_exclusion();
   json["retentionDays"] = row.has_retention_days()
-                              ? Json::Value(Json::Int64(row.retention_days()))
+                              ? Json::Value(static_cast<Json::Int64>(row.retention_days()))
                               : Json::Value();
   json["capabilities"] = row.capabilities();
   json["config"] = row.config();
   json["isEnabled"] = row.is_enabled();
   json["isOnline"] = row.is_online();
-  json["createdAt"] = Json::Int64(row.created_at());
+  json["createdAt"] = static_cast<Json::Int64>(row.created_at());
   json["updatedAt"] = row.has_updated_at()
-                          ? Json::Value(Json::Int64(row.updated_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.updated_at()))
                           : Json::Value();
   json["deletedAt"] = row.has_deleted_at()
-                          ? Json::Value(Json::Int64(row.deleted_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.deleted_at()))
                           : Json::Value();
   return json;
 }
@@ -85,19 +85,19 @@ Json::Value cameraRowToJson(const argus::camera::v1::CameraRow& row)
 Json::Value zoneRowToJson(const argus::camera::v1::ZoneRow& row)
 {
   Json::Value json(Json::objectValue);
-  json["id"] = Json::Int64(row.id());
-  json["cameraId"] = Json::Int64(row.camera_id());
+  json["id"] = static_cast<Json::Int64>(row.id());
+  json["cameraId"] = static_cast<Json::Int64>(row.camera_id());
   json["name"] = row.name();
   json["points"] = row.points();
   json["zoneType"] = row.zone_type();
   json["color"] = row.color();
   json["isEnabled"] = row.is_enabled();
-  json["createdAt"] = Json::Int64(row.created_at());
+  json["createdAt"] = static_cast<Json::Int64>(row.created_at());
   json["updatedAt"] = row.has_updated_at()
-                          ? Json::Value(Json::Int64(row.updated_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.updated_at()))
                           : Json::Value();
   json["deletedAt"] = row.has_deleted_at()
-                          ? Json::Value(Json::Int64(row.deleted_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.deleted_at()))
                           : Json::Value();
   return json;
 }
@@ -105,8 +105,8 @@ Json::Value zoneRowToJson(const argus::camera::v1::ZoneRow& row)
 Json::Value streamRowToJson(const argus::camera::v1::CameraStreamRow& row)
 {
   Json::Value json(Json::objectValue);
-  json["id"] = Json::Int64(row.id());
-  json["cameraId"] = Json::Int64(row.camera_id());
+  json["id"] = static_cast<Json::Int64>(row.id());
+  json["cameraId"] = static_cast<Json::Int64>(row.camera_id());
   json["label"] = row.label();
   json["url"] = row.url();
   json["resolution"] = row.resolution();
@@ -114,12 +114,12 @@ Json::Value streamRowToJson(const argus::camera::v1::CameraStreamRow& row)
   json["codec"] = row.codec();
   json["isPrimary"] = row.is_primary();
   json["isEnabled"] = row.is_enabled();
-  json["createdAt"] = Json::Int64(row.created_at());
+  json["createdAt"] = static_cast<Json::Int64>(row.created_at());
   json["updatedAt"] = row.has_updated_at()
-                          ? Json::Value(Json::Int64(row.updated_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.updated_at()))
                           : Json::Value();
   json["deletedAt"] = row.has_deleted_at()
-                          ? Json::Value(Json::Int64(row.deleted_at()))
+                          ? Json::Value(static_cast<Json::Int64>(row.deleted_at()))
                           : Json::Value();
   return json;
 }
@@ -127,14 +127,14 @@ Json::Value streamRowToJson(const argus::camera::v1::CameraStreamRow& row)
 Json::Value deletedRowToJson(const argus::camera::v1::DeletedRow& row)
 {
   Json::Value json(Json::objectValue);
-  json["id"] = Json::Int64(row.id());
-  json["deletedAt"] = Json::Int64(row.deleted_at());
+  json["id"] = static_cast<Json::Int64>(row.id());
+  json["deletedAt"] = static_cast<Json::Int64>(row.deleted_at());
   return json;
 }
 
 ResponseException unavailable()
 {
-  return ResponseException(503, SyncErrors::CameraSyncUnavailable);
+  return {503, SyncErrors::CameraSyncUnavailable};
 }
 }
 

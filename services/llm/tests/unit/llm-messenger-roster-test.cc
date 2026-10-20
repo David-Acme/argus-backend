@@ -10,15 +10,23 @@
 namespace
 {
 
-argus::identity::v1::UserIdentity userOf(int64_t id, const std::string& name, const std::string& role, bool active,
-                                         bool hasRole = true)
+struct Member
+{
+  int64_t id{0};
+  std::string name;
+  std::string role;
+  bool active{false};
+  bool hasRole{true};
+};
+
+argus::identity::v1::UserIdentity userOf(const Member& member)
 {
   argus::identity::v1::UserIdentity user;
-  user.set_user_id(id);
-  user.set_name(name);
-  if (hasRole)
-    user.set_role(role);
-  user.set_is_active(active);
+  user.set_user_id(member.id);
+  user.set_name(member.name);
+  if (member.hasRole)
+    user.set_role(member.role);
+  user.set_is_active(member.active);
   return user;
 }
 
@@ -44,12 +52,12 @@ TEST_CASE("the roster is the active household members with a role this build kno
 {
   auto identity = std::make_shared<FakeIdentity>();
   identity->answer = std::vector<argus::identity::v1::UserIdentity>{
-      userOf(1, "David Acme", "owner", true),
-      userOf(2, "Ana Lopez", "resident", true),
-      userOf(3, "Sin rol", "", true, false),
-      userOf(4, "Lucia", "guest", false),
-      userOf(5, "Pedro", "superuser", true),
-      userOf(6, "Guardia", "guard", true),
+      userOf({.id = 1, .name = "David Acme", .role = "owner", .active = true, .hasRole = true}),
+      userOf({.id = 2, .name = "Ana Lopez", .role = "resident", .active = true, .hasRole = true}),
+      userOf({.id = 3, .name = "Sin rol", .role = "", .active = true, .hasRole = false}),
+      userOf({.id = 4, .name = "Lucia", .role = "guest", .active = false, .hasRole = true}),
+      userOf({.id = 5, .name = "Pedro", .role = "superuser", .active = true, .hasRole = true}),
+      userOf({.id = 6, .name = "Guardia", .role = "guard", .active = true, .hasRole = true}),
   };
   const IdentityHouseholdRoster roster(identity);
   const auto members = roster.members();

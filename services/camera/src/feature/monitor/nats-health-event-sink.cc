@@ -32,7 +32,7 @@ bool NatsHealthEventSink::publish(const CameraHealthEvent& event)
   metrics["shiftPx"] = event.metrics.shiftPx;
   metrics["entropy"] = event.metrics.entropy;
   metrics["infrared"] = event.metrics.infrared;
-  json["metrics"] = metrics;
+  json["metrics"] = std::move(metrics);
   json["sudden"] = event.metrics.sudden;
   json["link"] = event.link;
   json["onsetAt"] = static_cast<Json::Int64>(event.onsetAtMs);

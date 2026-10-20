@@ -510,13 +510,13 @@ drogon::Task<Json::Value> CameraControlFeatureService::aimState(const CameraAimS
                    lease.userId == input.userId;
   holder["sinceMs"] = static_cast<Json::Int64>(lease.sinceMs);
   holder["parkUntilMs"] = static_cast<Json::Int64>(lease.parkUntilMs);
-  json["lease"] = holder;
+  json["lease"] = std::move(holder);
   json["activity"] = aimActivityToString(aim.activity);
   json["settings"] = aim_settings::toJson(settings);
   Json::Value wear(Json::objectValue);
   wear["movesToday"] = static_cast<Json::Int64>(aim.movesToday);
   wear["dailyCap"] = static_cast<Json::Int64>(ptzConfig().dailyMoveCap);
-  json["wear"] = wear;
+  json["wear"] = std::move(wear);
   co_return json;
 }
 

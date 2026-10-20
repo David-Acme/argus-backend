@@ -20,7 +20,11 @@
 namespace
 {
 
-const std::vector<relay_recipient::Member> kRoster{{.userId = 1, .name = "David Acme"}, {.userId = 2, .name = "Ana Lopez"}};
+const std::vector<relay_recipient::Member>& roster()
+{
+  static const std::vector<relay_recipient::Member> members{{.userId = 1, .name = "David Acme"}, {.userId = 2, .name = "Ana Lopez"}};
+  return members;
+}
 
 int64_t scalar(sqlite3* db, const char* sql)
 {
@@ -79,7 +83,7 @@ TEST_CASE("relays and memory writes share the graph's connection and lock: no bu
                                            .lang = "es",
                                            .afterQuestion = false,
                                            .dryRun = false,
-                                           .roster = kRoster,
+                                           .roster = roster(),
                                            .now = 1000 + round});
         if (result.threadId > 0)
           relaysSent.fetch_add(1);

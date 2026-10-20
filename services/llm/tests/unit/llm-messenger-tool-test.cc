@@ -14,6 +14,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -78,7 +79,7 @@ struct Harness
 
   [[nodiscard]] tools::ToolResult confirmed(int64_t userId, Json::Value arguments, int64_t now = 1000) const
   {
-    const auto preview = descriptor.handler(callAs(userId, arguments, now));
+    auto preview = descriptor.handler(callAs(userId, arguments, now));
     if (!preview.ok || !preview.data["needsConfirmation"].asBool())
       return preview;
     arguments["confirmation"] = preview.data["confirmation"];
@@ -92,12 +93,19 @@ struct Harness
   tools::ToolDescriptor descriptor;
 };
 
-Json::Value argumentsOf(const std::string& recipient, const std::string& message, bool reply = false)
+struct RelayArguments
+{
+  std::string recipient;
+  std::string message;
+  bool reply{false};
+};
+
+Json::Value argumentsOf(const RelayArguments& relay)
 {
   Json::Value arguments(Json::objectValue);
-  arguments["recipient"] = recipient;
-  arguments["message"] = message;
-  arguments["reply"] = reply;
+  arguments["recipient"] = relay.recipient;
+  arguments["message"] = relay.message;
+  arguments["reply"] = relay.reply;
   return arguments;
 }
 
@@ -117,14 +125,14 @@ TEST_CASE("the relay tool is a core tool gated by messages.relay that needs the 
 TEST_CASE("a relay first reads the message back and sends nothing until the sender confirms it")
 {
   Harness harness;
-  const auto preview = harness.descriptor.handler(callAs(1, argumentsOf("Ana Lopez", "venga a comer")));
+  const auto preview = harness.descriptor.handler(callAs(1, argumentsOf({.recipient = "Ana Lopez", .message = "venga a comer", .reply = false})));
   CHECK(preview.ok);
   CHECK(preview.data["needsConfirmation"].asBool());
   CHECK_FALSE(preview.data["confirmation"].asString().empty());
   CHECK(preview.output == "¿Le digo a Ana Lopez: «venga a comer»?");
   CHECK(harness.courier->letters.empty());
 
-  Json::Value forged = argumentsOf("Ana Lopez", "venga a comer");
+  Json::Value forged = argumentsOf({.recipient = "Ana Lopez", .message = "venga a comer", .reply = false});
   forged["confirmation"] = "not-the-code";
   const auto refused = harness.descriptor.handler(callAs(1, forged));
   CHECK_FALSE(refused.ok);
@@ -135,8 +143,8 @@ TEST_CASE("a relay first reads the message back and sends nothing until the send
 TEST_CASE("the code of one message never sends another")
 {
   Harness harness;
-  const auto preview = harness.descriptor.handler(callAs(1, argumentsOf("Ana Lopez", "venga a comer")));
-  Json::Value swapped = argumentsOf("Ana Lopez", "no vengas");
+  const auto preview = harness.descriptor.handler(callAs(1, argumentsOf({.recipient = "Ana Lopez", .message = "venga a comer", .reply = false})));
+  Json::Value swapped = argumentsOf({.recipient = "Ana Lopez", .message = "no vengas", .reply = false});
   swapped["confirmation"] = preview.data["confirmation"];
   const auto refused = harness.descriptor.handler(callAs(1, swapped));
   CHECK_FALSE(refused.ok);
@@ -146,7 +154,7 @@ TEST_CASE("the code of one message never sends another")
 TEST_CASE("a confirmed relay is carried and the sender hears what happened, without the recipient's whereabouts")
 {
   Harness harness;
-  const auto result = harness.confirmed(1, argumentsOf("Ana Lopez", "venga a comer"));
+  const auto result = harness.confirmed(1, argumentsOf({.recipient = "Ana Lopez", .message = "venga a comer", .reply = false}));
   CHECK(result.ok);
   CHECK(result.output == "Le dejé el mensaje.");
   CHECK(result.data["outcome"].asString() == "notified");
@@ -158,7 +166,7 @@ TEST_CASE("a confirmed relay is carried and the sender hears what happened, with
 TEST_CASE("an ambiguous name returns the one question and does not send")
 {
   Harness harness;
-  const auto result = harness.descriptor.handler(callAs(1, argumentsOf("Ana", "venga a comer")));
+  const auto result = harness.descriptor.handler(callAs(1, argumentsOf({.recipient = "Ana", .message = "venga a comer", .reply = false})));
   CHECK_FALSE(result.ok);
   CHECK(result.code == "ask_recipient");
   CHECK(result.output == "¿Se lo digo a Ana Lopez o Ana Maria Ruiz?");
@@ -171,11 +179,11 @@ TEST_CASE("an ambiguous name returns the one question and does not send")
 TEST_CASE("a refused relay returns its wire code and its reason, never throws")
 {
   Harness harness;
-  const auto empty = harness.descriptor.handler(callAs(1, argumentsOf("Ana Lopez", "   ")));
+  const auto empty = harness.descriptor.handler(callAs(1, argumentsOf({.recipient = "Ana Lopez", .message = "   ", .reply = false})));
   CHECK_FALSE(empty.ok);
   CHECK(empty.code == std::string(MessengerErrors::MessageRequired.wireCode()));
   CHECK(empty.output == std::string(MessengerErrors::MessageRequired.message));
-  const auto self = harness.descriptor.handler(callAs(1, argumentsOf("David", "hola")));
+  const auto self = harness.descriptor.handler(callAs(1, argumentsOf({.recipient = "David", .message = "hola", .reply = false})));
   CHECK_FALSE(self.ok);
   CHECK(self.code == std::string(MessengerErrors::SelfRecipient.wireCode()));
 }
@@ -183,8 +191,8 @@ TEST_CASE("a refused relay returns its wire code and its reason, never throws")
 TEST_CASE("an answer travels back on the open thread through the same tool")
 {
   Harness harness;
-  static_cast<void>(harness.confirmed(1, argumentsOf("Ana Lopez", "venga a comer", false), 1000));
-  const auto answer = harness.confirmed(2, argumentsOf("", "ya voy", true), 1100);
+  static_cast<void>(harness.confirmed(1, argumentsOf({.recipient = "Ana Lopez", .message = "venga a comer", .reply = false}), 1000));
+  const auto answer = harness.confirmed(2, argumentsOf({.recipient = "", .message = "ya voy", .reply = true}), 1100);
   CHECK(answer.ok);
   REQUIRE(harness.courier->letters.size() == 2);
   CHECK(harness.courier->letters.back().toUserId == 1);
@@ -195,7 +203,7 @@ TEST_CASE("an answer travels back on the open thread through the same tool")
 TEST_CASE("a caller the roster does not know is refused as an unknown sender")
 {
   Harness harness;
-  const auto result = harness.descriptor.handler(callAs(99, argumentsOf("Ana Lopez", "hola")));
+  const auto result = harness.descriptor.handler(callAs(99, argumentsOf({.recipient = "Ana Lopez", .message = "hola", .reply = false})));
   CHECK_FALSE(result.ok);
   CHECK(result.code == "sender_unknown");
   CHECK(harness.courier->letters.empty());
@@ -210,24 +218,22 @@ TEST_CASE("the rules tier picks the relay only when the tool is offered, and an 
   const ModuleSnapshot modules;
   const turn::RuleDecider decider;
 
-  const auto picked = decider.decide({.utterance = "Argus, llama a Ana Lopez y dile que venga a comer",
+  const auto picked = valueOf(decider.decide({.utterance = "Argus, llama a Ana Lopez y dile que venga a comer",
                                       .lang = "es",
                                       .offered = offered,
                                       .modules = modules,
-                                      .previousAssistant = {}});
-  REQUIRE(picked.has_value());
-  CHECK(picked->tool == "message.relay");
-  CHECK(picked->arguments.get("recipient", "").asString() == "ana lopez");
-  CHECK(picked->arguments.get("message", "").asString() == "venga a comer");
-  CHECK_FALSE(picked->arguments.get("reply", true).asBool());
+                                      .previousAssistant = {}}));
+  CHECK(picked.tool == "message.relay");
+  CHECK(picked.arguments.get("recipient", "").asString() == "ana lopez");
+  CHECK(picked.arguments.get("message", "").asString() == "venga a comer");
+  CHECK_FALSE(picked.arguments.get("reply", true).asBool());
 
-  const auto answer = decider.decide({.utterance = "dile que ya voy",
+  const auto answer = valueOf(decider.decide({.utterance = "dile que ya voy",
                                       .lang = "es",
                                       .offered = offered,
                                       .modules = modules,
-                                      .previousAssistant = {}});
-  REQUIRE(answer.has_value());
-  CHECK(answer->arguments.get("reply", false).asBool());
+                                      .previousAssistant = {}}));
+  CHECK(answer.arguments.get("reply", false).asBool());
 
   CHECK_FALSE(decider
                   .decide({.utterance = "llama a Ana Lopez y dile que venga a comer",

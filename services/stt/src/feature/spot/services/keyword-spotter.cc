@@ -22,12 +22,18 @@ void destroyStream(const SherpaOnnxOnlineStream* stream)
     SherpaOnnxDestroyOnlineStream(stream);
 }
 
-std::string inDir(const std::string& dir, const std::string& file)
+struct ModelFile
 {
-  const std::filesystem::path path(file);
-  if (path.is_absolute() || dir.empty())
-    return file;
-  return (std::filesystem::path(dir) / path).string();
+  const std::string& dir;
+  const std::string& file;
+};
+
+std::string inDir(const ModelFile& model)
+{
+  const std::filesystem::path path(model.file);
+  if (path.is_absolute() || model.dir.empty())
+    return model.file;
+  return (std::filesystem::path(model.dir) / path).string();
 }
 
 class SherpaSpotSession final : public SpotSession
@@ -85,11 +91,11 @@ KeywordSpotterService::~KeywordSpotterService() = default;
 
 bool KeywordSpotterService::init(const SttSpotConfig& config)
 {
-  const std::string encoder = inDir(config.modelDir, config.encoder);
-  const std::string decoder = inDir(config.modelDir, config.decoder);
-  const std::string joiner = inDir(config.modelDir, config.joiner);
-  const std::string tokens = inDir(config.modelDir, config.tokens);
-  const std::string keywords = inDir(config.modelDir, config.keywordsFile);
+  const std::string encoder = inDir({.dir = config.modelDir, .file = config.encoder});
+  const std::string decoder = inDir({.dir = config.modelDir, .file = config.decoder});
+  const std::string joiner = inDir({.dir = config.modelDir, .file = config.joiner});
+  const std::string tokens = inDir({.dir = config.modelDir, .file = config.tokens});
+  const std::string keywords = inDir({.dir = config.modelDir, .file = config.keywordsFile});
   for (const std::string& file : {encoder, decoder, joiner, tokens, keywords}) {
     std::error_code error;
     if (!std::filesystem::is_regular_file(file, error)) {

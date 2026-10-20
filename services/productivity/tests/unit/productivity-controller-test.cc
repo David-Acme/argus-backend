@@ -417,7 +417,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   const Json::Value projectJson = body(created);
   CHECK(projectJson["status"].asInt() == 200);
   CHECK(projectJson["errors"].isNull());
-  const Json::Value project = projectJson["info"];
+  const Json::Value& project = projectJson["info"];
   const int64_t projectId = project["id"].asInt64();
   CHECK(projectId > 0);
   CHECK(project["ownerId"].asInt64() == 42);
@@ -524,7 +524,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   const Json::Value memberJson = body(memberCreated);
   CHECK(memberJson["status"].asInt() == 200);
   CHECK(memberJson["errors"].isNull());
-  const Json::Value member = memberJson["info"];
+  const Json::Value& member = memberJson["info"];
   const int64_t memberId = member["id"].asInt64();
   CHECK(memberId > 0);
   CHECK(member["projectId"].asInt64() == projectId);
@@ -593,7 +593,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   const Json::Value taskJson = body(taskCreated);
   CHECK(taskJson["status"].asInt() == 200);
   CHECK(taskJson["errors"].isNull());
-  const Json::Value task = taskJson["info"];
+  const Json::Value& task = taskJson["info"];
   const int64_t taskId = task["id"].asInt64();
   CHECK(taskId > 0);
   CHECK(task["projectId"].asInt64() == projectId);
@@ -708,7 +708,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   const Json::Value eventJson = body(eventCreated);
   CHECK(eventJson["status"].asInt() == 200);
   CHECK(eventJson["errors"].isNull());
-  const Json::Value event = eventJson["info"];
+  const Json::Value& event = eventJson["info"];
   const int64_t eventId = event["id"].asInt64();
   CHECK(eventId > 0);
   CHECK(event["ownerId"].asInt64() == 42);
@@ -764,7 +764,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   const Json::Value shareJson = body(shareCreated);
   CHECK(shareJson["status"].asInt() == 200);
   CHECK(shareJson["errors"].isNull());
-  const Json::Value share = shareJson["info"];
+  const Json::Value& share = shareJson["info"];
   const int64_t shareId = share["id"].asInt64();
   CHECK(shareId > 0);
   CHECK(share["calendarEventId"].asInt64() == eventId);

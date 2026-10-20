@@ -519,7 +519,7 @@ grpc::ServerUnaryReactor* CameraWatchRpcService::FaceWindow(grpc::CallbackServer
       return;
     }
     const int64_t since = startMs - window.count();
-    std::vector<CameraSnapshot> crops = SnapshotStore::instance().personCropsSince(cameraId, since);
+    std::vector<CameraSnapshot> crops = SnapshotStore::instance().personCropsSince({.cameraId = cameraId, .sinceMs = since});
     if (crops.empty()) {
       if (const auto frame = SnapshotStore::instance().frame(cameraId); frame && frame->atMs >= since)
         crops.push_back(*frame);

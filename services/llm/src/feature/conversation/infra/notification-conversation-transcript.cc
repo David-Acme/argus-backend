@@ -9,7 +9,7 @@
 
 namespace
 {
-constexpr int64_t kDaySeconds = 24 * 3600;
+constexpr int64_t kDaySeconds = int64_t{24} * 3600;
 }
 
 argus::notification::v1::AppendTurnsRequest appendTurnsOf(const TranscriptExchange& exchange, int64_t expiresAt)

@@ -19,6 +19,7 @@
 #include <thread>
 #include <utility>
 #include <vector>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -400,9 +401,8 @@ TEST_CASE("the aim takes the newest sighting and ignores those before the camera
        .width = 0.1F, .height = 0.5F, .night = false, .atMs = 3000},
       {.cameraId = 1, .trackId = 3, .personId = 0, .known = false, .centerX = 0.3F, .centerY = 0.5F,
        .width = 0.3F, .height = 0.6F, .night = false, .atMs = 3000}};
-  const auto best = bestSighting({.sightings = seen, .notBeforeMs = 2000});
-  REQUIRE(best.has_value());
-  CHECK(best->trackId == 3);
+  const auto best = valueOf(bestSighting({.sightings = seen, .notBeforeMs = 2000}));
+  CHECK(best.trackId == 3);
   CHECK_FALSE(bestSighting({.sightings = seen, .notBeforeMs = 4000}).has_value());
 }
 

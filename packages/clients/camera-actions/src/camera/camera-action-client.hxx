@@ -99,32 +99,32 @@ struct CameraCommandResult
 
   [[nodiscard]] bool transportOk() const { return status.ok(); }
 
-  bool succeeded() const
+  [[nodiscard]] bool succeeded() const
   {
     return transportOk() &&
            (outcome == CameraCommandOutcome::SUCCEEDED ||
             outcome == CameraCommandOutcome::DUPLICATE_SUCCEEDED);
   }
 
-  bool inFlight() const
+  [[nodiscard]] bool inFlight() const
   {
     return transportOk() && outcome == CameraCommandOutcome::IN_FLIGHT;
   }
 
-  bool indeterminate() const
+  [[nodiscard]] bool indeterminate() const
   {
     return outcome == CameraCommandOutcome::INDETERMINATE;
   }
 
-  bool conflict() const { return outcome == CameraCommandOutcome::CONFLICT; }
+  [[nodiscard]] bool conflict() const { return outcome == CameraCommandOutcome::CONFLICT; }
 
-  bool rejected() const
+  [[nodiscard]] bool rejected() const
   {
     return outcome == CameraCommandOutcome::REJECTED ||
            outcome == CameraCommandOutcome::CONFLICT;
   }
 
-  bool retryable() const
+  [[nodiscard]] bool retryable() const
   {
     if (!transportOk())
       return status.error_code() == grpc::StatusCode::UNAVAILABLE ||

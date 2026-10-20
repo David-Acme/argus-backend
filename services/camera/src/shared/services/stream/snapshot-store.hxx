@@ -28,6 +28,18 @@ struct SnapshotCropInput
   int64_t atMs{0};
 };
 
+struct PersonCropKey
+{
+  int64_t cameraId{0};
+  int64_t trackId{0};
+};
+
+struct PersonCropWindow
+{
+  int64_t cameraId{0};
+  int64_t sinceMs{0};
+};
+
 class SnapshotStore
 {
 public:
@@ -37,10 +49,9 @@ public:
   void putPersonCrop(SnapshotCropInput input);
 
   std::optional<CameraSnapshot> frame(int64_t cameraId) const;
-  std::optional<CameraSnapshot> personCrop(int64_t cameraId,
-                                           int64_t trackId) const;
+  std::optional<CameraSnapshot> personCrop(const PersonCropKey& key) const;
   std::optional<CameraSnapshot> latestPersonCrop(int64_t cameraId) const;
-  std::vector<CameraSnapshot> personCropsSince(int64_t cameraId, int64_t sinceMs) const;
+  std::vector<CameraSnapshot> personCropsSince(const PersonCropWindow& window) const;
 
   void forget(int64_t cameraId);
 

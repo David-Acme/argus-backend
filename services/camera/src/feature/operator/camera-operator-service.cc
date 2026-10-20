@@ -62,9 +62,9 @@ std::string personSignature(const cv::Mat& rgb, const DetectedObject& object)
     const uint8_t* pixel = lab.ptr<uint8_t>(row);
     for (int column = 0; column < lab.cols; column += 2) {
       const uint8_t* value = pixel + static_cast<std::ptrdiff_t>(column) * 3;
-      ++bins[value[0] >> 5];
-      ++bins[8 + (value[1] >> 5)];
-      ++bins[16 + (value[2] >> 5)];
+      ++bins[static_cast<unsigned>(value[0]) >> 5U];
+      ++bins[8U + (static_cast<unsigned>(value[1]) >> 5U)];
+      ++bins[16U + (static_cast<unsigned>(value[2]) >> 5U)];
     }
   }
 
@@ -801,10 +801,10 @@ void CameraOperatorService::interpret(const ProcessFrameInput& input, FrameAnaly
       if (object.name == "person" && object.trackId > 0)
         inputs_.dependencies.sighting({.cameraId = cameraId,
                                        .trackId = object.trackId,
-                                       .box = {.x = object.x / rgb.cols,
-                                               .y = object.y / rgb.rows,
-                                               .w = object.w / rgb.cols,
-                                               .h = object.h / rgb.rows},
+                                       .box = {.x = object.x / static_cast<float>(rgb.cols),
+                                               .y = object.y / static_cast<float>(rgb.rows),
+                                               .w = object.w / static_cast<float>(rgb.cols),
+                                               .h = object.h / static_cast<float>(rgb.rows)},
                                        .atMs = stamp});
   intelligence.objects = objects;
   intelligence.night = night;

@@ -25,6 +25,7 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+#include <utility>
 
 #include "temp-db.hxx"
 #include "wait-for-boot.hxx"
@@ -261,7 +262,7 @@ Json::Value threadObservation(const ThreadObservationInput& input)
   object["bbox"] = Json::Value(Json::objectValue);
   Json::Value objects(Json::arrayValue);
   objects.append(object);
-  event["objects"] = objects;
+  event["objects"] = std::move(objects);
   return event;
 }
 

@@ -14,10 +14,16 @@ std::string_view trimmed(std::string_view text)
   return text;
 }
 
-std::string entityName(std::string_view entity, std::string_view domain)
+struct EntityRef
 {
-  std::string_view name = trimmed(entity);
-  const std::string prefix = std::string(domain) + ".";
+  std::string_view entity;
+  std::string_view domain;
+};
+
+std::string entityName(const EntityRef& ref)
+{
+  std::string_view name = trimmed(ref.entity);
+  const std::string prefix = std::string(ref.domain) + ".";
   if (name.starts_with(prefix))
     name.remove_prefix(prefix.size());
   return std::string(name);
@@ -73,12 +79,12 @@ std::optional<bool> radarPresenceOf(const Json::Value& body)
 
 ProximityRequestPath bleRequestPath(std::string_view entity)
 {
-  return {.path = "/text_sensor/" + entityName(entity, "text_sensor"), .bearer = false};
+  return {.path = "/text_sensor/" + entityName({.entity = entity, .domain = "text_sensor"}), .bearer = false};
 }
 
 ProximityRequestPath radarRequestPath(const ProximitySensorRow& sensor)
 {
   if (sensor.source == ProximitySensorSource::HomeAssistant)
     return {.path = "/api/states/" + std::string(trimmed(sensor.entityId)), .bearer = true};
-  return {.path = "/binary_sensor/" + entityName(sensor.entityId, "binary_sensor"), .bearer = false};
+  return {.path = "/binary_sensor/" + entityName({.entity = sensor.entityId, .domain = "binary_sensor"}), .bearer = false};
 }

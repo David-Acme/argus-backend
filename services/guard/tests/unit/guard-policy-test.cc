@@ -7,6 +7,7 @@
 #include <iomanip>
 #include <iostream>
 #include <vector>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -352,15 +353,14 @@ TEST_CASE("cross-camera correlation matches the same identity")
   candidate.lastSeen = 100;
   const std::vector<GuardEncounterCandidate> candidates{candidate};
 
-  const auto matched = guard_policy::matchEncounter(
+  const auto matched = valueOf(guard_policy::matchEncounter(
       {.personId = 9,
        .signature = "BBBB",
        .now = 110,
        .windowS = 60,
        .minSimilarity = 0.8,
-       .candidates = candidates});
-  REQUIRE(matched);
-  CHECK(*matched == 4);
+       .candidates = candidates}));
+  CHECK(matched == 4);
 }
 
 namespace
@@ -387,15 +387,14 @@ TEST_CASE("cross-camera correlation falls back to the appearance signature")
   candidate.lastSeen = 100;
   const std::vector<GuardEncounterCandidate> candidates{candidate};
 
-  const auto matched = guard_policy::matchEncounter(
+  const auto matched = valueOf(guard_policy::matchEncounter(
       {.personId = 0,
        .signature = same,
        .now = 110,
        .windowS = 60,
        .minSimilarity = 0.8,
-       .candidates = candidates});
-  REQUIRE(matched);
-  CHECK(*matched == 7);
+       .candidates = candidates}));
+  CHECK(matched == 7);
 
   const auto rejected = guard_policy::matchEncounter(
       {.personId = 0,
@@ -465,7 +464,7 @@ TEST_CASE("cross-camera correlation keeps same-camera continuity")
   candidate.lastSeen = 100;
   const std::vector<GuardEncounterCandidate> candidates{candidate};
 
-  const auto matched = guard_policy::matchEncounter(
+  const auto matched = valueOf(guard_policy::matchEncounter(
       {.personId = 0,
        .signature = current,
        .cameraId = 6,
@@ -473,9 +472,8 @@ TEST_CASE("cross-camera correlation keeps same-camera continuity")
        .windowS = 60,
        .continuityWindowS = 20,
        .minSimilarity = 0.8,
-       .candidates = candidates});
-  REQUIRE(matched);
-  CHECK(*matched == 5);
+       .candidates = candidates}));
+  CHECK(matched == 5);
 
   const auto otherCamera = guard_policy::matchEncounter(
       {.personId = 0,

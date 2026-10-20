@@ -52,7 +52,7 @@ struct SpeakerResolution
 
 [[nodiscard]] SpeakerResolution resolveSpeaker(const SpeakerResolutionInput& input);
 
-[[nodiscard]] std::string floorNote(VoiceLang lang);
-[[nodiscard]] std::string guestNote(VoiceLang lang);
-[[nodiscard]] std::string visitorNote(VoiceLang lang);
-[[nodiscard]] std::string discreetNote(VoiceLang lang);
+[[nodiscard]] std::string_view floorNote(VoiceLang lang);
+[[nodiscard]] std::string_view guestNote(VoiceLang lang);
+[[nodiscard]] std::string_view visitorNote(VoiceLang lang);
+[[nodiscard]] std::string_view discreetNote(VoiceLang lang);

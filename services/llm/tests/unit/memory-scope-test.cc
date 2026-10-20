@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 #include <shared/vocabulary/memory-scope.hxx>
+#include <test-support/value-of.hxx>
 
 TEST_CASE("personal facts keep the stored spelling of the scope column")
 {
@@ -16,9 +17,8 @@ TEST_CASE("household facts carry the household spelling")
 TEST_CASE("every scope round trips through its name")
 {
   for (const MemoryScope scope : {MemoryScope::Personal, MemoryScope::Household}) {
-    const auto parsed = memoryScopeFromString(memoryScopeToString(scope));
-    REQUIRE(parsed.has_value());
-    CHECK(*parsed == scope);
+    const auto parsed = valueOf(memoryScopeFromString(memoryScopeToString(scope)));
+    CHECK(parsed == scope);
   }
 }
 

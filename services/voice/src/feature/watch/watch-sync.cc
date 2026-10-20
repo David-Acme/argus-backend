@@ -31,7 +31,7 @@ std::string userWords(const ConversationSnapshot& snapshot, std::string_view rol
     if (turn.role != role)
       continue;
     if (!out.empty())
-      out += " ";
+      out += ' ';
     out += turn.text;
   }
   return out;

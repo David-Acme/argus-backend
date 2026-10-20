@@ -787,8 +787,16 @@ public:
   mutable std::vector<std::string> ended;
 };
 
-argus::voice::v1::WatchConversation watchOf(const std::string& id, const std::string& state, int64_t until)
+struct WatchRow
 {
+  std::string id;
+  std::string state;
+  int64_t until{0};
+};
+
+argus::voice::v1::WatchConversation watchOf(const WatchRow& row)
+{
+  const auto& [id, state, until] = row;
   argus::voice::v1::WatchConversation conversation;
   conversation.set_conversation_id(id);
   conversation.set_user_id(7);
@@ -827,7 +835,7 @@ TEST_CASE("a camera conversation is continued on the phone only while it is live
   const auto watch = std::make_shared<FakeWatch>();
   const int64_t now =
       std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-  watch->conversations = {watchOf(kLiveId, "listening", 0), watchOf(kGoneId, "resumable", now - 5)};
+  watch->conversations = {watchOf({.id = kLiveId, .state = "listening", .until = 0}), watchOf({.id = kGoneId, .state = "resumable", .until = now - 5})};
   const RtcTokenService service({.config = enabledConfig(),
                                  .voice = voice,
                                  .calls = nullptr,
@@ -876,6 +884,6 @@ TEST_CASE("a camera conversation is continued on the phone only while it is live
               drogon::sync_wait(service.endWatch({.body = RtcWatchEndDto::fromPath(kGoneId), .caller = caller()})));
         }) == 404);
   CHECK_THROWS_AS(RtcWatchEndDto::fromPath("x"), ValidationException);
-  CHECK(watchExpired(watchOf(kGoneId, "ended", 0), now));
-  CHECK_FALSE(watchExpired(watchOf(kGoneId, "resumable", now + 60), now));
+  CHECK(watchExpired(watchOf({.id = kGoneId, .state = "ended", .until = 0}), now));
+  CHECK_FALSE(watchExpired(watchOf({.id = kGoneId, .state = "resumable", .until = now + 60}), now));
 }

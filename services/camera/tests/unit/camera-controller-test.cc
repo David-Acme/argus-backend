@@ -597,7 +597,7 @@ TEST_CASE("camera and zone contracts hold on the argus-camera surface")
     payload["quality"] = "main";
     Json::Value message;
     message["type"] = "camera:subscribe";
-    message["payload"] = payload;
+    message["payload"] = std::move(payload);
     return message;
   };
 

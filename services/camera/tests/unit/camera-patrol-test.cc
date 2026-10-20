@@ -32,13 +32,19 @@ PatrolProgress at(std::size_t nextStop, int64_t arrivedAtMs)
   return {.active = true, .nextStop = nextStop, .arrivedAtMs = arrivedAtMs, .lapStartedMs = 0, .restUntilMs = 0};
 }
 
-bool refused(const std::string& body, const std::string& field)
+struct RefusalProbe
+{
+  std::string body;
+  std::string field;
+};
+
+bool refused(const RefusalProbe& probe)
 {
   try {
-    static_cast<void>(CameraPatrolDto::fromJson(json_util::fromString(body)));
+    static_cast<void>(CameraPatrolDto::fromJson(json_util::fromString(probe.body)));
   }
   catch (const ValidationException& error) {
-    return error.errors().contains(field);
+    return error.errors().contains(probe.field);
   }
   return false;
 }
@@ -241,21 +247,20 @@ TEST_CASE("a patrol body is validated before anything reaches the camera")
   const auto untouched = CameraPatrolDto::fromJson(json_util::fromString(R"({"dwellSeconds":5})"));
   CHECK_FALSE(untouched.windowGiven);
 
-  CHECK(refused(R"({"stops":["1"]})", "stops"));
-  CHECK(refused(R"({"stops":["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17"]})",
-                "stops"));
-  CHECK(refused(R"({"stops":["1",""]})", "stops"));
-  CHECK(refused(R"({"stops":["1",2]})", "stops"));
-  CHECK(refused(R"({"stops":"1,2"})", "stops"));
-  CHECK(refused(R"({"stops":["1","1","2"]})", "stops"));
-  CHECK(refused(R"({"stops":["1","2","1"]})", "stops"));
-  CHECK(refused(R"({"dwellSeconds":4})", "dwellSeconds"));
-  CHECK(refused(R"({"dwellSeconds":601})", "dwellSeconds"));
-  CHECK(refused(R"({"dwellSeconds":"30"})", "dwellSeconds"));
-  CHECK(refused(R"({"enabled":"yes"})", "enabled"));
-  CHECK(refused(R"({"window":{"startHour":24,"endHour":6}})", "window"));
-  CHECK(refused(R"({"window":{"startHour":6,"endHour":6}})", "window"));
-  CHECK(refused(R"({"window":{"startHour":6}})", "window"));
-  CHECK(refused(R"({"window":"night"})", "window"));
-  CHECK_FALSE(refused(R"({"stops":["1","2"],"dwellSeconds":600})", "stops"));
+  CHECK(refused({.body = R"({"stops":["1"]})", .field = "stops"}));
+  CHECK(refused({.body = R"({"stops":["1","2","3","4","5","6","7","8","9","10","11","12","13","14","15","16","17"]})", .field = "stops"}));
+  CHECK(refused({.body = R"({"stops":["1",""]})", .field = "stops"}));
+  CHECK(refused({.body = R"({"stops":["1",2]})", .field = "stops"}));
+  CHECK(refused({.body = R"({"stops":"1,2"})", .field = "stops"}));
+  CHECK(refused({.body = R"({"stops":["1","1","2"]})", .field = "stops"}));
+  CHECK(refused({.body = R"({"stops":["1","2","1"]})", .field = "stops"}));
+  CHECK(refused({.body = R"({"dwellSeconds":4})", .field = "dwellSeconds"}));
+  CHECK(refused({.body = R"({"dwellSeconds":601})", .field = "dwellSeconds"}));
+  CHECK(refused({.body = R"({"dwellSeconds":"30"})", .field = "dwellSeconds"}));
+  CHECK(refused({.body = R"({"enabled":"yes"})", .field = "enabled"}));
+  CHECK(refused({.body = R"({"window":{"startHour":24,"endHour":6}})", .field = "window"}));
+  CHECK(refused({.body = R"({"window":{"startHour":6,"endHour":6}})", .field = "window"}));
+  CHECK(refused({.body = R"({"window":{"startHour":6}})", .field = "window"}));
+  CHECK(refused({.body = R"({"window":"night"})", .field = "window"}));
+  CHECK_FALSE(refused({.body = R"({"stops":["1","2"],"dwellSeconds":600})", .field = "stops"}));
 }

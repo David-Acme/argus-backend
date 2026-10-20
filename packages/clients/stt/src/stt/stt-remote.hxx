@@ -16,7 +16,7 @@ struct SttRemoteConfig
   std::string url;
   int timeoutMs{30000};
 
-  bool enabled() const { return !url.empty(); }
+  [[nodiscard]] bool enabled() const { return !url.empty(); }
 
   static SttRemoteConfig resolve();
 };

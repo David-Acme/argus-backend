@@ -10,6 +10,6 @@ struct MemoryScopeInput
   std::string_view lang;
 };
 
-[[nodiscard]] bool saysForEveryone(std::string_view text, std::string_view lang);
+[[nodiscard]] bool saysForEveryone(const MemoryScopeInput& input);
 
 [[nodiscard]] MemoryScope classifyMemoryScope(const MemoryScopeInput& input);

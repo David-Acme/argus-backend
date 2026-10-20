@@ -19,6 +19,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -431,11 +432,10 @@ TEST_CASE("a doubt survives a restart: obeyed, not recording, and nobody told tw
 
   service.forget(47);
   CameraRepository repository;
-  const auto restored = drogon::sync_wait(repository.findById(47));
-  REQUIRE(restored.has_value());
-  CHECK(restored->privacyState == CameraPrivacyState::Unknown);
-  CHECK(restored->privacyObeyed);
-  service.seed({*restored});
+  const auto restored = valueOf(drogon::sync_wait(repository.findById(47)));
+  CHECK(restored.privacyState == CameraPrivacyState::Unknown);
+  CHECK(restored.privacyObeyed);
+  service.seed({restored});
 
   CHECK(service.masked(47));
   const auto afterRestart =

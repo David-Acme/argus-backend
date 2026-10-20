@@ -44,9 +44,10 @@ std::optional<std::vector<uint8_t>> beaconSeedBytes(std::string_view base64)
   return std::vector<uint8_t>(decoded.begin(), decoded.end());
 }
 
-int64_t beaconCounter(int64_t nowSeconds, int64_t rotateSeconds)
+int64_t beaconCounter(const BeaconClock& clock)
 {
-  const int64_t period = std::max<int64_t>(rotateSeconds, 1);
+  const int64_t nowSeconds = clock.nowSeconds;
+  const int64_t period = std::max<int64_t>(clock.rotateSeconds, 1);
   const int64_t quotient = nowSeconds / period;
   return (nowSeconds % period != 0 && nowSeconds < 0) ? quotient - 1 : quotient;
 }
@@ -94,7 +95,7 @@ std::optional<std::string> normalizedUuid(std::string_view text)
 std::unordered_map<std::string, int64_t> beaconTable(const BeaconTableInput& input)
 {
   std::unordered_map<std::string, int64_t> table;
-  const int64_t current = beaconCounter(input.nowSeconds, input.rotateSeconds);
+  const int64_t current = beaconCounter({.nowSeconds = input.nowSeconds, .rotateSeconds = input.rotateSeconds});
   for (const BeaconSeed& seed : input.seeds) {
     if (seed.seed.size() < kBeaconTokenBytes)
       continue;

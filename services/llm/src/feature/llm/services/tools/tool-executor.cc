@@ -46,7 +46,7 @@ void ToolExecutor::attachConfirmations(CameraConfirmSink sink)
   confirmations_ = std::move(sink);
 }
 
-std::string cameraFloorLine(std::string_view lang, bool confirmed)
+std::string_view cameraFloorLine(std::string_view lang, bool confirmed)
 {
   const bool english = lang == "en";
   if (confirmed)
@@ -109,7 +109,7 @@ tools::ToolResult ToolExecutor::execute(const tools::ToolCall& call, const ToolA
                       .arguments = prepared.arguments,
                       .lang = prepared.context.lang});
     tools::ToolResult result = refused(call, confirm ? "confirm_in_app" : "camera_floor",
-                                       cameraFloorLine(prepared.context.lang, confirm));
+                                       std::string(cameraFloorLine(prepared.context.lang, confirm)));
     result.data["surface"] = std::string(conversationSurfaceToString(audience.surface));
     return result;
   }

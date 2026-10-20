@@ -24,7 +24,7 @@ std::string joined(const std::vector<std::string>& words, std::string_view separ
 
 }
 
-std::string outcome(RelayOutcome value, std::string_view lang)
+std::string_view outcome(RelayOutcome value, std::string_view lang)
 {
   const bool en = english(lang);
   switch (value) {
@@ -47,7 +47,7 @@ std::string consentQuestion(const ConsentLine& line)
   return "¿Le digo a " + std::string(line.recipient) + ": «" + std::string(line.message) + "»?";
 }
 
-std::string consentExpired(std::string_view lang)
+std::string_view consentExpired(std::string_view lang)
 {
   return english(lang) ? "I did not send it; tell me the message again." : "No lo envié; dime otra vez el mensaje.";
 }
@@ -68,21 +68,21 @@ std::string messageFromSender(const SenderLine& line)
   return std::string(line.sender) + " te manda decir: " + std::string(line.message);
 }
 
-std::string visitorAsk(std::string_view lang)
+std::string_view visitorAsk(std::string_view lang)
 {
   return english(lang) ? "How can I help you?" : "¿En qué le puedo ayudar?";
 }
 
-std::string visitorDone(std::string_view lang)
+std::string_view visitorDone(std::string_view lang)
 {
   return english(lang) ? "Thank you, I will pass it on." : "Gracias, se lo hago llegar.";
 }
 
-std::string visitorTitle(std::string_view camera, std::string_view lang)
+std::string visitorTitle(const VisitorTitleLine& line)
 {
-  if (english(lang))
-    return "A visitor at " + std::string(camera);
-  return "Un visitante en " + std::string(camera);
+  if (english(line.lang))
+    return "A visitor at " + std::string(line.camera);
+  return "Un visitante en " + std::string(line.camera);
 }
 
 std::string visitorMessage(const VisitorLine& line)

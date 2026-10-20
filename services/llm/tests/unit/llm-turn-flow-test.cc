@@ -2551,7 +2551,7 @@ TEST_CASE("the trigger decider sends an explicit recurring ask to the reminder t
 
 namespace
 {
-tools::ToolDescriptor relayStub(World& world, std::vector<std::string> candidates)
+tools::ToolDescriptor relayStub(World& world, const std::vector<std::string>& candidates)
 {
   return tool_stubs::stub({.name = "message.relay",
                            .capability = "messages.relay",
@@ -2564,7 +2564,7 @@ tools::ToolDescriptor relayStub(World& world, std::vector<std::string> candidate
                                Json::Value list(Json::arrayValue);
                                for (const auto& name : candidates)
                                  list.append(name);
-                               asked.data["candidates"] = list;
+                               asked.data["candidates"] = std::move(list);
                                return asked;
                              }
                              return tool_stubs::okResult("Mensaje entregado a " + call.arguments["recipient"].asString() + ".");

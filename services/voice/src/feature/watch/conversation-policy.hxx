@@ -111,11 +111,11 @@ enum class ReplyNudge : uint8_t
 
 [[nodiscard]] ReplyNudge replyNudge(const ReplyTimerInput& input);
 
-[[nodiscard]] std::string acknowledgementLine(VoiceLang lang);
-[[nodiscard]] std::string giveUpLine(VoiceLang lang);
+[[nodiscard]] std::string_view acknowledgementLine(VoiceLang lang);
+[[nodiscard]] std::string_view giveUpLine(VoiceLang lang);
 [[nodiscard]] std::string cameraNote(VoiceLang lang, std::string_view cameraName);
 [[nodiscard]] std::string busyNotice(VoiceLang lang, std::string_view cameraName);
-[[nodiscard]] std::string handoffLine(VoiceLang lang);
-[[nodiscard]] std::string continueLine(VoiceLang lang);
+[[nodiscard]] std::string_view handoffLine(VoiceLang lang);
+[[nodiscard]] std::string_view continueLine(VoiceLang lang);
 [[nodiscard]] std::string mintConversationId();
 [[nodiscard]] int64_t epochSeconds();

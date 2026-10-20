@@ -8,6 +8,7 @@
 #include <iterator>
 #include <string>
 #include <utility>
+#include <test-support/value-of.hxx>
 
 #ifndef ARGUS_TEST_MEMORY_SCHEMA
 #define ARGUS_TEST_MEMORY_SCHEMA "services/llm/database/schema.sql"
@@ -50,18 +51,16 @@ TEST_CASE("a leg touch creates the conversation and a second touch switches its 
   const ConversationRepository repository;
   REQUIRE(repository.touchLeg(database.handle,
                               {.userId = kUser, .leg = ConversationLegKind::Camera, .at = 100}));
-  auto row = repository.find(database.handle, kUser);
-  REQUIRE(row.has_value());
-  CHECK(row->activeLeg == ConversationLegKind::Camera);
-  CHECK(row->createdAt == 100);
+  const auto created = valueOf(repository.find(database.handle, kUser));
+  CHECK(created.activeLeg == ConversationLegKind::Camera);
+  CHECK(created.createdAt == 100);
 
   REQUIRE(repository.touchLeg(database.handle,
                               {.userId = kUser, .leg = ConversationLegKind::Phone, .at = 200}));
-  row = repository.find(database.handle, kUser);
-  REQUIRE(row.has_value());
-  CHECK(row->activeLeg == ConversationLegKind::Phone);
-  CHECK(row->createdAt == 100);
-  CHECK(row->updatedAt == 200);
+  const auto row = valueOf(repository.find(database.handle, kUser));
+  CHECK(row.activeLeg == ConversationLegKind::Phone);
+  CHECK(row.createdAt == 100);
+  CHECK(row.updatedAt == 200);
 }
 
 TEST_CASE("turns are returned in arrival order and the limit keeps the newest")
@@ -82,9 +81,8 @@ TEST_CASE("turns are returned in arrival order and the limit keeps the newest")
   CHECK(turns[0].role == ConversationTurnRole::Assistant);
   CHECK(turns[1].content == "tres");
   CHECK(turns[1].leg == ConversationLegKind::Camera);
-  const auto row = repository.find(database.handle, kUser);
-  REQUIRE(row.has_value());
-  CHECK(row->lastTurnAt == 30);
+  const auto row = valueOf(repository.find(database.handle, kUser));
+  CHECK(row.lastTurnAt == 30);
 }
 
 TEST_CASE("a turn cannot be stored for a conversation that does not exist")
@@ -106,10 +104,9 @@ TEST_CASE("the summary is stored with its turn count")
                                                   .summary = "resumen corto",
                                                   .summaryTurns = 12,
                                                   .at = 50}));
-  const auto row = repository.find(database.handle, kUser);
-  REQUIRE(row.has_value());
-  CHECK(row->summary == "resumen corto");
-  CHECK(row->summaryTurns == 12);
+  const auto row = valueOf(repository.find(database.handle, kUser));
+  CHECK(row.summary == "resumen corto");
+  CHECK(row.summaryTurns == 12);
 }
 
 TEST_CASE("the retention purge removes only the turns older than the cutoff")

@@ -1,6 +1,7 @@
 #include "listener-config.hxx"
 
 #include <config/config-service.hxx>
+#include <utility>
 
 namespace
 {
@@ -82,7 +83,7 @@ Json::Value singleListenerJson(const ListenerConfig& base, int port)
     protocol.append("MinProtocol");
     protocol.append(base.minTlsProtocol);
     sslConf.append(protocol);
-    listener["ssl_conf"] = sslConf;
+    listener["ssl_conf"] = std::move(sslConf);
   }
   return listener;
 }

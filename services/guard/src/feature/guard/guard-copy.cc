@@ -455,7 +455,7 @@ NoticeText renderMaintenance(const GuardNotice& notice, bool english)
       text.title = english ? "Is someone moving the " + camera + " camera?"
                            : "¿Alguien está moviendo la cámara " + camera + "?";
       text.body = pick({.es = "Perdí su imagen y hay alguien en casa. Responde «Sí, soy yo» o «No».",
-                        .en = "I lost its picture and someone is home. Answer \"Yes, it's me\" or \"No\"."},
+                        .en = R"(I lost its picture and someone is home. Answer "Yes, it's me" or "No".)"},
                        english);
       return text;
     case NoticeKind::ViewCheck:

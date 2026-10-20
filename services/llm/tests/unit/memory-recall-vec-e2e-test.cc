@@ -8,6 +8,7 @@
 #include <sqlite/sqlite-stmt.hxx>
 #include <sqlite/vec-db.hxx>
 
+#include <array>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -18,6 +19,7 @@
 #include <optional>
 #include <sqlite3.h>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #ifndef ARGUS_TEST_MEMORY_SCHEMA
@@ -111,7 +113,7 @@ void seedFacts()
   seed(kDavidFact, kDavid);
 }
 
-const std::vector<std::string> kDavidQueries{
+constexpr std::array<std::string_view, 4> kDavidQueries{
     "¿cómo se llama el perro?",
     "¿qué nombre tiene la mascota de la casa?",
     "Rex",
@@ -143,7 +145,7 @@ TEST_CASE("the vector tier never returns Ana's fact to David, end to end with th
 
   for (const auto& query : kDavidQueries) {
     CAPTURE(query);
-    const RecallContext asDavid = service.recall({.userId = kDavid, .text = query, .lang = "es", .personIds = {}});
+    const RecallContext asDavid = service.recall({.userId = kDavid, .text = std::string(query), .lang = "es", .personIds = {}});
     CHECK(asDavid.prependText.find("Rex") == std::string::npos);
   }
 

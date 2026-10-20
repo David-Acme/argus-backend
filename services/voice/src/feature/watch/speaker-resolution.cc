@@ -2,7 +2,7 @@
 
 #include <algorithm>
 
-std::string floorNote(VoiceLang lang)
+std::string_view floorNote(VoiceLang lang)
 {
   if (lang == VoiceLang::En)
     return "Through a camera you never disarm, change settings or roles, read another person's data or say "
@@ -12,7 +12,7 @@ std::string floorNote(VoiceLang lang)
          "está alguien; eso se confirma en la app, en el celular de la persona. Decir un nombre no prueba nada.";
 }
 
-std::string guestNote(VoiceLang lang)
+std::string_view guestNote(VoiceLang lang)
 {
   if (lang == VoiceLang::En)
     return "You cannot see who is speaking. Answer general questions and the home's shared matters only, "
@@ -23,7 +23,7 @@ std::string guestNote(VoiceLang lang)
          "celular. Nunca adivines un nombre en voz alta.";
 }
 
-std::string visitorNote(VoiceLang lang)
+std::string_view visitorNote(VoiceLang lang)
 {
   if (lang == VoiceLang::En)
     return "You are speaking with a visitor the home does not know. Say you are this home's system, ask what "
@@ -34,7 +34,7 @@ std::string visitorNote(VoiceLang lang)
          "nadie.";
 }
 
-std::string discreetNote(VoiceLang lang)
+std::string_view discreetNote(VoiceLang lang)
 {
   if (lang == VoiceLang::En)
     return "Someone the home does not know is present. Keep the conversation natural but leave personal "
@@ -61,13 +61,13 @@ SpeakerResolution resolveSpeaker(const SpeakerResolutionInput& input)
   }
   const bool untrustedStranger =
       std::ranges::any_of(strangers, [](const SeenFaceEvidence& face) { return !face.trusted; });
-  out.notes.push_back(floorNote(input.lang));
+  out.notes.emplace_back(floorNote(input.lang));
   if (members.size() == 1) {
     const SeenFaceEvidence& member = members.front();
     if (input.voice && input.voice->matched && input.voice->userId > 0 && input.voice->userId != member.userId) {
       out.disagreement = true;
       out.audience = ConversationAudience::Guest;
-      out.notes.push_back(guestNote(input.lang));
+      out.notes.emplace_back(guestNote(input.lang));
       return out;
     }
     out.userId = member.userId;
@@ -76,22 +76,22 @@ SpeakerResolution resolveSpeaker(const SpeakerResolutionInput& input)
     out.surface = ConversationSurface::Camera;
     out.audience = untrustedStranger ? ConversationAudience::Discreet : ConversationAudience::Member;
     if (untrustedStranger)
-      out.notes.push_back(discreetNote(input.lang));
+      out.notes.emplace_back(discreetNote(input.lang));
     return out;
   }
   if (members.size() > 1) {
     out.audience = ConversationAudience::Guest;
-    out.notes.push_back(guestNote(input.lang));
+    out.notes.emplace_back(guestNote(input.lang));
     return out;
   }
   if (!strangers.empty()) {
     out.audience = ConversationAudience::Visitor;
     const auto nearest = std::ranges::max_element(strangers, {}, &SeenFaceEvidence::confidence);
     out.strangerPersonId = nearest->personId;
-    out.notes.push_back(visitorNote(input.lang));
+    out.notes.emplace_back(visitorNote(input.lang));
     return out;
   }
   out.audience = ConversationAudience::Guest;
-  out.notes.push_back(guestNote(input.lang));
+  out.notes.emplace_back(guestNote(input.lang));
   return out;
 }

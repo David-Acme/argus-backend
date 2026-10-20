@@ -957,7 +957,7 @@ void appendTraceRow(const TraceRowInput& input)
     item["verdict"] = attempt.verdict;
     attempts.append(item);
   }
-  row["attempts"] = attempts;
+  row["attempts"] = std::move(attempts);
   input.out << Json::writeString(input.builder, row) << "\n";
 }
 

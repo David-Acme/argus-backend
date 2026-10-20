@@ -392,13 +392,12 @@ TEST_CASE("live roundtrip against a running nats-server" *
 
   std::atomic<int> calls{0};
   std::string received;
-  const auto id = bus.subscribe(
+  const auto id = valueOf(bus.subscribe(
       nats_subject::kSyncChange,
       [&](std::string_view, std::string_view payload) {
         received = std::string(payload);
         ++calls;
-      });
-  REQUIRE(id.has_value());
+      }));
 
   const auto wildcard = bus.subscribe(
       "argus.*.v1.change", [](std::string_view, std::string_view) {});
@@ -428,7 +427,7 @@ TEST_CASE("live roundtrip against a running nats-server" *
   CHECK(calls.load() >= 1);
   CHECK(received == body);
 
-  CHECK(bus.unsubscribe(*id));
+  CHECK(bus.unsubscribe(id));
   bus.drain();
   CHECK_FALSE(bus.isConnected());
 }

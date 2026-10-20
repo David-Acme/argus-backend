@@ -22,6 +22,7 @@
 #include <thread>
 #include <unistd.h>
 #include <vector>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -230,7 +231,7 @@ TEST_CASE("a privacy toggle is audited with its actor and announces status and o
   PrivacyStateService::instance().forget(rig.cameraId);
   const CameraControlFeatureService service;
 
-  const auto masked = drogon::sync_wait(service.settings(
+  const auto masked = valueOf(drogon::sync_wait(service.settings(
       {.cameraId = rig.cameraId,
        .body = CameraSettingsDto{.privacy = true,
                                  .led = std::nullopt,
@@ -241,9 +242,8 @@ TEST_CASE("a privacy toggle is audited with its actor and announces status and o
                                  .alarm = std::nullopt,
                                  .alarmVolume = std::nullopt},
        .actorUserId = 41,
-       .actorIp = "192.0.2.7"}));
-  REQUIRE(masked.has_value());
-  CHECK(masked->ok);
+       .actorIp = "192.0.2.7"})));
+  CHECK(masked.ok);
   CHECK(PrivacyStateService::instance().stateOf(rig.cameraId) ==
         CameraPrivacyState::On);
   REQUIRE(rig.sink.actions.size() == 1);
@@ -263,7 +263,7 @@ TEST_CASE("a privacy toggle is audited with its actor and announces status and o
   CHECK(rig.sink.notices.back().scope == ResourceScope::Overview);
 
   rig.fake->privacyStatus(false);
-  const auto cleared = drogon::sync_wait(service.settings(
+  const auto cleared = valueOf(drogon::sync_wait(service.settings(
       {.cameraId = rig.cameraId,
        .body = CameraSettingsDto{.privacy = false,
                                  .led = std::nullopt,
@@ -274,9 +274,8 @@ TEST_CASE("a privacy toggle is audited with its actor and announces status and o
                                  .alarm = std::nullopt,
                                  .alarmVolume = std::nullopt},
        .actorUserId = 41,
-       .actorIp = "192.0.2.7"}));
-  REQUIRE(cleared.has_value());
-  CHECK(cleared->ok);
+       .actorIp = "192.0.2.7"})));
+  CHECK(cleared.ok);
   CHECK(PrivacyStateService::instance().stateOf(rig.cameraId) ==
         CameraPrivacyState::Off);
   REQUIRE(rig.sink.actions.size() == 2);

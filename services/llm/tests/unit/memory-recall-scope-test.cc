@@ -91,7 +91,7 @@ std::vector<RecallAudience> davidsAudiences()
 
 bool contains(const std::vector<int64_t>& ids, int64_t id)
 {
-  return std::find(ids.begin(), ids.end(), id) != ids.end();
+  return std::ranges::find(ids, id) != ids.end();
 }
 }
 

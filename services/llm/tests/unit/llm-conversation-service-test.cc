@@ -54,7 +54,7 @@ TEST_CASE("a recorded turn persists and makes its leg the active one")
                               .leg = ConversationLegKind::Camera,
                               .content = "hola",
                               .at = kStart}));
-  CHECK(service.hasOpenConversation(kUser, kStart + 10));
+  CHECK(service.hasOpenConversation({.userId = kUser, .now = kStart + 10}));
   const auto tail = service.contextTail(kUser, 5);
   REQUIRE(tail.size() == 1);
   CHECK(tail.front().content == "hola");
@@ -136,7 +136,7 @@ TEST_CASE("a takeover with no earlier conversation sets the leg without a note")
                                                  .at = kStart});
   CHECK_FALSE(first.switched);
   CHECK(service.contextTail(kUser, 5).empty());
-  CHECK_FALSE(service.hasOpenConversation(kUser, kStart));
+  CHECK_FALSE(service.hasOpenConversation({.userId = kUser, .now = kStart}));
 }
 
 TEST_CASE("a conversation is open within the idle window and idle after it")
@@ -149,8 +149,8 @@ TEST_CASE("a conversation is open within the idle window and idle after it")
                               .leg = ConversationLegKind::Phone,
                               .content = "hola",
                               .at = kStart}));
-  CHECK(service.hasOpenConversation(kUser, kStart + 900));
-  CHECK_FALSE(service.hasOpenConversation(kUser, kStart + 901));
+  CHECK(service.hasOpenConversation({.userId = kUser, .now = kStart + 900}));
+  CHECK_FALSE(service.hasOpenConversation({.userId = kUser, .now = kStart + 901}));
   CHECK(service.idleUsers(kStart + 900).empty());
   CHECK(service.idleUsers(kStart + 901) == std::vector<int64_t>{kUser});
 }

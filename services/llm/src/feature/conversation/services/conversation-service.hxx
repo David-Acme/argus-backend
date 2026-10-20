@@ -31,6 +31,12 @@ struct InboundRequest
   int64_t at{0};
 };
 
+struct OpenConversationQuery
+{
+  int64_t userId{0};
+  int64_t now{0};
+};
+
 class ConversationService final : public ConversationStore
 {
 public:
@@ -40,7 +46,7 @@ public:
 
   [[nodiscard]] TakeoverResult takeover(const TakeoverRequest& request) const override;
 
-  [[nodiscard]] bool hasOpenConversation(int64_t userId, int64_t now) const;
+  [[nodiscard]] bool hasOpenConversation(const OpenConversationQuery& query) const;
 
   [[nodiscard]] bool appendInbound(const InboundRequest& inbound) const;
 

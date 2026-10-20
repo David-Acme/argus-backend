@@ -39,13 +39,13 @@ RoomBeliefConfig roomBeliefConfigOf(const GuardProximityConfig& config)
           .forgetMs = config.forgetMs};
 }
 
-double bleStrength(int rssi, int64_t rssiFloor)
+double bleStrength(const BleReading& reading)
 {
-  const auto floor = static_cast<double>(-rssiFloor);
-  const auto span = static_cast<double>(rssiFloor - kBleStrongDbm);
+  const auto floor = static_cast<double>(-reading.rssiFloor);
+  const auto span = static_cast<double>(reading.rssiFloor - kBleStrongDbm);
   if (span <= 0.0)
     return 0.0;
-  return std::clamp((static_cast<double>(rssi) - floor) / span, 0.0, 1.0);
+  return std::clamp((static_cast<double>(reading.rssi) - floor) / span, 0.0, 1.0);
 }
 
 double voiceStrength(const ProximityVoiceEvidence& evidence)
@@ -450,7 +450,7 @@ drogon::Task<void> ProximityService::poll()
           const auto owner = table.find(*uuid);
           if (owner == table.end())
             continue;
-          const double strength = bleStrength(beacon.rssi, settings.bleRssiFloor);
+          const double strength = bleStrength({.rssi = beacon.rssi, .rssiFloor = settings.bleRssiFloor});
           if (strength <= 0.0)
             continue;
           observeLocated({.userId = owner->second,

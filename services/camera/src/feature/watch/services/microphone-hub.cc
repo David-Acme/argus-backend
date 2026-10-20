@@ -268,7 +268,8 @@ void MicrophoneHub::run(const std::shared_ptr<Reader>& reader, const std::stop_t
       return;
     std::unique_ptr<MicrophoneSource> source = input_.sources ? input_.sources(cameraId) : nullptr;
     if (!source || !source->open()) {
-      if (++failures == 1 || failures % 30 == 0)
+      ++failures;
+      if (failures == 1 || failures % 30 == 0)
         LOG_WARN << "Camera watch: camera " << cameraId << " microphone did not open (attempt "
                  << failures << ")";
       gap = true;

@@ -44,8 +44,8 @@ constexpr std::size_t kMaxContentBytes = std::size_t{32} * 1024;
 constexpr std::size_t kMaxGrammarBytes = std::size_t{8} * 1024;
 constexpr std::size_t kMaxSessionBytes = 128;
 constexpr int32_t kMaxTokensBound = 4096;
-constexpr int64_t kMaxContextSize = 1 << 22;
-constexpr int32_t kMaxPrefillTokens = 1 << 20;
+constexpr int64_t kMaxContextSize = int64_t{4} * 1024 * 1024;
+constexpr int32_t kMaxPrefillTokens = 1024 * 1024;
 
 bool validMessages(const std::vector<ChatMessage>& messages)
 {

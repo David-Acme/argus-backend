@@ -71,7 +71,7 @@ Json::Value drogonConfig(const ProductivityDbConfig& productivityDb,
   client["number_of_connections"] = 1;
   client["timeout"] = -1.0;
   clients.append(client);
-  config["db_clients"] = clients;
+  config["db_clients"] = std::move(clients);
 
   config["listeners"] = listenerJson(listener);
 

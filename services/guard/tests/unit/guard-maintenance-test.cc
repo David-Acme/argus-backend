@@ -15,6 +15,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <test-support/value-of.hxx>
 
 using guard_test::GuardBoot;
 using guard_test::scalar;
@@ -252,9 +253,8 @@ TEST_CASE("a window declared under duress is flagged and covers nothing; an unkn
        .source = MaintenanceSource::App}));
   drogon::sync_wait(rig.service.endForUnknownPerson({.environmentId = home, .at = rig.clock + 5}));
   MaintenanceRepository repository;
-  const auto ended = drogon::sync_wait(repository.findById(window["id"].asInt64()));
-  REQUIRE(ended.has_value());
-  CHECK(ended->endReason == MaintenanceEndReason::UnknownPerson);
+  const auto ended = valueOf(drogon::sync_wait(repository.findById(window["id"].asInt64())));
+  CHECK(ended.endReason == MaintenanceEndReason::UnknownPerson);
 }
 
 TEST_CASE("the view at the end of a window is checked, and a confirmed view is relearned")
@@ -291,10 +291,9 @@ TEST_CASE("the view at the end of a window is checked, and a confirmed view is r
        .source = MaintenanceSource::App}));
   drogon::sync_wait(rig.service.expireDue(rig.clock + 61));
   MaintenanceRepository repository;
-  const auto closed = drogon::sync_wait(repository.findById(expired["id"].asInt64()));
-  REQUIRE(closed.has_value());
-  CHECK(closed->endReason == MaintenanceEndReason::Expired);
-  CHECK(closed->viewChecks.empty());
+  const auto closed = valueOf(drogon::sync_wait(repository.findById(expired["id"].asInt64())));
+  CHECK(closed.endReason == MaintenanceEndReason::Expired);
+  CHECK(closed.viewChecks.empty());
 }
 
 TEST_CASE("the home question: yes declares a window, no is kept for the sweep, silence times out")

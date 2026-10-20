@@ -776,7 +776,7 @@ grpc::ServerUnaryReactor* CameraActionRpcService::GetPersonCrop(
   const int64_t trackId = request->track_id();
   std::optional<CameraSnapshot> crop;
   if (trackId > 0)
-    crop = SnapshotStore::instance().personCrop(cameraId, trackId);
+    crop = SnapshotStore::instance().personCrop({.cameraId = cameraId, .trackId = trackId});
   else {
     crop = SnapshotStore::instance().latestPersonCrop(cameraId);
     if (!crop)

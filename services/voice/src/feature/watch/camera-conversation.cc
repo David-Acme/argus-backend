@@ -535,10 +535,10 @@ void CameraConversation::tick(const std::stop_token& stop)
       setState(ConversationState::Listening);
     }
     if (nudge == ReplyNudge::Acknowledge)
-      sayDirect(acknowledgementLine(input_.lang));
+      sayDirect(std::string(acknowledgementLine(input_.lang)));
     if (nudge == ReplyNudge::GiveUp) {
       input_.sessions->skip(*this);
-      sayDirect(giveUpLine(input_.lang));
+      sayDirect(std::string(giveUpLine(input_.lang)));
     }
     if (due != ConversationEnd::None) {
       close(due);
@@ -555,7 +555,7 @@ void CameraConversation::close(ConversationEnd reason)
     device = deviceHandoff_;
   }
   if (reason == ConversationEnd::Handoff && !device && !closed_.load())
-    sayDirect(handoffLine(input_.lang));
+    sayDirect(std::string(handoffLine(input_.lang)));
   if (closed_.exchange(true))
     return;
   finishSpeaker(reason != ConversationEnd::Closing && reason != ConversationEnd::Silence &&

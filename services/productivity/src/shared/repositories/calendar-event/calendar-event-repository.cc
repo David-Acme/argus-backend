@@ -109,7 +109,7 @@ CalendarEventRepository::update(int64_t id,
 {
   const auto pooled = DbService::productivityClient();
   auto* client = input.client ? input.client : pooled.get();
-  std::string sql = UPDATE_PREFIX.data();
+  std::string sql(UPDATE_PREFIX);
   std::vector<std::string> args;
   bool changed = false;
 

@@ -12,6 +12,8 @@
 #include <algorithm>
 #include <ctime>
 #include <map>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace
@@ -29,7 +31,7 @@ std::string pickText(bool english, const std::string& es, const std::string& en)
   return english ? en : es;
 }
 
-std::string lostWord(const std::string& status, bool english)
+std::string_view lostWord(const std::string& status, bool english)
 {
   if (status == "covered" || status == "whiteout")
     return english ? "covered" : "tapada";
@@ -94,7 +96,7 @@ drogon::Task<Json::Value> MaintenanceService::list(const MaintenanceActor& actor
   for (const MaintenanceWindow& window : co_await repository_.recent(at - kRecentSeconds))
     windows.append(window.toJson({.owner = actor.role == UserRole::Owner, .now = at}));
   Json::Value info(Json::objectValue);
-  info["windows"] = windows;
+  info["windows"] = std::move(windows);
   co_return info;
 }
 
@@ -473,9 +475,9 @@ drogon::Task<MaintenanceVoiceReply> MaintenanceService::statusByVoice(Maintenanc
     const int64_t minutes = std::max<int64_t>(1, (at - tamper.createdAt) / kSecondsPerMinute);
     text += pickText(english,
                      "La cámara " + tamper.cameraName + " perdió la imagen hace " + std::to_string(minutes) +
-                         " min (" + lostWord(tamper.status, false) + "). ",
+                         " min (" + std::string(lostWord(tamper.status, false)) + "). ",
                      "The " + tamper.cameraName + " camera lost its picture " + std::to_string(minutes) +
-                         " min ago (" + lostWord(tamper.status, true) + "). ");
+                         " min ago (" + std::string(lostWord(tamper.status, true)) + "). ");
     Json::Value entry(Json::objectValue);
     entry["cameraId"] = static_cast<Json::Int64>(tamper.cameraId);
     entry["camera"] = tamper.cameraName;
@@ -487,7 +489,7 @@ drogon::Task<MaintenanceVoiceReply> MaintenanceService::statusByVoice(Maintenanc
     text = pickText(english, "No hay mantenimientos abiertos y ninguna cámara perdió la imagen hoy.",
                     "There is no maintenance open and no camera lost its picture today.");
   MaintenanceVoiceReply reply{.ok = true, .text = text, .code = {}, .structured = Json::Value(Json::objectValue)};
-  reply.structured["windows"] = windows;
-  reply.structured["lost"] = lost;
+  reply.structured["windows"] = std::move(windows);
+  reply.structured["lost"] = std::move(lost);
   co_return reply;
 }

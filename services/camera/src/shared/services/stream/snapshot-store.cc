@@ -4,7 +4,7 @@
 
 namespace
 {
-constexpr std::size_t kMaxSnapshotBytes = 4 * 1024 * 1024;
+constexpr std::size_t kMaxSnapshotBytes = std::size_t{4} * 1024 * 1024;
 }
 
 SnapshotStore& SnapshotStore::instance()
@@ -17,7 +17,7 @@ void SnapshotStore::putFrame(SnapshotFrameInput input)
 {
   if (input.jpeg.empty() || input.jpeg.size() > kMaxSnapshotBytes)
     return;
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   frames_[input.cameraId] = {.jpeg = std::move(input.jpeg), .atMs = input.atMs};
 }
 
@@ -32,7 +32,7 @@ void SnapshotStore::putPersonCrop(SnapshotCropInput input)
 {
   if (input.jpeg.empty() || input.jpeg.size() > kMaxSnapshotBytes)
     return;
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   auto& tracks = crops_[input.cameraId];
   tracks[input.trackId] = {.jpeg = std::move(input.jpeg), .atMs = input.atMs};
   while (tracks.size() > kMaxTracksPerCamera) {
@@ -47,21 +47,20 @@ void SnapshotStore::putPersonCrop(SnapshotCropInput input)
 
 std::optional<CameraSnapshot> SnapshotStore::frame(int64_t cameraId) const
 {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   const auto found = frames_.find(cameraId);
   if (found == frames_.end())
     return std::nullopt;
   return found->second;
 }
 
-std::optional<CameraSnapshot> SnapshotStore::personCrop(int64_t cameraId,
-                                                        int64_t trackId) const
+std::optional<CameraSnapshot> SnapshotStore::personCrop(const PersonCropKey& key) const
 {
-  std::lock_guard<std::mutex> lock(mutex_);
-  const auto camera = crops_.find(cameraId);
+  std::scoped_lock lock(mutex_);
+  const auto camera = crops_.find(key.cameraId);
   if (camera == crops_.end())
     return std::nullopt;
-  const auto track = camera->second.find(trackId);
+  const auto track = camera->second.find(key.trackId);
   if (track == camera->second.end())
     return std::nullopt;
   return track->second;
@@ -70,7 +69,7 @@ std::optional<CameraSnapshot> SnapshotStore::personCrop(int64_t cameraId,
 std::optional<CameraSnapshot> SnapshotStore::latestPersonCrop(
     int64_t cameraId) const
 {
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::scoped_lock lock(mutex_);
   const auto camera = crops_.find(cameraId);
   if (camera == crops_.end())
     return std::nullopt;
@@ -84,15 +83,15 @@ std::optional<CameraSnapshot> SnapshotStore::latestPersonCrop(
   return *latest;
 }
 
-std::vector<CameraSnapshot> SnapshotStore::personCropsSince(int64_t cameraId, int64_t sinceMs) const
+std::vector<CameraSnapshot> SnapshotStore::personCropsSince(const PersonCropWindow& window) const
 {
   std::vector<CameraSnapshot> out;
-  std::lock_guard<std::mutex> lock(mutex_);
-  const auto camera = crops_.find(cameraId);
+  std::scoped_lock lock(mutex_);
+  const auto camera = crops_.find(window.cameraId);
   if (camera == crops_.end())
     return out;
   for (const auto& [trackId, snapshot] : camera->second)
-    if (snapshot.atMs >= sinceMs)
+    if (snapshot.atMs >= window.sinceMs)
       out.push_back(snapshot);
   return out;
 }

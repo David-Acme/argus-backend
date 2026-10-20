@@ -119,7 +119,7 @@ CameraRepository::update(int64_t id, const CameraUpdateInput& input) const
 {
   const auto pooled = DbService::cameraClient();
   auto* client = input.client ? input.client : pooled.get();
-  std::string sql = UPDATE_PREFIX.data();
+  std::string sql(UPDATE_PREFIX);
   std::vector<std::string> args;
 
   auto addField = [&](std::string_view column,

@@ -8,6 +8,7 @@
 #include <sqlite/db-service.hxx>
 #include <sqlite/transaction.hxx>
 #include <trantor/utils/Logger.h>
+#include <utility>
 
 drogon::Task<void>
 CalendarEventFeatureService::emit(const EmitInput& input) const
@@ -21,7 +22,7 @@ CalendarEventFeatureService::emit(const EmitInput& input) const
     Json::Value tombstone;
     tombstone["id"] = row.id;
     tombstone["deletedAt"] = row.deletedAt.value_or(std::time(nullptr));
-    body.obj = tombstone;
+    body.obj = std::move(tombstone);
   }
   else {
     body.obj = row.toJson();

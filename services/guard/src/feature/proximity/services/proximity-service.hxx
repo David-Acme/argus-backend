@@ -89,7 +89,13 @@ struct ProximityServiceInput
 
 [[nodiscard]] RoomBeliefConfig roomBeliefConfigOf(const GuardProximityConfig& config);
 
-[[nodiscard]] double bleStrength(int rssi, int64_t rssiFloor);
+struct BleReading
+{
+  int rssi{0};
+  int64_t rssiFloor{0};
+};
+
+[[nodiscard]] double bleStrength(const BleReading& reading);
 
 [[nodiscard]] double voiceStrength(const ProximityVoiceEvidence& evidence);
 

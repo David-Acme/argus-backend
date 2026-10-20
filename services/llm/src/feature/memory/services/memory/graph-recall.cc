@@ -248,7 +248,7 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
   {
     std::vector<int64_t> seen;
     for (const auto& neighbour : neighbours) {
-      if (std::find(seen.begin(), seen.end(), neighbour.factId) != seen.end())
+      if (std::ranges::find(seen, neighbour.factId) != seen.end())
         continue;
       seen.push_back(neighbour.factId);
       ++distinctFacts;
@@ -292,7 +292,7 @@ void GraphRecall::collectSemantic(const GraphRecallInput& input,
   int taken = 0;
   for (const auto& neighbour : best) {
     if (taken >= maxFacts ||
-        static_cast<int>(result.hits.size()) >= input.limit)
+        std::cmp_greater_equal(result.hits.size(), input.limit))
       break;
     const float sim = neighbour.distance;
     if (sim < floorSim)
@@ -503,7 +503,7 @@ GraphRecallResult GraphRecall::recall(const GraphRecallInput& input)
   }
 
   const bool underBudget =
-      static_cast<int>(result.hits.size()) < tuning().minHits;
+      std::cmp_less(result.hits.size(), tuning().minHits);
 
   bool weakLexical = false;
   if (!underBudget && !result.entityAnchored && !result.hits.empty()) {

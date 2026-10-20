@@ -1,25 +1,26 @@
 #include <feature/operator/object-event.hxx>
+#include <utility>
 
 Json::Value object_event::toJson(const ObjectDetectedEvent& event)
 {
   Json::Value json(Json::objectValue);
   json["schemaVersion"] = event.schemaVersion;
   json["eventId"] = event.eventId;
-  json["cameraId"] = Json::Int64(event.cameraId);
+  json["cameraId"] = static_cast<Json::Int64>(event.cameraId);
   json["cameraName"] = event.cameraName;
   json["rule"] = event.rule;
   json["severity"] = eventSeverityToString(event.severity);
   json["escalated"] = event.escalated;
   json["night"] = event.night;
   if (event.knownPersonId)
-    json["knownPersonId"] = Json::Int64(*event.knownPersonId);
-  json["capturedAt"] = Json::Int64(event.capturedAtMs);
-  json["detectedAt"] = Json::Int64(event.detectedAtMs);
-  json["publishedAt"] = Json::Int64(event.publishedAtMs);
+    json["knownPersonId"] = static_cast<Json::Int64>(*event.knownPersonId);
+  json["capturedAt"] = static_cast<Json::Int64>(event.capturedAtMs);
+  json["detectedAt"] = static_cast<Json::Int64>(event.detectedAtMs);
+  json["publishedAt"] = static_cast<Json::Int64>(event.publishedAtMs);
   if (event.dwellMs > 0)
-    json["dwellMs"] = Json::Int64(event.dwellMs);
+    json["dwellMs"] = static_cast<Json::Int64>(event.dwellMs);
   if (event.trackId > 0)
-    json["trackId"] = Json::Int64(event.trackId);
+    json["trackId"] = static_cast<Json::Int64>(event.trackId);
 
   Json::Value frame(Json::objectValue);
   frame["width"] = event.frameWidth;
@@ -38,15 +39,15 @@ Json::Value object_event::toJson(const ObjectDetectedEvent& event)
     bbox["h"] = object.h;
     entry["bbox"] = bbox;
     if (object.personId > 0) {
-      entry["personId"] = Json::Int64(object.personId);
+      entry["personId"] = static_cast<Json::Int64>(object.personId);
       entry["identity"] = object.identity;
       entry["identityConfidence"] = object.identityConfidence;
     }
     if (object.trackId > 0) {
-      entry["trackId"] = Json::Int64(object.trackId);
-      entry["firstSeenMs"] = Json::Int64(object.firstSeenMs);
-      entry["lastSeenMs"] = Json::Int64(object.lastSeenMs);
-      entry["dwellMs"] = Json::Int64(object.dwellMs);
+      entry["trackId"] = static_cast<Json::Int64>(object.trackId);
+      entry["firstSeenMs"] = static_cast<Json::Int64>(object.firstSeenMs);
+      entry["lastSeenMs"] = static_cast<Json::Int64>(object.lastSeenMs);
+      entry["dwellMs"] = static_cast<Json::Int64>(object.dwellMs);
       entry["observationId"] = object.observationId;
       if (!object.identityState.empty()) {
         entry["identityState"] = object.identityState;
@@ -70,7 +71,7 @@ Json::Value object_event::toJson(const ObjectDetectedEvent& event)
       entry["signature"] = object.signature;
     objects.append(entry);
   }
-  json["objects"] = objects;
+  json["objects"] = std::move(objects);
   json["doubtful"] = event.doubtful;
   json["lookable"] = event.lookable;
   if (!event.secondLook.empty()) {

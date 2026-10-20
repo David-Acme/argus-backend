@@ -13,16 +13,16 @@ struct HouseholdCue
 };
 
 inline constexpr std::array<HouseholdCue, 4> kHouseholdCuesEs{{
-    {"esto es para todos", true},
-    {"que lo sepan todos", false},
-    {"dile a todos", false},
-    {"para toda la casa", false},
+    {.phrase = "esto es para todos", .mustEnd = true},
+    {.phrase = "que lo sepan todos", .mustEnd = false},
+    {.phrase = "dile a todos", .mustEnd = false},
+    {.phrase = "para toda la casa", .mustEnd = false},
 }};
 
 inline constexpr std::array<HouseholdCue, 3> kHouseholdCuesEn{{
-    {"this is for everyone", true},
-    {"let everyone know", false},
-    {"for the whole house", false},
+    {.phrase = "this is for everyone", .mustEnd = true},
+    {.phrase = "let everyone know", .mustEnd = false},
+    {.phrase = "for the whole house", .mustEnd = false},
 }};
 
 }

@@ -8,8 +8,8 @@ namespace
 constexpr size_t kMaxMessages = 64;
 constexpr size_t kMaxRoleLength = 32;
 constexpr int kMaxTokensBound = 4096;
-constexpr size_t kMaxMessageLength = 32 * 1024;
-constexpr size_t kMaxGrammarLength = 8 * 1024;
+constexpr size_t kMaxMessageLength = size_t{32} * 1024;
+constexpr size_t kMaxGrammarLength = size_t{8} * 1024;
 constexpr size_t kMaxSessionLength = 128;
 
 }

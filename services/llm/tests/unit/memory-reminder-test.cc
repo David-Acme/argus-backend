@@ -817,7 +817,7 @@ TEST_CASE("a recurring reminder writes one series row per day it repeats on, wit
     CHECK(row.recurrenceRule.value_or("") == "FREQ=WEEKLY");
     CHECK(row.title.find("basura") != std::string::npos);
     CHECK(row.title.find("lunes") == std::string::npos);
-    CHECK(row.title.find("8") == std::string::npos);
+    CHECK(row.title.find('8') == std::string::npos);
     CHECK(row.scheduledAt > now);
     CHECK(row.scheduledAt <= now + int64_t{7} * 24 * 3600);
     const auto seconds = static_cast<std::time_t>(row.scheduledAt);

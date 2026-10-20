@@ -104,12 +104,12 @@ Json::Value drogonConfig(const DrogonConfigInput& input)
   client["number_of_connections"] = 1;
   client["timeout"] = -1.0;
   clients.append(client);
-  config["db_clients"] = clients;
+  config["db_clients"] = std::move(clients);
 
   Json::Value listeners = listenerJson(listener);
   appendRemoteListener(
       {.listeners = listeners, .remote = remote, .base = listener});
-  config["listeners"] = listeners;
+  config["listeners"] = std::move(listeners);
 
   return config;
 }

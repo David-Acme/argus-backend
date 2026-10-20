@@ -72,8 +72,7 @@ public:
   int64_t resolveAddresseeEntity(const std::string& lang);
   std::string profileFor(int64_t userId, const std::string& lang);
 
-  std::string durableTranscript(const std::string& transcript,
-                                const std::string& lang) const;
+  std::string durableTranscript(const TranscriptJobInput& input) const;
 
   void enqueueSummary(const TranscriptJobInput& input);
   void enqueueCompaction(const TranscriptJobInput& input);

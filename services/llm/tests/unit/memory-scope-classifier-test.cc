@@ -62,5 +62,5 @@ TEST_CASE("the cues follow the language of the utterance and ignore case")
   CHECK(scopeOf("this is for everyone", "es") == MemoryScope::Personal);
   CHECK(scopeOf("esto es para todos", "en") == MemoryScope::Personal);
   CHECK(scopeOf("Para Toda La Casa") == MemoryScope::Household);
-  CHECK_FALSE(saysForEveryone("", "es"));
+  CHECK_FALSE(saysForEveryone({.text = "", .lang = "es"}));
 }

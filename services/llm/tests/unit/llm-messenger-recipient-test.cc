@@ -7,16 +7,20 @@
 namespace
 {
 
-const std::vector<relay_recipient::Member> kRoster{
-    {.userId = 1, .name = "David Acme"},
-    {.userId = 2, .name = "Ana Lopez"},
-    {.userId = 3, .name = "Ana Maria Ruiz"},
-    {.userId = 4, .name = "Lucia"},
-};
+const std::vector<relay_recipient::Member>& roster()
+{
+  static const std::vector<relay_recipient::Member> members{
+      {.userId = 1, .name = "David Acme"},
+      {.userId = 2, .name = "Ana Lopez"},
+      {.userId = 3, .name = "Ana Maria Ruiz"},
+      {.userId = 4, .name = "Lucia"},
+  };
+  return members;
+}
 
 relay_recipient::Resolution resolveFor(std::string_view asked, int64_t senderId = 99)
 {
-  return relay_recipient::resolve({.roster = kRoster, .asked = asked, .senderId = senderId});
+  return relay_recipient::resolve({.roster = roster(), .asked = asked, .senderId = senderId});
 }
 
 }

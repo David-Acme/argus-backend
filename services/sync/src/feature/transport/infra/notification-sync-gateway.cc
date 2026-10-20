@@ -84,7 +84,7 @@ Json::Value tombstoneToJson(const argus::notification::v1::ConversationTombstone
 
 ResponseException unavailable()
 {
-  return ResponseException(503, SyncErrors::NotificationSyncUnavailable);
+  return {503, SyncErrors::NotificationSyncUnavailable};
 }
 }
 

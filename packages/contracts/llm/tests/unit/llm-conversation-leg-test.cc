@@ -2,6 +2,7 @@
 #include <llm/conversation-leg.hxx>
 
 #include <array>
+#include <test-support/value-of.hxx>
 
 namespace
 {
@@ -12,9 +13,8 @@ constexpr std::array kAllLegs{ConversationLegKind::Camera, ConversationLegKind::
 TEST_CASE("every leg kind names itself and parses back to itself")
 {
   for (const ConversationLegKind kind : kAllLegs) {
-    const auto parsed = conversationLegKindFromString(conversationLegKindToString(kind));
-    REQUIRE(parsed.has_value());
-    CHECK(*parsed == kind);
+    const auto parsed = valueOf(conversationLegKindFromString(conversationLegKindToString(kind)));
+    CHECK(parsed == kind);
   }
 }
 

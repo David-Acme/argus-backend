@@ -26,7 +26,7 @@ struct CameraConfirmRequest
 
 using CameraConfirmSink = std::function<void(const CameraConfirmRequest&)>;
 
-[[nodiscard]] std::string cameraFloorLine(std::string_view lang, bool confirmed);
+[[nodiscard]] std::string_view cameraFloorLine(std::string_view lang, bool confirmed);
 
 class ToolExecutor
 {

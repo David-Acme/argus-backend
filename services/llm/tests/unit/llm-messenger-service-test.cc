@@ -50,12 +50,16 @@ int64_t scalar(sqlite3* db, const char* sql)
   return value;
 }
 
-const std::vector<relay_recipient::Member> kRoster{
-    {.userId = 1, .name = "David Acme"},
-    {.userId = 2, .name = "Ana Lopez"},
-    {.userId = 3, .name = "Ana Maria Ruiz"},
-    {.userId = 4, .name = "Lucia"},
-};
+const std::vector<relay_recipient::Member>& roster()
+{
+  static const std::vector<relay_recipient::Member> members{
+      {.userId = 1, .name = "David Acme"},
+      {.userId = 2, .name = "Ana Lopez"},
+      {.userId = 3, .name = "Ana Maria Ruiz"},
+      {.userId = 4, .name = "Lucia"},
+  };
+  return members;
+}
 
 MessengerSettings settingsWith(int64_t relaysPerHour, int64_t visitorNotices = 6)
 {
@@ -95,7 +99,7 @@ RelayRequest relayFrom(std::string recipient, std::string message, bool afterQue
           .lang = "es",
           .afterQuestion = afterQuestion,
           .dryRun = false,
-          .roster = kRoster,
+          .roster = roster(),
           .now = now};
 }
 
@@ -108,7 +112,7 @@ ReplyRequest replyFrom(int64_t replier, std::string message, std::string recipie
           .recipient = std::move(recipient),
           .afterQuestion = false,
           .dryRun = false,
-          .roster = kRoster,
+          .roster = roster(),
           .now = now};
 }
 
@@ -118,7 +122,7 @@ VisitorRequest visitorWith(std::string recipient, std::string need, int64_t now 
           .need = std::move(need),
           .camera = "Sala",
           .lang = "es",
-          .roster = kRoster,
+          .roster = roster(),
           .now = now};
 }
 
