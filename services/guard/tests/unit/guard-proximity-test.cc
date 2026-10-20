@@ -230,10 +230,10 @@ TEST_CASE("the beacon table answers the neighbouring rotations in both byte orde
   CHECK(table.at(current) == 7);
   BeaconToken reversed = beaconToken(seed, 1902345);
   std::ranges::reverse(reversed);
-  CHECK(table.at(*normalizedUuid(beaconUuid(reversed))) == 7);
-  CHECK(table.contains(*normalizedUuid(beaconUuid(beaconToken(seed, 1902344)))));
-  CHECK(table.contains(*normalizedUuid(beaconUuid(beaconToken(seed, 1902346)))));
-  CHECK_FALSE(table.contains(*normalizedUuid(beaconUuid(beaconToken(seed, 1902343)))));
+  CHECK(table.at(valueOf(normalizedUuid(beaconUuid(reversed)))) == 7);
+  CHECK(table.contains(valueOf(normalizedUuid(beaconUuid(beaconToken(seed, 1902344))))));
+  CHECK(table.contains(valueOf(normalizedUuid(beaconUuid(beaconToken(seed, 1902346))))));
+  CHECK_FALSE(table.contains(valueOf(normalizedUuid(beaconUuid(beaconToken(seed, 1902343))))));
   CHECK_FALSE(normalizedUuid("not-a-uuid").has_value());
 }
 
@@ -316,14 +316,14 @@ TEST_CASE("the room switches only after the new room has led by the margin for t
                   .night = false, .atMs = 2000});
   belief.observe({.userId = 7, .room = "kitchen", .kind = ProximityEvidenceKind::Face, .strength = 1.0,
                   .night = false, .atMs = 2500});
-  CHECK(belief.verdict({.userId = 7, .nowMs = 3000})->room == "living");
+  CHECK(valueOf(belief.verdict({.userId = 7, .nowMs = 3000})).room == "living");
   belief.observe({.userId = 7, .room = "kitchen", .kind = ProximityEvidenceKind::Face, .strength = 1.0,
                   .night = false, .atMs = 5000});
-  CHECK(belief.verdict({.userId = 7, .nowMs = 5600})->room == "kitchen");
+  CHECK(valueOf(belief.verdict({.userId = 7, .nowMs = 5600})).room == "kitchen");
 
   belief.observe({.userId = 7, .room = "living", .kind = ProximityEvidenceKind::Ble, .strength = 0.2,
                   .night = false, .atMs = 6000});
-  CHECK(belief.verdict({.userId = 7, .nowMs = 12000})->room == "kitchen");
+  CHECK(valueOf(belief.verdict({.userId = 7, .nowMs = 12000})).room == "kitchen");
   CHECK_FALSE(belief.verdict({.userId = 7, .nowMs = 400000}).has_value());
   CHECK_FALSE(belief.verdict({.userId = 8, .nowMs = 1000}).has_value());
 }
@@ -344,7 +344,7 @@ TEST_CASE("a member's beacon is minted on opt-in and a member who opted out of l
   CHECK(before.rotateSeconds == 900);
 
   const ProximityMeView after = drogon::sync_wait(service.setBle({.userId = 7, .enabled = true}));
-  REQUIRE(after.seed.has_value());
+  const std::string afterSeed = valueOf(after.seed);
   CHECK(after.enabled);
   const ProximityMeView again = drogon::sync_wait(service.setBle({.userId = 7, .enabled = true}));
   CHECK(again.seed == after.seed);
@@ -358,7 +358,7 @@ TEST_CASE("a member's beacon is minted on opt-in and a member who opted out of l
   CHECK(receiver.row.id > 0);
   CHECK(drogon::sync_wait(service.me(7)).receivers == 1);
 
-  const auto seed = valueOf(beaconSeedBytes(*after.seed));
+  const auto seed = valueOf(beaconSeedBytes(afterSeed));
   const int64_t counter = beaconCounter({.nowSeconds = epochMs() / 1000, .rotateSeconds = config.rotateSeconds});
   probe.hear({{.uuid = beaconUuid(beaconToken(seed, static_cast<uint64_t>(counter))), .rssi = -50}});
   drogon::sync_wait(service.poll());

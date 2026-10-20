@@ -133,7 +133,7 @@ class SpeakingDriver final : public ICameraDriver
 public:
   SpeakingDriver(std::shared_ptr<LineLog> log, bool busy) : log_(std::move(log)), busy_(busy) {}
 
-  Json::Value capabilities() const override { return {}; }
+  [[nodiscard]] Json::Value capabilities() const override { return {}; }
   DriverResult status() override { return {}; }
   DriverResult presets() override { return {}; }
   DriverResult move(const DriverMoveInput&) override { return {}; }
@@ -284,7 +284,7 @@ TEST_CASE("one reader feeds every subscriber of a camera and reconnects with a g
   {
     std::unique_lock lock(mutex);
     REQUIRE(changed.wait_for(lock, std::chrono::seconds(5), [&] { return closedWith.has_value(); }));
-    CHECK(*closedWith == v1::WATCH_REFUSAL_MASKED);
+    CHECK(closedWith == v1::WATCH_REFUSAL_MASKED);
     CHECK(second > 0);
   }
   hub.unsubscribe(first.id);

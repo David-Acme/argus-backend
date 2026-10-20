@@ -641,7 +641,7 @@ TEST_CASE("a visitor's consent moves only on a yes, a no or a minor, and the res
   CHECK(other.consent == VisitorConsent::Asked);
   CHECK_FALSE(other.toAssistant);
   CHECK(other.askedAgain);
-  CHECK(other.line.starts_with(std::string(safetyOnlyLine(VoiceLang::Es))));
+  CHECK(other.line.starts_with(safetyOnlyLine(VoiceLang::Es)));
   CHECK(other.line.find(std::string(consentAskAgain(VoiceLang::Es))) != std::string::npos);
   CHECK(other.line.find("David") == std::string::npos);
   input.asked = 2;
@@ -746,9 +746,8 @@ TEST_CASE("a member's reply to a visitor goes only to that camera, only from a n
 
   CHECK_FALSE(replies.take({.cameraId = 4, .personId = 30, .now = 1300}).has_value());
   CHECK_FALSE(replies.take({.cameraId = 3, .personId = 31, .now = 1300}).has_value());
-  const auto taken = replies.take({.cameraId = 3, .personId = 30, .now = 1300});
-  REQUIRE(taken.has_value());
-  CHECK(taken->text == "Ya bajo");
+  const auto taken = valueOf(replies.take({.cameraId = 3, .personId = 30, .now = 1300}));
+  CHECK(taken.text == "Ya bajo");
   CHECK_FALSE(replies.take({.cameraId = 3, .personId = 30, .now = 1300}).has_value());
 
   CHECK(replies.reply({.userId = 1, .conversationId = "c1", .text = "otra vez", .now = 1400}).outcome ==

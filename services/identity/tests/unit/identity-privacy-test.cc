@@ -1,5 +1,6 @@
 #include <doctest/doctest.h>
 #include <test-support/app-runner.hxx>
+#include <test-support/value-of.hxx>
 
 #include <app/rpc/identity-rpc-service.hxx>
 #include <auth/role-access.hxx>
@@ -608,11 +609,10 @@ TEST_CASE("consent is recorded, withdrawn and enforced")
 
     RpcHarness harness;
     const IdentityClient client(harness.target());
-    const auto answer = client.getUser(7);
-    REQUIRE(answer.has_value());
-    CHECK(answer->user().privacy().minor());
-    CHECK_FALSE(answer->user().privacy().guardian_consent());
-    CHECK_FALSE(answer->user().privacy().voice_learning());
+    const auto answer = valueOf(client.getUser(7));
+    CHECK(answer.user().privacy().minor());
+    CHECK_FALSE(answer.user().privacy().guardian_consent());
+    CHECK_FALSE(answer.user().privacy().voice_learning());
   }
 
   {

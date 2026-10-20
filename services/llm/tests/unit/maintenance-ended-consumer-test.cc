@@ -18,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <unistd.h>
 #include <vector>
 
@@ -84,7 +85,7 @@ public:
 
   ~TempDir() { std::filesystem::remove_all(path_); }
 
-  std::string file(const std::string& name) const
+  [[nodiscard]] std::string file(const std::string& name) const
   {
     return (path_ / name).string();
   }
@@ -120,30 +121,30 @@ void writeConfig(const ConfigFiles& files)
 }
 
 constexpr int64_t kStartedAt = 1792422300;
-constexpr int64_t kEndedAt = kStartedAt + 35 * 60;
+constexpr int64_t kEndedAt = kStartedAt + int64_t{35} * 60;
 constexpr int kLima = -5 * 3600;
 
 Json::Value windowJson(const std::string& eventId)
 {
   Json::Value json(Json::objectValue);
   json["eventId"] = eventId;
-  json["maintenanceId"] = Json::Int64(12);
-  json["environmentId"] = Json::Int64(1);
+  json["maintenanceId"] = static_cast<Json::Int64>(12);
+  json["environmentId"] = static_cast<Json::Int64>(1);
   json["environment"] = "";
   Json::Value ids(Json::arrayValue);
-  ids.append(Json::Int64(3));
-  ids.append(Json::Int64(4));
-  json["cameraIds"] = ids;
+  ids.append(static_cast<Json::Int64>(3));
+  ids.append(static_cast<Json::Int64>(4));
+  json["cameraIds"] = std::move(ids);
   Json::Value names(Json::arrayValue);
   names.append("Patio");
   names.append("Garaje");
-  json["cameras"] = names;
-  json["declaredBy"] = Json::Int64(2);
+  json["cameras"] = std::move(names);
+  json["declaredBy"] = static_cast<Json::Int64>(2);
   json["declaredName"] = "Luis";
   json["declaredRole"] = "resident";
   json["source"] = "assistant";
-  json["startedAt"] = Json::Int64(kStartedAt);
-  json["endedAt"] = Json::Int64(kEndedAt);
+  json["startedAt"] = static_cast<Json::Int64>(kStartedAt);
+  json["endedAt"] = static_cast<Json::Int64>(kEndedAt);
   json["endReason"] = "done";
   return json;
 }
@@ -189,7 +190,7 @@ TEST_CASE("a window reads back who, when and which cameras, and a broken one is 
   CHECK(event.endedAt == kEndedAt);
 
   Json::Value backwards = windowJson("guard-maintenance-ended:13");
-  backwards["endedAt"] = Json::Int64(kStartedAt - 1);
+  backwards["endedAt"] = static_cast<Json::Int64>(kStartedAt - 1);
   CHECK_FALSE(MaintenanceEndedEvent::fromJson(backwards).has_value());
   Json::Value nameless = windowJson("");
   CHECK_FALSE(MaintenanceEndedEvent::fromJson(nameless).has_value());
@@ -270,7 +271,7 @@ TEST_CASE("each window is captured once in the owner's memory, and when the tech
                                    "WHERE event_id = 'guard-maintenance-ended:12'") == "dispatched");
 
   const auto found = repository.ftsEpisodes(
-      graph.handle(), {.match = "\"cuando\" OR \"vino\" OR \"el\" OR \"tecnico\"", .scope = "user", .refId = 7, .limit = 2});
+      graph.handle(), {.match = R"("cuando" OR "vino" OR "el" OR "tecnico")", .scope = "user", .refId = 7, .limit = 2});
   REQUIRE(found.size() == 1);
   CHECK(found.front().summary.find("10:05") != std::string::npos);
   CHECK(repository

@@ -424,6 +424,7 @@ target_compile_definitions(productivity-recurrence-test PRIVATE
 target_link_libraries(productivity-recurrence-test PRIVATE
     argus::productivity-recurrence
     argus::lib::doctest-main)
+target_link_libraries(productivity-recurrence-test PRIVATE argus::lib::test-support)
 target_compile_options(productivity-recurrence-test PRIVATE -Wall -Wextra)
 add_test(NAME productivity-recurrence-test COMMAND productivity-recurrence-test)
 

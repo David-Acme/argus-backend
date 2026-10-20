@@ -388,8 +388,8 @@ TEST_CASE("later occurrences of a recurring event are announced, skipped ones ne
                .title = "Coro",
                .startsAt = choirAnchor,
                .rule = "FREQ=DAILY",
-               .exceptions = "[{\"occurrence\":" + std::to_string(choir) + ",\"cancelled\":false,\"startsAt\":" +
-                             std::to_string(choir + 900) + ",\"title\":\"Coro ensayo\"}]"});
+               .exceptions = R"([{"occurrence":)" + std::to_string(choir) + R"(,"cancelled":false,"startsAt":)" +
+                             std::to_string(choir + 900) + R"(,"title":"Coro ensayo"}])"});
 
   const auto report = drogon::sync_wait(announcer.sweep());
   const auto sent = notifier->all();

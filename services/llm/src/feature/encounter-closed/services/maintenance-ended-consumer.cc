@@ -94,7 +94,7 @@ std::string camerasPhrase(const MaintenanceEndedEvent& event, bool english)
   return english ? "on the " + listOf(event.cameras, true) + " cameras" : "en las cámaras " + listOf(event.cameras, false);
 }
 
-std::string reasonPhrase(const MaintenanceEndedEvent& event, bool english)
+std::string_view reasonPhrase(const MaintenanceEndedEvent& event, bool english)
 {
   if (event.endReason == "unknown_person")
     return english ? " It ended when an unknown person appeared." : " Terminó porque apareció una persona desconocida.";
@@ -129,7 +129,7 @@ public:
     if (!lifecycle_)
       return;
     if (lifecycle_->active.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-      const std::lock_guard lock(lifecycle_->mutex);
+      const std::scoped_lock lock(lifecycle_->mutex);
       lifecycle_->idle.notify_all();
     }
   }
@@ -187,11 +187,11 @@ std::string summary(const MaintenanceSummaryInput& input)
     return "Camera maintenance (technician visit or cleaning) declared by " + who + ", " +
            camerasPhrase(event, true) + place + ", on " + std::string(kWeekdaysEn.at(from.weekday)) + ", " +
            std::string(kMonthsEn.at(from.month - 1)) + " " + std::to_string(from.day) + " from " + clockOf(from) +
-           " to " + clockOf(to) + " (" + std::to_string(minutes) + " min)." + reasonPhrase(event, true);
+           " to " + clockOf(to) + " (" + std::to_string(minutes) + " min)." + std::string(reasonPhrase(event, true));
   return "Mantenimiento de cámaras (visita del técnico o limpieza) declarado por " + who + ", " +
          camerasPhrase(event, false) + place + ", el " + std::string(kWeekdaysEs.at(from.weekday)) + " " +
          std::to_string(from.day) + " de " + std::string(kMonthsEs.at(from.month - 1)) + " de " + clockOf(from) +
-         " a " + clockOf(to) + " (" + std::to_string(minutes) + " min)." + reasonPhrase(event, false);
+         " a " + clockOf(to) + " (" + std::to_string(minutes) + " min)." + std::string(reasonPhrase(event, false));
 }
 
 }
@@ -365,7 +365,7 @@ bool MaintenanceEndedConsumer::trySubscribe()
        }});
   if (!subscription)
     return false;
-  subscription_ = *subscription;
+  subscription_ = subscription;
   return true;
 }
 

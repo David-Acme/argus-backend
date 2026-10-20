@@ -6,6 +6,7 @@
 #include <array>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace
@@ -96,7 +97,7 @@ bool statesChildAge(const std::vector<WakeWord>& words)
 ConsentAnswer consentAnswer(const ConsentAnswerInput& input)
 {
   const std::vector<std::string> words = answerWords(input);
-  if (words.empty() || static_cast<int>(words.size()) > input.maxWords)
+  if (words.empty() || std::cmp_greater(words.size(), input.maxWords))
     return ConsentAnswer::None;
   std::string padded = " ";
   for (const std::string& word : words)

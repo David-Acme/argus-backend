@@ -9,6 +9,8 @@
 #include <chrono>
 #include <initializer_list>
 #include <map>
+#include <string>
+#include <string_view>
 #include <utility>
 
 namespace
@@ -178,7 +180,7 @@ std::string certaintyWords(WhereaboutsCertainty certainty, bool english)
   return {};
 }
 
-std::string certaintyName(WhereaboutsCertainty certainty)
+std::string_view certaintyName(WhereaboutsCertainty certainty)
 {
   switch (certainty) {
     case WhereaboutsCertainty::Sure:
@@ -265,7 +267,7 @@ Json::Value entryOf(const EntryInput& input)
     entry["room"] = verdict->room;
     entry["place"] = whereabouts::roomLabel({.room = verdict->room, .english = english, .facts = facts});
     entry["confidence"] = verdict->confidence;
-    entry["certainty"] = certaintyName(certaintyOfVerdict(line));
+    entry["certainty"] = std::string(certaintyName(certaintyOfVerdict(line)));
     entry["evidence"] = proximityEvidenceKindToString(verdict->strongest);
     entry["updatedAt"] = static_cast<Json::Int64>(verdict->updatedMs / kMsPerSecond);
   }
@@ -291,6 +293,7 @@ WhereaboutsVoiceReply personAnswer(const WhereaboutsAsk& ask, const WhereaboutsF
                    "unknown_person");
   if (match.kind == text_norm::NameMatchKind::Ambiguous) {
     std::vector<std::string> candidates;
+    candidates.reserve(match.hits.size());
     for (const size_t index : match.hits)
       candidates.push_back(names.at(index));
     return failure(pick(english, "¿A quién te refieres? " + joinNames(candidates, false) + ".",

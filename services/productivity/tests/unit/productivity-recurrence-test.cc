@@ -1,4 +1,5 @@
 #include <doctest/doctest.h>
+#include <test-support/value-of.hxx>
 
 #include <shared/services/recurrence/occurrence-exceptions.hxx>
 #include <shared/services/recurrence/recurrence.hxx>
@@ -381,32 +382,29 @@ TEST_CASE("a snooze moves only the current occurrence and folds into the next wh
   const int64_t second = epochOfWall("2026-10-06T08:00:00");
   const OccurrenceExceptions none;
 
-  const auto moved = snoozeSeries(
-      {.rule = rule, .anchor = anchor, .scheduledAt = anchor, .exceptions = none, .target = anchor + 1800});
-  REQUIRE(moved.has_value());
-  CHECK_FALSE(moved->folded);
-  CHECK(moved->scheduledAt == anchor + 1800);
-  REQUIRE(moved->exceptions.size() == 1);
-  CHECK(moved->exceptions.front().occurrence == anchor);
-  CHECK(moved->exceptions.front().startsAt.value_or(0) == anchor + 1800);
+  const auto moved = valueOf(snoozeSeries(
+      {.rule = rule, .anchor = anchor, .scheduledAt = anchor, .exceptions = none, .target = anchor + 1800}));
+  CHECK_FALSE(moved.folded);
+  CHECK(moved.scheduledAt == anchor + 1800);
+  REQUIRE(moved.exceptions.size() == 1);
+  CHECK(moved.exceptions.front().occurrence == anchor);
+  CHECK(moved.exceptions.front().startsAt.value_or(0) == anchor + 1800);
 
-  const auto again = snoozeSeries({.rule = rule,
-                                   .anchor = anchor,
-                                   .scheduledAt = anchor + 1800,
-                                   .exceptions = moved->exceptions,
-                                   .target = anchor + 3600});
-  REQUIRE(again.has_value());
-  REQUIRE(again->exceptions.size() == 1);
-  CHECK(again->exceptions.front().occurrence == anchor);
-  CHECK(again->exceptions.front().startsAt.value_or(0) == anchor + 3600);
+  const auto again = valueOf(snoozeSeries({.rule = rule,
+                                           .anchor = anchor,
+                                           .scheduledAt = anchor + 1800,
+                                           .exceptions = moved.exceptions,
+                                           .target = anchor + 3600}));
+  REQUIRE(again.exceptions.size() == 1);
+  CHECK(again.exceptions.front().occurrence == anchor);
+  CHECK(again.exceptions.front().startsAt.value_or(0) == anchor + 3600);
 
-  const auto folded = snoozeSeries(
-      {.rule = rule, .anchor = anchor, .scheduledAt = anchor, .exceptions = none, .target = second + 60});
-  REQUIRE(folded.has_value());
-  CHECK(folded->folded);
-  CHECK(folded->scheduledAt == second);
-  REQUIRE(folded->exceptions.size() == 1);
-  CHECK(folded->exceptions.front().cancelled);
+  const auto folded = valueOf(snoozeSeries(
+      {.rule = rule, .anchor = anchor, .scheduledAt = anchor, .exceptions = none, .target = second + 60}));
+  CHECK(folded.folded);
+  CHECK(folded.scheduledAt == second);
+  REQUIRE(folded.exceptions.size() == 1);
+  CHECK(folded.exceptions.front().cancelled);
 
   CHECK_FALSE(snoozeSeries(
                   {.rule = rule, .anchor = anchor, .scheduledAt = anchor + 60, .exceptions = none, .target = anchor + 600})

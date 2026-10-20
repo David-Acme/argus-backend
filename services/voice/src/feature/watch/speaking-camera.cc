@@ -34,7 +34,7 @@ std::optional<SpeakingChoice> chooseSpeakingCamera(const SpeakingChoiceInput& in
   const std::optional<size_t> arbitrated = bestIn(input.candidates, nullptr);
   if (!arbitrated)
     return std::nullopt;
-  const SpeakingChoice fallback{.index = *arbitrated, .byBelief = false, .room = input.candidates[*arbitrated].room};
+  SpeakingChoice fallback{.index = *arbitrated, .byBelief = false, .room = input.candidates[*arbitrated].room};
   std::vector<RoomConfidence> rooms;
   for (const SpeakingCandidate& candidate : input.candidates) {
     if (candidate.room.empty() || std::ranges::find(rooms, candidate.room, &RoomConfidence::room) != rooms.end())

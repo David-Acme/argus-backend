@@ -50,12 +50,12 @@ std::optional<OccurrenceException> exceptionOf(const Json::Value& item)
 Json::Value jsonOf(const OccurrenceException& exception)
 {
   Json::Value item(Json::objectValue);
-  item["occurrence"] = Json::Int64(exception.occurrence);
+  item["occurrence"] = static_cast<Json::Int64>(exception.occurrence);
   item["cancelled"] = exception.cancelled;
   if (exception.startsAt)
-    item["startsAt"] = Json::Int64(*exception.startsAt);
+    item["startsAt"] = static_cast<Json::Int64>(*exception.startsAt);
   if (exception.endsAt)
-    item["endsAt"] = Json::Int64(*exception.endsAt);
+    item["endsAt"] = static_cast<Json::Int64>(*exception.endsAt);
   if (exception.title)
     item["title"] = *exception.title;
   if (exception.location)

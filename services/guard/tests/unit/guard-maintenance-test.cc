@@ -318,7 +318,7 @@ TEST_CASE("the home question: yes declares a window, no is kept for the sweep, s
       {.cameraId = 41, .environmentId = homeId(), .onsetAt = 600, .askedAt = 610, .askedUsers = {1}}));
   static_cast<void>(drogon::sync_wait(rig.service.answerAsk(
       {.actor = {.userId = 1, .role = UserRole::Owner}, .askId = no.id, .answer = TamperAskAnswer::No})));
-  CHECK(drogon::sync_wait(repository.findAsk(no.id))->answer == TamperAskAnswer::No);
+  CHECK(valueOf(drogon::sync_wait(repository.findAsk(no.id))).answer == TamperAskAnswer::No);
   CHECK(refusalOf([&rig, &no] {
           static_cast<void>(drogon::sync_wait(rig.service.answerAsk(
               {.actor = {.userId = 1, .role = UserRole::Owner}, .askId = no.id, .answer = TamperAskAnswer::Me})));
@@ -328,7 +328,7 @@ TEST_CASE("the home question: yes declares a window, no is kept for the sweep, s
       {.cameraId = 41, .environmentId = homeId(), .onsetAt = 700, .askedAt = 710, .askedUsers = {1}}));
   CHECK(drogon::sync_wait(repository.answerAsk(
       {.id = silent.id, .answer = TamperAskAnswer::Timeout, .answeredBy = 0, .at = 770})));
-  CHECK(drogon::sync_wait(repository.findAsk(silent.id))->answer == TamperAskAnswer::Timeout);
+  CHECK(valueOf(drogon::sync_wait(repository.findAsk(silent.id))).answer == TamperAskAnswer::Timeout);
 }
 
 TEST_CASE("a window that ends is published once on the guard feed, with who, when and which cameras")

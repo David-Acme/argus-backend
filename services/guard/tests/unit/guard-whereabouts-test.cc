@@ -5,6 +5,7 @@
 #include <drogon/utils/coroutine.h>
 
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -17,6 +18,13 @@ constexpr int64_t kDavid = 2;
 constexpr int64_t kAna = 3;
 constexpr int64_t kLuis = 4;
 constexpr int64_t kMarta = 5;
+
+std::unordered_set<int64_t>& locatedOf(WhereaboutsFacts& facts)
+{
+  if (!facts.located)
+    throw std::runtime_error("test: expected located members");
+  return *facts.located;
+}
 
 WhereaboutsFacts household()
 {
@@ -34,7 +42,7 @@ WhereaboutsFacts household()
                      .strongest = ProximityEvidenceKind::Face}};
   facts.located = std::unordered_set<int64_t>{kOwner, kDavid, kAna, kLuis};
   facts.presence = {{.userId = kAna, .state = PresenceState::Home, .since = kNowMs / 1000 - 600},
-                    {.userId = kLuis, .state = PresenceState::Away, .since = kNowMs / 1000 - 3 * 3600}};
+                    {.userId = kLuis, .state = PresenceState::Away, .since = kNowMs / 1000 - int64_t{3} * 3600}};
   facts.places = {{.id = 1, .name = "Casa"}};
   facts.nowMs = kNowMs;
   return facts;
@@ -103,7 +111,7 @@ TEST_CASE("a member who turned location off is never placed in a room")
                             .sinceMs = kNowMs,
                             .updatedMs = kNowMs,
                             .strongest = ProximityEvidenceKind::Face});
-  facts.located->erase(kMarta);
+  locatedOf(facts).erase(kMarta);
   const auto reply = ask(person("Marta"), facts);
   CHECK(reply.text == "No sé dónde está Marta: no comparte su ubicación con Argus.");
   CHECK(reply.text.find("cocina") == std::string::npos);
@@ -151,7 +159,7 @@ TEST_CASE("a room question lists who is there, and says when it only counts thos
                             .sinceMs = kNowMs,
                             .updatedMs = kNowMs,
                             .strongest = ProximityEvidenceKind::Voice});
-  facts.located->insert(kMarta);
+  locatedOf(facts).insert(kMarta);
   CHECK(ask(room("la sala"), facts).text == "En la sala están David Acme y Ana. Estoy bastante seguro.");
   CHECK(ask(room("living room", "en"), facts).text == "In the living room are David Acme and Ana. I am fairly sure.");
 
@@ -165,7 +173,7 @@ TEST_CASE("the asker is left out of a room and of the household")
 {
   WhereaboutsFacts facts = household();
   facts.verdicts.front().userId = kOwner;
-  facts.located->insert(kMarta);
+  locatedOf(facts).insert(kMarta);
   CHECK(ask(room("sala"), facts).text == "No detecto a nadie de casa en la sala.");
 }
 

@@ -76,15 +76,14 @@ CalendarEventRepository::create(const CalendarEventCreateInput& input) const
   auto* client = input.client ? input.client : pooled.get();
   const auto result = co_await client->execSqlCoro(
       INSERT.data(),
-      input.createdBy ? *input.createdBy : std::optional<int64_t>{},
+      input.createdBy,
       input.ownerId,
-      input.projectId ? *input.projectId : std::optional<int64_t>{},
+      input.projectId,
       input.title, input.description, input.location, input.color,
       input.startsAt,
-      input.endsAt ? *input.endsAt : std::optional<int64_t>{},
+      input.endsAt,
       input.isAllDay ? 1 : 0,
-      input.recurrenceRule ? *input.recurrenceRule
-                           : std::optional<std::string>{});
+      input.recurrenceRule);
 
   CalendarEventSchema schema;
   schema.id = result.insertId();

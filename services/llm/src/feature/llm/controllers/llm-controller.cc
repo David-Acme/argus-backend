@@ -361,9 +361,12 @@ LlmController::ConversationTurnPlan LlmController::openConversationTurn(const Ch
   if (!request.useConversation)
     return plan;
   requireConversationAccess(request);
+  if (!request.conversationLeg)
+    throw ResponseException(LlmErrors::ConversationNeedsUserAndLeg);
+  const ConversationLegKind leg = *request.conversationLeg;
   const ConversationContext context = openConversation(
       *conversation_, {.userId = request.userId,
-                       .leg = *request.conversationLeg,
+                       .leg = leg,
                        .lang = request.lang,
                        .at = std::time(nullptr),
                        .tailTurns = kConversationTailTurns,
@@ -371,7 +374,7 @@ LlmController::ConversationTurnPlan LlmController::openConversationTurn(const Ch
   plan.request.messages = toChatMessages(context.messages);
   plan.active = true;
   plan.userId = request.userId;
-  plan.leg = *request.conversationLeg;
+  plan.leg = leg;
   plan.userText = context.latestUserText;
   return plan;
 }

@@ -138,7 +138,7 @@ public:
       server_->Shutdown();
   }
 
-  bool listening() const { return server_ != nullptr; }
+  [[nodiscard]] bool listening() const { return server_ != nullptr; }
 
 private:
   ScriptedUserDirectory service_;
@@ -243,7 +243,7 @@ public:
   [[nodiscard]] drogon::Task<void>
   emitUsers(const UserEmitInput& input) const override
   {
-    std::lock_guard lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     emits.push_back({.operation = static_cast<int>(input.body.operation),
                      .option = tableNameToString(input.body.option),
                      .body = input.body.obj,
@@ -254,7 +254,7 @@ public:
   [[nodiscard]] drogon::Task<void>
   publishAudit(const UserAuditInput& input) const override
   {
-    std::lock_guard lock(mutex_);
+    const std::scoped_lock lock(mutex_);
     audits.push_back({input.recordId, tableNameToString(input.tableName),
                       json_util::toString(input.before),
                       json_util::toString(input.after), input.userIds});
@@ -408,7 +408,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   projectBody["description"] = "Fix the gate";
   projectBody["status"] = "active";
   projectBody["color"] = "#00FF00";
-  projectBody["startsAt"] = Json::Int64(1735689600000);
+  projectBody["startsAt"] = static_cast<Json::Int64>(1735689600000);
   auto projectReq = drogon::HttpRequest::newHttpJsonRequest(projectBody);
   projectReq->addHeader("Idempotency-Key", "project-retry-1");
   setActor({.req = projectReq, .sub = 42, .role = UserRole::Owner});
@@ -484,8 +484,8 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
 
   auto memberReq = [&](int64_t userId, const char* access) {
     Json::Value memberBody;
-    memberBody["projectId"] = Json::Int64(projectId);
-    memberBody["userId"] = Json::Int64(userId);
+    memberBody["projectId"] = static_cast<Json::Int64>(projectId);
+    memberBody["userId"] = static_cast<Json::Int64>(userId);
     memberBody["access"] = access;
     auto req = drogon::HttpRequest::newHttpJsonRequest(memberBody);
     setActor({.req = req, .sub = 42, .role = UserRole::Owner});
@@ -572,7 +572,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   ProjectTaskController taskController;
 
   Json::Value taskBody;
-  taskBody["projectId"] = Json::Int64(projectId);
+  taskBody["projectId"] = static_cast<Json::Int64>(projectId);
   taskBody["title"] = "Sand the door";
   taskBody["status"] = "todo";
   taskBody["priority"] = "low";
@@ -642,7 +642,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   CHECK(patchTask(R"({"dueAt":null})")["dueAt"].isNull());
 
   Json::Value orphanTaskBody;
-  orphanTaskBody["projectId"] = Json::Int64(999);
+  orphanTaskBody["projectId"] = static_cast<Json::Int64>(999);
   orphanTaskBody["title"] = "Orphan";
   orphanTaskBody["status"] = "todo";
   orphanTaskBody["priority"] = "none";
@@ -697,10 +697,10 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   eventBody["description"] = "Walk the gate";
   eventBody["location"] = "Front gate";
   eventBody["color"] = "#0000FF";
-  eventBody["startsAt"] = Json::Int64(1735689600000);
-  eventBody["endsAt"] = Json::Int64(1735693200000);
+  eventBody["startsAt"] = static_cast<Json::Int64>(1735689600000);
+  eventBody["endsAt"] = static_cast<Json::Int64>(1735693200000);
   eventBody["isAllDay"] = false;
-  eventBody["projectId"] = Json::Int64(projectId);
+  eventBody["projectId"] = static_cast<Json::Int64>(projectId);
   auto eventReq = drogon::HttpRequest::newHttpJsonRequest(eventBody);
   eventReq->addHeader("Idempotency-Key", "event-retry-1");
   setActor({.req = eventReq, .sub = 42, .role = UserRole::Owner});
@@ -736,8 +736,8 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
 
   auto shareReq = [&](int64_t userId) {
     Json::Value shareBody;
-    shareBody["calendarEventId"] = Json::Int64(eventId);
-    shareBody["userId"] = Json::Int64(userId);
+    shareBody["calendarEventId"] = static_cast<Json::Int64>(eventId);
+    shareBody["userId"] = static_cast<Json::Int64>(userId);
     shareBody["access"] = "view";
     auto req = drogon::HttpRequest::newHttpJsonRequest(shareBody);
     setActor({.req = req, .sub = 42, .role = UserRole::Owner});
@@ -837,8 +837,8 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   constexpr int64_t kSeriesStart = 1900000000;
   Json::Value seriesBody;
   seriesBody["title"] = "Weekly standup";
-  seriesBody["startsAt"] = Json::Int64(kSeriesStart);
-  seriesBody["endsAt"] = Json::Int64(kSeriesStart + 1800);
+  seriesBody["startsAt"] = static_cast<Json::Int64>(kSeriesStart);
+  seriesBody["endsAt"] = static_cast<Json::Int64>(kSeriesStart + 1800);
   seriesBody["recurrenceRule"] = "FREQ=WEEKLY";
   auto seriesReq = drogon::HttpRequest::newHttpJsonRequest(seriesBody);
   setActor({.req = seriesReq, .sub = 42, .role = UserRole::Owner});

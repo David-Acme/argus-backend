@@ -311,7 +311,7 @@ void MemoryService::workerLoop()
 
 void MemoryService::startWorker()
 {
-  std::lock_guard<std::mutex> lock(queueMutex_);
+  const std::scoped_lock lock(queueMutex_);
   if (running_)
     return;
   stop_ = false;
@@ -323,7 +323,7 @@ void MemoryService::startWorker()
 void MemoryService::requestStop()
 {
   {
-    std::lock_guard<std::mutex> lock(queueMutex_);
+    const std::scoped_lock lock(queueMutex_);
     stop_ = true;
     std::erase_if(queue_, [](const MemoryJob& job) {
       return job.kind == MemoryJob::Kind::Compact || job.kind == MemoryJob::Kind::Profile;
@@ -348,7 +348,7 @@ void MemoryService::stopWorker()
 void MemoryService::enqueueJob(MemoryJob job)
 {
   {
-    std::lock_guard<std::mutex> lock(queueMutex_);
+    const std::scoped_lock lock(queueMutex_);
     if (queue_.size() >= queueBound_) {
       LOG_WARN << "MemoryService queue full (" << queue_.size()
                << "); dropped " << static_cast<int>(job.kind) << " job";
@@ -377,7 +377,7 @@ void MemoryService::init(const MemoryInitOptions& options)
 void MemoryService::openStore()
 {
   {
-    std::lock_guard<std::mutex> lock(storeMutex_);
+    const std::scoped_lock lock(storeMutex_);
     if (storeOpen_)
       return;
     storeOpen_ = true;
@@ -403,7 +403,7 @@ void MemoryService::openStore()
 void MemoryService::shutdown()
 {
   {
-    std::lock_guard<std::mutex> lock(storeMutex_);
+    const std::scoped_lock lock(storeMutex_);
     storeOpen_ = false;
   }
   stopWorker();
@@ -532,7 +532,7 @@ bool MemoryService::flushPending(int timeoutMs)
                         std::chrono::milliseconds(budget);
   while (std::chrono::steady_clock::now() < deadline) {
     {
-      std::lock_guard<std::mutex> lock(queueMutex_);
+      const std::scoped_lock lock(queueMutex_);
       if (queue_.empty() && !working_.load())
         return true;
     }
@@ -569,7 +569,7 @@ std::string MemoryService::profileFor(int64_t userId, const std::string& lang)
   if (userId < 0)
     return {};
   {
-    std::lock_guard<std::mutex> lock(profileMutex_);
+    const std::scoped_lock lock(profileMutex_);
     const int stale = ConfigService::getInt("memory.profile_stale_seconds");
     const std::time_t maxAge =
         stale > 0 ? static_cast<std::time_t>(stale) : 300;
@@ -580,7 +580,7 @@ std::string MemoryService::profileFor(int64_t userId, const std::string& lang)
   }
   const std::string built = buildProfile(userId, lang);
   {
-    std::lock_guard<std::mutex> lock(profileMutex_);
+    const std::scoped_lock lock(profileMutex_);
     profileCache_ = {.userId = userId,
                      .lang = lang,
                      .text = built,
@@ -666,7 +666,7 @@ void MemoryService::processProfile(const MemoryJob& job)
   const std::string polished = chat_.chat(req);
   if (polished.empty())
     return;
-  std::lock_guard<std::mutex> lock(profileMutex_);
+  const std::scoped_lock lock(profileMutex_);
   profileCache_ = {.userId = job.userId,
                    .lang = job.lang,
                    .text = polished,
