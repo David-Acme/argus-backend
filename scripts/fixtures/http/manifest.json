@@ -46,7 +46,7 @@
       "errors"
     ]
   },
-  "probes": 882,
+  "probes": 1032,
   "sessions": "scripts/seed-golden.py --roles (owner, resident, guest)",
   "sources": "scripts/lib/route-baseline.txt (the route census)",
   "units": [
@@ -82,6 +82,32 @@
       "reason": "the recording state is the answering host's own: paused is the disk floor's verdict against that host's free space (recording.min_free_gb defaults to 20, and a sandbox's tmpfs sits below it, so a sandbox camera answers paused true while a roomy host answers false), and freeGb and freeBytes move with every clip the fleet writes; the keys and their JSON types stay compared, minFreeGb is config and stays pinned, and the floor's behaviour is pinned by the camera's own tests and the integration pass's live run",
       "route": "/camera/recording",
       "unit": "camera"
+    },
+    {
+      "keys": [
+        "rows[].eventId"
+      ],
+      "reason": "the seeded camera health opens a tamper group whose event id carries the second the group opened, so it moves with every boot; the row, its decision and every other column stay pinned",
+      "route": "/guard/decisions",
+      "unit": "guard"
+    },
+    {
+      "keys": [
+        "since",
+        "until"
+      ],
+      "reason": "the summary's window is bounded by the first and last decision, which carry the second the seeded tamper group opened; the counts and the histograms stay pinned",
+      "route": "/guard/decisions/summary",
+      "unit": "guard"
+    },
+    {
+      "keys": [
+        "rows[].firstSeen",
+        "rows[].lastSeen"
+      ],
+      "reason": "the episode the seeded tamper group opens is stamped with the second it was seen, which moves with every boot; the episode, its camera and its state stay pinned",
+      "route": "/guard/episodes",
+      "unit": "guard"
     },
     {
       "keys": [

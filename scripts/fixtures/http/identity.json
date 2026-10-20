@@ -1170,28 +1170,32 @@
             "applicable": {
               "cameraAudio": true,
               "faceCameras": true,
+              "location": true,
               "presence": true,
               "voiceLearning": true
             },
             "choices": {
               "cameraAudio": false,
               "faceCameras": false,
+              "location": false,
               "presence": false,
               "voiceLearning": false
             },
             "current": false,
-            "currentNoticeVersion": 1,
+            "currentNoticeVersion": 2,
             "decided": false,
             "decidedAt": "<masked:null>",
             "effective": {
               "cameraAudio": false,
               "faceCameras": false,
+              "location": false,
               "presence": false,
               "voiceLearning": false
             },
             "household": {
               "cameraAudio": true,
               "faceCameras": true,
+              "location": true,
               "presence": true,
               "voiceLearning": true
             },
@@ -1224,28 +1228,32 @@
             "applicable": {
               "cameraAudio": true,
               "faceCameras": true,
+              "location": true,
               "presence": true,
               "voiceLearning": true
             },
             "choices": {
               "cameraAudio": false,
               "faceCameras": false,
+              "location": false,
               "presence": false,
               "voiceLearning": false
             },
             "current": false,
-            "currentNoticeVersion": 1,
+            "currentNoticeVersion": 2,
             "decided": false,
             "decidedAt": "<masked:null>",
             "effective": {
               "cameraAudio": false,
               "faceCameras": false,
+              "location": false,
               "presence": false,
               "voiceLearning": false
             },
             "household": {
               "cameraAudio": true,
               "faceCameras": true,
+              "location": true,
               "presence": true,
               "voiceLearning": true
             },
@@ -1278,28 +1286,32 @@
             "applicable": {
               "cameraAudio": true,
               "faceCameras": true,
+              "location": true,
               "presence": true,
               "voiceLearning": true
             },
             "choices": {
               "cameraAudio": false,
               "faceCameras": false,
+              "location": false,
               "presence": false,
               "voiceLearning": false
             },
             "current": false,
-            "currentNoticeVersion": 1,
+            "currentNoticeVersion": 2,
             "decided": false,
             "decidedAt": "<masked:null>",
             "effective": {
               "cameraAudio": false,
               "faceCameras": false,
+              "location": false,
               "presence": false,
               "voiceLearning": false
             },
             "household": {
               "cameraAudio": true,
               "faceCameras": true,
+              "location": true,
               "presence": true,
               "voiceLearning": true
             },
@@ -1643,16 +1655,19 @@
             "applicable": {
               "cameraAudio": true,
               "faceCameras": true,
+              "location": true,
               "presence": true,
               "voiceLearning": true
             },
-            "currentNoticeVersion": 1,
+            "currentNoticeVersion": 2,
             "household": {
               "cameraAudio": true,
               "faceCameras": true,
+              "location": true,
               "presence": true,
               "visitorRecognition": false,
-              "voiceLearning": true
+              "voiceLearning": true,
+              "watchman": false
             },
             "householdUpdatedAt": "<masked:null>",
             "users": [
@@ -1660,6 +1675,7 @@
                 "choices": {
                   "cameraAudio": false,
                   "faceCameras": false,
+                  "location": false,
                   "presence": false,
                   "voiceLearning": false
                 },
@@ -1669,6 +1685,7 @@
                 "effective": {
                   "cameraAudio": false,
                   "faceCameras": false,
+                  "location": false,
                   "presence": false,
                   "voiceLearning": false
                 },
@@ -1680,6 +1697,7 @@
                 "choices": {
                   "cameraAudio": false,
                   "faceCameras": false,
+                  "location": false,
                   "presence": false,
                   "voiceLearning": false
                 },
@@ -1689,6 +1707,7 @@
                 "effective": {
                   "cameraAudio": false,
                   "faceCameras": false,
+                  "location": false,
                   "presence": false,
                   "voiceLearning": false
                 },
@@ -1700,6 +1719,7 @@
                 "choices": {
                   "cameraAudio": false,
                   "faceCameras": false,
+                  "location": false,
                   "presence": false,
                   "voiceLearning": false
                 },
@@ -1709,6 +1729,7 @@
                 "effective": {
                   "cameraAudio": false,
                   "faceCameras": false,
+                  "location": false,
                   "presence": false,
                   "voiceLearning": false
                 },
@@ -1717,7 +1738,8 @@
                 "userId": 3
               }
             ],
-            "visitorAcknowledgedAt": "<masked:null>"
+            "visitorAcknowledgedAt": "<masked:null>",
+            "watchmanAcknowledgedAt": "<masked:null>"
           },
           "status": 200
         },

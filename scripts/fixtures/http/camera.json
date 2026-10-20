@@ -3555,6 +3555,7 @@
                 "lastEvent": null,
                 "lastSeenAt": "<masked:number>",
                 "mainActive": false,
+                "privacyObeyed": false,
                 "privacyState": "unknown",
                 "sampledAt": "<masked:number>",
                 "stream": null,
@@ -3576,6 +3577,7 @@
                 "lastEvent": null,
                 "lastSeenAt": "<masked:number>",
                 "mainActive": false,
+                "privacyObeyed": false,
                 "privacyState": "unknown",
                 "sampledAt": "<masked:number>",
                 "stream": null,
@@ -3624,6 +3626,7 @@
                 "lastEvent": null,
                 "lastSeenAt": "<masked:number>",
                 "mainActive": false,
+                "privacyObeyed": false,
                 "privacyState": "unknown",
                 "sampledAt": "<masked:number>",
                 "stream": null,
@@ -3645,6 +3648,7 @@
                 "lastEvent": null,
                 "lastSeenAt": "<masked:number>",
                 "mainActive": false,
+                "privacyObeyed": false,
                 "privacyState": "unknown",
                 "sampledAt": "<masked:number>",
                 "stream": null,
@@ -3693,6 +3697,7 @@
                 "lastEvent": null,
                 "lastSeenAt": "<masked:number>",
                 "mainActive": false,
+                "privacyObeyed": false,
                 "privacyState": "unknown",
                 "sampledAt": "<masked:number>",
                 "stream": null,
@@ -3714,6 +3719,7 @@
                 "lastEvent": null,
                 "lastSeenAt": "<masked:number>",
                 "mainActive": false,
+                "privacyObeyed": false,
                 "privacyState": "unknown",
                 "sampledAt": "<masked:number>",
                 "stream": null,
@@ -3966,6 +3972,138 @@
       "unit": "camera"
     },
     {
+      "method": "GET",
+      "path": "/camera/recording",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/recording",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/recording",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/recording",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/recording",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/recording",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/recording",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/recording",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/recording",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "freeBytes": "<VOLATILE:number>",
+            "freeGb": "<VOLATILE:number>",
+            "minFreeGb": 20,
+            "paused": "<VOLATILE:boolean>"
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/recording",
+      "unit": "camera"
+    },
+    {
       "method": "DELETE",
       "path": "/camera/999999",
       "probe": "no-token",
@@ -4202,12 +4340,16 @@
             "manufacturer": "tapo",
             "model": "C200",
             "name": "Golden Cam",
+            "noAudio": false,
             "port": 1,
+            "privacyObeyed": false,
             "privacyState": "unknown",
             "recordMode": "events",
             "retentionDays": 7,
+            "tvExclusion": false,
             "updatedAt": "<masked:number>",
-            "username": "admin"
+            "username": "admin",
+            "watchman": false
           },
           "status": 200
         },
@@ -4272,12 +4414,16 @@
             "manufacturer": "tapo",
             "model": "C200",
             "name": "Golden Cam",
+            "noAudio": false,
             "port": 1,
+            "privacyObeyed": false,
             "privacyState": "unknown",
             "recordMode": "events",
             "retentionDays": 7,
+            "tvExclusion": false,
             "updatedAt": "<masked:number>",
-            "username": "admin"
+            "username": "admin",
+            "watchman": false
           },
           "status": 200
         },
@@ -4311,6 +4457,454 @@
         "status": 404
       },
       "route": "/camera/{1}",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/aim",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/aim",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/aim",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/aim",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/aim",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "activity": "idle",
+            "atHome": true,
+            "cameraId": 1,
+            "homePreset": null,
+            "lease": {
+              "holder": "none",
+              "mine": false,
+              "parkUntilMs": 0,
+              "sinceMs": 0,
+              "userId": 0
+            },
+            "pan": 0.0,
+            "positionKnown": true,
+            "ptz": true,
+            "settings": {
+              "activeLook": true,
+              "followIntruders": true,
+              "noAimSectors": []
+            },
+            "tilt": 0.0,
+            "wear": {
+              "dailyCap": 400,
+              "movesToday": 0
+            }
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/{1}/aim",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/aim",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "activity": "idle",
+            "atHome": true,
+            "cameraId": 1,
+            "homePreset": null,
+            "lease": {
+              "holder": "none",
+              "mine": false,
+              "parkUntilMs": 0,
+              "sinceMs": 0,
+              "userId": 0
+            },
+            "pan": 0.0,
+            "positionKnown": true,
+            "ptz": true,
+            "settings": {
+              "activeLook": true,
+              "followIntruders": true,
+              "noAimSectors": []
+            },
+            "tilt": 0.0,
+            "wear": {
+              "dailyCap": 400,
+              "movesToday": 0
+            }
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/{1}/aim",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/aim",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "activity": "idle",
+            "atHome": true,
+            "cameraId": 1,
+            "homePreset": null,
+            "lease": {
+              "holder": "none",
+              "mine": false,
+              "parkUntilMs": 0,
+              "sinceMs": 0,
+              "userId": 0
+            },
+            "pan": 0.0,
+            "positionKnown": true,
+            "ptz": true,
+            "settings": {
+              "activeLook": true,
+              "followIntruders": true,
+              "noAimSectors": []
+            },
+            "tilt": 0.0,
+            "wear": {
+              "dailyCap": 400,
+              "movesToday": 0
+            }
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/{1}/aim",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/999999/aim",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Camera not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/camera/{1}/aim",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/1/aim",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/aim",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/1/aim",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/camera/{1}/aim",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/1/aim",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/aim",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/1/aim",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "activity": "idle",
+            "atHome": true,
+            "cameraId": 1,
+            "homePreset": null,
+            "lease": {
+              "holder": "none",
+              "mine": false,
+              "parkUntilMs": 0,
+              "sinceMs": 0,
+              "userId": 0
+            },
+            "pan": 0.0,
+            "positionKnown": true,
+            "ptz": true,
+            "settings": {
+              "activeLook": true,
+              "followIntruders": true,
+              "noAimSectors": []
+            },
+            "tilt": 0.0,
+            "wear": {
+              "dailyCap": 400,
+              "movesToday": 0
+            }
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/{1}/aim",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/1/aim",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/aim",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/1/aim",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "activity": "idle",
+            "atHome": true,
+            "cameraId": 1,
+            "homePreset": null,
+            "lease": {
+              "holder": "none",
+              "mine": false,
+              "parkUntilMs": 0,
+              "sinceMs": 0,
+              "userId": 0
+            },
+            "pan": 0.0,
+            "positionKnown": true,
+            "ptz": true,
+            "settings": {
+              "activeLook": true,
+              "followIntruders": true,
+              "noAimSectors": []
+            },
+            "tilt": 0.0,
+            "wear": {
+              "dailyCap": 400,
+              "movesToday": 0
+            }
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/{1}/aim",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/999999/aim",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Camera not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/camera/{1}/aim",
       "unit": "camera"
     },
     {
@@ -4503,6 +5097,923 @@
       "unit": "camera"
     },
     {
+      "method": "GET",
+      "path": "/camera/1/clips",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/clips",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/clips",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/clips",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/clips",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/clips",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/clips",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/clips",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/clips",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "cameraId": 1,
+            "clips": []
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/{1}/clips",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/999999/clips",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Camera not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/camera/{1}/clips",
+      "unit": "camera"
+    },
+    {
+      "method": "DELETE",
+      "path": "/camera/999999/clips/999999",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/clips/{2}",
+      "unit": "camera"
+    },
+    {
+      "method": "DELETE",
+      "path": "/camera/999999/clips/999999",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/clips/{2}",
+      "unit": "camera"
+    },
+    {
+      "method": "DELETE",
+      "path": "/camera/999999/clips/999999",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/clips/{2}",
+      "unit": "camera"
+    },
+    {
+      "method": "DELETE",
+      "path": "/camera/999999/clips/999999",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/clips/{2}",
+      "unit": "camera"
+    },
+    {
+      "method": "DELETE",
+      "path": "/camera/999999/clips/999999",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Clip not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/camera/{1}/clips/{2}",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/clips/999999/preview",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/clips/{2}/preview",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/clips/999999/preview",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/clips/{2}/preview",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/clips/999999/preview",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/clips/{2}/preview",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/clips/999999/preview",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/clips/{2}/preview",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/clips/999999/preview",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Clip not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/camera/{1}/clips/{2}/preview",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/999999/clips/999999/preview",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Clip not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/camera/{1}/clips/{2}/preview",
+      "unit": "camera"
+    },
+    {
+      "method": "DELETE",
+      "path": "/camera/999999/patrol",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "DELETE",
+      "path": "/camera/999999/patrol",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "DELETE",
+      "path": "/camera/999999/patrol",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Camera not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "DELETE",
+      "path": "/camera/999999/patrol",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "DELETE",
+      "path": "/camera/999999/patrol",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Camera not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/patrol",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/patrol",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/patrol",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "patrol": null
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/patrol",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "patrol": null
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/1/patrol",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": null,
+          "info": {
+            "patrol": null
+          },
+          "status": 200
+        },
+        "pretty": true,
+        "status": 200
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/camera/999999/patrol",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Camera not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/1/patrol",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/1/patrol",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/1/patrol",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/1/patrol",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "stops": [
+                "a new patrol needs its stops"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/1/patrol",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/1/patrol",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "stops": [
+                "a new patrol needs its stops"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/999999/patrol",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "Camera not found"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/camera/{1}/patrol",
+      "unit": "camera"
+    },
+    {
       "method": "PATCH",
       "path": "/camera/1/preset",
       "probe": "no-token",
@@ -4597,7 +6108,7 @@
             "code": "VALIDATION_ERROR",
             "fields": {
               "id": [
-                "id is required to reach or delete a preset"
+                "id is required to reach, delete or set a preset as home"
               ]
             },
             "message": "Validation failed"
@@ -4654,7 +6165,7 @@
             "code": "VALIDATION_ERROR",
             "fields": {
               "id": [
-                "id is required to reach or delete a preset"
+                "id is required to reach, delete or set a preset as home"
               ]
             },
             "message": "Validation failed"
@@ -4685,7 +6196,7 @@
             "code": "VALIDATION_ERROR",
             "fields": {
               "id": [
-                "id is required to reach or delete a preset"
+                "id is required to reach, delete or set a preset as home"
               ]
             },
             "message": "Validation failed"
@@ -5050,6 +6561,203 @@
         "status": 422
       },
       "route": "/camera/{1}/ptz",
+      "unit": "camera"
+    },
+    {
+      "method": "POST",
+      "path": "/camera/1/ptz/lease",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/ptz/lease",
+      "unit": "camera"
+    },
+    {
+      "method": "POST",
+      "path": "/camera/1/ptz/lease",
+      "probe": "bad-json",
+      "request": {
+        "auth": "none",
+        "body": "not-json",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "BAD_REQUEST",
+            "message": "Invalid JSON body"
+          },
+          "info": null,
+          "status": 400
+        },
+        "pretty": true,
+        "status": 400
+      },
+      "route": "/camera/{1}/ptz/lease",
+      "unit": "camera"
+    },
+    {
+      "method": "POST",
+      "path": "/camera/1/ptz/lease",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/camera/{1}/ptz/lease",
+      "unit": "camera"
+    },
+    {
+      "method": "POST",
+      "path": "/camera/1/ptz/lease",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "action": [
+                "action must be one of the allowed values"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/{1}/ptz/lease",
+      "unit": "camera"
+    },
+    {
+      "method": "POST",
+      "path": "/camera/1/ptz/lease",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/camera/{1}/ptz/lease",
+      "unit": "camera"
+    },
+    {
+      "method": "POST",
+      "path": "/camera/1/ptz/lease",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "action": [
+                "action must be one of the allowed values"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/{1}/ptz/lease",
+      "unit": "camera"
+    },
+    {
+      "method": "POST",
+      "path": "/camera/999999/ptz/lease",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": "{}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "fields": {
+              "action": [
+                "action must be one of the allowed values"
+              ]
+            },
+            "message": "Validation failed"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/{1}/ptz/lease",
       "unit": "camera"
     },
     {
@@ -5568,6 +7276,58 @@
         },
         "pretty": true,
         "status": 404
+      },
+      "route": "/camera/{1}/settings",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/2/settings",
+      "probe": "doorbell-privacy-on",
+      "request": {
+        "auth": "owner",
+        "body": "{\"privacy\": true}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "message": "This camera model does not support the privacy lens mask"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
+      },
+      "route": "/camera/{1}/settings",
+      "unit": "camera"
+    },
+    {
+      "method": "PATCH",
+      "path": "/camera/2/settings",
+      "probe": "doorbell-privacy-off",
+      "request": {
+        "auth": "owner",
+        "body": "{\"privacy\": false}",
+        "contentType": "application/json",
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "VALIDATION_ERROR",
+            "message": "This camera model does not support the privacy lens mask"
+          },
+          "info": null,
+          "status": 422
+        },
+        "pretty": true,
+        "status": 422
       },
       "route": "/camera/{1}/settings",
       "unit": "camera"
@@ -6284,6 +8044,162 @@
       "unit": "camera"
     },
     {
+      "method": "GET",
+      "path": "/clip/argus-golden-missing-capability/content",
+      "probe": "no-token",
+      "request": {
+        "auth": "none",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Missing authorization token"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/clip/{1}/content",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/clip/argus-golden-missing-capability/content",
+      "probe": "other-device",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "other"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "UNAUTHORIZED",
+            "message": "Device mismatch"
+          },
+          "info": null,
+          "status": 401
+        },
+        "pretty": true,
+        "status": 401
+      },
+      "route": "/clip/{1}/content",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/clip/argus-golden-missing-capability/content",
+      "probe": "role-resident",
+      "request": {
+        "auth": "resident",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/clip/{1}/content",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/clip/argus-golden-missing-capability/content",
+      "probe": "role-guest",
+      "request": {
+        "auth": "guest",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "FORBIDDEN",
+            "message": "Access denied"
+          },
+          "info": null,
+          "status": 403
+        },
+        "pretty": true,
+        "status": 403
+      },
+      "route": "/clip/{1}/content",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/clip/argus-golden-missing-capability/content",
+      "probe": "owner",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "The clip view capability is spent, expired or belongs to another user"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/clip/{1}/content",
+      "unit": "camera"
+    },
+    {
+      "method": "GET",
+      "path": "/clip/999999/content",
+      "probe": "owner-missing",
+      "request": {
+        "auth": "owner",
+        "body": null,
+        "contentType": null,
+        "userAgent": "recorder"
+      },
+      "response": {
+        "contentType": "application/json",
+        "json": {
+          "errors": {
+            "code": "NOT_FOUND",
+            "message": "The clip view capability is spent, expired or belongs to another user"
+          },
+          "info": null,
+          "status": 404
+        },
+        "pretty": true,
+        "status": 404
+      },
+      "route": "/clip/{1}/content",
+      "unit": "camera"
+    },
+    {
       "method": "WS",
       "path": "/media",
       "probe": "ws-plain-get",
@@ -6807,788 +8723,6 @@
         "status": 404
       },
       "route": "/zone/{1}",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/clips",
-      "probe": "no-token",
-      "request": {
-        "auth": "none",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Missing authorization token"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/camera/{1}/clips",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/clips",
-      "probe": "other-device",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "other"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Device mismatch"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/camera/{1}/clips",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/clips",
-      "probe": "role-resident",
-      "request": {
-        "auth": "resident",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/camera/{1}/clips",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/clips",
-      "probe": "role-guest",
-      "request": {
-        "auth": "guest",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/camera/{1}/clips",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/clips",
-      "probe": "owner",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": null,
-          "info": {
-            "cameraId": 1,
-            "clips": []
-          },
-          "status": 200
-        },
-        "pretty": true,
-        "status": 200
-      },
-      "route": "/camera/{1}/clips",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/999999/clips",
-      "probe": "owner-missing",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "NOT_FOUND",
-            "message": "Camera not found"
-          },
-          "info": null,
-          "status": 404
-        },
-        "pretty": true,
-        "status": 404
-      },
-      "route": "/camera/{1}/clips",
-      "unit": "camera"
-    },
-    {
-      "method": "DELETE",
-      "path": "/camera/999999/clips/999999",
-      "probe": "no-token",
-      "request": {
-        "auth": "none",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Missing authorization token"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/camera/{1}/clips/{2}",
-      "unit": "camera"
-    },
-    {
-      "method": "DELETE",
-      "path": "/camera/999999/clips/999999",
-      "probe": "other-device",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "other"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Device mismatch"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/camera/{1}/clips/{2}",
-      "unit": "camera"
-    },
-    {
-      "method": "DELETE",
-      "path": "/camera/999999/clips/999999",
-      "probe": "role-resident",
-      "request": {
-        "auth": "resident",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/camera/{1}/clips/{2}",
-      "unit": "camera"
-    },
-    {
-      "method": "DELETE",
-      "path": "/camera/999999/clips/999999",
-      "probe": "role-guest",
-      "request": {
-        "auth": "guest",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/camera/{1}/clips/{2}",
-      "unit": "camera"
-    },
-    {
-      "method": "DELETE",
-      "path": "/camera/999999/clips/999999",
-      "probe": "owner",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "NOT_FOUND",
-            "message": "Clip not found"
-          },
-          "info": null,
-          "status": 404
-        },
-        "pretty": true,
-        "status": 404
-      },
-      "route": "/camera/{1}/clips/{2}",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/clips/999999/preview",
-      "probe": "no-token",
-      "request": {
-        "auth": "none",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Missing authorization token"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/camera/{1}/clips/{2}/preview",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/clips/999999/preview",
-      "probe": "other-device",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "other"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Device mismatch"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/camera/{1}/clips/{2}/preview",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/clips/999999/preview",
-      "probe": "role-resident",
-      "request": {
-        "auth": "resident",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/camera/{1}/clips/{2}/preview",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/clips/999999/preview",
-      "probe": "role-guest",
-      "request": {
-        "auth": "guest",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/camera/{1}/clips/{2}/preview",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/1/clips/999999/preview",
-      "probe": "owner",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "NOT_FOUND",
-            "message": "Clip not found"
-          },
-          "info": null,
-          "status": 404
-        },
-        "pretty": true,
-        "status": 404
-      },
-      "route": "/camera/{1}/clips/{2}/preview",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/999999/clips/999999/preview",
-      "probe": "owner-missing",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "NOT_FOUND",
-            "message": "Clip not found"
-          },
-          "info": null,
-          "status": 404
-        },
-        "pretty": true,
-        "status": 404
-      },
-      "route": "/camera/{1}/clips/{2}/preview",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/clip/argus-golden-missing-capability/content",
-      "probe": "no-token",
-      "request": {
-        "auth": "none",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Missing authorization token"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/clip/{1}/content",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/clip/argus-golden-missing-capability/content",
-      "probe": "other-device",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "other"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Device mismatch"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/clip/{1}/content",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/clip/argus-golden-missing-capability/content",
-      "probe": "role-resident",
-      "request": {
-        "auth": "resident",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/clip/{1}/content",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/clip/argus-golden-missing-capability/content",
-      "probe": "role-guest",
-      "request": {
-        "auth": "guest",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/clip/{1}/content",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/clip/argus-golden-missing-capability/content",
-      "probe": "owner",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "NOT_FOUND",
-            "message": "The clip view capability is spent, expired or belongs to another user"
-          },
-          "info": null,
-          "status": 404
-        },
-        "pretty": true,
-        "status": 404
-      },
-      "route": "/clip/{1}/content",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/clip/999999/content",
-      "probe": "owner-missing",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "NOT_FOUND",
-            "message": "The clip view capability is spent, expired or belongs to another user"
-          },
-          "info": null,
-          "status": 404
-        },
-        "pretty": true,
-        "status": 404
-      },
-      "route": "/clip/{1}/content",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/recording",
-      "probe": "no-token",
-      "request": {
-        "auth": "none",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Missing authorization token"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/camera/recording",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/recording",
-      "probe": "other-device",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "other"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "UNAUTHORIZED",
-            "message": "Device mismatch"
-          },
-          "info": null,
-          "status": 401
-        },
-        "pretty": true,
-        "status": 401
-      },
-      "route": "/camera/recording",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/recording",
-      "probe": "role-resident",
-      "request": {
-        "auth": "resident",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/camera/recording",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/recording",
-      "probe": "role-guest",
-      "request": {
-        "auth": "guest",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "FORBIDDEN",
-            "message": "Access denied"
-          },
-          "info": null,
-          "status": 403
-        },
-        "pretty": true,
-        "status": 403
-      },
-      "route": "/camera/recording",
-      "unit": "camera"
-    },
-    {
-      "method": "GET",
-      "path": "/camera/recording",
-      "probe": "owner",
-      "request": {
-        "auth": "owner",
-        "body": null,
-        "contentType": null,
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": null,
-          "info": {
-            "freeBytes": "<VOLATILE:number>",
-            "freeGb": "<VOLATILE:number>",
-            "minFreeGb": 20,
-            "paused": "<VOLATILE:boolean>"
-          },
-          "status": 200
-        },
-        "pretty": true,
-        "status": 200
-      },
-      "route": "/camera/recording",
-      "unit": "camera"
-    },
-    {
-      "method": "PATCH",
-      "path": "/camera/2/settings",
-      "probe": "doorbell-privacy-on",
-      "request": {
-        "auth": "owner",
-        "body": "{\"privacy\": true}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "message": "This camera model does not support the privacy lens mask"
-          },
-          "info": null,
-          "status": 422
-        },
-        "pretty": true,
-        "status": 422
-      },
-      "route": "/camera/{1}/settings",
-      "unit": "camera"
-    },
-    {
-      "method": "PATCH",
-      "path": "/camera/2/settings",
-      "probe": "doorbell-privacy-off",
-      "request": {
-        "auth": "owner",
-        "body": "{\"privacy\": false}",
-        "contentType": "application/json",
-        "userAgent": "recorder"
-      },
-      "response": {
-        "contentType": "application/json",
-        "json": {
-          "errors": {
-            "code": "VALIDATION_ERROR",
-            "message": "This camera model does not support the privacy lens mask"
-          },
-          "info": null,
-          "status": 422
-        },
-        "pretty": true,
-        "status": 422
-      },
-      "route": "/camera/{1}/settings",
       "unit": "camera"
     }
   ],

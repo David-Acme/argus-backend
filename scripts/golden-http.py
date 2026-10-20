@@ -56,6 +56,8 @@ CONTROL_ERROR_CODE = "CAMERA_UNREACHABLE"
 
 ABSENT_DEPENDENCY_ANSWERS = {
     ("sync", "/rtc/token"): (503, "RTC_UNAVAILABLE"),
+    ("sync", "/rtc/watch"): (503, "RTC_UNAVAILABLE"),
+    ("sync", "/rtc/watch/{1}/end"): (503, "RTC_UNAVAILABLE"),
 }
 
 PUSH_TOKEN = "argus-golden-push-token"
@@ -350,6 +352,25 @@ SESSION_KILLERS = {
 }
 
 VOLATILE_FIELDS = {
+    ("guard", "/guard/decisions"): {
+        "keys": ("rows[].eventId",),
+        "reason": "the seeded camera health opens a tamper group whose event "
+                  "id carries the second the group opened, so it moves with "
+                  "every boot; the row, its decision and every other column "
+                  "stay pinned",
+    },
+    ("guard", "/guard/decisions/summary"): {
+        "keys": ("since", "until"),
+        "reason": "the summary's window is bounded by the first and last "
+                  "decision, which carry the second the seeded tamper group "
+                  "opened; the counts and the histograms stay pinned",
+    },
+    ("guard", "/guard/episodes"): {
+        "keys": ("rows[].firstSeen", "rows[].lastSeen"),
+        "reason": "the episode the seeded tamper group opens is stamped with "
+                  "the second it was seen, which moves with every boot; the "
+                  "episode, its camera and its state stay pinned",
+    },
     ("camera", "/camera/recording"): {
         "keys": ("paused", "freeGb", "freeBytes"),
         "reason": "the recording state is the answering host's own: paused is "
