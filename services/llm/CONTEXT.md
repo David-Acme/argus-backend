@@ -1155,6 +1155,15 @@ message, the clock at its head and the situation after the user's words. The com
 returns, so the eval scores `missedFact`/`leakedFact` against the exact prompt
 the turn sent.
 
+No production caller fills `ChatRequest::contextFacts` today (`context_facts`
+left the wire with e808604b), so in a call the agenda facet's data is what
+`calendar.list_events` answers. That tool expands recurring events with their
+skipped and moved occurrences applied (G4, `services/productivity/CONTEXT.md`,
+"Recurring occurrences"): "¿qué tengo mañana?" never hears a skipped
+occurrence and hears a moved one at its new time. A producer of an agenda
+fact, if one is added, must read the same expansion and not the stored
+`starts_at`.
+
 Degradation: a turn that selects nothing composes no block, which is exactly a
 plain chat and shares the cached prefix. The Laya facet pass (one `noul`
 question per unsure facet) is U24's; nothing links it here.
@@ -1727,7 +1736,9 @@ then, for a series, writes one productivity row per named weekday (a series
 row has one anchor, and productivity's rule grammar has no `BYDAY`, so "los
 lunes y miércoles" is two weekly series, each anchored on its own day), with
 `recurrenceRule` the productivity rule (`FREQ` and `INTERVAL` only:
-`repeat_rule::productivityRule`) and the idempotency key
+`repeat_rule::productivityRule`; productivity also reads
+`FREQ=MONTHLY;BYMONTHDAY=n` since G4, firing on the last day of a shorter
+month, so a monthly series may carry its day) and the idempotency key
 `memory-remind:<factId>:<firstAt>`. The title is the reminder's words without
 the recurrence and the clock phrases. **No call is scheduled for a series**:
 the notification service's call is a single instant, and calling only for the

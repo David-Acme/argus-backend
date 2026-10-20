@@ -92,14 +92,16 @@ ReminderFeatureService::create(const ReminderCreateCommand& command) const
         co_return *existing;
       }
     }
+    const auto rule = body.recurrenceRule ? parseRecurrenceRule(*body.recurrenceRule) : std::nullopt;
+    const int64_t scheduledAt = rule ? seriesStart(*rule, body.scheduledAt) : body.scheduledAt;
     row = co_await repository_.create({.createdBy = command.userId,
                                        .targetUserId = command.userId,
                                        .title = body.title,
                                        .description = body.description,
-                                       .scheduledAt = body.scheduledAt,
+                                       .scheduledAt = scheduledAt,
                                        .recurrenceRule = body.recurrenceRule,
                                        .recurrenceAnchor = body.recurrenceRule
-                                           ? std::optional<int64_t>{body.scheduledAt}
+                                           ? std::optional<int64_t>{scheduledAt}
                                            : std::nullopt,
                                        .client = transaction.get()});
     co_await emit({.operation = SyncOperation::Add,
@@ -153,9 +155,12 @@ ReminderFeatureService::update(const ReminderUpdateCommand& command) const
                          *body.recurrenceRule != existing->recurrenceRule.value_or("");
     const std::optional<std::string> effectiveRule =
         stopping ? std::nullopt : (ruleSet ? body.recurrenceRule : existing->recurrenceRule);
-    const int64_t effectiveScheduled = body.scheduledAt.value_or(existing->scheduledAt);
     const bool scheduleChanged = body.scheduledAt && *body.scheduledAt != existing->scheduledAt;
     const bool reanchors = stopping || ruleSet || (effectiveRule && scheduleChanged);
+    const auto rule = effectiveRule ? parseRecurrenceRule(*effectiveRule) : std::nullopt;
+    const int64_t askedScheduled = body.scheduledAt.value_or(existing->scheduledAt);
+    const int64_t effectiveScheduled =
+        rule && (ruleSet || scheduleChanged) ? seriesStart(*rule, askedScheduled) : askedScheduled;
     const OccurrenceExceptions exceptions =
         reanchors ? OccurrenceExceptions{} : parseOccurrenceExceptions(existing->recurrenceExceptions);
 
@@ -163,7 +168,9 @@ ReminderFeatureService::update(const ReminderUpdateCommand& command) const
                               .targetUserId = command.userId,
                               .title = body.title,
                               .description = body.description,
-                              .scheduledAt = body.scheduledAt,
+                              .scheduledAt = effectiveScheduled != askedScheduled
+                                                 ? std::optional<int64_t>{effectiveScheduled}
+                                                 : body.scheduledAt,
                               .isCompleted = body.isCompleted,
                               .completedAt = std::nullopt,
                               .clearCompletedAt = false,
@@ -183,7 +190,6 @@ ReminderFeatureService::update(const ReminderUpdateCommand& command) const
     }
 
     bool rolled = false;
-    const auto rule = effectiveRule ? parseRecurrenceRule(*effectiveRule) : std::nullopt;
     if (body.isCompleted.value_or(false) && rule) {
       const int64_t anchor = input.recurrenceAnchor.value_or(
           existing->recurrenceAnchor.value_or(effectiveScheduled));
@@ -279,18 +285,37 @@ ReminderFeatureService::snooze(const ReminderSnoozeCommand& command) const
       throw ResponseException(ProductivityErrors::ChangeNotRecorded);
     }
 
+    std::optional<int64_t> scheduledAt = target;
+    std::optional<std::string> recurrenceExceptions;
+    const auto rule = existing->recurrenceRule ? parseRecurrenceRule(*existing->recurrenceRule)
+                                               : std::nullopt;
+    if (rule) {
+      const auto exceptions = parseOccurrenceExceptions(existing->recurrenceExceptions);
+      const auto snoozed = snoozeSeries({.rule = *rule,
+                                         .anchor = existing->recurrenceAnchor.value_or(existing->scheduledAt),
+                                         .scheduledAt = existing->scheduledAt,
+                                         .exceptions = exceptions,
+                                         .target = *target});
+      if (snoozed) {
+        if (snoozed->exceptions.size() > kMaxOccurrenceExceptions)
+          throw ResponseException(ProductivityErrors::TooManyOccurrenceExceptions);
+        scheduledAt = snoozed->scheduledAt;
+        recurrenceExceptions = serializeOccurrenceExceptions(snoozed->exceptions);
+      }
+    }
+
     row = co_await repository_.update({.id = command.id,
                                        .targetUserId = command.userId,
                                        .title = std::nullopt,
                                        .description = std::nullopt,
-                                       .scheduledAt = target,
+                                       .scheduledAt = scheduledAt,
                                        .isCompleted = std::nullopt,
                                        .completedAt = std::nullopt,
                                        .clearCompletedAt = false,
                                        .recurrenceRule = std::nullopt,
                                        .recurrenceAnchor = std::nullopt,
                                        .clearRecurrence = false,
-                                       .recurrenceExceptions = std::nullopt,
+                                       .recurrenceExceptions = recurrenceExceptions,
                                        .client = transaction.get()});
     if (row.id == 0) {
       db_transaction::rollback(transaction);

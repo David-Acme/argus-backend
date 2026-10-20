@@ -846,7 +846,7 @@ TEST_CASE("productivity contracts hold on the argus-productivity surface")
   const int64_t seriesId = series["id"].asInt64();
   CHECK(series["recurrenceExceptions"].asString() == "[]");
   const int64_t second =
-      occurrenceAt({.rule = {.frequency = RecurrenceFrequency::Weekly, .interval = 1},
+      occurrenceAt({.rule = {.frequency = RecurrenceFrequency::Weekly, .interval = 1, .monthDay = std::nullopt},
                     .anchor = kSeriesStart,
                     .index = 1})
           .value_or(0);

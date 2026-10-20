@@ -435,10 +435,18 @@ gone: the lead belongs to each user. `idx_calendar_event_live_start` serves
 the window query.
 
 The body carries no words in any language: the notification service renders
-the spoken lines per user. Recurring events are announced for their stored
-`starts_at` only; expanding `recurrence_rule` into occurrences is an open
-item. `agenda.enabled = false`, or no notification target/credential, leaves
-the announcer off.
+the spoken lines per user. A recurring event is announced at every
+occurrence, not only its stored `starts_at`: `DUE_EVENTS` reads the events
+without a rule, `LIVE_SERIES` reads every live timed series that has begun by
+the window's end, and `agenda_notice::dueOccurrences` expands each one through
+`occurrencesWithin` (`src/shared/services/recurrence/series-window`) with its
+exceptions applied, so a skipped occurrence is never announced and a moved one
+is announced at its new time, under its own title and place when the change
+gave one. The occurrence key is the time it starts (the moved time for a
+moved one), exactly as for a single event, and the recorded buckets of the
+series come from one `agenda_notice` read over the window (`EVENT_NOTICES`).
+`agenda.enabled = false`, or no notification target/credential, leaves the
+announcer off.
 
 **When productivity is turned off** (2026-10, the effects wave) the sweep keeps
 running because reminders are core: `AgendaAnnouncerDependencies::eventsActive`
@@ -637,7 +645,9 @@ another user's token refused), both languages and the gate for each role.
   future occurrence on the next sweep, with one log line per series; missed occurrences are never replayed.
 - Completing a recurring reminder rolls it to the next occurrence and keeps it open. Snooze is `POST
   /reminder/{id}/snooze` with `minutes` (5 to 1440) or `tomorrow` (the same wall time the next day); a completed
-  reminder refuses it with 409.
+  reminder refuses it with 409. On a series the snooze belongs to the current occurrence (G4, below).
+- `FREQ=MONTHLY;BYMONTHDAY=n` (n from 1 to 31, monthly only, G4) names the day of the month instead of taking it from
+  the anchor; a month shorter than n uses its last day, and the next month returns to n.
 - Shared logic: `src/shared/services/reminder-series` (the roll, used by the announcer), `src/shared/services/recurrence`
   (rules and occurrences). The fixture `scripts/fixtures/recurrence/cases.json` is read by the C++ test and, for
   events, by the app's expansion, so the two cannot disagree.
@@ -698,7 +708,8 @@ A person can change or skip one occurrence of a recurring reminder or calendar e
   agenda, a changed one takes its start, end, title or place. A new `startsAt` or `recurrenceRule` on the series
   clears them. The agenda announcer still announces only the stored `starts_at` of a recurring event, and now leaves
   it out when that occurrence is skipped or moved (`DUE_EVENTS`, through `json_each`); announcing later occurrences,
-  moved ones included, stays the open item above. `calendar.list_events` (MCP) does not apply exceptions yet.
+  moved ones included, stays the open item above. `calendar.list_events` (MCP) does not apply exceptions yet. (Both
+  closed by G4, below.)
 - **Sync.** Every change publishes the row's before and after through the productivity sink (`publishAudit`, rule
   18), so the app receives a `Log` diff of `recurrenceExceptions` on the existing row; nothing is emitted as `Add`.
   The row JSON carries `recurrenceExceptions` as the column's JSON text (a string, like `filePaths`), and the pull
@@ -711,3 +722,45 @@ A person can change or skip one occurrence of a recurring reminder or calendar e
   `productivity-reminder-test` (skip, move, restore, refusals, the firing path through `ReminderSeries`, completion
   past a skipped occurrence, re-anchoring) and `productivity-controller-test` (the event route end to end and the
   series edit that clears the exceptions).
+
+## Recurring occurrences (G4, 2026-10-19)
+
+F6b left three gaps and one rule the voice path needed; G4 closes them.
+
+- **One expansion on the server.** `occurrencesWithin` (`src/shared/services/recurrence/series-window`, read by the
+  agenda and the MCP features) is the server's copy of the app's `occurrenceEntries`: the series' occurrences in an
+  inclusive window, a cancelled one left out, a changed one at its new start with its own end, title and place, and a
+  moved one whose new start falls in the window kept even when its own start does not (only for occurrences at or
+  after the anchor, as in the app). The end is the series' duration from the new start unless the change gave one. A
+  row without a readable rule is one entry at its stored start, without exceptions, which is how the app shows it. A
+  series yields at most `kMaxSeriesOccurrences` (512) entries per window.
+- **Announcements.** Every occurrence of a recurring event is announced (see "Agenda announcements"); the stored
+  `starts_at` is only occurrence 0. The `json_each` filter of `DUE_EVENTS` is gone: that query now reads the events
+  without a rule, and the series go through the expansion. `productivity-agenda-test` pins a later occurrence with its
+  five buckets, a skipped one silent, a moved one announced at its new time under its new title, and the next day.
+- **The assistant's agenda.** `calendar.list_events` reads `findVisibleAgenda` (the single events in the window and
+  every visible series that has begun by its end) and expands it with `occurrencesWithin`, so "¿qué tengo mañana?" does
+  not list a skipped occurrence and lists a moved one at its new time. The answer counts occurrences, sorted by start;
+  each entry of a series carries `occurrence`, the start the series gave it, beside `startsAt`. The llm has no other
+  agenda read: the per-turn `ContextFact` has no producer since `context_facts` left the wire, so the agenda facet's
+  data in a call is this tool's result (`services/llm/CONTEXT.md`, "The per-turn context block").
+- **A snooze on a series is that occurrence's change.** Before, a snooze only rewrote `scheduled_at`, so the snoozed
+  time was no occurrence of the series and "only this time" answered 422 `NotAnOccurrence`. Now `snoozeSeries`
+  (`occurrence-exceptions`) records it as the current occurrence's exception (`startsAt` = the snoozed time) and
+  `scheduled_at` takes that time: `scheduledOccurrence` finds the occurrence again, `PATCH …/occurrence` skips or
+  moves it like any other, and the roll after it fires lands on the next occurrence at its own time. A snooze that
+  reaches the series' next occurrence or passes it (a daily reminder snoozed "tomorrow") folds into it instead: the
+  current occurrence is skipped and the reminder fires the next one at its own time, so no occurrence is ever fired
+  twice or out of order. A row snoozed before this change keeps a `scheduled_at` that is no occurrence until it fires
+  once; its "only this time" still answers 422 until then. One-off reminders snooze as before.
+- **Monthly on a day.** `parseRecurrenceRule` reads `BYMONTHDAY=1..31` with `FREQ=MONTHLY` (any key order, each once;
+  with another frequency, 0, 32, a sign or a repeat it is refused). Occurrence 0 is the first day n (or the last day of
+  a shorter month) at or after the anchor, at the anchor's wall time. A reminder created with such a rule, or
+  re-anchored onto one, stores that first occurrence as both `scheduled_at` and `recurrence_anchor` (`seriesStart`), so
+  "el día 5 de cada mes" asked on the 19th first fires on the 5th of the next month. The day 31 fires on 30 November,
+  28 or 29 February and returns to the 31st; the shared fixture (`scripts/fixtures/recurrence/cases.json`) carries
+  those cases and the refused rules, and the app reads the same rule for events (`kRecurrenceRuleProblem` names it).
+- Tests: `productivity-recurrence-test` (the rule, `seriesStart`, the window with skipped, moved and moved-in
+  occurrences, `snoozeSeries`), `productivity-reminder-test` (a snoozed occurrence moved and skipped only this time,
+  the occurrence after a snooze, the fold, the day-31 series firing through `ReminderSeries` and the re-anchor onto the
+  5th), `productivity-agenda-test` and `productivity-mcp-test` (`listingHonoursSkippedAndMovedOccurrences`).

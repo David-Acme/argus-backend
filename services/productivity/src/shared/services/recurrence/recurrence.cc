@@ -11,6 +11,7 @@
 namespace
 {
 constexpr int kMaxInterval = 999;
+constexpr int kMaxMonthDay = 31;
 constexpr int64_t kMaxSearch = 1000000;
 
 struct CivilDate
@@ -101,7 +102,13 @@ std::optional<RecurrenceFrequency> frequencyOf(std::string_view value)
   return std::nullopt;
 }
 
-std::optional<int> intervalOf(std::string_view value)
+struct Bounds
+{
+  int lowest{1};
+  int highest{1};
+};
+
+std::optional<int> boundedOf(std::string_view value, Bounds bounds)
 {
   const std::string digits(value);
   int parsed = 0;
@@ -109,7 +116,7 @@ std::optional<int> intervalOf(std::string_view value)
   const auto result = std::from_chars(digits.data(), last, parsed);
   if (result.ec != std::errc{} || result.ptr != last)
     return std::nullopt;
-  if (parsed < 1 || parsed > kMaxInterval)
+  if (parsed < bounds.lowest || parsed > bounds.highest)
     return std::nullopt;
   return parsed;
 }
@@ -139,17 +146,24 @@ std::optional<RecurrenceRule> parseRecurrenceRule(std::string_view text)
       frequencySeen = true;
     }
     else if (key == "INTERVAL" && !intervalSeen) {
-      const auto interval = intervalOf(value);
+      const auto interval = boundedOf(value, {.lowest = 1, .highest = kMaxInterval});
       if (!interval)
         return std::nullopt;
       rule.interval = *interval;
       intervalSeen = true;
+    }
+    else if (key == "BYMONTHDAY" && !rule.monthDay) {
+      rule.monthDay = boundedOf(value, {.lowest = 1, .highest = kMaxMonthDay});
+      if (!rule.monthDay)
+        return std::nullopt;
     }
     else {
       return std::nullopt;
     }
   }
   if (!frequencySeen)
+    return std::nullopt;
+  if (rule.monthDay && rule.frequency != RecurrenceFrequency::Monthly)
     return std::nullopt;
   return rule;
 }
@@ -170,10 +184,12 @@ std::optional<int64_t> occurrenceAt(const OccurrenceInput& input)
       date = civilFromDays(dayNumberOf(date) + 7 * steps);
       break;
     case RecurrenceFrequency::Monthly: {
-      const int64_t monthIndex = date.year * 12LL + (date.month - 1) + steps;
+      const int day = input.rule.monthDay.value_or(start->date.day);
+      const int64_t lateStart = std::min(day, daysInMonth(start->date)) < start->date.day ? 1 : 0;
+      const int64_t monthIndex = date.year * 12LL + (date.month - 1) + lateStart + steps;
       date.year = static_cast<int>(monthIndex / 12);
       date.month = static_cast<int>(monthIndex % 12) + 1;
-      date.day = std::min(start->date.day, daysInMonth(date));
+      date.day = std::min(day, daysInMonth(date));
       break;
     }
     case RecurrenceFrequency::Yearly:
@@ -182,6 +198,11 @@ std::optional<int64_t> occurrenceAt(const OccurrenceInput& input)
       break;
   }
   return epochOf(WallClock{.date = date, .hour = start->hour, .minute = start->minute, .second = start->second});
+}
+
+int64_t seriesStart(const RecurrenceRule& rule, int64_t at)
+{
+  return occurrenceAt({.rule = rule, .anchor = at, .index = 0}).value_or(at);
 }
 
 namespace

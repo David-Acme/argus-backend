@@ -10,6 +10,7 @@ argus_module(NAME productivity-agenda
         argus::lib::runtime
         argus::lib::sqlite
         argus::lib::text
+        argus::productivity-recurrence
         argus::productivity-reminder-series
         argus::productivity-repositories
         Drogon::Drogon)

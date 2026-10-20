@@ -45,6 +45,22 @@ struct NextFiring
   int64_t at{0};
 };
 
+struct SnoozeInput
+{
+  RecurrenceRule rule;
+  int64_t anchor{0};
+  int64_t scheduledAt{0};
+  const OccurrenceExceptions& exceptions;
+  int64_t target{0};
+};
+
+struct SnoozedSeries
+{
+  int64_t scheduledAt{0};
+  OccurrenceExceptions exceptions;
+  bool folded{false};
+};
+
 inline constexpr std::size_t kMaxOccurrenceExceptions = 366;
 inline constexpr std::string_view kNoOccurrenceExceptions = "[]";
 
@@ -58,3 +74,4 @@ inline constexpr std::string_view kNoOccurrenceExceptions = "[]";
                                                  const OccurrenceException& change);
 [[nodiscard]] OccurrenceExceptions exceptionsFrom(OccurrenceExceptions exceptions, int64_t occurrence);
 [[nodiscard]] std::optional<NextFiring> nextFiring(const NextFiringInput& input);
+[[nodiscard]] std::optional<SnoozedSeries> snoozeSeries(const SnoozeInput& input);

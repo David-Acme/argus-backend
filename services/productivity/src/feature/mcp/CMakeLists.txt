@@ -10,6 +10,7 @@ argus_module(NAME productivity-mcp
         argus::productivity-calendar-event
         argus::productivity-project
         argus::productivity-project-task
+        argus::productivity-recurrence
         argus::productivity-repositories
         argus::contracts::mcp-wire
         argus::lib::auth

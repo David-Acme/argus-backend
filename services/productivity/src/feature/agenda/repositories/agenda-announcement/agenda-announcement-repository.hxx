@@ -4,7 +4,9 @@
 
 #include <drogon/utils/coroutine.h>
 
+#include <compare>
 #include <map>
+#include <set>
 #include <vector>
 
 struct DueEventRow
@@ -15,6 +17,26 @@ struct DueEventRow
   std::string location;
   int64_t startsAt{0};
   int leadMinutes{0};
+};
+
+struct SeriesEventRow
+{
+  int64_t id{0};
+  int64_t ownerId{0};
+  std::string title;
+  std::string location;
+  int64_t startsAt{0};
+  std::string recurrenceRule;
+  std::string recurrenceExceptions;
+};
+
+struct EventNoticeKey
+{
+  int64_t refId{0};
+  int64_t occurrenceAt{0};
+  int leadMinutes{0};
+
+  auto operator<=>(const EventNoticeKey&) const = default;
 };
 
 struct DueReminderRow
@@ -33,6 +55,11 @@ public:
 
   drogon::Task<std::vector<DueEventRow>>
   dueEvents(const AgendaWindowInput& input) const;
+
+  drogon::Task<std::vector<SeriesEventRow>> liveSeries(int64_t until) const;
+
+  drogon::Task<std::set<EventNoticeKey>>
+  eventNotices(const AgendaNoticesInput& input) const;
 
   drogon::Task<std::map<int64_t, std::vector<int64_t>>>
   sharesOf(const std::vector<int64_t>& eventIds) const;

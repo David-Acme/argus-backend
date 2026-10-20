@@ -4,12 +4,14 @@
 #include <drogon/drogon.h>
 #include <feature/agenda/services/agenda-announcer.hxx>
 #include <feature/agenda/services/agenda-sweeper.hxx>
+#include <shared/services/recurrence/recurrence.hxx>
 #include <sqlite/db-service.hxx>
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
+#include <iterator>
 #include <mutex>
 #include <optional>
 #include <string>
@@ -100,6 +102,8 @@ struct EventInput
   int64_t startsAt{0};
   bool allDay{false};
   bool deleted{false};
+  std::string rule{};
+  std::string exceptions{"[]"};
 };
 
 int64_t insertEvent(const EventInput& input)
@@ -107,10 +111,13 @@ int64_t insertEvent(const EventInput& input)
   const auto client = DbService::productivityClient();
   client->execSqlSync(
       "INSERT INTO calendar_event (owner_id, created_by, title, location, "
-      "starts_at, is_all_day, deleted_at) VALUES (?, ?, ?, 'Calle Mayor', ?, ?, ?)",
+      "starts_at, is_all_day, deleted_at, recurrence_rule, recurrence_exceptions) "
+      "VALUES (?, ?, ?, 'Calle Mayor', ?, ?, ?, ?, ?)",
       input.owner, input.owner, input.title, input.startsAt,
       input.allDay ? 1 : 0,
-      input.deleted ? std::optional<int64_t>(kNow) : std::nullopt);
+      input.deleted ? std::optional<int64_t>(kNow) : std::nullopt,
+      input.rule.empty() ? std::nullopt : std::optional<std::string>(input.rule),
+      input.exceptions);
   return client->execSqlSync("SELECT MAX(id) AS id FROM calendar_event")
       .front()["id"]
       .as<int64_t>();
@@ -321,4 +328,102 @@ TEST_CASE("a recurring reminder overdue beyond the grace window is skipped, not 
   const auto moved = client->execSqlSync("SELECT scheduled_at FROM reminder WHERE title = 'Vacunas'");
   REQUIRE(moved.size() == 1);
   CHECK(moved.front()["scheduled_at"].as<long long>() > kNow);
+}
+
+namespace
+{
+int64_t dailyOccurrence(int64_t anchor, int64_t index)
+{
+  return occurrenceAt({.rule = {.frequency = RecurrenceFrequency::Daily, .interval = 1, .monthDay = std::nullopt},
+                       .anchor = anchor,
+                       .index = index})
+      .value_or(0);
+}
+
+std::vector<AgendaNotice> titled(const std::vector<AgendaNotice>& sent, const std::string& title)
+{
+  std::vector<AgendaNotice> found;
+  std::ranges::copy_if(sent, std::back_inserter(found),
+                       [&title](const AgendaNotice& notice) { return notice.title == title; });
+  return found;
+}
+
+std::vector<int> leadsOf(const std::vector<AgendaNotice>& notices)
+{
+  std::vector<int> leads;
+  leads.reserve(notices.size());
+  for (const auto& notice : notices)
+    leads.push_back(notice.leadMinutes);
+  std::ranges::sort(leads);
+  return leads;
+}
+}
+
+TEST_CASE("later occurrences of a recurring event are announced, skipped ones never, moved ones at their new time")
+{
+  reset();
+  auto notifier = std::make_shared<RecordingNotifier>();
+  auto clock = std::make_shared<std::atomic<int64_t>>(kNow);
+  const AgendaAnnouncer announcer(
+      {.enabled = true, .graceS = 120, .retentionS = 2592000},
+      {.notifier = notifier,
+       .clock = [clock]() { return clock->load(); },
+       .blockingOffLoop = false});
+
+  const int64_t yogaAnchor = kNow - 3 * kDaySeconds + 300;
+  const int64_t yoga = dailyOccurrence(yogaAnchor, 3);
+  const int64_t yogaId = insertEvent({.owner = 1, .title = "Yoga", .startsAt = yogaAnchor, .rule = "FREQ=DAILY"});
+
+  const int64_t chessAnchor = kNow - 3 * kDaySeconds + 600;
+  const int64_t chess = dailyOccurrence(chessAnchor, 3);
+  insertEvent({.owner = 1,
+               .title = "Ajedrez",
+               .startsAt = chessAnchor,
+               .rule = "FREQ=DAILY",
+               .exceptions = "[{\"occurrence\":" + std::to_string(chess) + ",\"cancelled\":true}]"});
+
+  const int64_t choirAnchor = kNow - 3 * kDaySeconds + 900;
+  const int64_t choir = dailyOccurrence(choirAnchor, 3);
+  insertEvent({.owner = 1,
+               .title = "Coro",
+               .startsAt = choirAnchor,
+               .rule = "FREQ=DAILY",
+               .exceptions = "[{\"occurrence\":" + std::to_string(choir) + ",\"cancelled\":false,\"startsAt\":" +
+                             std::to_string(choir + 900) + ",\"title\":\"Coro ensayo\"}]"});
+
+  const auto report = drogon::sync_wait(announcer.sweep());
+  const auto sent = notifier->all();
+  CHECK(report.events == static_cast<int64_t>(sent.size()));
+
+  const auto yogaNotices = titled(sent, "Yoga");
+  CHECK(leadsOf(yogaNotices) == std::vector<int>{5, 10, 15, 30, 60});
+  for (const auto& notice : yogaNotices) {
+    CHECK(notice.data["eventId"].asInt64() == yogaId);
+    CHECK(notice.data["startsAt"].asInt64() == yoga);
+    CHECK(notice.data["threadKey"].asString() ==
+          "agenda:event:" + std::to_string(yogaId) + ":" + std::to_string(yoga));
+  }
+
+  CHECK(titled(sent, "Ajedrez").empty());
+  CHECK(titled(sent, "Coro").empty());
+  const auto choirNotices = titled(sent, "Coro ensayo");
+  CHECK(leadsOf(choirNotices) == std::vector<int>{30, 60});
+  for (const auto& notice : choirNotices)
+    CHECK(notice.data["startsAt"].asInt64() == choir + 900);
+
+  CHECK(drogon::sync_wait(announcer.sweep()).events == 0);
+
+  clock->store(chess);
+  drogon::sync_wait(announcer.sweep());
+  CHECK(titled(notifier->all(), "Ajedrez").empty());
+
+  clock->store(dailyOccurrence(yogaAnchor, 4) - 300);
+  drogon::sync_wait(announcer.sweep());
+  const auto nextDay = titled(notifier->all(), "Yoga");
+  CHECK(std::ranges::count_if(nextDay, [&](const AgendaNotice& notice) {
+          return notice.data["startsAt"].asInt64() == dailyOccurrence(yogaAnchor, 4);
+        }) == 5);
+  CHECK(std::ranges::count_if(notifier->all(), [&](const AgendaNotice& notice) {
+          return notice.title == "Ajedrez" && notice.data["startsAt"].asInt64() == dailyOccurrence(chessAnchor, 4);
+        }) == 4);
 }
