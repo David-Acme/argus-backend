@@ -52,6 +52,7 @@ public:
   [[nodiscard]] bool idle() const;
 
 private:
+  [[nodiscard]] turn::ScreenedText screenAnonymous(const turn::ScreenedUtterance& utterance) const;
   void run(const std::stop_token& stop) const;
   void hold(const DuressRaiseCreateInput& raise) const;
   void forget(int64_t row) const;

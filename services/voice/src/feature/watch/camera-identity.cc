@@ -6,6 +6,7 @@
 #include <trantor/utils/Logger.h>
 
 #include <algorithm>
+#include <utility>
 
 namespace
 {
@@ -67,7 +68,11 @@ std::optional<ConversationOpening> CameraIdentityResolver::resolve(const Confirm
   }
   const std::vector<float> samples = wake.capture ? wake.capture->snapshot() : std::vector<float>{};
   input.voice = heard(samples);
-  const SpeakerResolution resolution = resolveSpeaker(input);
+  SpeakerResolution resolution = resolveSpeaker(input);
+  if (resolution.userId > 0 && input_.minor && input_.minor(resolution.userId)) {
+    resolution = asMinor(std::move(resolution), input_.lang);
+    LOG_INFO << "Voice watch: camera " << wake.cameraId << " speaker is a household minor; the minor set applies";
+  }
   if (resolution.disagreement)
     LOG_INFO << "Voice watch: face and voice disagree on camera " << wake.cameraId << "; the guest set applies";
   if (input_.inCall) {
@@ -85,6 +90,7 @@ std::optional<ConversationOpening> CameraIdentityResolver::resolve(const Confirm
   opening.surface = resolution.surface;
   opening.notes = resolution.notes;
   opening.faceSeen = !input.faces.empty();
+  opening.strangerPersonId = resolution.strangerPersonId;
   opening.identity.set_language(languageOf(input_.lang));
   if (resolution.userId > 0) {
     opening.identity.set_user_id(resolution.userId);

@@ -147,6 +147,11 @@ struct VoiceWatchConfig
   float beliefMinConfidence{0.6F};
   float beliefMargin{0.2F};
   std::chrono::milliseconds beliefMaxAge{2000};
+  int visitorConsentAsks{2};
+  int visitorConsentMaxWords{6};
+  std::chrono::milliseconds visitorReplyAccept{1800000};
+  std::chrono::milliseconds visitorReplyHold{1800000};
+  int visitorReplyMaxChars{300};
 };
 
 class VoiceConfig

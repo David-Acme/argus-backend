@@ -861,6 +861,12 @@ bool english(const tools::ToolCall& call)
   return call.context.lang == "en";
 }
 
+std::string_view learningRefusal(const tools::ToolCall& call)
+{
+  return english(call) ? "I can't keep that in memory without your guardian's permission."
+                       : "No puedo guardar eso en la memoria sin el permiso de tu tutor.";
+}
+
 std::string_view scopeRefusal(const tools::ToolCall& call)
 {
   return english(call) ? "Memory is only available to identified users."
@@ -936,11 +942,21 @@ int recallLimit()
 
 }
 
+void MemoryService::setLearningGate(std::function<bool(int64_t)> learns)
+{
+  learns_ = std::move(learns);
+}
+
 tools::ToolResult MemoryService::handleRemember(const tools::ToolCall& call)
 {
   tools::ToolResult result;
   if (!hasUserScope(call.context.userId)) {
     result.output = scopeRefusal(call);
+    return result;
+  }
+  if (learns_ && !learns_(call.context.userId)) {
+    result.code = "learning_off";
+    result.output = learningRefusal(call);
     return result;
   }
   const tools::ToolCall grounded = groundedCall(call);

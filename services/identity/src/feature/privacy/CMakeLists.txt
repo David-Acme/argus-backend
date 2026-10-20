@@ -3,6 +3,7 @@ argus_module(NAME identity-privacy
         controllers/privacy-controller.cc
         dtos/response-privacy-dto.cc
         dtos/update-household-privacy-dto.cc
+        dtos/update-minor-dto.cc
         dtos/update-privacy-dto.cc
         services/privacy-feature-service.cc
     INCLUDES ../..

@@ -3521,3 +3521,80 @@ TEST_CASE("A camera session takes its own endpointing, never asks whether it is 
       {.service = session, .session = *sess, .samples = samples, .text = "quiero ir a la tienda"}));
   session.stop(sink);
 }
+
+namespace
+{
+class WithheldSink final : public VoiceSessionSink
+{
+public:
+  [[nodiscard]] bool connected() const override { return true; }
+  void sendServerFrame(argus::voice::v1::ServerFrame) override {}
+  void withheld() override { ++withheldTurns; }
+
+  std::atomic<int> withheldTurns{0};
+};
+
+struct AnonymousCameraTurn
+{
+  bool withhold{false};
+  ConversationSurface surface{ConversationSurface::CameraVisitor};
+};
+
+struct AnonymousCameraOutcome
+{
+  std::vector<UtteranceScreenRequest> screened;
+  int withheldTurns{0};
+  int chatStreamCalls{0};
+};
+
+AnonymousCameraOutcome anonymousCameraTurn(const AnonymousCameraTurn& turn)
+{
+  FakeStt stt;
+  stt.transcript = "el gato está en el tejado";
+  FakeTts tts;
+  ScreeningLlm llm;
+  llm.withhold = turn.withhold;
+  FakeIdentity identity;
+  VoiceEngineSeam seam{.stt = stt, .tts = tts, .llm = llm, .identity = identity, .vad = voiceVad()};
+  VoiceSessionService session(seam);
+  WithheldSink sink;
+  argus::voice::v1::VoiceStart start;
+  start.mutable_identity()->set_language(argus::voice::v1::VOICE_LANGUAGE_ES);
+  start.set_mode(argus::voice::v1::VOICE_MODE_HALF_DUPLEX);
+  session.start(sink, start,
+                VoiceSessionOptions{.surface = turn.surface,
+                                    .minSilenceFrames = 22,
+                                    .maxTurnFrames = 937,
+                                    .askAddressed = false,
+                                    .incompleteHold = std::chrono::milliseconds(0),
+                                    .incomplete = {},
+                                    .carry = std::nullopt});
+  auto sess = VoiceSessionTestAccess::sessionOf(session, sink);
+  REQUIRE(waitFor([&] { return llm.primeCalls.load() >= 1 && !sess->speaking.load(); }));
+  const std::vector<float> samples(1600, 0.1F);
+  VoiceSessionTestAccess::runTurn({.service = session, .session = *sess, .samples = samples});
+  AnonymousCameraOutcome outcome{.screened = llm.screened,
+                                 .withheldTurns = sink.withheldTurns.load(),
+                                 .chatStreamCalls = llm.chatStreamCalls};
+  session.stop(sink);
+  return outcome;
+}
+}
+
+TEST_CASE("an unrecognised speaker at a camera is screened, and a withheld turn tells the camera, never the model")
+{
+  const AnonymousCameraOutcome withheld = anonymousCameraTurn({.withhold = true, .surface = ConversationSurface::CameraVisitor});
+  REQUIRE(withheld.screened.size() == 1);
+  CHECK(withheld.screened[0].userId == 0);
+  CHECK(withheld.screened[0].surface == ConversationSurface::CameraVisitor);
+  CHECK(withheld.withheldTurns == 1);
+  CHECK(withheld.chatStreamCalls == 0);
+
+  const AnonymousCameraOutcome heard = anonymousCameraTurn({.withhold = false, .surface = ConversationSurface::CameraVisitor});
+  CHECK(heard.screened.size() == 1);
+  CHECK(heard.withheldTurns == 0);
+
+  const AnonymousCameraOutcome app = anonymousCameraTurn({.withhold = true, .surface = ConversationSurface::App});
+  CHECK(app.screened.empty());
+  CHECK(app.withheldTurns == 0);
+}

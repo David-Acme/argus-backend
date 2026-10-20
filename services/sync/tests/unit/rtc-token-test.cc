@@ -782,9 +782,23 @@ public:
     co_return input.conversationId == conversations.front().conversation_id();
   }
 
+  drogon::Task<std::optional<argus::voice::v1::ReplyWatchVisitorResponse>> reply(RtcWatchReply input) const override
+  {
+    replies.push_back(input);
+    if (!reachable)
+      co_return std::nullopt;
+    argus::voice::v1::ReplyWatchVisitorResponse answer;
+    answer.set_outcome(outcome);
+    answer.set_reply_until(4200);
+    co_return answer;
+  }
+
   std::vector<argus::voice::v1::WatchConversation> conversations;
   mutable int64_t listedFor{0};
   mutable std::vector<std::string> ended;
+  mutable std::vector<RtcWatchReply> replies;
+  argus::voice::v1::WatchReplyOutcome outcome{argus::voice::v1::WATCH_REPLY_OUTCOME_QUEUED};
+  bool reachable{true};
 };
 
 struct WatchRow
@@ -886,4 +900,42 @@ TEST_CASE("a camera conversation is continued on the phone only while it is live
   CHECK_THROWS_AS(RtcWatchEndDto::fromPath("x"), ValidationException);
   CHECK(watchExpired(watchOf({.id = kGoneId, .state = "ended", .until = 0}), now));
   CHECK_FALSE(watchExpired(watchOf({.id = kGoneId, .state = "resumable", .until = now + 60}), now));
+}
+
+TEST_CASE("a member answers a visitor's message for the camera, and only the voice service decides whether it may")
+{
+  const auto watch = std::make_shared<FakeWatch>();
+  const RtcTokenService service({.config = enabledConfig(),
+                                 .voice = std::make_shared<FakeVoice>(true),
+                                 .calls = nullptr,
+                                 .directory = nullptr,
+                                 .rooms = std::make_shared<FakeRooms>(),
+                                 .decliner = nullptr,
+                                 .watch = watch});
+  Json::Value body(Json::objectValue);
+  body["text"] = "Déjelo en la puerta, gracias.";
+  const RtcWatchReplyDto dto = RtcWatchReplyDto::fromJson(body, kLiveId);
+  const ResponseRtcWatchReplyDto queued = drogon::sync_wait(service.replyWatch({.body = dto, .caller = caller()}));
+  CHECK(queued.toJson()["state"] == "queued");
+  CHECK(queued.toJson()["replyUntil"].asInt64() == 4200);
+  REQUIRE(watch->replies.size() == 1);
+  CHECK(watch->replies[0].userId == 7);
+  CHECK(watch->replies[0].conversationId == kLiveId);
+  CHECK(watch->replies[0].text == "Déjelo en la puerta, gracias.");
+
+  watch->outcome = argus::voice::v1::WATCH_REPLY_OUTCOME_SAID;
+  CHECK(drogon::sync_wait(service.replyWatch({.body = dto, .caller = caller()})).toJson()["state"] == "said");
+  const auto statusFor = [&](argus::voice::v1::WatchReplyOutcome outcome) {
+    watch->outcome = outcome;
+    return statusOf([&] { static_cast<void>(drogon::sync_wait(service.replyWatch({.body = dto, .caller = caller()}))); });
+  };
+  CHECK(statusFor(argus::voice::v1::WATCH_REPLY_OUTCOME_NOT_FOUND) == 404);
+  CHECK(statusFor(argus::voice::v1::WATCH_REPLY_OUTCOME_EXPIRED) == 410);
+  CHECK(statusFor(argus::voice::v1::WATCH_REPLY_OUTCOME_TOO_LONG) == 422);
+  watch->reachable = false;
+  CHECK(statusOf([&] { static_cast<void>(drogon::sync_wait(service.replyWatch({.body = dto, .caller = caller()}))); }) == 503);
+
+  Json::Value empty(Json::objectValue);
+  CHECK_THROWS_AS(RtcWatchReplyDto::fromJson(empty, kLiveId), ValidationException);
+  CHECK_THROWS_AS(RtcWatchReplyDto::fromJson(body, "nope"), ValidationException);
 }

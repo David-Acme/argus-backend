@@ -87,6 +87,11 @@ belief_enabled = true
 belief_min_confidence = 0.6
 belief_margin = 0.2
 belief_max_age_ms = 2000
+visitor_consent_asks = 2
+visitor_consent_max_words = 6
+visitor_reply_accept_ms = 1800000
+visitor_reply_hold_ms = 1800000
+visitor_reply_max_chars = 300
 
 [stt]
 remote_url = ""

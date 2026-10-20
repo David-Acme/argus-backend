@@ -93,10 +93,18 @@ struct RtcWatchEnd
   std::string conversationId;
 };
 
+struct RtcWatchReply
+{
+  int64_t userId{0};
+  std::string conversationId;
+  std::string text;
+};
+
 class RtcWatchDirectory
 {
 public:
   virtual ~RtcWatchDirectory() = default;
   virtual drogon::Task<std::optional<std::vector<argus::voice::v1::WatchConversation>>> list(int64_t userId) const = 0;
   virtual drogon::Task<std::optional<bool>> end(RtcWatchEnd input) const = 0;
+  virtual drogon::Task<std::optional<argus::voice::v1::ReplyWatchVisitorResponse>> reply(RtcWatchReply input) const = 0;
 };

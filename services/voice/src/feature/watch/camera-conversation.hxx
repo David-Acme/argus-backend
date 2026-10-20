@@ -13,6 +13,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -54,6 +55,9 @@ struct CameraConversationInput
   std::function<std::optional<CameraHop>(int64_t)> nextCamera;
   std::function<void(const ConversationEnded&)> onEnded;
   std::function<void(const std::string&)> onUserText;
+  bool askConsent{false};
+  std::function<void()> onWithheld;
+  int64_t visitorPersonId{0};
 };
 
 [[nodiscard]] std::vector<int16_t> pcm16Of(const std::string& bytes);
@@ -75,6 +79,7 @@ public:
   void requestEnd(ConversationEnd reason);
   [[nodiscard]] std::optional<VoiceSessionCarry> handOver(std::chrono::milliseconds wait);
   void markHandoff(ConversationHandoff handoff);
+  void say(std::string line);
   void join();
 
   [[nodiscard]] bool closed() const { return closed_.load(); }
@@ -89,9 +94,12 @@ public:
   [[nodiscard]] int playoutRate() const override { return kWatchRate; }
   [[nodiscard]] std::string shapeSpeech(const std::string& text) const override;
   [[nodiscard]] bool admitsTurn(const std::string& text, VoiceSpeakerVerdict verdict) override;
+  void withheld() override;
 
 private:
   void tick(const std::stop_token& stop);
+  [[nodiscard]] bool consentHolds(const std::string& text);
+  void sayPending();
   void openSpeaker(bool earcon);
   void writeSpeaker(std::span<const int16_t> pcm);
   void onSpeakerEvent(const argus::camera::v1::SpeakEvent& event);
@@ -125,6 +133,10 @@ private:
   bool delegated_{false};
   bool deviceHandoff_{false};
   std::optional<VoiceSessionCarry> carry_;
+  std::deque<std::string> lines_;
+  std::vector<std::string> pendingNotes_;
+  int consentAsked_{0};
+  bool wakeTurnPending_{false};
   ConversationEnd requested_{ConversationEnd::None};
   std::atomic<bool> started_{false};
   std::atomic<bool> closed_{false};

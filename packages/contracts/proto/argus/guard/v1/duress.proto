@@ -40,6 +40,7 @@ message CameraPanicRequest
   string speaker = 3;
   int64 said_at = 4;
   string conversation_id = 5;
+  bool duress = 6;
 }
 
 message CameraPanicResponse

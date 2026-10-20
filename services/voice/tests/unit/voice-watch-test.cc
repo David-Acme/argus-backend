@@ -11,6 +11,8 @@
 #include <feature/watch/echo-guard.hxx>
 #include <feature/watch/fire-log.hxx>
 #include <feature/watch/stage-two.hxx>
+#include <feature/watch/visitor-consent.hxx>
+#include <feature/watch/visitor-replies.hxx>
 #include <feature/watch/wake-words.hxx>
 #include <feature/watch/watch-coordinator.hxx>
 
@@ -577,4 +579,189 @@ TEST_CASE("cameras of one room never consult the belief, and in the believed roo
   CHECK(believed.byBelief);
   CHECK_FALSE(chooseSpeakingCamera({.candidates = {}, .rooms = kitchen, .minConfidence = 0.6, .margin = 0.2})
                   .has_value());
+}
+
+TEST_CASE("a visitor's yes and no are rule-detected in Spanish, Peruvian Spanish and English")
+{
+  const auto answer = [](std::string_view text) { return consentAnswer({.text = text, .maxWords = 6, .wakeMaxDistance = 2}); };
+  for (const std::string_view yes : {"sí", "Sí, claro", "ya pues", "Ya, ps", "dale", "normal nomás", "Sí, Argus",
+                                     "sí, no hay problema", "de acuerdo, joven", "yes", "Sure.", "of course", "okay"})
+  {
+    CAPTURE(yes);
+    CHECK(answer(yes) == ConsentAnswer::Yes);
+  }
+  for (const std::string_view no : {"no", "No, gracias", "mejor no", "nel", "nope", "no thanks", "sí... no",
+                                    "prefiero que no", "I'd rather not"})
+  {
+    CAPTURE(no);
+    CHECK(answer(no) == ConsentAnswer::No);
+  }
+  for (const std::string_view none : {"ya me voy", "¿está David?", "vengo a dejar un paquete para la señora", "Argus", "",
+                                      "sí quiero dejarle un mensaje largo a la familia de la casa"})
+  {
+    CAPTURE(none);
+    CHECK(answer(none) == ConsentAnswer::None);
+  }
+}
+
+TEST_CASE("a visitor who says they are a minor is recognised by rule")
+{
+  for (const std::string_view minor : {"soy menor de edad", "Tengo 12 años", "tengo doce años", "I'm 12 years old",
+                                       "I'm a kid", "soy una niña"})
+  {
+    CAPTURE(minor);
+    CHECK(minorStatement(minor));
+  }
+  for (const std::string_view adult : {"tengo 25 años", "tengo dos hijos", "I'm 30 years old", "soy el cartero"})
+  {
+    CAPTURE(adult);
+    CHECK_FALSE(minorStatement(adult));
+  }
+}
+
+TEST_CASE("a visitor's consent moves only on a yes, a no or a minor, and the rest gets safety-only answers")
+{
+  const ConsentTurnInput base{.consent = VisitorConsent::Asked, .text = "", .asked = 1, .maxAsks = 2, .maxWords = 6,
+                              .wakeMaxDistance = 2, .beforeQuestion = false, .lang = VoiceLang::Es};
+  ConsentTurnInput input = base;
+  input.text = "sí";
+  const ConsentTurn yes = consentTurn(input);
+  CHECK(yes.consent == VisitorConsent::Granted);
+  CHECK_FALSE(yes.toAssistant);
+  CHECK(yes.line == consentThanks(VoiceLang::Es));
+
+  input = base;
+  input.consent = VisitorConsent::Granted;
+  input.text = "¿me puede decir la hora?";
+  CHECK(consentTurn(input).toAssistant);
+
+  input = base;
+  input.text = "¿está David?";
+  const ConsentTurn other = consentTurn(input);
+  CHECK(other.consent == VisitorConsent::Asked);
+  CHECK_FALSE(other.toAssistant);
+  CHECK(other.askedAgain);
+  CHECK(other.line.starts_with(std::string(safetyOnlyLine(VoiceLang::Es))));
+  CHECK(other.line.find(std::string(consentAskAgain(VoiceLang::Es))) != std::string::npos);
+  CHECK(other.line.find("David") == std::string::npos);
+  input.asked = 2;
+  const ConsentTurn silentAfter = consentTurn(input);
+  CHECK_FALSE(silentAfter.askedAgain);
+  CHECK(silentAfter.line == safetyOnlyLine(VoiceLang::Es));
+
+  input = base;
+  input.text = "no";
+  const ConsentTurn no = consentTurn(input);
+  CHECK(no.consent == VisitorConsent::Declined);
+  CHECK_FALSE(no.toAssistant);
+  input.consent = VisitorConsent::Declined;
+  input.text = "bueno, sí";
+  const ConsentTurn later = consentTurn(input);
+  CHECK(later.consent == VisitorConsent::Declined);
+  CHECK(later.line == safetyOnlyLine(VoiceLang::Es));
+
+  input = base;
+  input.text = "sí, tengo 12 años";
+  const ConsentTurn minor = consentTurn(input);
+  CHECK(minor.consent == VisitorConsent::Declined);
+  CHECK(minor.minorStated);
+  input.consent = VisitorConsent::Granted;
+  input.text = "soy menor de edad";
+  CHECK(consentTurn(input).consent == VisitorConsent::Declined);
+
+  input = base;
+  input.beforeQuestion = true;
+  input.text = "Argus, ¿está David?";
+  const ConsentTurn wake = consentTurn(input);
+  CHECK(wake.consent == VisitorConsent::Asked);
+  CHECK(wake.line.empty());
+  CHECK_FALSE(wake.toAssistant);
+
+  input = base;
+  input.lang = VoiceLang::En;
+  input.text = "yeah";
+  CHECK(consentTurn(input).line == consentThanks(VoiceLang::En));
+  CHECK(std::string(consentQuestion(VoiceLang::Es)).find("se guarda") != std::string::npos);
+  CHECK(std::string(consentQuestion(VoiceLang::En)).find("kept") != std::string::npos);
+  CHECK(visitorConsentToString(VisitorConsent::Asked) == "unanswered");
+}
+
+TEST_CASE("a household minor at a camera gets the minor set, and an unnamed household face is never a visitor")
+{
+  const SeenFaceEvidence child{.personId = 4, .userId = 12, .name = "Lucía", .role = "resident", .confidence = 0.9F,
+                               .accepted = true, .visitor = false, .trusted = true};
+  const SpeakerResolution member = resolveSpeaker({.faces = {child}, .voice = std::nullopt, .lang = VoiceLang::Es});
+  const SpeakerResolution minor = asMinor(member, VoiceLang::Es);
+  CHECK(minor.surface == ConversationSurface::CameraMinor);
+  CHECK(minor.userId == 12);
+  CHECK(std::ranges::find(minor.notes, minorNote(VoiceLang::Es)) != minor.notes.end());
+  const SpeakerResolution guest = resolveSpeaker({.faces = {}, .voice = std::nullopt, .lang = VoiceLang::Es});
+  CHECK(asMinor(guest, VoiceLang::Es).surface == guest.surface);
+
+  const SeenFaceEvidence unnamed{.personId = 4, .userId = 0, .name = "", .role = "resident", .confidence = 0.9F,
+                                 .accepted = true, .visitor = false, .trusted = true};
+  CHECK(unnamedHousehold(unnamed));
+  const SpeakerResolution hidden = resolveSpeaker({.faces = {unnamed}, .voice = std::nullopt, .lang = VoiceLang::Es});
+  CHECK(hidden.audience == ConversationAudience::Guest);
+  CHECK(hidden.userId == 0);
+  const SeenFaceEvidence stranger{.personId = 30, .userId = 0, .name = "", .role = "", .confidence = 0.7F,
+                                  .accepted = true, .visitor = true, .trusted = false};
+  CHECK(resolveSpeaker({.faces = {unnamed, stranger}, .voice = std::nullopt, .lang = VoiceLang::Es}).audience ==
+        ConversationAudience::Guest);
+}
+
+TEST_CASE("the visitor's message names the consent it was left under, and an alert names only the camera")
+{
+  ConversationSnapshot snapshot = snapshotOf(ConversationAudience::Visitor, ConversationState::Ended);
+  snapshot.consent = VisitorConsent::Declined;
+  const auto notices = watchNoticesFor({.snapshot = snapshot, .reason = ConversationEnd::Silence, .carry = std::nullopt},
+                                       VoiceLang::Es, {1});
+  REQUIRE(notices.size() == 1);
+  CHECK(notices.front().data["visitorConsent"] == "declined");
+  CHECK(cameraSpeaker(VoiceLang::Es, "Entrada") == "Alguien en la cámara Entrada");
+  CHECK(cameraSpeaker(VoiceLang::En, "Gate") == "Someone at the Gate camera");
+}
+
+TEST_CASE("a member's reply to a visitor goes only to that camera, only from a notified member, and expires")
+{
+  VisitorReplies replies({.accept = std::chrono::minutes(30), .hold = std::chrono::minutes(10), .maxChars = 20});
+  const int64_t until = replies.open(
+      {.conversationId = "c1", .cameraId = 3, .personId = 30, .recipients = {1, 2}, .at = 1000});
+  CHECK(until == 1000 + 1800);
+
+  CHECK(replies.reply({.userId = 9, .conversationId = "c1", .text = "hola", .now = 1100}).outcome ==
+        VisitorReplyOutcome::NotFound);
+  CHECK(replies.reply({.userId = 1, .conversationId = "c2", .text = "hola", .now = 1100}).outcome ==
+        VisitorReplyOutcome::NotFound);
+  CHECK(replies.reply({.userId = 1, .conversationId = "c1", .text = "un mensaje demasiado largo para la cámara",
+                       .now = 1100})
+            .outcome == VisitorReplyOutcome::TooLong);
+  CHECK(replies.reply({.userId = 1, .conversationId = "c1", .text = "ñññññññññññññññññññ", .now = 1100}).outcome ==
+        VisitorReplyOutcome::Queued);
+  const VisitorReplyResult queued = replies.reply({.userId = 2, .conversationId = "c1", .text = "Ya bajo", .now = 1200});
+  CHECK(queued.outcome == VisitorReplyOutcome::Queued);
+  CHECK(queued.cameraId == 3);
+  CHECK(queued.replyUntil == 1200 + 600);
+  CHECK(replies.pendingCount() == 1);
+
+  CHECK_FALSE(replies.take({.cameraId = 4, .personId = 30, .now = 1300}).has_value());
+  CHECK_FALSE(replies.take({.cameraId = 3, .personId = 31, .now = 1300}).has_value());
+  const auto taken = replies.take({.cameraId = 3, .personId = 30, .now = 1300});
+  REQUIRE(taken.has_value());
+  CHECK(taken->text == "Ya bajo");
+  CHECK_FALSE(replies.take({.cameraId = 3, .personId = 30, .now = 1300}).has_value());
+
+  CHECK(replies.reply({.userId = 1, .conversationId = "c1", .text = "otra vez", .now = 1400}).outcome ==
+        VisitorReplyOutcome::Queued);
+  CHECK(replies.take({.cameraId = 3, .personId = 0, .now = 1400 + 601}) == std::nullopt);
+  CHECK(replies.reply({.userId = 1, .conversationId = "c1", .text = "tarde", .now = 1000 + 1801}).outcome ==
+        VisitorReplyOutcome::Expired);
+
+  CHECK(visitorReplyLine(VoiceLang::Es, "Ya bajo") == "Tengo un mensaje de la casa para usted: Ya bajo");
+  CHECK(visitorReplyLine(VoiceLang::En, "Coming") == "I have a message from the household for you: Coming");
+  CHECK(utf8Characters("ñandú") == 5);
+  CHECK(watchReplyOf({.outcome = VisitorReplyOutcome::Said, .replyUntil = 9, .cameraId = 3}).outcome() ==
+        argus::voice::v1::WATCH_REPLY_OUTCOME_SAID);
+  CHECK(watchReplyOf({.outcome = VisitorReplyOutcome::Expired, .replyUntil = 0, .cameraId = 3}).outcome() ==
+        argus::voice::v1::WATCH_REPLY_OUTCOME_EXPIRED);
 }

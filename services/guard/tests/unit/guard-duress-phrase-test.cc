@@ -474,3 +474,65 @@ TEST_CASE("the duress RPC answers only the llm caller and checks the speaker's c
   rig.waitForNotified(1);
   server->Shutdown();
 }
+
+TEST_CASE("a duress phrase from someone nobody recognised at a camera raises the silent alert, once")
+{
+  boot();
+  PhraseRig rig;
+  rig.setPhrase(kPhrase);
+  const PanicResult first = drogon::sync_wait(
+      rig.safety->cameraDuress({.speaker = "Alguien en la cámara Entrada", .environmentId = std::nullopt, .saidAt = rig.clock - 5}));
+  CHECK(first.alertId > 0);
+  CHECK_FALSE(first.repeated);
+  rig.waitForKind("guard_duress", 1);
+  rig.waitForNotified(1);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert WHERE kind = 'duress' AND spoken = 1 AND user_id = 0") == "1");
+  CHECK(scalar("SELECT actor_name FROM guard_safety_alert WHERE user_id = 0") == "Alguien en la cámara Entrada");
+  CHECK(scalar("SELECT said_at FROM guard_safety_alert WHERE user_id = 0") == std::to_string(rig.clock - 5));
+  CHECK(rig.notifications.ofKind("guard_panic_sent").empty());
+  for (const auto& alert : rig.notifications.ofKind("guard_duress"))
+    CHECK(alert.body.find("gato") == std::string::npos);
+  const PanicResult again = drogon::sync_wait(
+      rig.safety->cameraDuress({.speaker = "Alguien en la cámara Entrada", .environmentId = std::nullopt, .saidAt = 0}));
+  CHECK(again.repeated);
+  CHECK(again.alertId == first.alertId);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert") == "1");
+}
+
+TEST_CASE("with duress switched off, a camera duress raises nothing")
+{
+  boot();
+  PhraseRig rig;
+  const PanicResult result =
+      drogon::sync_wait(rig.safety->cameraDuress({.speaker = "Alguien", .environmentId = std::nullopt, .saidAt = 0}));
+  CHECK(result.alertId == 0);
+  CHECK(scalar("SELECT COUNT(*) FROM guard_safety_alert") == "0");
+}
+
+TEST_CASE("argus-voice raises the camera duress through RaiseCameraPanic, and a member's panic stays a panic")
+{
+  boot();
+  PhraseRig rig;
+  rig.setPhrase(kPhrase);
+  DuressRpcService rpc({.safety = rig.safety,
+                        .actors = nullptr,
+                        .credentials = {{.service = "llm", .secret = kLlmCredential}},
+                        .panicCredentials = {{.service = "voice", .secret = "voice-secret"}},
+                        .environmentOf = {}});
+  int port = 0;
+  grpc::ServerBuilder builder;
+  builder.AddListeningPort("127.0.0.1:0", grpc::InsecureServerCredentials(), &port);
+  builder.RegisterService(&rpc);
+  const std::unique_ptr<grpc::Server> server = builder.BuildAndStart();
+  REQUIRE(server);
+  const GuardDuressClient voice({.target = "127.0.0.1:" + std::to_string(port), .credential = "voice-secret"});
+  CHECK(voice.raiseCameraPanic({.cameraId = 4,
+                                .userId = 0,
+                                .speaker = "Alguien en la cámara Entrada",
+                                .saidAt = rig.clock,
+                                .conversationId = "c",
+                                .duress = true}));
+  rig.waitForNotified(1);
+  CHECK(scalar("SELECT kind FROM guard_safety_alert WHERE user_id = 0") == "duress");
+  server->Shutdown();
+}

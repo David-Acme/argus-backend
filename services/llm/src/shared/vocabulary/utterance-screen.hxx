@@ -14,6 +14,7 @@ struct ScreenedUtterance
   int64_t userId{0};
   UserRole role{UserRole::Unknown};
   std::string_view text;
+  bool anonymousCamera{false};
 };
 
 struct ScreenedText

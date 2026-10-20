@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <ctime>
 #include <deque>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -86,6 +87,7 @@ public:
 
   void setReminderCalls(std::shared_ptr<const ReminderCallScheduler> scheduler);
   void setReminderRows(std::shared_ptr<const ReminderRowWriter> writer);
+  void setLearningGate(std::function<bool(int64_t)> learns);
 
   SemanticGraph& graph() { return *graph_; }
   MemoryFormation& formation() { return formation_; }
@@ -115,6 +117,7 @@ private:
   IMemoryChat& chat_;
   std::shared_ptr<const ReminderCallScheduler> reminderCalls_;
   std::shared_ptr<const ReminderRowWriter> reminderRows_;
+  std::function<bool(int64_t)> learns_;
   std::unique_ptr<SqliteGraph> graph_{std::make_unique<SqliteGraph>()};
   MemoryGraphRepository graphRepo_;
   EntityResolver resolver_{*graph_};

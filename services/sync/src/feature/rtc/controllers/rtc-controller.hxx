@@ -25,6 +25,8 @@ public:
                 "DeviceFilter", "JwtFilter", "RoleFilter");
   ADD_METHOD_TO(RtcController::endWatch, "/rtc/watch/{1}/end", drogon::Post,
                 "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
+  ADD_METHOD_TO(RtcController::replyWatch, "/rtc/watch/{1}/reply", drogon::Post,
+                "DeviceFilter", "ValidJsonFilter", "JwtFilter", "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> token(drogon::HttpRequestPtr req);
@@ -32,6 +34,7 @@ public:
   drogon::Task<drogon::HttpResponsePtr> ice(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> watch(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> endWatch(drogon::HttpRequestPtr req, std::string conversationId);
+  drogon::Task<drogon::HttpResponsePtr> replyWatch(drogon::HttpRequestPtr req, std::string conversationId);
 
 private:
   RtcTokenService service_;

@@ -262,6 +262,22 @@ std::optional<bool> VoiceClient::endWatchConversation(int64_t userId, const std:
   return reply.ended();
 }
 
+std::optional<argus::voice::v1::ReplyWatchVisitorResponse>
+VoiceClient::replyWatchVisitor(const VoiceWatchReplyInput& input) const
+{
+  grpc::ClientContext context;
+  argus::client::addCallerCredential(context, credential_);
+  context.set_deadline(std::chrono::system_clock::now() + std::chrono::milliseconds(kWatchDeadlineMs));
+  argus::voice::v1::ReplyWatchVisitorRequest request;
+  request.set_user_id(input.userId);
+  request.set_conversation_id(input.conversationId);
+  request.set_text(input.text);
+  argus::voice::v1::ReplyWatchVisitorResponse reply;
+  if (!stub_->ReplyWatchVisitor(&context, request, &reply).ok())
+    return std::nullopt;
+  return reply;
+}
+
 std::optional<bool> VoiceClient::announce(const VoiceAnnounceInput& input) const
 {
   grpc::ClientContext context;

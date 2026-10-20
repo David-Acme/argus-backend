@@ -63,6 +63,7 @@ struct UtteranceScreenRequest
   int64_t userId{0};
   UserRole role{UserRole::Unknown};
   std::string text;
+  ConversationSurface surface{ConversationSurface::App};
 };
 
 using TokenCallback = std::function<void(const std::string& token, bool done)>;

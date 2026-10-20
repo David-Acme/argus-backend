@@ -443,6 +443,36 @@ drogon::Task<SpokenDuressOutcome> SafetyService::spokenDuress(const SpokenDuress
   co_return SpokenDuressOutcome::Raised;
 }
 
+drogon::Task<PanicResult> SafetyService::cameraDuress(const CameraDuressInput& input) const
+{
+  const SafetySetting setting = co_await settingRepository_.find();
+  if (!setting.duressEnabled)
+    co_return PanicResult{};
+  const int64_t at = now();
+  if (const auto repeated = co_await alertRepository_.recentSpoken(
+          {.userId = 0, .since = at - config_.spokenRepeatWindowS}))
+    co_return PanicResult{.alertId = repeated->id, .sent = repeated->notified, .repeated = true};
+  const int64_t saidAt = input.saidAt > 0 && input.saidAt <= at + kSaidAtSkewS ? input.saidAt : 0;
+  const int64_t environment = input.environmentId.value_or(0);
+  const int64_t alertId = co_await alertRepository_.insert({.kind = SafetyAlertKind::Duress,
+                                                            .userId = 0,
+                                                            .environmentId = environment,
+                                                            .now = at,
+                                                            .actorName = input.speaker,
+                                                            .spoken = true,
+                                                            .saidAt = saidAt});
+  deliverLater({.kind = SafetyAlertKind::Duress,
+                .alertId = alertId,
+                .actorUserId = 0,
+                .actorName = input.speaker,
+                .environmentId = environment,
+                .now = at,
+                .sequence = 1,
+                .spoken = true,
+                .saidAt = saidAt});
+  co_return PanicResult{.alertId = alertId, .sent = false, .repeated = false};
+}
+
 void SafetyService::deliverLater(const SafetyAlertNotice& notice) const
 {
   if (!runtime_->alive.load(std::memory_order_acquire))

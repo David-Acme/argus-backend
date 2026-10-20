@@ -135,6 +135,16 @@ void appendWatch(std::vector<SettingSpec>& catalog)
        .range = {.min = 300, .max = 3000, .step = 100}, .fallback = "1500"},
       {.key = "watch.belief_max_age_ms", .group = "watchman", .level = SettingLevel::Advanced,
        .range = {.min = 500, .max = 30000, .step = 500}, .fallback = "2000"},
+      {.key = "watch.visitor_consent_asks", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 1, .max = 5, .step = 1}, .fallback = "2"},
+      {.key = "watch.visitor_consent_max_words", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 1, .max = 12, .step = 1}, .fallback = "6"},
+      {.key = "watch.visitor_reply_accept_ms", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 60000, .max = 86400000, .step = 60000}, .fallback = "1800000"},
+      {.key = "watch.visitor_reply_hold_ms", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 60000, .max = 86400000, .step = 60000}, .fallback = "1800000"},
+      {.key = "watch.visitor_reply_max_chars", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 20, .max = 1000, .step = 10}, .fallback = "300"},
   };
   const std::vector<NumericSetting> decimals{
       {.key = "watch.stt_stage1_min_snr_db", .group = "watchman", .level = SettingLevel::Advanced,

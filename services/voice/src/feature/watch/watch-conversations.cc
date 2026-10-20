@@ -42,6 +42,13 @@ VoiceLang langOfIdentity(const argus::voice::v1::VoiceIdentity& identity, VoiceL
 
 }
 
+std::string cameraSpeaker(VoiceLang lang, std::string_view cameraName)
+{
+  if (lang == VoiceLang::En)
+    return "Someone at the " + std::string(cameraName) + " camera";
+  return "Alguien en la cámara " + std::string(cameraName);
+}
+
 std::optional<CameraHop> chooseHop(const HopChoiceInput& input)
 {
   for (const int64_t mate : input.roommates) {
@@ -162,13 +169,18 @@ void ConversationManager::onWake(const ConfirmedWake& wake)
                           .occupied = [this](int64_t camera) { return occupied(camera); }});
       },
       .onEnded = [this](const ConversationEnded& done) { ended(done); },
-      .onUserText = [this, id](const std::string& text) { heard(id, text); }});
+      .onUserText = [this, id](const std::string& text) { heard(id, text); },
+      .askConsent = opening.audience == ConversationAudience::Visitor,
+      .onWithheld = [this, id] { withheld(id); },
+      .visitorPersonId = opening.strangerPersonId});
   {
     std::scoped_lock lock(mutex_);
     live_[id] = conversation;
     levels_[id] = std::make_shared<SpeakerLevels>(input_.config.gainAlpha);
   }
   conversation->open(wake.capture ? wake.capture->snapshot() : std::vector<float>{});
+  if (opening.audience == ConversationAudience::Visitor && deliverReply(conversation))
+    LOG_INFO << "Voice watch: a household reply waits to be said on camera " << wake.cameraId;
   const std::optional<WatchCameraInfo> info = input_.cameraInfo ? input_.cameraInfo(wake.cameraId) : std::nullopt;
   if (input_.aim && info && info->panTilt && !opening.faceSeen) {
     {
@@ -385,14 +397,28 @@ void ConversationManager::heard(const std::string& conversationId, const std::st
   if (!input_.panic || !panicPhrase(text))
     return;
   const ConversationSnapshot snapshot = conversation->snapshot();
-  const std::string speaker = input_.lang == VoiceLang::En ? "Someone at the " + snapshot.cameraName + " camera"
-                                                           : "Alguien en la cámara " + snapshot.cameraName;
   LOG_WARN << "Voice watch: panic heard on camera " << snapshot.cameraId;
   input_.panic({.cameraId = snapshot.cameraId,
                 .userId = snapshot.userId,
-                .speaker = speaker,
+                .speaker = cameraSpeaker(input_.lang, snapshot.cameraName),
                 .saidAt = epochSeconds(),
-                .conversationId = conversationId});
+                .conversationId = conversationId,
+                .duress = false});
+}
+
+void ConversationManager::withheld(const std::string& conversationId)
+{
+  const auto conversation = live(conversationId);
+  if (!conversation || conversation->userId() > 0 || !input_.panic)
+    return;
+  const ConversationSnapshot snapshot = conversation->snapshot();
+  LOG_WARN << "Voice watch: an alert is raised from camera " << snapshot.cameraId;
+  input_.panic({.cameraId = snapshot.cameraId,
+                .userId = 0,
+                .speaker = cameraSpeaker(input_.lang, snapshot.cameraName),
+                .saidAt = epochSeconds(),
+                .conversationId = conversationId,
+                .duress = true});
 }
 
 void ConversationManager::ended(const ConversationEnded& ended)
@@ -464,4 +490,32 @@ void ConversationManager::reap(const std::stop_token& stop)
         input_.onUpdate(snapshot);
     retired.clear();
   }
+}
+
+bool ConversationManager::deliverReply(const std::shared_ptr<CameraConversation>& conversation)
+{
+  if (!input_.replies || !conversation || conversation->closed())
+    return false;
+  const ConversationSnapshot snapshot = conversation->snapshot();
+  if (snapshot.audience != ConversationAudience::Visitor)
+    return false;
+  const auto pending = input_.replies->take(
+      {.cameraId = snapshot.cameraId, .personId = snapshot.visitorPersonId, .now = epochSeconds()});
+  if (!pending)
+    return false;
+  conversation->say(visitorReplyLine(input_.lang, pending->text));
+  return true;
+}
+
+VisitorReplyResult ConversationManager::replyToVisitor(const VisitorReplyInput& input)
+{
+  if (!input_.replies)
+    return {.outcome = VisitorReplyOutcome::NotFound, .replyUntil = 0, .cameraId = 0};
+  VisitorReplyResult result = input_.replies->reply(input);
+  if (result.outcome != VisitorReplyOutcome::Queued)
+    return result;
+  LOG_INFO << "Voice watch: a household reply to a visitor is kept for camera " << result.cameraId;
+  if (deliverReply(onCamera(result.cameraId)))
+    result.outcome = VisitorReplyOutcome::Said;
+  return result;
 }

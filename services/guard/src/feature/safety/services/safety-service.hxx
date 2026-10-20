@@ -81,6 +81,13 @@ struct SpokenDuressInput
   int64_t saidAt{0};
 };
 
+struct CameraDuressInput
+{
+  std::string speaker;
+  std::optional<int64_t> environmentId;
+  int64_t saidAt{0};
+};
+
 enum class SpokenDuressOutcome : uint8_t
 {
   Raised,
@@ -150,6 +157,7 @@ public:
   [[nodiscard]] drogon::Task<std::string> phraseKey() const;
   [[nodiscard]] drogon::Task<SpokenDuressOutcome> spokenDuress(const SpokenDuressInput& input) const;
   [[nodiscard]] drogon::Task<PanicResult> panic(const PanicInput& input) const;
+  [[nodiscard]] drogon::Task<PanicResult> cameraDuress(const CameraDuressInput& input) const;
 
   [[nodiscard]] drogon::Task<DisarmVerdict>
   authorize(const DisarmRequest& request) const override;

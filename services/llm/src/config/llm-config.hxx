@@ -1,5 +1,7 @@
 #pragma once
 
+#include <chrono>
+
 #include <feature/messenger/vocabulary/messenger-settings.hxx>
 #include <grpc/grpc-server-identity.hxx>
 #include <http/listener-config.hxx>
@@ -29,6 +31,7 @@ struct LlmIdentityConfig
 struct LlmMemoryConfig
 {
   bool observeCameraEvents{false};
+  std::chrono::milliseconds minorRefresh{60000};
 };
 
 struct LlmConversationConfig

@@ -2,6 +2,7 @@
 
 #include <feature/watch/camera-conversation.hxx>
 #include <feature/watch/conversation-policy.hxx>
+#include <feature/watch/visitor-replies.hxx>
 
 #include <json/value.h>
 #include <identity/identity-client.hxx>
@@ -33,6 +34,7 @@ struct WatchPublisherInput
   std::shared_ptr<const NotificationClient> notifications;
   std::shared_ptr<const IdentityClient> identity;
   VoiceLang lang{VoiceLang::Es};
+  std::shared_ptr<VisitorReplies> replies;
 };
 
 class WatchPublisher

@@ -18,11 +18,26 @@ PrivacyState stateOf(const std::optional<UserPrivacySchema>& record,
   return state;
 }
 
+PrivacyState withMinor(PrivacyState state, const std::optional<UserMinorSchema>& minor)
+{
+  if (!minor)
+    return state;
+  state.minor = true;
+  state.guardianConsent = minor->guardianConsent;
+  if (!minor->guardianConsent) {
+    state.effective.faceCameras = false;
+    state.effective.voiceLearning = false;
+  }
+  return state;
+}
+
 Json::Value toJson(const PrivacyState& state)
 {
   Json::Value json = state.effective.toJson();
   json["noticeVersion"] = static_cast<Json::Int64>(state.noticeVersion);
   json["decided"] = state.decided;
+  json["minor"] = state.minor;
+  json["guardianConsent"] = state.guardianConsent;
   return json;
 }
 
@@ -33,7 +48,8 @@ PrivacyGate::stateFor(int64_t userId, drogon::orm::DbClient* client) const
 {
   const auto record = co_await repository_.findUser(userId, client);
   const auto household = co_await repository_.household(client);
-  co_return privacy_policy::stateOf(record, household);
+  const auto minor = co_await minorRepository_.find(userId, client);
+  co_return privacy_policy::withMinor(privacy_policy::stateOf(record, household), minor);
 }
 
 drogon::Task<PrivacyChoices>
@@ -56,6 +72,13 @@ PrivacyGate::statesByUser(drogon::orm::DbClient* client) const
   for (const auto& row : co_await repository_.findAllUsers(client)) {
     const std::optional<UserPrivacySchema> record = row;
     states.emplace(row.userId, privacy_policy::stateOf(record, household));
+  }
+  for (const auto& minor : co_await minorRepository_.findAll(client)) {
+    const std::optional<UserMinorSchema> mark = minor;
+    auto found = states.find(minor.userId);
+    if (found == states.end())
+      found = states.emplace(minor.userId, PrivacyState{}).first;
+    found->second = privacy_policy::withMinor(found->second, mark);
   }
   co_return states;
 }

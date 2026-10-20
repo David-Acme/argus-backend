@@ -12,6 +12,7 @@
 #include <feature/call/infra/voice-call-announcer.hxx>
 #include <app/rpc/conversation-rpc-service.hxx>
 #include <feature/conversation/controllers/conversation-controller.hxx>
+#include <feature/conversation/infra/call-live-announce.hxx>
 #include <feature/conversation/infra/notification-message-notice.hxx>
 #include <feature/conversation/infra/voice-message-announcer.hxx>
 #include <feature/conversation/services/conversation-inbox-service.hxx>
@@ -380,7 +381,8 @@ int main()
   drogon::app().registerController(std::make_shared<NotificationController>(notifications));
   const auto conversations = std::make_shared<const ConversationInboxService>(ConversationInboxService::Dependencies{
       .announcer = voiceClient ? std::make_shared<VoiceMessageAnnouncer>(voiceClient) : nullptr,
-      .notices = std::make_shared<NotificationMessageNotice>(notifications)});
+      .notices = std::make_shared<NotificationMessageNotice>(notifications),
+      .liveAnnounce = std::make_shared<CallLiveAnnounce>()});
   drogon::app().registerController(std::make_shared<ConversationController>(conversations));
   drogon::app().registerBeginningAdvice([conversations, tasks]() {
     drogon::app().getLoop()->runEvery(3600.0, [conversations, tasks]() {

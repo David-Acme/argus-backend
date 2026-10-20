@@ -45,3 +45,11 @@ Json::Value ResponseRtcWatchEndDto::toJson() const
   json["ended"] = ended;
   return json;
 }
+
+Json::Value ResponseRtcWatchReplyDto::toJson() const
+{
+  Json::Value json(Json::objectValue);
+  json["state"] = said ? "said" : "queued";
+  json["replyUntil"] = Json::Int64{replyUntil};
+  return json;
+}

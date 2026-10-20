@@ -43,14 +43,42 @@ std::string_view discreetNote(VoiceLang lang)
          "personales en voz alta; ofrece mandarlos al celular (\"te paso los detalles al celular\").";
 }
 
+std::string_view minorNote(VoiceLang lang)
+{
+  if (lang == VoiceLang::En)
+    return "You are talking with a minor of the household. Nothing sensitive: no camera views, no answering alarms, "
+           "no changes to the calendar or the projects; an adult does those in the app.";
+  return "Hablas con un menor de la casa. Nada sensible: no muestres cámaras, no respondas alarmas ni cambies la "
+         "agenda o los proyectos; eso lo hace un adulto en la app.";
+}
+
+bool unnamedHousehold(const SeenFaceEvidence& face)
+{
+  return face.userId <= 0 && !face.visitor && !face.role.empty();
+}
+
+SpeakerResolution asMinor(SpeakerResolution resolution, VoiceLang lang)
+{
+  if (resolution.userId <= 0)
+    return resolution;
+  resolution.surface = ConversationSurface::CameraMinor;
+  resolution.notes.emplace_back(minorNote(lang));
+  return resolution;
+}
+
 SpeakerResolution resolveSpeaker(const SpeakerResolutionInput& input)
 {
   SpeakerResolution out;
   std::vector<SeenFaceEvidence> members;
   std::vector<SeenFaceEvidence> strangers;
+  bool household = false;
   for (const SeenFaceEvidence& face : input.faces) {
     if (!face.accepted)
       continue;
+    if (unnamedHousehold(face)) {
+      household = true;
+      continue;
+    }
     if (face.userId > 0) {
       if (std::ranges::none_of(members, [&face](const SeenFaceEvidence& seen) { return seen.userId == face.userId; }))
         members.push_back(face);
@@ -84,7 +112,7 @@ SpeakerResolution resolveSpeaker(const SpeakerResolutionInput& input)
     out.notes.emplace_back(guestNote(input.lang));
     return out;
   }
-  if (!strangers.empty()) {
+  if (!strangers.empty() && !household) {
     out.audience = ConversationAudience::Visitor;
     const auto nearest = std::ranges::max_element(strangers, {}, &SeenFaceEvidence::confidence);
     out.strangerPersonId = nearest->personId;

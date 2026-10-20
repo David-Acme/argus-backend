@@ -57,6 +57,13 @@ struct VoiceClientConfig
   std::string credential;
 };
 
+struct VoiceWatchReplyInput
+{
+  int64_t userId{0};
+  std::string conversationId;
+  std::string text;
+};
+
 class VoiceClient
 {
 public:
@@ -83,6 +90,9 @@ public:
 
   [[nodiscard]] virtual std::optional<bool> endWatchConversation(int64_t userId,
                                                                  const std::string& conversationId) const;
+
+  [[nodiscard]] virtual std::optional<argus::voice::v1::ReplyWatchVisitorResponse>
+  replyWatchVisitor(const VoiceWatchReplyInput& input) const;
 
   static constexpr int kJoinRoomDeadlineMs = 6000;
   static constexpr int kAnnounceDeadlineMs = 1500;

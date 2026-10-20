@@ -933,13 +933,13 @@ TEST_CASE("screen answers the text a voice caller may keep, and screens no other
   };
   LlmRpcServer server(std::move(input));
   const Client voice(clientConfig(server.port()));
-  CHECK(voice.screen({.userId = 7, .role = UserRole::Resident, .text = "el gato está en el tejado"}) == "\u2026");
+  CHECK(voice.screen({.userId = 7, .role = UserRole::Resident, .text = "el gato está en el tejado", .surface = ConversationSurface::App}) == "\u2026");
   const Client guard({.target = "127.0.0.1:" + std::to_string(server.port()),
                       .credential = kGuardSecret,
                       .timeout = std::chrono::seconds(5)});
-  CHECK(guard.screen({.userId = 7, .role = UserRole::Resident, .text = "el gato"}) == "el gato");
+  CHECK(guard.screen({.userId = 7, .role = UserRole::Resident, .text = "el gato", .surface = ConversationSurface::App}) == "el gato");
   CHECK(refusalOf([&voice] {
-          static_cast<void>(voice.screen({.userId = 7, .role = UserRole::Resident, .text = ""}));
+          static_cast<void>(voice.screen({.userId = 7, .role = UserRole::Resident, .text = "", .surface = ConversationSurface::App}));
         }).status == 400);
 
   std::scoped_lock lock(seenMutex);

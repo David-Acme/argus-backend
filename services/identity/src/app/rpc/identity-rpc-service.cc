@@ -30,6 +30,8 @@ void fillPrivacy(argus::identity::v1::PrivacyChoices& target,
   target.set_voice_learning(state.effective.voiceLearning);
   target.set_camera_audio(state.effective.cameraAudio);
   target.set_location(state.effective.location);
+  target.set_minor(state.minor);
+  target.set_guardian_consent(state.guardianConsent);
 }
 }
 

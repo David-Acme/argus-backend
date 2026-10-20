@@ -238,6 +238,7 @@ ChatRequest boundToCaller(ChatRequest request, std::string_view caller)
   request.sessionId.clear();
   request.conversationLeg.reset();
   request.useConversation = false;
+  request.surface = ConversationSurface::App;
   return request;
 }
 
@@ -266,7 +267,10 @@ void LlmController::useScreen(const turn::UtteranceScreen& screen)
 
 ScreenedRequest screenTurn(const turn::UtteranceScreen* screen, ChatRequest request)
 {
-  if (screen == nullptr || request.prefillOnly || request.userId <= 0 || !userRoleKnown(request.role))
+  const bool anonymousCamera = request.userId <= 0 && cameraSurface(request.surface);
+  if (screen == nullptr || request.prefillOnly)
+    return {.request = std::move(request), .withheld = false};
+  if (!anonymousCamera && (request.userId <= 0 || !userRoleKnown(request.role)))
     return {.request = std::move(request), .withheld = false};
   const auto last = std::ranges::find(std::views::reverse(request.messages), std::string_view("user"),
                                       &ChatMessage::role);
@@ -275,7 +279,8 @@ ScreenedRequest screenTurn(const turn::UtteranceScreen* screen, ChatRequest requ
   const std::string utterance = LfmAdapter::spokenText(last->content);
   if (utterance.empty())
     return {.request = std::move(request), .withheld = false};
-  turn::ScreenedText screened = screen->screen({.userId = request.userId, .role = request.role, .text = utterance});
+  turn::ScreenedText screened = screen->screen(
+      {.userId = request.userId, .role = request.role, .text = utterance, .anonymousCamera = anonymousCamera});
   if (screened.withheld || screened.text != utterance)
     last->content = std::move(screened.text);
   return {.request = std::move(request), .withheld = screened.withheld};

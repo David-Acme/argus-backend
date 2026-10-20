@@ -44,4 +44,6 @@ struct PrivacyState
   int64_t updatedAt{0};
   PrivacyChoices choices;
   PrivacyChoices effective;
+  bool minor{false};
+  bool guardianConsent{false};
 };

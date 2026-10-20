@@ -142,21 +142,28 @@ grpc::ServerUnaryReactor* DuressRpcService::RaiseCameraPanic(grpc::CallbackServe
                                         cameraId = request->camera_id(),
                                         userId = std::max<int64_t>(0, request->user_id()),
                                         speaker = request->speaker(),
+                                        saidAt = request->said_at(),
+                                        duress = request->duress(),
                                         reactor,
                                         response]() {
-    drogon::async_run([safety, environmentOf, cameraId, userId, speaker, reactor, response]() -> drogon::Task<void> {
+    drogon::async_run([safety, environmentOf, cameraId, userId, speaker, saidAt, duress, reactor,
+                       response]() -> drogon::Task<void> {
       try {
         int64_t environment = 0;
         if (environmentOf)
           environment = co_await environmentOf(cameraId);
-        const PanicResult result = co_await safety->panic(
-            {.userId = userId,
-             .userName = speaker,
-             .environmentId = environment > 0 ? std::optional<int64_t>(environment) : std::nullopt});
+        const std::optional<int64_t> environmentId =
+            environment > 0 ? std::optional<int64_t>(environment) : std::nullopt;
+        PanicResult result;
+        if (duress && userId == 0)
+          result = co_await safety->cameraDuress({.speaker = speaker, .environmentId = environmentId, .saidAt = saidAt});
+        else
+          result = co_await safety->panic({.userId = userId, .userName = speaker, .environmentId = environmentId});
         response->set_sent(result.sent);
         response->set_repeated(result.repeated);
         response->set_alert_id(result.alertId);
-        LOG_WARN << "Duress RPC: panic raised through camera " << cameraId << " (alert " << result.alertId << ")";
+        LOG_WARN << "Duress RPC: " << (duress ? "an alert" : "panic") << " raised through camera " << cameraId
+                 << " (alert " << result.alertId << ")";
         reactor->Finish(grpc::Status::OK);
       }
       catch (const std::exception& error) {

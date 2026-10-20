@@ -6,6 +6,8 @@
 #include <drogon/utils/coroutine.h>
 #include <feature/privacy/services/privacy-feature-service.hxx>
 
+#include <cstdint>
+
 class PrivacyController : public drogon::HttpController<PrivacyController, false>
 {
 public:
@@ -19,12 +21,16 @@ public:
   ADD_METHOD_TO(PrivacyController::household, "/privacy/household",
                 drogon::Patch, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
                 "RoleFilter");
+  ADD_METHOD_TO(PrivacyController::markMinor, "/privacy/users/{1}/minor",
+                drogon::Put, "DeviceFilter", "ValidJsonFilter", "JwtFilter",
+                "RoleFilter");
   METHOD_LIST_END
 
   drogon::Task<drogon::HttpResponsePtr> me(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> decide(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> directory(drogon::HttpRequestPtr req);
   drogon::Task<drogon::HttpResponsePtr> household(drogon::HttpRequestPtr req);
+  drogon::Task<drogon::HttpResponsePtr> markMinor(drogon::HttpRequestPtr req, int64_t userId);
 
 private:
   PrivacyFeatureService service_;

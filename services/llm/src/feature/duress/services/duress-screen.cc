@@ -217,6 +217,8 @@ turn::ScreenedText DuressScreen::screen(const turn::ScreenedUtterance& utterance
 {
   const int64_t heardAt = now();
   turn::ScreenedText kept{.text = std::string(utterance.text), .withheld = false};
+  if (utterance.userId <= 0 && utterance.anonymousCamera && !utterance.text.empty())
+    return screenAnonymous(utterance);
   if (utterance.userId <= 0 || utterance.text.empty() || !dependencies_.eligible ||
       !dependencies_.eligible(utterance.role))
     return kept;
@@ -255,6 +257,21 @@ turn::ScreenedText DuressScreen::screen(const turn::ScreenedUtterance& utterance
     return kept;
   }
   hold({.userId = utterance.userId, .role = utterance.role, .keyDigest = digest, .saidAt = heardAt});
+  return {.text = std::string(llm_speech::kWithheldUtterance), .withheld = true};
+}
+
+turn::ScreenedText DuressScreen::screenAnonymous(const turn::ScreenedUtterance& utterance) const
+{
+  turn::ScreenedText kept{.text = std::string(utterance.text), .withheld = false};
+  std::optional<secret_phrase::PhraseKey> key;
+  {
+    const std::scoped_lock lock(state_->mutex);
+    if (state_->stopped.load(std::memory_order_acquire) || state_->keyState != KeyState::Present)
+      return kept;
+    key = state_->key;
+  }
+  if (!key || !secret_phrase::spokenIn(*key, utterance.text))
+    return kept;
   return {.text = std::string(llm_speech::kWithheldUtterance), .withheld = true};
 }
 

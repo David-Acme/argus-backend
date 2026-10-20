@@ -6,6 +6,7 @@
 #include <auth/request-context.hxx>
 #include <feature/privacy/dtos/response-privacy-dto.hxx>
 #include <feature/privacy/dtos/update-household-privacy-dto.hxx>
+#include <feature/privacy/dtos/update-minor-dto.hxx>
 #include <feature/privacy/dtos/update-privacy-dto.hxx>
 #include <http/api-response.hxx>
 
@@ -65,6 +66,20 @@ PrivacyController::household(drogon::HttpRequestPtr req)
        .location = dto.location,
        .visitorRecognition = dto.visitorRecognition,
        .watchman = dto.watchman}),
+                                         .surveillanceActive = surveillanceActive()};
+  co_return ApiResponse::ok(body.toJson());
+}
+
+drogon::Task<drogon::HttpResponsePtr>
+PrivacyController::markMinor(drogon::HttpRequestPtr req, int64_t userId)
+{
+  const auto dto = UpdateMinorDto::fromJson(*req->getJsonObject(), userId);
+  const auto& jwt = req->getAttributes()->get<JwtContext>(AuthContext::kJwtKey);
+  const ResponsePrivacyDirectoryDto body{.directory = co_await service_.markMinor(
+      {.actorId = jwt.sub,
+       .userId = dto.userId,
+       .minor = dto.minor.value_or(false),
+       .guardianConsent = dto.guardianConsent.value_or(false)}),
                                          .surveillanceActive = surveillanceActive()};
   co_return ApiResponse::ok(body.toJson());
 }

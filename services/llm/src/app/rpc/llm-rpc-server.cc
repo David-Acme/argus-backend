@@ -104,6 +104,20 @@ UserRole callerRole(wire::CallerRole role)
   return UserRole::Unknown;
 }
 
+ConversationSurface surfaceOf(wire::ConversationSurface surface)
+{
+  switch (surface) {
+    case wire::CONVERSATION_SURFACE_CAMERA:
+      return ConversationSurface::Camera;
+    case wire::CONVERSATION_SURFACE_CAMERA_VISITOR:
+      return ConversationSurface::CameraVisitor;
+    case wire::CONVERSATION_SURFACE_CAMERA_MINOR:
+      return ConversationSurface::CameraMinor;
+    default:
+      return ConversationSurface::App;
+  }
+}
+
 ChatRequest chatRequest(const wire::ChatRequest& wireRequest, std::string_view caller)
 {
   ChatRequest request;
@@ -126,17 +140,7 @@ ChatRequest chatRequest(const wire::ChatRequest& wireRequest, std::string_view c
   request.prefillOnly = wireRequest.prefill_only();
   request.conversationLeg = conversationLegFromWireValue(static_cast<std::uint32_t>(wireRequest.conversation_leg()));
   request.useConversation = wireRequest.use_conversation();
-  switch (wireRequest.surface()) {
-    case wire::CONVERSATION_SURFACE_CAMERA:
-      request.surface = ConversationSurface::Camera;
-      break;
-    case wire::CONVERSATION_SURFACE_CAMERA_VISITOR:
-      request.surface = ConversationSurface::CameraVisitor;
-      break;
-    default:
-      request.surface = ConversationSurface::App;
-      break;
-  }
+  request.surface = surfaceOf(wireRequest.surface());
   return boundToCaller(std::move(request), caller);
 }
 
@@ -393,6 +397,7 @@ struct LlmRpcServer::Impl final : wire::Chat::Service
     screened.toolsEnabled = false;
     screened.userId = request->user_id();
     screened.role = callerRole(request->caller_role());
+    screened.surface = surfaceOf(request->surface());
     try {
       response->set_text(input_.screen(boundToCaller(std::move(screened), admission.caller)));
     }

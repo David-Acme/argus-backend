@@ -25,6 +25,30 @@ argus::voice::v1::WatchConversation watchConversationOf(const ConversationSnapsh
   return out;
 }
 
+argus::voice::v1::ReplyWatchVisitorResponse watchReplyOf(const VisitorReplyResult& result)
+{
+  argus::voice::v1::ReplyWatchVisitorResponse out;
+  switch (result.outcome) {
+    case VisitorReplyOutcome::Queued:
+      out.set_outcome(argus::voice::v1::WATCH_REPLY_OUTCOME_QUEUED);
+      break;
+    case VisitorReplyOutcome::Said:
+      out.set_outcome(argus::voice::v1::WATCH_REPLY_OUTCOME_SAID);
+      break;
+    case VisitorReplyOutcome::NotFound:
+      out.set_outcome(argus::voice::v1::WATCH_REPLY_OUTCOME_NOT_FOUND);
+      break;
+    case VisitorReplyOutcome::Expired:
+      out.set_outcome(argus::voice::v1::WATCH_REPLY_OUTCOME_EXPIRED);
+      break;
+    case VisitorReplyOutcome::TooLong:
+      out.set_outcome(argus::voice::v1::WATCH_REPLY_OUTCOME_TOO_LONG);
+      break;
+  }
+  out.set_reply_until(result.replyUntil);
+  return out;
+}
+
 std::vector<argus::voice::v1::WatchConversation> ConversationDirectory::conversations(int64_t userId) const
 {
   std::vector<argus::voice::v1::WatchConversation> out;
@@ -38,4 +62,12 @@ std::vector<argus::voice::v1::WatchConversation> ConversationDirectory::conversa
 bool ConversationDirectory::end(int64_t userId, const std::string& conversationId)
 {
   return manager_ && manager_->end(userId, conversationId);
+}
+
+argus::voice::v1::ReplyWatchVisitorResponse ConversationDirectory::reply(const WatchReplyRequest& request)
+{
+  if (!manager_)
+    return watchReplyOf({.outcome = VisitorReplyOutcome::NotFound, .replyUntil = 0, .cameraId = 0});
+  return watchReplyOf(manager_->replyToVisitor(
+      {.userId = request.userId, .conversationId = request.conversationId, .text = request.text, .now = epochSeconds()}));
 }

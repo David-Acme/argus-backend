@@ -95,6 +95,28 @@ drogon::Task<ResponseRtcWatchEndDto> RtcTokenService::endWatch(RtcWatchEndReques
   co_return ResponseRtcWatchEndDto{.ended = true};
 }
 
+drogon::Task<ResponseRtcWatchReplyDto> RtcTokenService::replyWatch(RtcWatchReplyRequest request) const
+{
+  if (!watch_)
+    throw ResponseException(RtcErrors::RtcUnavailable);
+  const auto answer = co_await watch_->reply(
+      {.userId = request.caller.sub, .conversationId = request.body.conversationId, .text = request.body.text});
+  if (!answer)
+    throw ResponseException(RtcErrors::RtcUnavailable);
+  switch (answer->outcome()) {
+    case argus::voice::v1::WATCH_REPLY_OUTCOME_QUEUED:
+      co_return ResponseRtcWatchReplyDto{.said = false, .replyUntil = answer->reply_until()};
+    case argus::voice::v1::WATCH_REPLY_OUTCOME_SAID:
+      co_return ResponseRtcWatchReplyDto{.said = true, .replyUntil = answer->reply_until()};
+    case argus::voice::v1::WATCH_REPLY_OUTCOME_EXPIRED:
+      throw ResponseException(RtcErrors::WatchReplyClosed);
+    case argus::voice::v1::WATCH_REPLY_OUTCOME_TOO_LONG:
+      throw ResponseException(RtcErrors::WatchReplyTooLong);
+    default:
+      throw ResponseException(RtcErrors::WatchVisitorNotFound);
+  }
+}
+
 drogon::Task<RtcTokenService::CallSlot>
 RtcTokenService::reserveCall(RtcCallSlotInput input) const
 {

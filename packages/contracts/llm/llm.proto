@@ -66,6 +66,7 @@ enum ConversationSurface {
   CONVERSATION_SURFACE_APP = 0;
   CONVERSATION_SURFACE_CAMERA = 1;
   CONVERSATION_SURFACE_CAMERA_VISITOR = 2;
+  CONVERSATION_SURFACE_CAMERA_MINOR = 3;
 }
 
 message ChatResponse {
@@ -92,6 +93,7 @@ message ScreenRequest {
   string text = 1;
   int64 user_id = 2;
   CallerRole caller_role = 3;
+  ConversationSurface surface = 4;
 }
 
 message ScreenResponse {

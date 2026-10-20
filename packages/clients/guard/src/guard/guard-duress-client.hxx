@@ -38,6 +38,7 @@ struct CameraPanicCall
   std::string speaker;
   int64_t saidAt{0};
   std::string conversationId;
+  bool duress{false};
 };
 
 class GuardDuressClient

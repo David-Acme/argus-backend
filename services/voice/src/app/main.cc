@@ -234,10 +234,15 @@ int main()
   if (!syncConfig.target.empty())
     watchSync = std::make_shared<SyncClient>(
         SyncClientConfig{.target = syncConfig.target, .credential = syncConfig.credential, .fleetSecret = {}});
+  const auto visitorReplies = std::make_shared<VisitorReplies>(
+      VisitorRepliesConfig{.accept = watchConfig.visitorReplyAccept,
+                           .hold = watchConfig.visitorReplyHold,
+                           .maxChars = watchConfig.visitorReplyMaxChars});
   const WatchPublisher watchPublisher({.sync = watchSync,
                                       .notifications = notifications,
                                       .identity = watchIdentity,
-                                      .lang = systemLang});
+                                      .lang = systemLang,
+                                      .replies = visitorReplies});
   const CameraIdentityResolver speakers({.camera = watchCameras,
                                          .voiceprint = watchVoiceprint,
                                          .faceWindow = watchConfig.faceWindow,
@@ -246,6 +251,12 @@ int main()
                                            const size_t camera =
                                                conversationsHolder ? conversationsHolder->liveFor(userId) : 0;
                                            return sessions.liveSessions(userId) > camera;
+                                         },
+                                         .minor = [watchIdentity](int64_t userId) {
+                                           if (!watchIdentity)
+                                             return false;
+                                           const auto user = watchIdentity->getUser(userId);
+                                           return !user || (user->user().has_privacy() && user->user().privacy().minor());
                                          }});
   conversationsHolder = std::make_unique<ConversationManager>(ConversationManagerInput{
       .config = watchConfig,
@@ -289,7 +300,8 @@ int main()
           if (!guardPresence->reportVoice(report))
             LOG_DEBUG << "Voice watch: argus-guard did not take the voice evidence for camera " << report.cameraId;
         });
-      }});
+      },
+      .replies = visitorReplies});
   ConversationManager& conversations = *conversationsHolder;
   watch = std::make_unique<WatchCoordinator>(WatchCoordinatorInput{
       .config = watchConfig,

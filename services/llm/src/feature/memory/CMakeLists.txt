@@ -1,6 +1,7 @@
 argus_module(NAME memory
     SOURCES
         infra/catalog-replica.cc
+        infra/minor-learning-gate.cc
         infra/notification-reminder-calls.cc
         infra/productivity-reminder-rows.cc
         repositories/memory-graph/memory-graph-repository.cc
@@ -32,6 +33,7 @@ argus_module(NAME memory
         argus::lib::runtime
         argus::lib::nats
         argus::contracts::sync
+        argus::clients::identity
         argus::clients::llm
         argus::clients::notification
         argus::clients::productivity

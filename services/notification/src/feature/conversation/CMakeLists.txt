@@ -3,6 +3,7 @@ argus_module(NAME notification-conversation
         controllers/conversation-controller.cc
         dtos/conversation-thread-dto.cc
         dtos/response-conversation-threads-dto.cc
+        infra/call-live-announce.cc
         infra/notification-message-notice.cc
         infra/voice-message-announcer.cc
         repositories/conversation-message/conversation-message-repository.cc
@@ -11,6 +12,7 @@ argus_module(NAME notification-conversation
     INCLUDES ../..
     DEPENDS
         argus::notification-shared
+        argus::notification-call
         argus::clients::voice
         argus::contracts::llm
         argus::contracts::notification

@@ -23,6 +23,17 @@ public:
   [[nodiscard]] virtual std::optional<bool> announce(const MessageAnnouncement& announcement) const = 0;
 };
 
+class LiveAnnouncePreference
+{
+public:
+  LiveAnnouncePreference() = default;
+  virtual ~LiveAnnouncePreference() = default;
+  LiveAnnouncePreference(const LiveAnnouncePreference&) = delete;
+  LiveAnnouncePreference& operator=(const LiveAnnouncePreference&) = delete;
+
+  [[nodiscard]] virtual drogon::Task<bool> allows(int64_t userId) const = 0;
+};
+
 struct MessageNotice
 {
   int64_t userId{0};

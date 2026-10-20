@@ -6,6 +6,7 @@
 #include <feature/watch/camera-gains.hxx>
 #include <feature/watch/room-directory.hxx>
 #include <feature/watch/stage-two.hxx>
+#include <feature/watch/visitor-replies.hxx>
 #include <feature/watch/watch-coordinator.hxx>
 
 #include <camera/camera-watch-client.hxx>
@@ -20,6 +21,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -30,6 +32,7 @@ struct ConversationOpening
   ConversationSurface surface{ConversationSurface::CameraVisitor};
   std::vector<std::string> notes;
   bool faceSeen{false};
+  int64_t strangerPersonId{0};
 };
 
 struct ConversationManagerInput
@@ -51,6 +54,7 @@ struct ConversationManagerInput
   std::function<void(const CameraPanicCall&)> panic;
   std::function<void(const WatchAimInput&)> aim;
   std::function<void(const VoiceEvidenceReport&)> locate;
+  std::shared_ptr<VisitorReplies> replies;
 };
 
 struct HopChoiceInput
@@ -63,6 +67,8 @@ struct HopChoiceInput
 };
 
 [[nodiscard]] std::optional<CameraHop> chooseHop(const HopChoiceInput& input);
+
+[[nodiscard]] std::string cameraSpeaker(VoiceLang lang, std::string_view cameraName);
 
 class ConversationManager
 {
@@ -90,11 +96,14 @@ public:
   void forget(const std::string& conversationId);
   [[nodiscard]] bool bridge(int64_t userId, const std::string& conversationId);
   [[nodiscard]] std::optional<VoiceSessionCarry> claim(int64_t userId, const std::string& conversationId);
+  [[nodiscard]] VisitorReplyResult replyToVisitor(const VisitorReplyInput& input);
 
 private:
   void reap(const std::stop_token& stop);
   void ended(const ConversationEnded& ended);
   void heard(const std::string& conversationId, const std::string& text);
+  void withheld(const std::string& conversationId);
+  [[nodiscard]] bool deliverReply(const std::shared_ptr<CameraConversation>& conversation);
   [[nodiscard]] std::shared_ptr<CameraConversation> onCamera(int64_t cameraId) const;
 
   ConversationManagerInput input_;

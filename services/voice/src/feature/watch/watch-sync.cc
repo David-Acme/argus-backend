@@ -6,6 +6,7 @@
 
 #include <json/writer.h>
 
+#include <algorithm>
 
 namespace
 {
@@ -118,6 +119,7 @@ std::vector<WatchNotice> watchNoticesFor(const ConversationEnded& ended, VoiceLa
       for (const int64_t owner : owners) {
         Json::Value message = data;
         message["kind"] = "watch_message";
+        message["visitorConsent"] = std::string(visitorConsentToString(snapshot.consent));
         notices.push_back({.userId = owner,
                            .type = "watch_message",
                            .title = english ? "A visitor talked to Argus at " + snapshot.cameraName
@@ -159,7 +161,21 @@ std::vector<int64_t> WatchPublisher::owners() const
 void WatchPublisher::ended(const ConversationEnded& ended) const
 {
   const bool visitor = ended.snapshot.audience == ConversationAudience::Visitor;
-  for (const WatchNotice& notice : watchNoticesFor(ended, input_.lang, visitor ? owners() : std::vector<int64_t>{}))
+  const std::vector<int64_t> recipients = visitor ? owners() : std::vector<int64_t>{};
+  std::vector<WatchNotice> notices = watchNoticesFor(ended, input_.lang, recipients);
+  const bool message =
+      std::ranges::any_of(notices, [](const WatchNotice& notice) { return notice.type == "watch_message"; });
+  if (message && input_.replies) {
+    const int64_t replyUntil = input_.replies->open({.conversationId = ended.snapshot.conversationId,
+                                                     .cameraId = ended.snapshot.cameraId,
+                                                     .personId = ended.snapshot.visitorPersonId,
+                                                     .recipients = recipients,
+                                                     .at = epochSeconds()});
+    for (WatchNotice& notice : notices)
+      if (notice.type == "watch_message")
+        notice.data["replyUntil"] = Json::Int64{replyUntil};
+  }
+  for (const WatchNotice& notice : notices)
     notify(notice);
 }
 

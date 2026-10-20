@@ -34,6 +34,14 @@ enum class ConversationAudience : uint8_t
   Visitor
 };
 
+enum class VisitorConsent : uint8_t
+{
+  None,
+  Asked,
+  Granted,
+  Declined
+};
+
 enum class ConversationEnd : uint8_t
 {
   None,
@@ -54,6 +62,7 @@ enum class ConversationEnd : uint8_t
 [[nodiscard]] std::string_view conversationHandoffToString(ConversationHandoff handoff);
 [[nodiscard]] std::string_view conversationAudienceToString(ConversationAudience audience);
 [[nodiscard]] std::string_view conversationEndToString(ConversationEnd end);
+[[nodiscard]] std::string_view visitorConsentToString(VisitorConsent consent);
 
 struct ConversationTurn
 {
@@ -78,6 +87,9 @@ struct ConversationSnapshot
   int64_t resumableUntil{0};
   ConversationEnd endReason{ConversationEnd::None};
   std::vector<ConversationTurn> turns;
+  VisitorConsent consent{VisitorConsent::None};
+  bool minorStated{false};
+  int64_t visitorPersonId{0};
 };
 
 struct ConversationClockInput

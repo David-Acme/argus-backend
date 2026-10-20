@@ -4,6 +4,11 @@
 #include <feature/conversation/dtos/response-conversation-threads-dto.hxx>
 #include <feature/conversation/services/conversation-inbox-service.hxx>
 
+#include <drogon/utils/coroutine.h>
+
+#include <memory>
+#include <optional>
+#include <stdexcept>
 #include <string>
 #include <test-support/value-of.hxx>
 
@@ -185,4 +190,38 @@ TEST_CASE("a conversation row serialises in the app's camelCase shape")
   CHECK(list[0]["counterpartName"].asString() == "David");
   CHECK(list[0]["unread"].asInt64() == 2);
   CHECK(list[0]["last"]["body"].asString() == "que venga a comer");
+}
+
+namespace
+{
+class FixedPreference final : public LiveAnnouncePreference
+{
+public:
+  explicit FixedPreference(std::optional<bool> answer) : answer_(answer) {}
+
+  [[nodiscard]] drogon::Task<bool> allows(int64_t) const override
+  {
+    if (!answer_)
+      throw std::runtime_error("no preference store");
+    co_return *answer_;
+  }
+
+private:
+  std::optional<bool> answer_;
+};
+
+ConversationInboxService inboxWith(std::optional<bool> answer)
+{
+  return ConversationInboxService(ConversationInboxService::Dependencies{
+      .announcer = nullptr, .notices = nullptr, .liveAnnounce = std::make_shared<FixedPreference>(answer)});
+}
+}
+
+TEST_CASE("a relayed message is said live only while the recipient's live_announce preference is on")
+{
+  CHECK(drogon::sync_wait(inboxWith(true).announcesLive(7)));
+  CHECK_FALSE(drogon::sync_wait(inboxWith(false).announcesLive(7)));
+  CHECK_FALSE(drogon::sync_wait(inboxWith(std::nullopt).announcesLive(7)));
+  const ConversationInboxService unwired;
+  CHECK(drogon::sync_wait(unwired.announcesLive(7)));
 }

@@ -73,12 +73,14 @@ constexpr std::array kRouteProbes = std::to_array<RouteProbe>({
     {.capability = "calls.join", .method = drogon::Get, .path = "/rtc/ice"},
     {.capability = "calls.join", .method = drogon::Get, .path = "/rtc/watch"},
     {.capability = "calls.join", .method = drogon::Post, .path = "/rtc/watch/0123456789abcdef0123456789abcdef/end"},
+    {.capability = "calls.join", .method = drogon::Post, .path = "/rtc/watch/0123456789abcdef0123456789abcdef/reply"},
     {.capability = "heartbeat.read", .method = drogon::Get, .path = "/sync/heartbeat"},
     {.capability = "modules.read", .method = drogon::Get, .path = "/modules"},
     {.capability = "safety.panic", .method = drogon::Post, .path = "/guard/panic"},
     {.capability = "users.manage", .method = drogon::Patch, .path = "/user/1"},
     {.capability = "invitations.manage", .method = drogon::Post, .path = "/invitation"},
     {.capability = "privacy.household", .method = drogon::Patch, .path = "/privacy/household"},
+    {.capability = "privacy.household", .method = drogon::Put, .path = "/privacy/users/7/minor"},
     {.capability = "settings.manage", .method = drogon::Patch, .path = "/settings/llm"},
     {.capability = "modules.manage", .method = drogon::Post, .path = "/modules/surveillance/install"},
     {.capability = "activity.read", .method = drogon::Get, .path = "/sync/activity"},
@@ -585,4 +587,17 @@ TEST_CASE("a visitor at a camera can only talk and ask for help")
   CHECK(role_access::hasCameraVisitorCapability(all, "safety.panic"));
   CHECK_FALSE(role_access::hasCameraVisitorCapability(all, "camera.view"));
   CHECK_FALSE(role_access::hasCameraVisitorCapability(all, "reminders.read"));
+}
+
+TEST_CASE("a minor at a camera keeps a narrower set than the camera set, without the sensitive capabilities")
+{
+  for (const std::string_view capability : role_access::kCameraMinorCapabilities) {
+    CHECK(role_access::knownCapability(capability));
+    CHECK(role_access::inCameraWatchSet(capability));
+  }
+  for (const std::string_view sensitive : {"camera.view", "safety.respond", "agenda.write", "projects.write"}) {
+    CHECK(role_access::inCameraWatchSet(sensitive));
+    CHECK_FALSE(role_access::inCameraMinorSet(sensitive));
+  }
+  CHECK(role_access::inCameraMinorSet("safety.panic"));
 }

@@ -13,6 +13,7 @@
 #include <feature/duress/infra/sqlite-duress-outbox.hxx>
 #include <feature/duress/services/duress-feed.hxx>
 #include <feature/duress/services/duress-screen.hxx>
+#include <feature/memory/infra/minor-learning-gate.hxx>
 #include <guard/guard-duress-client.hxx>
 #include <auth/capability.hxx>
 #include <feature/llm/infra/watch-confirm-notifier.hxx>
@@ -296,6 +297,13 @@ int main()
     messengerIdentity = std::make_shared<IdentityClient>(
         identityConfig.target,
         argus::client::PeerCredential{.credential = identityConfig.credential, .fleetSecret = identityConfig.rpcSecret});
+  if (messengerIdentity) {
+    const auto minors = std::make_shared<const MinorLearningGate>(
+        MinorLearningGateInput{.fetch = [messengerIdentity] { return messengerIdentity->listPrivacy(); },
+                               .refresh = LlmConfig::resolveMemory().minorRefresh,
+                               .clock = {}});
+    memory.setLearningGate([minors](int64_t userId) { return minors->learns(userId); });
+  }
   std::vector<tools::ToolDescriptor> coreTools = memory.toolDescriptors();
   const MessengerWiring messengerWiring =
       composeMessenger({.store = std::make_shared<GraphMessengerStore>(static_cast<SqliteGraph&>(memory.graph())),
