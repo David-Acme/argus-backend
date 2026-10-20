@@ -42,6 +42,13 @@ VoiceLang langOfIdentity(const argus::voice::v1::VoiceIdentity& identity, VoiceL
 
 }
 
+std::string cameraSpeaker(VoiceLang lang, std::string_view cameraName)
+{
+  if (lang == VoiceLang::En)
+    return "Someone at the " + std::string(cameraName) + " camera";
+  return "Alguien en la cámara " + std::string(cameraName);
+}
+
 std::optional<CameraHop> chooseHop(const HopChoiceInput& input)
 {
   for (const int64_t mate : input.roommates) {
@@ -162,7 +169,9 @@ void ConversationManager::onWake(const ConfirmedWake& wake)
                           .occupied = [this](int64_t camera) { return occupied(camera); }});
       },
       .onEnded = [this](const ConversationEnded& done) { ended(done); },
-      .onUserText = [this, id](const std::string& text) { heard(id, text); }});
+      .onUserText = [this, id](const std::string& text) { heard(id, text); },
+      .askConsent = opening.audience == ConversationAudience::Visitor,
+      .onWithheld = [this, id] { withheld(id); }});
   {
     std::scoped_lock lock(mutex_);
     live_[id] = conversation;
@@ -385,14 +394,28 @@ void ConversationManager::heard(const std::string& conversationId, const std::st
   if (!input_.panic || !panicPhrase(text))
     return;
   const ConversationSnapshot snapshot = conversation->snapshot();
-  const std::string speaker = input_.lang == VoiceLang::En ? "Someone at the " + snapshot.cameraName + " camera"
-                                                           : "Alguien en la cámara " + snapshot.cameraName;
   LOG_WARN << "Voice watch: panic heard on camera " << snapshot.cameraId;
   input_.panic({.cameraId = snapshot.cameraId,
                 .userId = snapshot.userId,
-                .speaker = speaker,
+                .speaker = cameraSpeaker(input_.lang, snapshot.cameraName),
                 .saidAt = epochSeconds(),
-                .conversationId = conversationId});
+                .conversationId = conversationId,
+                .duress = false});
+}
+
+void ConversationManager::withheld(const std::string& conversationId)
+{
+  const auto conversation = live(conversationId);
+  if (!conversation || conversation->userId() > 0 || !input_.panic)
+    return;
+  const ConversationSnapshot snapshot = conversation->snapshot();
+  LOG_WARN << "Voice watch: an alert is raised from camera " << snapshot.cameraId;
+  input_.panic({.cameraId = snapshot.cameraId,
+                .userId = 0,
+                .speaker = cameraSpeaker(input_.lang, snapshot.cameraName),
+                .saidAt = epochSeconds(),
+                .conversationId = conversationId,
+                .duress = true});
 }
 
 void ConversationManager::ended(const ConversationEnded& ended)

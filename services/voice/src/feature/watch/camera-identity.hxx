@@ -20,6 +20,7 @@ struct CameraIdentityInput
   std::chrono::milliseconds faceWindow{1500};
   VoiceLang lang{VoiceLang::Es};
   std::function<bool(int64_t)> inCall;
+  std::function<bool(int64_t)> minor;
 };
 
 [[nodiscard]] std::vector<SeenFaceEvidence> facesOf(const argus::camera::v1::FaceWindowResponse& response);

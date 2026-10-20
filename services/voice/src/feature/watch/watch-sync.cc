@@ -118,6 +118,7 @@ std::vector<WatchNotice> watchNoticesFor(const ConversationEnded& ended, VoiceLa
       for (const int64_t owner : owners) {
         Json::Value message = data;
         message["kind"] = "watch_message";
+        message["visitorConsent"] = std::string(visitorConsentToString(snapshot.consent));
         notices.push_back({.userId = owner,
                            .type = "watch_message",
                            .title = english ? "A visitor talked to Argus at " + snapshot.cameraName

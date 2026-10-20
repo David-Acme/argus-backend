@@ -20,6 +20,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -64,6 +65,8 @@ struct HopChoiceInput
 
 [[nodiscard]] std::optional<CameraHop> chooseHop(const HopChoiceInput& input);
 
+[[nodiscard]] std::string cameraSpeaker(VoiceLang lang, std::string_view cameraName);
+
 class ConversationManager
 {
 public:
@@ -95,6 +98,7 @@ private:
   void reap(const std::stop_token& stop);
   void ended(const ConversationEnded& ended);
   void heard(const std::string& conversationId, const std::string& text);
+  void withheld(const std::string& conversationId);
   [[nodiscard]] std::shared_ptr<CameraConversation> onCamera(int64_t cameraId) const;
 
   ConversationManagerInput input_;

@@ -125,6 +125,10 @@ void appendWatch(std::vector<SettingSpec>& catalog)
        .range = {.min = 500, .max = 30000, .step = 500}, .fallback = "3000"},
       {.key = "watch.face_window_ms", .group = "watchman", .level = SettingLevel::Advanced,
        .range = {.min = 300, .max = 3000, .step = 100}, .fallback = "1500"},
+      {.key = "watch.visitor_consent_asks", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 1, .max = 5, .step = 1}, .fallback = "2"},
+      {.key = "watch.visitor_consent_max_words", .group = "watchman", .level = SettingLevel::Advanced,
+       .range = {.min = 1, .max = 12, .step = 1}, .fallback = "6"},
   };
   const std::vector<NumericSetting> decimals{
       {.key = "watch.stt_stage1_min_snr_db", .group = "watchman", .level = SettingLevel::Advanced,

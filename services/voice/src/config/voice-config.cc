@@ -158,6 +158,9 @@ VoiceWatchConfig VoiceConfig::resolveWatch()
   config.replyGap = positiveMs("watch.reply_gap_ms", config.replyGap);
   config.cameraDrop = positiveMs("watch.camera_drop_ms", config.cameraDrop);
   config.faceWindow = positiveMs("watch.face_window_ms", config.faceWindow);
+  config.visitorConsentAsks = std::clamp(positiveInt("watch.visitor_consent_asks", config.visitorConsentAsks), 1, 5);
+  config.visitorConsentMaxWords =
+      std::clamp(positiveInt("watch.visitor_consent_max_words", config.visitorConsentMaxWords), 1, 12);
   return config;
 }
 

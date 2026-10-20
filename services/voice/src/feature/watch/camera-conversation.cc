@@ -1,5 +1,6 @@
 #include "camera-conversation.hxx"
 
+#include <feature/watch/visitor-consent.hxx>
 #include <feature/watch/wake-words.hxx>
 
 #include <audio/audio-resampler.hxx>
@@ -102,6 +103,13 @@ void CameraConversation::open(const std::vector<float>& initialAudio)
   input_.sessions->context(*this, noteOf(cameraNote(input_.lang, input_.cameraName)));
   for (const std::string& note : input_.notes)
     input_.sessions->context(*this, noteOf(note));
+  if (input_.askConsent) {
+    std::scoped_lock lock(mutex_);
+    snapshot_.consent = VisitorConsent::Asked;
+    consentAsked_ = 1;
+    wakeTurnPending_ = !initialAudio.empty();
+    lines_.emplace_back(consentQuestion(input_.lang));
+  }
   started_.store(true);
   if (!initialAudio.empty())
     input_.sessions->feedSamples(*this, initialAudio);
@@ -200,8 +208,46 @@ std::string CameraConversation::shapeSpeech(const std::string& text) const
   return withoutSelfName(text, input_.lang);
 }
 
+bool CameraConversation::consentHolds(const std::string& text)
+{
+  std::scoped_lock lock(mutex_);
+  const bool wakeTurn =
+      std::exchange(wakeTurnPending_, false) && mentionsWake({.text = text, .maxDistance = input_.config.wakeMaxDistance});
+  const VisitorConsent before = snapshot_.consent;
+  const ConsentTurn step = consentTurn({.consent = before,
+                                        .text = text,
+                                        .asked = consentAsked_,
+                                        .maxAsks = input_.config.visitorConsentAsks,
+                                        .maxWords = input_.config.visitorConsentMaxWords,
+                                        .wakeMaxDistance = input_.config.wakeMaxDistance,
+                                        .beforeQuestion = wakeTurn,
+                                        .lang = input_.lang});
+  snapshot_.consent = step.consent;
+  snapshot_.minorStated = snapshot_.minorStated || step.minorStated;
+  if (step.askedAgain)
+    ++consentAsked_;
+  if (before != VisitorConsent::Granted && step.consent == VisitorConsent::Granted)
+    pendingNotes_.emplace_back(consentGrantedNote(input_.lang));
+  if (step.consent != before)
+    LOG_INFO << "Voice watch: conversation " << input_.id << " visitor consent "
+             << std::string(visitorConsentToString(step.consent));
+  if (!step.line.empty())
+    lines_.push_back(step.line);
+  if (!step.toAssistant)
+    userTurnAt_ = 0;
+  return step.toAssistant;
+}
+
+void CameraConversation::withheld()
+{
+  if (input_.onWithheld)
+    input_.onWithheld();
+}
+
 bool CameraConversation::admitsTurn(const std::string& text, VoiceSpeakerVerdict verdict)
 {
+  if (input_.askConsent)
+    return consentHolds(text);
   const bool holder = verdict == VoiceSpeakerVerdict::Holder || verdict == VoiceSpeakerVerdict::Unknown;
   std::scoped_lock lock(mutex_);
   if (holder && delegationPhrase(text)) {
@@ -457,6 +503,21 @@ void CameraConversation::sayDirect(const std::string& line)
   addTurn("argus", spoken);
 }
 
+void CameraConversation::sayPending()
+{
+  std::deque<std::string> lines;
+  std::vector<std::string> notes;
+  {
+    std::scoped_lock lock(mutex_);
+    lines.swap(lines_);
+    notes.swap(pendingNotes_);
+  }
+  for (const std::string& note : notes)
+    input_.sessions->context(*this, noteOf(note));
+  for (const std::string& line : lines)
+    sayDirect(line);
+}
+
 void CameraConversation::tick(const std::stop_token& stop)
 {
   std::mutex waitMutex;
@@ -534,6 +595,7 @@ void CameraConversation::tick(const std::stop_token& stop)
       }
       setState(ConversationState::Listening);
     }
+    sayPending();
     if (nudge == ReplyNudge::Acknowledge)
       sayDirect(std::string(acknowledgementLine(input_.lang)));
     if (nudge == ReplyNudge::GiveUp) {

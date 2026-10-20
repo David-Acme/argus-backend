@@ -83,6 +83,21 @@ std::string_view conversationEndToString(ConversationEnd end)
   return "";
 }
 
+std::string_view visitorConsentToString(VisitorConsent consent)
+{
+  switch (consent) {
+    case VisitorConsent::None:
+      return "none";
+    case VisitorConsent::Asked:
+      return "unanswered";
+    case VisitorConsent::Granted:
+      return "granted";
+    case VisitorConsent::Declined:
+      return "declined";
+  }
+  return "none";
+}
+
 ConversationEnd conversationDue(const ConversationClockInput& input)
 {
   if (input.now - input.startedAt >= input.maxLengthMs)

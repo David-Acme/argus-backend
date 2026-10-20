@@ -86,6 +86,8 @@ resumable_ms = 180000
 reply_gap_ms = 700
 camera_drop_ms = 3000
 face_window_ms = 1500
+visitor_consent_asks = 2
+visitor_consent_max_words = 6
 
 [stt]
 remote_url = "127.0.0.1:7030"

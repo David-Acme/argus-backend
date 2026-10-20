@@ -17,6 +17,7 @@ argus_module(NAME voice-watch
         wake-words.cc
         watch-conversations.cc
         watch-coordinator.cc
+        visitor-consent.cc
     INCLUDES
         ../..
     DEPENDS

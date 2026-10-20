@@ -48,6 +48,7 @@ public:
   [[nodiscard]] virtual int playoutRate() const { return kSinkPcmRate; }
   [[nodiscard]] virtual std::string shapeSpeech(const std::string& text) const { return text; }
   [[nodiscard]] virtual bool admitsTurn(const std::string&, VoiceSpeakerVerdict) { return true; }
+  virtual void withheld() {}
 };
 
 struct PcmFrame

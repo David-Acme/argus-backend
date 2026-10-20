@@ -1299,9 +1299,15 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
   }
   clock.transcribed.store(std::chrono::steady_clock::now());
   const std::string heardText = userText;
-  if (session.userId > 0 && carriesWords(userText))
-    userText = llm_.screen(
-        {.userId = session.userId, .role = userRoleFromString(session.role), .text = userText});
+  const bool anonymousCamera = session.userId <= 0 && cameraSurface(session.surface);
+  if ((session.userId > 0 || anonymousCamera) && carriesWords(userText))
+    userText = llm_.screen({.userId = session.userId,
+                            .role = userRoleFromString(session.role),
+                            .text = userText,
+                            .surface = session.surface});
+  if (anonymousCamera && userText == llm_speech::kWithheldUtterance && heardText != userText &&
+      session.sink != nullptr)
+    session.sink->withheld();
   switch (turnCoherenceOf(userText)) {
     case TurnCoherence::Proceed:
       break;
@@ -1430,6 +1436,8 @@ void VoiceSessionService::processTurn(Session& session, const HeardTurn& heard)
 
   const bool interrupted = session.interrupt.load();
   if (full.empty() && !interrupted && speechMarker == llm_speech::kUnheard) {
+    if (session.userId <= 0 && cameraSurface(session.surface) && session.sink != nullptr)
+      session.sink->withheld();
     session.history.rollbackUser();
     answerUnheard(session, UnheardTranscript::Correct);
     return;

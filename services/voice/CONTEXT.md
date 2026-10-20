@@ -1430,7 +1430,7 @@ A confirmed wake opens a `CameraConversation` (`camera-conversation`, held by `C
 - **Overlap and delegation.** In a member's conversation, a turn whose voice disagrees with the member's (the session's speaker verdict) and carries no wake word is dropped before the LLM (`VoiceSessionSink::admitsTurn`), unless the member delegated with "puedes hablar con ella", "respóndele", "preséntate" or the English forms; the floor stays.
 - **Panic and duress.** A panic phrase ("auxilio", "socorro", "llama a la policía", "help me", …) in any camera conversation raises argus-guard's `RaiseCameraPanic` with the camera (guard maps it to its environment), whoever spoke; a member's duress phrase goes through argus-llm's existing screen, which answers neutrally and raises the silent alert.
 - **One conversation per person.** A wake whose face or voice belongs to someone already in a phone, desktop or LiveKit call with Argus (`VoiceSessionService::liveSessions` beyond their camera conversations) is ignored.
-- **Not built.** Re-identifying at every turn (a different member at the same camera wakes Argus for their own conversation), active speaker detection, and the visitor's spoken consent to registration (visitor registration stays the identity feature's, under `visitor_recognition`).
+- **Not built.** Re-identifying at every turn (a different member at the same camera wakes Argus for their own conversation) and active speaker detection. The visitor's spoken consent, the minor rule and the duress path for an unrecognised speaker are below (gaps G2).
 
 ## The conversation on the phone: transcript and "Continuar aquí" (2026-10, CC6)
 
@@ -1445,3 +1445,28 @@ When a camera conversation opens on a pan-tilt camera and the face window found 
 ## The speaker's room for proximity (2026-10, CC8)
 
 On every user turn of a camera conversation with an identified member, voice reports the camera that hears the member loudest and its level to argus-guard (`PresenceService.ReportVoiceEvidence`, the existing `[guard] presence_target`/`presence_credential`), as proximity layer 0's evidence for the room belief. The voiceprint is not checked per turn (per-turn re-identification is not built), so the report says `voiceprint: false` and guard counts it half.
+
+## Privacy and safety at the camera (2026-10, gaps G2)
+
+### A visitor's spoken consent
+
+A conversation whose audience is `visitor` (only unknown faces, the `camera_visitor` set) opens with the disclosure and the question, said after the earcon: "Hola, soy el asistente de esta casa. Esta conversación se guarda. ¿Me permite recordarle para la próxima vez? Responda sí o no." (`consentQuestion`, `visitor-consent`). Until the visitor says yes, nothing about them beyond the conversation's own turns is kept or learned: the session has no user id, so no voiceprint is learned and no memory fact is formed, and the conversation enrols no face (visitor numbering stays identity's own, under `visitor_recognition`).
+
+- **Rules, never the model.** `CameraConversation::admitsTurn` runs every visitor turn through `consentTurn` before the LLM sees it. `consentAnswer` folds the words (accents off, the wake word dropped) and needs at most `[watch] visitor_consent_max_words` (6) of them: any negative ("no", "mejor no", "nel", "no gracias", "nope", "rather not", …) is a no; a yes ("sí", "claro", "dale", "ya", "ya pues", "normal", "de una", "chévere", "de acuerdo", "yes", "sure", "of course", …, and "no hay problema" read as a yes) counts only when nothing but yes words and fillers ("pues", "ps", "joven", "gracias", "nomás", …) remain, so "ya me voy" is not a yes. Peruvian input is understood; every line Argus says is neutral Spanish.
+- **What each answer does.** A yes moves the consent to `granted`, says "Gracias. ¿En qué le puedo ayudar?" and adds a note to the session; from then on the turns reach argus-llm at the visitor set. A no moves it to `declined` ("Entendido, no le recordaré.") for the rest of the conversation. Any other turn, and a declined conversation, get the safety-only line ("Puedo dejarle su mensaje a la casa. Si es una emergencia, diga «auxilio».") and never reach the model; while the question has been asked fewer than `[watch] visitor_consent_asks` (2) times, the question follows the line. Silence changes nothing: the conversation closes on its idle timer. The wake's own turn ("Argus, ¿está David?", said before the question) is answered by the question itself.
+- **Turns are kept.** The visitor's turns stay in the conversation (and so in the `watch_message` to the Owners), which the disclosure says; the notice's data now carries `visitorConsent` (`granted`, `declined`, `unanswered`).
+- **A minor.** A visitor who says they are a minor ("soy menor de edad", "tengo 12 años", "I'm a kid", "I'm 12 years old", `minorStatement`) is `declined` at once, even after a yes, and never asked again.
+- **Panic always passes.** The panic rule runs on every heard turn before consent, as before.
+
+### The rule for household minors
+
+- **Biometrics and learning** are identity's and argus-llm's: a member the Owner marked as a minor without the guardian's consent is neither named by face at a camera nor learned by voice (`services/identity/CONTEXT.md`, "Minors"), and their `memory.remember` is refused (`services/llm/CONTEXT.md`, "Privacy and safety at the camera"). Such a minor's face reaches voice as an unnamed household face (no user id, a role, not a visitor), which `resolveSpeaker` now treats as the guest set, never as a stranger, so a household child is never asked a visitor's consent.
+- **The camera set.** When the face names a member, `CameraIdentityResolver` asks identity (`GetUser`, `privacy.minor`) and, for a minor, `asMinor` declares `ConversationSurface::CameraMinor` with the minor note: argus-llm runs only `kCameraMinorCapabilities`, never camera views, alarm responses or agenda and project writes, and sends no confirmation to a phone. Identity unreachable reads as a minor.
+
+### Duress from someone nobody recognised
+
+A guest or visitor conversation has no user id, so the turn now asks argus-llm's screen as an anonymous camera speaker (`UtteranceScreenRequest.surface`). When the screen withholds the words (the household's duress phrase), or the chat turn answers `unheard` for that speaker, the session calls the sink's new `withheld()` hook; the camera conversation hands it to `ConversationManager::withheld`, which raises `RaiseCameraPanic` with `duress: true`, `user_id` 0 and the speaker label "Alguien en la cámara <nombre>". Guard records one silent duress alert for the camera's environment (`services/guard/CONTEXT.md`). Aloud, the turn is answered as every turn without words, so the speaker hears nothing about an alert; the turn never reaches the model, so nothing is disarmed and nothing is disclosed.
+
+### Tests
+
+`voice-watch-test`: the yes and no rules in Spanish, Peruvian Spanish and English, the minor statement, every consent transition and line, the minor set and the unnamed household face, the notice's `visitorConsent`, the speaker label. `voice-session-seam-test`: the anonymous camera speaker is screened with the camera surface, a withheld turn reaches the sink's hook and never the model, and an app session is not screened anonymously.

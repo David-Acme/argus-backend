@@ -52,7 +52,12 @@ struct SpeakerResolution
 
 [[nodiscard]] SpeakerResolution resolveSpeaker(const SpeakerResolutionInput& input);
 
+[[nodiscard]] SpeakerResolution asMinor(SpeakerResolution resolution, VoiceLang lang);
+
+[[nodiscard]] bool unnamedHousehold(const SeenFaceEvidence& face);
+
 [[nodiscard]] std::string_view floorNote(VoiceLang lang);
 [[nodiscard]] std::string_view guestNote(VoiceLang lang);
 [[nodiscard]] std::string_view visitorNote(VoiceLang lang);
 [[nodiscard]] std::string_view discreetNote(VoiceLang lang);
+[[nodiscard]] std::string_view minorNote(VoiceLang lang);

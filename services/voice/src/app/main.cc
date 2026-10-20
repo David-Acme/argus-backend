@@ -246,6 +246,12 @@ int main()
                                            const size_t camera =
                                                conversationsHolder ? conversationsHolder->liveFor(userId) : 0;
                                            return sessions.liveSessions(userId) > camera;
+                                         },
+                                         .minor = [watchIdentity](int64_t userId) {
+                                           if (!watchIdentity)
+                                             return false;
+                                           const auto user = watchIdentity->getUser(userId);
+                                           return !user || (user->user().has_privacy() && user->user().privacy().minor());
                                          }});
   conversationsHolder = std::make_unique<ConversationManager>(ConversationManagerInput{
       .config = watchConfig,
