@@ -215,6 +215,7 @@ TEST_CASE("a plain question with no facts of its own is answered over the facts 
                       .policies = {},
                       .contextFetch = [](const turn::ContextFetchInput& input) {
                         std::vector<ContextFact> facts;
+                        facts.reserve(input.facets.size());
                         for (const ContextFacet facet : input.facets)
                           facts.push_back({.facet = std::string(turn::contextFacetToString(facet)),
                                            .text = "Casa: modo noche, vigilancia armada."});

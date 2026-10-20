@@ -583,7 +583,7 @@ std::string cameraStatusLine(const CameraStatusLineInput& input)
   const auto health = std::ranges::find(kHealthPhrases, std::string_view(camera.health), &HealthPhrase::key);
   if (health != kHealthPhrases.end() && camera.online)
     line += ", " + std::string(english ? health->en : health->es);
-  line += ".";
+  line += '.';
   return line;
 }
 

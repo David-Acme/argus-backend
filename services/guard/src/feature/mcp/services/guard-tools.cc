@@ -307,7 +307,7 @@ std::string guardStatusLine(const GuardStatusLineInput& input)
                             : (english ? ", not armed" : ", vigilancia desarmada");
   line += english ? ". Latest episode: " : ". Último episodio: ";
   line += environment.latest ? episodeText(*environment.latest, input) : std::string(english ? "none" : "ninguno");
-  line += ".";
+  line += '.';
   return line;
 }
 
