@@ -23,6 +23,7 @@ struct ContextInput
 struct ContextChoice
 {
   std::vector<ContextFacet> facets;
+  std::vector<std::string> focus{};
 };
 
 class ContextSelector

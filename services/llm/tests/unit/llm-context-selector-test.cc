@@ -289,6 +289,38 @@ TEST_CASE("only the selected facts survive, ordered most relevant first, and an 
   CHECK_FALSE(hasFact(turn::selectedFacts(facts, agenda), "algo"));
 }
 
+TEST_CASE("the facts the turn names win over their facet's other lines")
+{
+  const std::vector<ContextFact> agenda{{.facet = "agenda", .text = "Agenda de hoy: reunión del colegio a las 16:30."},
+                                        {.facet = "agenda", .text = "Agenda de mañana: dentista a las 10:00."}};
+  const ContextSelector selector;
+
+  const auto today = turn::selectedFacts(agenda, selector.select({.utterance = "¿Qué tengo hoy?", .lang = "es"}));
+  REQUIRE(today.size() == 1);
+  CHECK(today.front().text == agenda.front().text);
+
+  const auto tomorrow = turn::selectedFacts(
+      agenda, selector.select({.utterance = "¿y mañana?", .lang = "es", .previousUser = "¿Qué tengo hoy?"}));
+  REQUIRE(tomorrow.size() == 1);
+  CHECK(tomorrow.front().text == agenda.back().text);
+
+  const auto dentist = turn::selectedFacts(
+      agenda, selector.select({.utterance = "¿a qué hora era lo del dentista?", .lang = "es", .previousUser = "¿y mañana?"}));
+  REQUIRE(dentist.size() == 1);
+  CHECK(dentist.front().text == agenda.back().text);
+
+  const auto unnamed = turn::selectedFacts(
+      agenda, selector.select({.utterance = "¿Qué hay en la agenda?", .lang = "es"}));
+  CHECK(unnamed.size() == 2);
+
+  const std::vector<ContextFact> tasks{{.facet = "tasks", .text = "Task: paint the living room, due Friday."},
+                                       {.facet = "tasks", .text = "Task: buy Ana's present, due Saturday."}};
+  CHECK(turn::selectedFacts(tasks, selector.select({.utterance = "Which tasks do I have pending?", .lang = "en"})).size() == 2);
+  CHECK(turn::selectedFacts(tasks, selector.select({.utterance = "Which one is due first?", .lang = "en",
+                                                    .previousUser = "Which tasks do I have pending?"}))
+            .size() == 2);
+}
+
 TEST_CASE("the context block is framed as data and empty when nothing was selected")
 {
   CHECK(turn::contextBlock({.lang = "es", .facts = {}}).empty());
