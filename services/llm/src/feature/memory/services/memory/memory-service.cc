@@ -1321,12 +1321,13 @@ tools::ToolResult MemoryService::handleRecall(const tools::ToolCall& call)
                                              .limit = recallLimit(),
                                              .addresseeEntityId = 0,
                                              .activeEntityIds = {}});
+  result.ok = true;
+  result.data["found"] = !recalled.hits.empty();
   if (recalled.hits.empty()) {
     result.output = english(call) ? "I have nothing saved about that."
                                   : "No tengo nada guardado sobre eso.";
     return result;
   }
-  result.ok = true;
   result.output = recalled.block;
   Json::Value& ids = result.data["fact_ids"] = Json::Value(Json::arrayValue);
   for (int64_t id : recalled.usedIds)

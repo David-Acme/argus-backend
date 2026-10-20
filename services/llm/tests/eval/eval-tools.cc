@@ -229,6 +229,8 @@ std::function<tools::ToolResult(const tools::ToolCall&)> handlerFor(const ToolSp
       input.recorder->ran({.tool = call.name, .arguments = call.arguments});
       result.ok = true;
       result.output = outputFor(call);
+      if (call.name == "memory.recall")
+        result.data["found"] = false;
       return result;
     }
     const argus::mcp::ConfirmationKey key{.userId = call.context.userId, .tool = call.name, .target = targetOf(call)};
