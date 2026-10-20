@@ -139,6 +139,8 @@ TEST_CASE("only a turn that asks about the time or the date carries the clock no
   CHECK_FALSE(time_arguments::asksAboutTime("Cuéntame un chiste corto."));
   CHECK_FALSE(time_arguments::asksAboutTime("¿Qué tengo pendiente hoy?"));
   CHECK_FALSE(time_arguments::asksAboutTime("Hello, how are you?"));
+  CHECK_FALSE(time_arguments::asksAboutTime("¿Y a qué hora llegó Luis?"));
+  CHECK_FALSE(time_arguments::asksAboutTime("What time was the dentist again?"));
 }
 
 TEST_CASE("a clock phrase only matches on whole words")

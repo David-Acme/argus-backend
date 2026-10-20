@@ -6,6 +6,7 @@
 
 #include <trantor/net/EventLoopThread.h>
 
+#include <ctime>
 #include <memory>
 #include <optional>
 #include <string>
@@ -35,6 +36,7 @@ struct Harness
   int reads{0};
   std::vector<MaskedCamera> masked;
   std::optional<WhereaboutsVoiceRequest> asked;
+  std::vector<GuardEnvironmentStatus> board;
 
   explicit Harness(std::vector<EnvironmentChoice> places = defaultPlaces())
   {
@@ -56,7 +58,8 @@ struct Harness
                                                             .code = request.person == "Pedro" ? "unknown_person" : "",
                                                             .structured = Json::Value(Json::objectValue)};
                                 co_return reply;
-                              }});
+                              },
+                              .status = [this]() -> drogon::Task<std::vector<GuardEnvironmentStatus>> { co_return board; }});
     moduleGate().reset();
   }
 
@@ -287,4 +290,51 @@ TEST_CASE("no role but the owner may ask where someone is, and the port is never
             .asString() == "module_inactive");
   moduleGate().reset();
   CHECK_FALSE(harness.asked.has_value());
+}
+
+TEST_CASE("the guard status is a read behind guard.read, one line per place with its mode and its latest episode")
+{
+  Harness harness;
+  const auto* spec = harness.server->find("guard.status");
+  REQUIRE(spec != nullptr);
+  CHECK(spec->module == "surveillance");
+  CHECK(spec->capability == "guard.read");
+  CHECK(spec->annotations.readOnly);
+  const auto now = static_cast<int64_t>(std::time(nullptr));
+  harness.board = {{.id = 1,
+                    .name = "Casa",
+                    .mode = "away",
+                    .armed = true,
+                    .latest = GuardEpisodeStatus{.kind = GuardEpisodeKind::Person,
+                                                 .subject = "stranger",
+                                                 .danger = "medium",
+                                                 .camera = {},
+                                                 .at = now - 7200,
+                                                 .resolved = true,
+                                                 .resolution = "left"}},
+                   {.id = 2, .name = "Restaurante", .mode = "home", .armed = false, .latest = std::nullopt}};
+  const auto spanish = harness.callTool({.name = "guard.status", .role = "guard", .lang = "es", .arguments = Json::Value(Json::objectValue)});
+  CHECK_FALSE(spanish.isError);
+  CHECK(spanish.text ==
+        "Casa: modo fuera de casa, vigilancia armada. Último episodio: una persona desconocida en Casa (riesgo medio), "
+        "hace 2 h, resuelto: se fue.\nRestaurante: modo en casa, vigilancia desarmada. Último episodio: ninguno.");
+  CHECK(spanish.structured["environments"].size() == 2);
+  harness.board.front().latest = GuardEpisodeStatus{.kind = GuardEpisodeKind::Camera,
+                                                    .subject = {},
+                                                    .danger = "high",
+                                                    .camera = "Garaje",
+                                                    .at = now - 30,
+                                                    .resolved = false,
+                                                    .resolution = {}};
+  const auto english = harness.callTool({.name = "guard.status", .role = "owner", .lang = "en", .arguments = Json::Value(Json::objectValue)});
+  CHECK(english.text.starts_with(
+      "Casa: mode away, armed. Latest episode: the Garaje camera lost its picture (high risk), just now, still open."));
+}
+
+TEST_CASE("a guest does not read the guard status")
+{
+  Harness harness;
+  const auto refused = harness.callTool({.name = "guard.status", .role = "guest", .lang = "es", .arguments = Json::Value(Json::objectValue)});
+  CHECK(refused.isError);
+  CHECK(refused.structured["code"].asString() == "forbidden");
 }

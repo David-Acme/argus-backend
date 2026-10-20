@@ -10,6 +10,8 @@
     "app.open",
     "app.show_camera",
     "guard.maintenance_status",
+    "camera.status",
+    "guard.status",
     "guard.where_is"
   ]
 }

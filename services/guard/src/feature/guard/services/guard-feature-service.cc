@@ -656,6 +656,66 @@ drogon::Task<Json::Value> GuardFeatureService::environments() const
   co_return response;
 }
 
+namespace
+{
+std::optional<GuardEpisodeStatus> latestOf(const std::vector<EpisodeRow>& people,
+                                          const std::vector<TamperRow>& cameras)
+{
+  std::optional<GuardEpisodeStatus> latest;
+  if (!people.empty()) {
+    const EpisodeRow& row = people.front();
+    const bool closed = row.state == "closed";
+    latest = GuardEpisodeStatus{
+        .kind = GuardEpisodeKind::Person,
+        .subject = row.subject,
+        .danger = guardDangerToString(guardDangerFromRank(row.reasonsRank)),
+        .camera = {},
+        .at = row.lastSeen,
+        .resolved = closed,
+        .resolution = !closed ? std::string()
+                      : row.lastReason == "known_resident" ? std::string("recognized")
+                                                           : std::string("left")};
+  }
+  if (!cameras.empty() && (!latest || cameras.front().createdAt > latest->at)) {
+    const TamperRow& row = cameras.front();
+    latest = GuardEpisodeStatus{
+        .kind = GuardEpisodeKind::Camera,
+        .subject = {},
+        .danger = row.danger,
+        .camera = row.cameraName,
+        .at = row.createdAt,
+        .resolved = !row.open,
+        .resolution = row.open ? std::string()
+                      : row.closedReason.empty() ? std::string("recovered")
+                                                 : row.closedReason};
+  }
+  return latest;
+}
+}
+
+drogon::Task<std::vector<GuardEnvironmentStatus>> GuardFeatureService::status() const
+{
+  const auto environments = co_await environmentRepository_.list();
+  const std::tm local = localNow();
+  std::vector<GuardEnvironmentStatus> out;
+  out.reserve(environments.size());
+  for (const auto& environment : environments) {
+    const GuardPosture posture = guard_schedule::resolve(
+        {.schedule = guard_schedule::fromEnvironment(environment),
+         .manual = environment.mode,
+         .local = local});
+    const EpisodeListInput window{.limit = 1, .before = 0, .environmentId = environment.id};
+    const auto people = co_await episodeRepository_.list(window);
+    const auto cameras = co_await episodeRepository_.tamper(window);
+    out.push_back({.id = environment.id,
+                   .name = environment.name,
+                   .mode = guardModeToString(posture.mode),
+                   .armed = posture.mode != GuardMode::Home,
+                   .latest = latestOf(people, cameras)});
+  }
+  co_return out;
+}
+
 drogon::Task<void>
 GuardFeatureService::requireNameFree(const std::string& name,
                                      int64_t except) const

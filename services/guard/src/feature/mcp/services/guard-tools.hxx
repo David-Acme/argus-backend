@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mcp/server.hxx>
+#include <shared/vocabulary/guard-status.hxx>
 #include <shared/vocabulary/maintenance-voice.hxx>
 #include <shared/vocabulary/masked-camera.hxx>
 #include <shared/vocabulary/whereabouts-voice.hxx>
@@ -28,6 +29,16 @@ struct GuardToolsInput
   std::function<trantor::EventLoop*()> loop;
   MaintenanceVoicePorts maintenance{};
   WhereaboutsVoice whereabouts{};
+  GuardStatusDirectory status{};
 };
+
+struct GuardStatusLineInput
+{
+  const GuardEnvironmentStatus& environment;
+  bool english{false};
+  int64_t now{0};
+};
+
+[[nodiscard]] std::string guardStatusLine(const GuardStatusLineInput& input);
 
 [[nodiscard]] std::shared_ptr<argus::mcp::McpServer> guardToolServer(const GuardToolsInput& input);

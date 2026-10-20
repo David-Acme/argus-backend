@@ -15,6 +15,7 @@
 #include <feature/llm/services/tools/reply-claims.hxx>
 #include <feature/llm/services/tools/tool-registry.hxx>
 #include <feature/llm/services/turn-engines.hxx>
+#include <feature/llm/services/turn/context-fetch.hxx>
 #include <feature/llm/services/turn/decision-policy.hxx>
 #include <feature/llm/services/turn/tool-effects.hxx>
 
@@ -78,6 +79,8 @@ struct Options
   std::string decideBundle;
   std::string extractBundle;
   std::string variant{"production"};
+  std::string facts{"injected"};
+  turn::ContextFetchLimits fetchLimits{};
   std::string label;
   std::vector<std::string> scenarios;
   std::vector<std::string> locales;
@@ -133,6 +136,12 @@ Options parseOptions(int argc, char** argv)
       options.printConfig = true;
     else if (arg == "--variant" && hasValue)
       options.variant = argv[++i];
+    else if (arg == "--facts" && hasValue)
+      options.facts = argv[++i];
+    else if (arg == "--fetch-lines" && hasValue)
+      options.fetchLimits.maxLines = static_cast<int>(std::strtol(argv[++i], nullptr, 10));
+    else if (arg == "--fetch-chars" && hasValue)
+      options.fetchLimits.maxChars = static_cast<int>(std::strtol(argv[++i], nullptr, 10));
     else if (arg == "--label" && hasValue)
       options.label = argv[++i];
     else if (arg == "--scenario" && hasValue)
@@ -294,11 +303,12 @@ std::string tomlFloat(float value)
 
 std::string configKey(const Options& options)
 {
-  return std::format("eval:max_tokens={},temp={},seed={},variant={},cases={},decide={},extract={}",
+  return std::format("eval:max_tokens={},temp={},seed={},variant={},facts={},cases={},decide={},extract={}",
                      kMaxTokens,
                      tomlFloat(options.temperature),
                      options.seed,
                      options.variant,
+                     options.facts,
                      options.cases.size(),
                      std::filesystem::path(options.decideBundle).filename().string(),
                      std::filesystem::path(options.extractBundle).filename().string());
@@ -462,6 +472,71 @@ const std::vector<context_eval::ScenarioFact>& factsFor(const context_eval::Scen
   return variant == "oracle" ? item.oracle : item.facts;
 }
 
+class FactBoard
+{
+public:
+  void post(const std::vector<context_eval::ScenarioFact>& facts)
+  {
+    const std::scoped_lock lock(mutex_);
+    facts_ = facts;
+  }
+
+  [[nodiscard]] std::string linesFor(std::string_view facet) const
+  {
+    const std::scoped_lock lock(mutex_);
+    std::string out;
+    for (const context_eval::ScenarioFact& fact : facts_) {
+      if (fact.facet != facet)
+        continue;
+      if (!out.empty())
+        out += '\n';
+      out += fact.text;
+    }
+    return out;
+  }
+
+private:
+  mutable std::mutex mutex_;
+  std::vector<context_eval::ScenarioFact> facts_;
+};
+
+struct BoardToolsInput
+{
+  const eval::StubInput& stubs;
+  std::shared_ptr<const FactBoard> board;
+};
+
+void registerBoardTools(const BoardToolsInput& input)
+{
+  for (tools::ToolDescriptor& descriptor : eval::stubTools(input.stubs)) {
+    std::optional<turn::ContextFacet> served;
+    for (std::size_t index = 0; index < turn::kFacetCount; ++index) {
+      const auto facet = static_cast<turn::ContextFacet>(index);
+      if (turn::fetchToolFor(facet) == std::optional<std::string_view>(descriptor.spec.name))
+        served = facet;
+    }
+    if (!served)
+      continue;
+    descriptor.handler = [board = input.board,
+                          recorder = input.stubs.recorder,
+                          original = std::move(descriptor.handler),
+                          facet = std::string(turn::contextFacetToString(*served))](const tools::ToolCall& call) {
+      const bool fetched = call.context.channel == turn::kContextFetchChannel;
+      std::string lines = board->linesFor(facet);
+      if (!fetched && lines.empty())
+        return original(call);
+      if (!fetched)
+        recorder->ran({.tool = call.name, .arguments = call.arguments});
+      tools::ToolResult result;
+      result.tool = call.name;
+      result.ok = true;
+      result.output = std::move(lines);
+      return result;
+    };
+    ToolRegistry::instance().registerTool(std::move(descriptor));
+  }
+}
+
 struct TurnStateInput
 {
   const std::string& utterance;
@@ -584,6 +659,7 @@ struct CaseInput
   const std::string& roles;
   std::string variant;
   float temperature{0.0F};
+  FactBoard* board{nullptr};
 };
 
 CaseRun runCase(const CaseInput& input)
@@ -592,8 +668,7 @@ CaseRun runCase(const CaseInput& input)
   const UserRole role = userRoleFromString(input.item.role);
   ModuleFlags flags = moduleGate().known();
   for (ModuleFlag& flag : flags)
-    if (std::ranges::find(input.item.modulesOff, flag.id) != input.item.modulesOff.end())
-      flag.enabled = false;
+    flag.enabled = std::ranges::find(input.item.modulesOff, flag.id) == input.item.modulesOff.end();
   std::ignore = moduleGate().apply(flags);
   run.staticPrefix = call_checks::staticPrompt({.roles = std::nullopt,
                                                 .rolesDefault = input.roles,
@@ -615,8 +690,11 @@ CaseRun runCase(const CaseInput& input)
     request.messages = history;
     request.messages.push_back({.role = "user", .content = turn.user});
     request.contextFacts = {};
-    for (const context_eval::ScenarioFact& fact : factsForTurn(input.item, turn, input.variant))
-      request.contextFacts.push_back({.facet = fact.facet, .text = fact.text});
+    if (input.board != nullptr)
+      input.board->post(factsForTurn(input.item, turn, input.variant));
+    else
+      for (const context_eval::ScenarioFact& fact : factsForTurn(input.item, turn, input.variant))
+        request.contextFacts.push_back({.facet = fact.facet, .text = fact.text});
     request.maxTokens = kMaxTokens;
     request.temperature = input.temperature;
     request.resetContext = firstTurn;
@@ -704,6 +782,7 @@ Json::Value turnRow(const CaseRun& run, std::size_t index, const Options& option
   row["role"] = run.item.role;
   row["route"] = run.item.route;
   row["context"] = options.variant;
+  row["facts"] = options.facts;
   row["model"] = std::filesystem::path(options.llmModel).filename().string();
   row["label"] = options.label;
   row["turn"] = static_cast<int>(index);
@@ -949,6 +1028,10 @@ int runContextScenarios(int argc, char** argv)
     std::cout << "[ERROR] unknown context variant " << options.variant << "; use production or oracle\n";
     return 1;
   }
+  if (options.facts != "injected" && options.facts != "fetched") {
+    std::cout << "[ERROR] unknown facts mode " << options.facts << "; use injected or fetched\n";
+    return 1;
+  }
 #ifndef NDEBUG
   if (!options.force) {
     std::cout << "[SKIPPED] a debug build decodes about twenty times slower; run the prod build or pass --force\n";
@@ -1047,11 +1130,19 @@ int runContextScenarios(int argc, char** argv)
                               .ledger = std::make_shared<argus::mcp::ConfirmationLedger>()};
   for (auto& descriptor : eval::stubTools(stubs))
     ToolRegistry::instance().registerTool(std::move(descriptor));
+  const bool fetched = options.facts == "fetched";
+  const auto board = std::make_shared<FactBoard>();
+  if (fetched) {
+    registerBoardTools({.stubs = stubs, .board = board});
+    controller.adapter().useContextFetch(
+        turn::toolContextFetch({.executor = controller.adapter().executor(), .limits = options.fetchLimits}));
+  }
   std::ignore = moduleGate().apply(catalog);
   const TurnEngines engines = installEngines(controller, options);
-  std::cout << std::format("pipeline: {} context={} model={}\n",
+  std::cout << std::format("pipeline: {} context={} facts={} model={}\n",
                            engines.pipeline(),
                            options.variant,
+                           options.facts,
                            std::filesystem::path(options.llmModel).filename().string());
   const std::vector<context_eval::ScenarioCase> cases = selected(loaded.cases, options);
   std::cout << std::format("context scenarios: {} cases of {}\n", cases.size(), loaded.cases.size());
@@ -1102,7 +1193,8 @@ int runContextScenarios(int argc, char** argv)
                             .known = englishCase ? knownEn.bytes : knownEs.bytes,
                             .roles = englishCase ? rolesEn : rolesEs,
                             .variant = options.variant,
-                            .temperature = options.temperature}));
+                            .temperature = options.temperature,
+                            .board = fetched ? board.get() : nullptr}));
     if (item.duress && !waitForRaises(*rig, raisesBefore + 1)) {
       std::cout << "[ERROR] the duress path did not fire for " << item.id << "\n";
       controller.shutdownEngine();

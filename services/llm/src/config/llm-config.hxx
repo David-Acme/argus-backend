@@ -41,6 +41,14 @@ struct LlmConversationConfig
   int64_t switchBudgetMs{100};
 };
 
+struct LlmContextConfig
+{
+  int64_t budgetMs{300};
+  int64_t maxLines{4};
+  int64_t maxChars{220};
+  int64_t agendaDays{2};
+};
+
 struct LlmDecisionConfig
 {
   double act{0.0};
@@ -96,6 +104,10 @@ public:
   [[nodiscard]] static LlmConversationConfig resolveConversation();
 
   [[nodiscard]] static LlmConversationConfig boundConversation(LlmConversationConfig config);
+
+  [[nodiscard]] static LlmContextConfig resolveContext();
+
+  [[nodiscard]] static LlmContextConfig boundContext(LlmContextConfig config);
 
   [[nodiscard]] static std::optional<LlmDecisionConfig> resolveDecision(std::string_view decider = {});
 

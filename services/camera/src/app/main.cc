@@ -76,6 +76,7 @@
 #include <shared/services/change-sink/nats-camera-change-sink.hxx>
 #include <sqlite/db-service.hxx>
 #include <shared/services/stream/go2rtc-manager.hxx>
+#include <shared/services/stream/camera-live-board.hxx>
 #include <shared/services/stream/camera-source-registrar.hxx>
 #include <feature/camera/services/camera-feature-service.hxx>
 #include <feature/camera/services/record-mode-migration.hxx>
@@ -395,11 +396,16 @@ int main()
         .server = cameraToolServer(
             {.catalog = [repository = std::make_shared<CameraRepository>()]() -> drogon::Task<std::vector<CameraChoice>> {
                std::vector<CameraChoice> cameras;
-               for (const auto& camera : co_await repository->findEnabled())
+               const auto board = CameraLiveBoard::instance().snapshot();
+               for (const auto& camera : co_await repository->findEnabled()) {
+                 const auto live = board.find(camera.id);
                  cameras.push_back({.id = camera.id,
                                     .name = camera.name,
                                     .privacyState = PrivacyStateService::instance().stateOf(camera.id),
-                                    .privacyObeyed = PrivacyStateService::instance().masked(camera.id)});
+                                    .privacyObeyed = PrivacyStateService::instance().masked(camera.id),
+                                    .online = camera.isOnline,
+                                    .health = live == board.end() ? std::string() : live->second.health});
+               }
                co_return cameras;
              },
              .posture = [household = &householdPosture] {

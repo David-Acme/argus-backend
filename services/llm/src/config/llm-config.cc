@@ -96,6 +96,29 @@ LlmConversationConfig LlmConfig::boundConversation(LlmConversationConfig config)
   return config;
 }
 
+LlmContextConfig LlmConfig::resolveContext()
+{
+  LlmContextConfig config;
+  if (ConfigService::hasKey("context.budget_ms"))
+    config.budgetMs = ConfigService::getInt("context.budget_ms");
+  if (ConfigService::hasKey("context.max_lines"))
+    config.maxLines = ConfigService::getInt("context.max_lines");
+  if (ConfigService::hasKey("context.max_chars"))
+    config.maxChars = ConfigService::getInt("context.max_chars");
+  if (ConfigService::hasKey("context.agenda_days"))
+    config.agendaDays = ConfigService::getInt("context.agenda_days");
+  return boundContext(config);
+}
+
+LlmContextConfig LlmConfig::boundContext(LlmContextConfig config)
+{
+  config.budgetMs = std::clamp<int64_t>(config.budgetMs, 0, 5000);
+  config.maxLines = std::clamp<int64_t>(config.maxLines, 0, 10);
+  config.maxChars = std::clamp<int64_t>(config.maxChars, 40, 600);
+  config.agendaDays = std::clamp<int64_t>(config.agendaDays, 0, 14);
+  return config;
+}
+
 std::optional<LlmDecisionConfig> LlmConfig::resolveDecision(std::string_view decider){
   const std::string section = decider.empty() ? std::string("decide") : "decide." + std::string(decider);
   if (!ConfigService::hasKey(section + ".act") || !ConfigService::hasKey(section + ".ask"))

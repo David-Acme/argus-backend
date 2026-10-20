@@ -18,7 +18,17 @@ struct CameraChoice
   std::string name;
   CameraPrivacyState privacyState{CameraPrivacyState::Unknown};
   bool privacyObeyed{false};
+  bool online{false};
+  std::string health{};
 };
+
+struct CameraStatusLineInput
+{
+  const CameraChoice& camera;
+  bool english{false};
+};
+
+[[nodiscard]] std::string cameraStatusLine(const CameraStatusLineInput& input);
 
 using CameraCatalog = std::function<drogon::Task<std::vector<CameraChoice>>()>;
 

@@ -1091,6 +1091,11 @@ Outcome TurnFlow::decided(const TurnRequest& request, const Deciding& deciding)
     verdict = Verdict::Ask;
     named = "guard";
   }
+  if (verdict == Verdict::Act && !candidate->exact && isAppTool(candidate->tool) &&
+      !asksForAppAction(std::string(request.utterance))) {
+    verdict = Verdict::Pass;
+    named = "app-unasked";
+  }
   tally_.note({.decider = candidate->decider,
                .exact = candidate->exact,
                .tool = candidate->tool,

@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <chrono>
 #include <iterator>
+#include <optional>
 #include <ctime>
 #include <ranges>
 #include <string>
@@ -33,6 +34,19 @@ std::string previousAssistantMessage(const std::vector<ChatMessage>& history)
     }
     if (message.role == "assistant")
       return message.content;
+  }
+  return {};
+}
+
+std::string previousUserMessage(const std::vector<ChatMessage>& history)
+{
+  bool seenUser = false;
+  for (const ChatMessage& message : std::views::reverse(history)) {
+    if (message.role != "user")
+      continue;
+    if (seenUser)
+      return LfmAdapter::spokenText(message.content);
+    seenUser = true;
   }
   return {};
 }
@@ -81,6 +95,14 @@ std::string contextTail(const ContextTailInput& args)
   return turn::contextBlock({.lang = args.input.lang, .facts = texts});
 }
 
+bool foundNothing(const turn::Outcome& outcome)
+{
+  if (outcome.steps.size() != 1)
+    return false;
+  const tools::ToolResult& result = outcome.steps.front().result;
+  return result.ok && result.data["found"].isBool() && !result.data["found"].asBool();
+}
+
 struct ScrubHook
 {
   std::string_view lang;
@@ -113,7 +135,7 @@ LfmAdapter::LfmAdapter(LlmService& llm)
 
 LfmAdapter::LfmAdapter(LfmAdapterInput input)
     : engine_(std::move(input.engine)), executor_(input.registry),
-      stack_({&ruleDecider_, &triggerDecider_}),
+      stack_({&ruleDecider_, &triggerDecider_}), contextFetch_(std::move(input.contextFetch)),
       flow_({.executor = executor_,
              .decider = input.decider != nullptr ? input.decider : &stack_,
              .text = input.text != nullptr ? input.text : &ruleText_,
@@ -390,6 +412,27 @@ void LfmAdapter::speakAct(const ActSpeakInput& input, ToolChatOutput& output)
            << std::string(turn::speech::verdictName(verdict)) << "); the turn stays silent";
 }
 
+std::string LfmAdapter::turnContext(const TurnContextInput& args) const
+{
+  const turn::ContextChoice choice = contextSelector_.select(args.selection);
+  std::vector<ContextFact> fetched;
+  const std::vector<ContextFact>* facts = &args.input.contextFacts;
+  if (facts->empty() && contextFetch_ && !choice.facets.empty()) {
+    tools::ToolContext context = args.input.context;
+    context.utterance = std::string(args.selection.utterance);
+    fetched = contextFetch_({.facets = choice.facets,
+                             .offered = args.input.tools,
+                             .audience = args.input.audience,
+                             .context = context,
+                             .ran = args.ran});
+    facts = &fetched;
+  }
+  std::vector<std::string> texts;
+  for (const ContextFact& fact : turn::selectedFacts(*facts, choice))
+    texts.push_back(fact.text);
+  return turn::contextBlock({.lang = args.selection.lang, .facts = texts});
+}
+
 ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
 {
   const ToolChatInput& input = args.input;
@@ -418,14 +461,18 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
   }
 
   const std::string previous = previousAssistantMessage(history);
+  const std::string previousUser = previousUserMessage(history);
   const turn::Outcome outcome = flow_.run({.utterance = utterance,
                                            .offered = input.tools,
                                            .audience = input.audience,
                                            .context = input.context,
                                            .now = static_cast<int64_t>(std::time(nullptr)),
                                            .previousAssistant = previous});
-  for (const auto& step : outcome.steps)
+  std::vector<std::string> ran;
+  for (const auto& step : outcome.steps) {
     output.executed.push_back(step.call);
+    ran.push_back(step.call.name);
+  }
   output.toolMs = outcome.toolMs;
   output.hops = outcome.steps.empty() ? 0 : 1;
   output.decider = outcome.decider;
@@ -436,15 +483,24 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
   state.called = outcome.called;
   state.lang = input.context.lang;
   const auto now = static_cast<int64_t>(std::time(nullptr));
-  if (const auto spoken = turn::speechOf(outcome, input.context.lang, now)) {
+  const TurnContextInput selection{.input = input,
+                                   .selection = {.utterance = utterance,
+                                                 .lang = input.context.lang,
+                                                 .tool = outcome.decidedTool,
+                                                 .previousUser = previousUser,
+                                                 .previousAssistant = previous},
+                                   .ran = ran};
+  std::optional<std::string> yielded;
+  if (foundNothing(outcome)) {
+    std::string held = turnContext(selection);
+    if (!held.empty())
+      yielded = std::move(held);
+  }
+  const auto spoken = yielded ? std::nullopt : turn::speechOf(outcome, input.context.lang, now);
+  if (spoken) {
     output.act = std::string(turn::speech::actName(spoken->acts.front()));
-    if (!turn::speech::isQuestion(spoken->acts.front())) {
-      output.contextBlock = contextTail({.selector = contextSelector_,
-                                         .input = {.utterance = utterance,
-                                                   .lang = input.context.lang,
-                                                   .tool = outcome.decidedTool},
-                                         .facts = input.contextFacts});
-    }
+    if (!turn::speech::isQuestion(spoken->acts.front()))
+      output.contextBlock = turnContext(selection);
     const auto started = std::chrono::steady_clock::now();
     speakAct({.input = input,
               .history = history,
@@ -464,11 +520,7 @@ ToolChatOutput LfmAdapter::chatTurn(const SpeakInput& args)
   }
 
   std::string tail;
-  const std::string context = contextTail({.selector = contextSelector_,
-                                           .input = {.utterance = utterance,
-                                                     .lang = input.context.lang,
-                                                     .tool = outcome.decidedTool},
-                                           .facts = input.contextFacts});
+  const std::string context = yielded ? std::move(*yielded) : turnContext(selection);
   output.contextBlock = context;
   if (!context.empty())
     tail += (tail.empty() ? std::string() : std::string("\n")) + context;
@@ -533,7 +585,11 @@ ToolChatOutput LfmAdapter::chatPlainTurn(const PlainChatInput& input)
   output.contextBlock = request.prefillOnly
                             ? std::string()
                             : contextTail({.selector = contextSelector_,
-                                           .input = {.utterance = utterance, .lang = lang},
+                                           .input = {.utterance = utterance,
+                                                     .lang = lang,
+                                                     .tool = {},
+                                                     .previousUser = previousUserMessage(request.messages),
+                                                     .previousAssistant = previousAssistantMessage(request.messages)},
                                            .facts = request.contextFacts});
   req.messages = spokenMessages({.history = request.messages,
                                  .clock = clockNote(request.messages, lang),

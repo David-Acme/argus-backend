@@ -12,6 +12,7 @@
 #include <text/name-match.hxx>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <optional>
 #include <string_view>
@@ -107,6 +108,68 @@ drogon::Task<argus::mcp::ToolOutcome> showCamera(CameraCatalog catalog, argus::m
     co_return argus::mcp::toolFailure({.text = english ? "There are no cameras yet." : "Todavía no hay cámaras.", .code = "no_cameras"});
   co_return argus::mcp::toolFailure({.text = english ? "I could not find a camera called " + asked + ". The cameras are: " + listed(cameras) + "."
                             : "No encuentro una cámara llamada " + asked + ". Las cámaras son: " + listed(cameras) + ".", .code = "unknown_camera"});
+}
+
+struct HealthPhrase
+{
+  std::string_view key;
+  std::string_view es;
+  std::string_view en;
+};
+
+constexpr std::array<HealthPhrase, 11> kHealthPhrases{{
+    {.key = "ok", .es = "imagen normal", .en = "picture normal"},
+    {.key = "dark", .es = "imagen oscura", .en = "picture dark"},
+    {.key = "bright", .es = "imagen demasiado clara", .en = "picture too bright"},
+    {.key = "blurred", .es = "imagen borrosa", .en = "picture blurred"},
+    {.key = "moved", .es = "la cámara se movió", .en = "the camera was moved"},
+    {.key = "unreachable", .es = "sin imagen", .en = "no picture"},
+    {.key = "covered", .es = "lente tapado", .en = "lens covered"},
+    {.key = "whiteout", .es = "imagen en blanco", .en = "picture washed out"},
+    {.key = "blinded", .es = "cámara encandilada", .en = "camera blinded"},
+    {.key = "partial_cover", .es = "lente tapado en parte", .en = "lens partly covered"},
+    {.key = "dark_sudden", .es = "se oscureció de golpe", .en = "went dark suddenly"},
+}};
+
+drogon::Task<argus::mcp::ToolOutcome> cameraStatus(CameraCatalog catalog, argus::mcp::ToolInvocation invocation)
+{
+  const bool english = invocation.caller.lang == "en";
+  const std::string asked = invocation.arguments.get("camera", "").asString();
+  const auto cameras = co_await catalog();
+  argus::mcp::ToolOutcome outcome;
+  if (cameras.empty()) {
+    outcome.text = english ? "There are no cameras yet." : "Todavía no hay cámaras.";
+    outcome.structured["cameras"] = Json::Value(Json::arrayValue);
+    co_return outcome;
+  }
+  std::vector<CameraChoice> chosen = cameras;
+  if (!text_norm::folded(asked).empty()) {
+    const CameraMatch match = matchCamera({.cameras = cameras, .text = asked});
+    if (match.kind == CameraMatchKind::Ambiguous)
+      co_return argus::mcp::toolFailure({.text = english ? "Which camera do you mean? " + listed(match.candidates) + "."
+                                                         : "¿A cuál cámara te refieres? " + listed(match.candidates) + ".",
+                                         .code = "ambiguous_camera"});
+    if (match.kind == CameraMatchKind::Missing)
+      co_return argus::mcp::toolFailure(
+          {.text = english ? "I could not find a camera called " + asked + ". The cameras are: " + listed(cameras) + "."
+                           : "No encuentro una cámara llamada " + asked + ". Las cámaras son: " + listed(cameras) + ".",
+           .code = "unknown_camera"});
+    chosen = {match.camera};
+  }
+  Json::Value rows(Json::arrayValue);
+  for (const auto& camera : chosen) {
+    outcome.text += (outcome.text.empty() ? "" : "\n") + cameraStatusLine({.camera = camera, .english = english});
+    Json::Value row(Json::objectValue);
+    row["cameraId"] = camera.id;
+    row["name"] = camera.name;
+    row["online"] = camera.online;
+    row["privacyState"] = cameraPrivacyStateToString(camera.privacyState);
+    row["privacyObeyed"] = camera.privacyObeyed;
+    row["health"] = camera.health.empty() ? std::string("unknown") : camera.health;
+    rows.append(std::move(row));
+  }
+  outcome.structured["cameras"] = std::move(rows);
+  co_return outcome;
 }
 
 struct PrivacyRequest
@@ -505,6 +568,25 @@ drogon::Task<argus::mcp::ToolOutcome> lookDirection(AimRequest request)
 }
 }
 
+std::string cameraStatusLine(const CameraStatusLineInput& input)
+{
+  const CameraChoice& camera = input.camera;
+  const bool english = input.english;
+  std::string line = english ? "The " + camera.name + " camera: " : "Cámara " + camera.name + ": ";
+  line += camera.online ? (english ? "online" : "en línea") : (english ? "offline" : "fuera de línea");
+  if (camera.privacyObeyed && camera.privacyState == CameraPrivacyState::Unknown)
+    line += english ? ", privacy unconfirmed, treated as masked" : ", privacidad sin confirmar, se trata como tapada";
+  else if (camera.privacyObeyed)
+    line += english ? ", privacy mode on (Argus does not see it)" : ", modo privacidad encendido (Argus no la ve)";
+  else
+    line += english ? ", privacy mode off" : ", modo privacidad apagado";
+  const auto health = std::ranges::find(kHealthPhrases, std::string_view(camera.health), &HealthPhrase::key);
+  if (health != kHealthPhrases.end() && camera.online)
+    line += ", " + std::string(english ? health->en : health->es);
+  line += ".";
+  return line;
+}
+
 CameraMatch matchCamera(const CameraQuery& query)
 {
   CameraMatch match;
@@ -604,6 +686,17 @@ std::shared_ptr<argus::mcp::McpServer> cameraToolServer(const CameraToolsInput& 
                .capability = "camera.aim"},
               argus::mcp::onLoop({.loop = input.loop, .handler = [catalog](const argus::mcp::ToolInvocation& invocation) {
                                     return lookDirection({.catalog = catalog, .invocation = invocation});
+                                  }}));
+  server->add({.name = "camera.status",
+               .title = "",
+               .description = "Dice el estado de las cámaras: si están en línea, si tienen el modo privacidad y cómo "
+                              "está su imagen. camera es el nombre de una cámara; vacío las dice todas",
+               .inputSchema = schema::object({{.name = "camera", .schema = schema::text(), .required = false}}),
+               .annotations = {.readOnly = true},
+               .module = "surveillance",
+               .capability = "camera.view"},
+              argus::mcp::onLoop({.loop = input.loop, .handler = [catalog](const argus::mcp::ToolInvocation& invocation) {
+                                    return cameraStatus(catalog, invocation);
                                   }}));
   server->setGate(tool_gate::capabilities());
   return server;

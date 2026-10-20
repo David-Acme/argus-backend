@@ -2051,6 +2051,27 @@ only one camera has, an ambiguous word, a missing name), the app action in
 both views and both languages, the gate (role, module off) and the catalog
 being empty.
 
+### `camera.status`: the cameras, read for the assistant's context (2026-10-19)
+
+`camera.status {camera?}` is a read (`readOnly`, in argus-llm's
+`tool-effects.json`), module `surveillance`, capability `camera.view`, the
+capability that already governs seeing a camera. argus-llm calls it as the
+read behind its `camera` context facet (`services/llm/CONTEXT.md`, "Where the
+facts come from"), and the decider may route to it like any read. It answers
+one line per camera, in the caller's language: name, online or offline,
+privacy (`modo privacidad encendido (Argus no la ve)`, `privacidad sin
+confirmar, se trata como tapada` when the mask is obeyed but unconfirmed,
+`modo privacidad apagado`) and, for an online camera, the health monitor's
+last verdict as a phrase (`imagen normal`, `imagen oscura`, `lente tapado`,
+`sin imagen`...; an unknown health says nothing). A `camera` name narrows the
+answer to one camera with the same matching and refusals as `app.show_camera`.
+`structured.cameras` carries `cameraId`, `name`, `online`, `privacyState`,
+`privacyObeyed` and `health` (`unknown` when the board has no sample).
+
+The data comes from the catalog `main.cc` builds: `camera.is_online` (kept by
+the presence monitor), `PrivacyStateService` and the `CameraLiveBoard`
+health; `CameraChoice` gained `online` and `health` for it.
+
 ## ONVIF control: pan, tilt and presets for generic cameras (2026-10-13)
 
 The reviewer chose option (a): Argus speaks ONVIF itself, through a small SOAP

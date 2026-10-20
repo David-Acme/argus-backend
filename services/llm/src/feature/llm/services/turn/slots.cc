@@ -468,6 +468,8 @@ Filled fill(const FillInput& input)
                                                                         .lang = input.context.lang});
     if (text && !text->empty())
       filled.arguments[field] = *text;
+    else if (field == "query" && input.spec.annotations.readOnly && !input.context.utterance.empty())
+      filled.arguments[field] = input.context.utterance;
     else
       filled.missing.push_back(field);
   }

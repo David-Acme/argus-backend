@@ -381,6 +381,13 @@ int main()
                                                   .extract = turnBundle(LlmConfig::resolveExtractBundle(), "extract")});
   LOG_INFO << "argus-llm: the turn runs on " << engines.pipeline();
   llm->adapter().flow().usePolicies(configuredPolicies(engines.laya ? &engines.laya->policy() : nullptr));
+  const LlmContextConfig contextConfig = LlmConfig::resolveContext();
+  llm->adapter().useContextFetch(turn::toolContextFetch(
+      {.executor = llm->adapter().executor(),
+       .limits = {.budgetMs = contextConfig.budgetMs,
+                  .maxLines = static_cast<int>(contextConfig.maxLines),
+                  .maxChars = static_cast<int>(contextConfig.maxChars),
+                  .agendaDays = static_cast<int>(contextConfig.agendaDays)}}));
   ToolDirectory toolDirectory(tools, {});
   toolDirectory.start();
 

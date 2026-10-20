@@ -64,6 +64,7 @@ argus_module(NAME llm
         services/turn/bundle-loader.cc
         services/turn/bundle-golden.cc
         services/turn/calibration.cc
+        services/turn/context-fetch.cc
         services/turn/context-selector.cc
         services/turn/deciders.cc
         services/turn/decision-tally.cc
