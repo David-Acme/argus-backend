@@ -313,6 +313,8 @@ inline constexpr std::array<AuthRouteAccess, 6> kRouteOverrides = {{
     {.path = "/camera/{id}/sd/day", .method = drogon::Get, .roles = kOwnerOnly},
 }};
 
+inline constexpr std::array<std::string_view, 1> kOverrideOnlyPaths = {"/conversation/{id}/message"};
+
 inline constexpr std::string_view kRouteSegment = "{id}";
 
 inline bool routeMatches(std::string_view pattern, std::string_view path)
@@ -635,6 +637,9 @@ inline bool normalizedRouteAccess(const HasHttpAccessInput& input)
 
   if (const auto* route = routeOf(kRouteOverrides, input.path, input.method))
     return roleGranted(route->roles, input.role, input.roleActive);
+  if (std::ranges::any_of(kOverrideOnlyPaths,
+                          [&input](std::string_view pattern) { return routeMatches(pattern, input.path); }))
+    return false;
 
   if (const auto* action = cameraActionRouteOf(input.path, input.method))
     return roleGranted(action->roles, input.role, input.roleActive);
