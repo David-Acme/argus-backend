@@ -464,3 +464,87 @@ Backend `integ/gaps-5`, frontend `integ/gaps-5-ui`, on top of the five merged ga
   - Recording the three routes in `scripts/fixtures/http/` on a live stack, then adding them to the frontend `HTTP_CONTRACTS`.
   - A typed message opens no `relay_thread` in argus-llm, so the recipient's spoken "respóndele" finds only spoken relays; they answer a typed message in the app. The impersonation phrase list stays argus-llm's: a typed body is not screened for "de parte de", because it always arrives under the sender's identity-bound name.
   - The e2e suite (`tests/e2e/conversations.e2e.ts` was updated to the new composer line) was not run.
+
+## Item 15: the LLM's context, measured turn by turn
+
+The priority David set on 2026-10-19 is a fluid, safe conversation that does
+not invent, reached by fixing what the model reads rather than the model. The
+first finding was structural: since e808604b removed `context_facts` from the
+wire, a production `ChatRequest` reached the model with no house data at all
+unless the decider happened to run a read tool. The scenario eval hid it by
+injecting the facts.
+
+What changed, one unit per commit:
+
+- **The server reads the facts itself** (`turn::toolContextFetch`, installed
+  by `main`): after the selector picks a turn's facets, each facet's read
+  tool runs through `ToolExecutor` on the `context_fetch` channel, gated like
+  a decided call (offered, read-only, runnable under the module gate, not
+  already run). `camera.status` and `guard.status` are new read tools for it;
+  the people facet reads `guard.where_is` (Owner-only, `presence.read`).
+  `[context] budget_ms`, `max_lines`, `max_chars`, `agenda_days` bound it.
+- **A follow-up keeps its topic**: a turn that names no facet inherits the
+  previous user turn's, then the previous reply's ("¿y mañana?").
+- **The lines the turn names win**: the selector keeps the turn's content
+  words; when some selected lines name one and others do not, only the named
+  ones reach the model. With today's and tomorrow's agenda both present the
+  model answered "¿qué tengo hoy?" with tomorrow's dentist; it no longer can.
+  The fetch ranks a list's lines by the same words before it caps them, and
+  "mañana" after "la" is the morning, not tomorrow.
+- **One line per item**: agenda, task, project and reminder listings add
+  `structured.lines` beside their spoken sentence, with relative days
+  ("Evento: «Dentista», mañana a las 10 de la mañana."), so the read picks
+  the item asked about instead of clipping one long sentence at 220 chars.
+- **Decider guards**: a non-exact `app.*` decision nobody asked for passes to
+  conversation ("¿dónde está Ana?" no longer opens a camera); a read tool's
+  missing `query` is the utterance ("¿qué tengo hoy?" no longer asks "¿qué
+  busco?"); the clock note answers only questions about the current time.
+- **An empty search is not a failure**: `memory.recall` with no hit answers
+  `ok=true, found=false` (it used to speak "No pude hacerlo. ¿Lo intento de
+  nuevo?"), and a read that found nothing yields the turn to the facts the
+  context already holds, so the model stops inventing around "nothing saved".
+
+Measured with `context-scenarios-eval` (temperature 0.3, seed 42). The main
+set is `context-scenarios.jsonl` + `context-axis.jsonl` (63 cases); the
+varied set is the new `context-varied.jsonl` (24 cases: follow-ups, a
+correction, unknown data, a digression, tasks, cameras, guard, a pronoun,
+reminders, a topic switch, a person with no data, projects).
+
+| Set / facts | casePass | missedFacts | invented |
+|---|---|---|---|
+| main, injected, before | 18 | 38 | 8 |
+| main, injected, now | 28 | 29 | 4 |
+| main, fetched (first cut) | 19 | 43 | 7 |
+| main, fetched, now | 26 | 34 | 3 |
+| varied, injected, before | 8 | 17 | 6 |
+| varied, injected, now | 14 | 9 | 0 |
+| varied, fetched, now | 14 | 9 | 0 |
+
+falseClaims, falseRelays, privacyLeaks and ungroundedNumbers stay 0 in every
+run. Discarded on measurement: prompt rules ("greet only at the start", "a
+subject-less question refers to the last topic") took the main set from 18
+to 13 cases passed.
+
+Still open in item 15: a yes/no answered backwards with the right data
+("¿vino solo?" → "Sí… con un amigo"); with no data at all the model hedges
+instead of saying "no sé" (no invention, but no plain answer); the `echo`
+gate (one case) and the selector/tier gates of `llm-tier-eval` and
+`decider-eval`, which fail on the base as well (`memory.remind` recall 0.927
+< 0.96); and the CPU re-baseline with the 40-reply blind sample.
+
+## Gaps integration
+
+`integ/gaps-5` carries G5, G4, G3 and G2, the closing pass and the item-15
+work. Integration found and fixed: the calendar listing's spoken window
+shadowing G4's occurrence range (`calendar-tools.cc` did not compile);
+`PATCH /conversation/{id}/message` falling through to the message table's
+update permission (the path answers POST alone, `kOverrideOnlyPaths`); the
+identity privacy test clearing its change sink before G2's minor checks; and
+`guard.where_is` (G3) beside `guard.status` in the guard tool server. The
+golden HTTP fixtures record `PUT /privacy/users/{1}/minor`, `POST
+/rtc/watch/{1}/reply` and `POST /conversation/{1}/message`, `GET /privacy/me`
+and `/privacy/users` carry `minor` and `guardianConsent`, and the decision
+summary's camera-hour bucket is volatile like its window: 1050 probes verified
+on a fresh scratch stack, 0 failing. The fifteen projects pass every test,
+the comment, dependency and route gates pass, and clang-tidy stands at 1985
+findings against the old 2030 baseline (ratcheted down).
